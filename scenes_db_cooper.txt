@@ -1,0 +1,63 @@
+# D.B. Cooper - scenes list. One per line: keywords | type: video/image
+# CHAPTER 1 - THE HOOK
+airport terminal 1970s retro | type: image
+man in dark suit silhouette walking | type: video
+airplane boarding vintage | type: image
+boeing jet taking off dusk | type: video
+rain storm dark forest aerial | type: video
+FBI files documents archive | type: image
+# CHAPTER 2 - GOLDEN AGE OF SKYJACKING
+vintage airport 1970s passengers | type: image
+retro airplane cabin interior | type: image
+old television news broadcast | type: video
+havana cuba vintage street | type: image
+airplane cockpit vintage | type: image
+airport gate crowd retro | type: video
+# CHAPTER 3 - FLIGHT 305
+commercial airplane interior seats | type: video
+whiskey glass on table dark | type: video
+handwritten note paper close up | type: image
+briefcase open dark | type: image
+flight attendant vintage aircraft | type: image
+airplane window clouds evening | type: video
+parachute pack close up | type: image
+# CHAPTER 4 - THE EXCHANGE
+stacks of twenty dollar bills | type: video
+money bundle cash close up | type: image
+airport tarmac night lights | type: video
+airplane refueling ground crew | type: image
+jet airplane night takeoff rain | type: video
+cockpit instruments night | type: video
+airplane stairs rear exit | type: image
+storm clouds night lightning | type: video
+# CHAPTER 5 - THE MANHUNT
+dense forest fog pacific northwest | type: video
+helicopter flying over forest | type: video
+soldiers searching woods line | type: image
+river dragging boat search | type: image
+evidence bag laboratory | type: image
+necktie black vintage close up | type: image
+cigarette butts ashtray | type: image
+microscope laboratory analysis | type: video
+# CHAPTER 6 - MONEY ON THE RIVERBANK
+sandy river bank columbia | type: video
+child digging sand beach | type: image
+old rotted dollar bills | type: image
+river flowing aerial washington | type: video
+magnifying glass documents investigation | type: image
+scientist examining evidence | type: video
+# CHAPTER 7 - THE SUSPECTS
+police mugshot file vintage | type: image
+prison fence barbed wire | type: video
+fingerprint analysis close up | type: image
+DNA test laboratory tubes | type: video
+old photographs box memories | type: image
+army paratrooper vintage jump | type: image
+courtroom empty vintage | type: image
+# CHAPTER 8 - WHY WE CANNOT LET GO
+mountain forest mist aerial cinematic | type: video
+neon bar sign night | type: image
+airplane vintage museum | type: image
+riverbank sunset moody | type: video
+silhouette man walking away fog | type: video
+dark treeline night stars | type: video

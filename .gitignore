@@ -1,0 +1,17 @@
+# Секреты — никогда не коммитить
+.env
+settings.json
+
+# Результаты работы пайплайна
+output/
+project*/
+project*.zip
+
+# Локальные настройки Claude Code
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

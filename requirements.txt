@@ -1,0 +1,5 @@
+boto3>=1.34
+requests>=2.31
+python-dotenv>=1.0
+openai-whisper>=20231117
+edge-tts>=7.0
