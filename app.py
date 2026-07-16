@@ -22,6 +22,7 @@ import queue
 import shutil
 import tempfile
 import threading
+import traceback
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -408,7 +409,9 @@ class App(tk.Tk):
         wrap.pack(fill="x", side="bottom")
         head = ttk.Frame(wrap)
         head.pack(fill="x")
-        ttk.Label(head, text="КОНСОЛЬ", style="Muted.TLabel").pack(side="left")
+        ttk.Label(head, text="ЖУРНАЛ  ·  краткая сводка (полный вывод — "
+                             "страница «Консоль»)",
+                  style="Muted.TLabel").pack(side="left")
         ttk.Button(head, text="Скопировать",
                    command=self.copy_log).pack(side="right")
         ttk.Button(head, text="Очистить",
@@ -452,6 +455,13 @@ class App(tk.Tk):
         for tag, color in (("ok", C["ok"]), ("err", C["err"]),
                            ("warn", C["warn"]), ("muted", C["muted"])):
             self.console_box.tag_configure(tag, foreground=color)
+        self.append_console("Это Консоль: сюда в реальном времени пишутся все "
+                            "команды, живой прогресс ffmpeg/Whisper и полные "
+                            "тексты ошибок.", "muted")
+        self.append_console("Пока ничего не запущено — тут тихо. Запусти "
+                            "озвучку, субтитры или рендер, и здесь побегут "
+                            "кадры, время и скорость кодирования.", "muted")
+        self.pulse_var.set("")
 
     def console(self, msg: str):
         """Потокобезопасно: строка только в «Консоль» (журнал не засоряем)."""
@@ -470,6 +480,7 @@ class App(tk.Tk):
         if self.autoscroll_var.get():
             box.see("end")
         box.configure(state="disabled")
+        self.pulse_var.set(msg[:80])  # пульс в статус-баре
 
     def clear_console(self):
         self.console_box.configure(state="normal")
@@ -490,6 +501,10 @@ class App(tk.Tk):
                   style="Panel.TLabel").pack(side="left")
         self.progress = ttk.Progressbar(bar, length=240, mode="determinate")
         self.progress.pack(side="left", padx=12)
+        # живой пульс: последняя строка Консоли видна из любого раздела
+        self.pulse_var = tk.StringVar(value="")
+        ttk.Label(bar, textvariable=self.pulse_var,
+                  style="PanelMuted.TLabel").pack(side="left", padx=4)
         self.sysinfo_var = tk.StringVar(value=f"v{APP_VERSION}")
         ttk.Label(bar, textvariable=self.sysinfo_var,
                   style="PanelMuted.TLabel").pack(side="right")
@@ -702,15 +717,18 @@ class App(tk.Tk):
 
     def run_bg(self, fn, *args, name="Задача"):
         def wrapper():
-            self.ui(lambda: self.status_var.set(f"⏳ {name}…"))
+            self.ui(lambda: self.status_var.set(
+                f"⏳ {name}… — живой прогресс на странице «Консоль»"))
             try:
                 fn(*args)
             except Exception as e:
-                self.log(f"[ОШИБКА] {e}")
+                self.console(traceback.format_exc().rstrip())
+                self.log(f"[ОШИБКА] {e} — полный traceback на странице «Консоль»")
             finally:
                 def done():
                     self.status_var.set("Готов")
                     self.progress.configure(value=0)
+                    self.pulse_var.set("")
                 self.ui(done)
         threading.Thread(target=wrapper, daemon=True).start()
 

@@ -238,8 +238,8 @@ def _motion_expr(motion: str, frames: int, fps: int) -> str:
     if motion == "push_in":     # наезд с ускорением к концу
         return f"z='1+0.20*pow(on/{n1},2)':{center}"
     if motion == "shake":       # микро-тряска ~0.7%
-        return (f"z=1.03:x='iw/2-(iw/zoom/2)+4*sin(on*1.7)+3*sin(on*0.83)':"
-                f"y='ih/2-(ih/zoom/2)+3*sin(on*2.3)+2*sin(on*1.1)'")
+        return ("z=1.03:x='iw/2-(iw/zoom/2)+4*sin(on*1.7)+3*sin(on*0.83)':"
+                "y='ih/2-(ih/zoom/2)+3*sin(on*2.3)+2*sin(on*1.1)'")
     return f"z='min(zoom+{zr:.6f},1.15)':{center}"
 
 
