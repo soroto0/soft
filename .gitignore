@@ -10,6 +10,10 @@ project*.zip
 # Локальные настройки Claude Code
 .claude/settings.local.json
 
+# Логи приложения
+app.log
+app.log.old
+
 # Python
 __pycache__/
 *.pyc

@@ -42,6 +42,8 @@ import render
 APP_TITLE = "Контент-фабрика"
 APP_VERSION = "2.0"
 SETTINGS_FILE = Path(__file__).parent / "settings.json"
+LOG_FILE = Path(__file__).parent / "app.log"  # дубль журнала и консоли
+LOG_FILE_MAX = 2 << 20  # ~2 МБ, дальше — ротация в app.log.old
 
 TTS_PROVIDERS = ["Edge TTS (бесплатно)", "Amazon Polly"]
 EDGE_VOICES = ["en-US-GuyNeural", "en-US-ChristopherNeural", "en-US-EricNeural",
@@ -249,7 +251,12 @@ class App(tk.Tk):
         win.after(300, apply)
 
     def make_text(self, parent, mono=False, **kw) -> tk.Text:
-        """tk.Text в цветах темы + контекстное меню правой кнопкой."""
+        """tk.Text в цветах темы + контекстное меню правой кнопкой.
+        height по умолчанию небольшой: без этого Text просит 24 строки,
+        колонка не влезает в окно и журнал со статус-баром обрезаются;
+        реальную высоту добирает pack(expand=True)."""
+        kw.setdefault("height", 6)
+        kw.setdefault("width", 40)
         t = tk.Text(parent, bg=C["field"], fg=C["text"],
                     insertbackground=C["text"],
                     selectbackground=C["accent"], selectforeground="#ffffff",
@@ -321,6 +328,9 @@ class App(tk.Tk):
         sb = ttk.Scrollbar(frame, orient="vertical", command=widget.yview)
         widget.configure(yscrollcommand=sb.set)
         widget.pack(in_=frame, side="left", fill="both", expand=True)
+        # widget создан раньше frame и в z-порядке лежит ПОД ним: frame
+        # непрозрачен и закрывает содержимое (виден только скроллбар).
+        widget.lift()
         sb.pack(side="right", fill="y")
         return frame
 
@@ -467,7 +477,20 @@ class App(tk.Tk):
         """Потокобезопасно: строка только в «Консоль» (журнал не засоряем)."""
         self.ui(lambda: self.append_console(msg, "muted"))
 
+    @staticmethod
+    def file_log(msg: str):
+        """Дубль строки в app.log: даже если в окне «ничего нету», в файле
+        есть всё. Ротация по размеру, ошибки записи не роняют интерфейс."""
+        try:
+            if LOG_FILE.exists() and LOG_FILE.stat().st_size > LOG_FILE_MAX:
+                LOG_FILE.replace(LOG_FILE.with_suffix(".log.old"))
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}  {msg}\n")
+        except OSError:
+            pass
+
     def append_console(self, msg: str, tag: str = ""):
+        self.file_log(msg)
         if not hasattr(self, "console_box"):
             return
         box = self.console_box
@@ -717,14 +740,21 @@ class App(tk.Tk):
 
     def run_bg(self, fn, *args, name="Задача"):
         def wrapper():
+            t0 = datetime.now()
             self.ui(lambda: self.status_var.set(
                 f"⏳ {name}… — живой прогресс на странице «Консоль»"))
+            self.log(f"▶ {name}: запущено")
+            ok = True
             try:
                 fn(*args)
             except Exception as e:
+                ok = False
                 self.console(traceback.format_exc().rstrip())
                 self.log(f"[ОШИБКА] {e} — полный traceback на странице «Консоль»")
             finally:
+                sec = (datetime.now() - t0).total_seconds()
+                self.log(f"{'✔' if ok else '✖'} {name}: "
+                         f"{'завершено' if ok else 'прервано'} за {sec:.0f} c")
                 def done():
                     self.status_var.set("Готов")
                     self.progress.configure(value=0)
