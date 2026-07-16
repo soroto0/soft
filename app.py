@@ -124,7 +124,12 @@ class App(tk.Tk):
         self.tab_media()
         self.tab_render()
         self.tab_build()
+        self.tab_console()
         self.show_page("Сценарий")
+
+        # живой вывод ffmpeg/whisper из фоновых потоков -> страница «Консоль»
+        render.CONSOLE = self.console
+        core.CONSOLE = self.console
 
         self._fix_hotkeys_any_layout()
         self._loaded_script, self._loaded_scenes = "", ""
@@ -425,6 +430,57 @@ class App(tk.Tk):
         self.clipboard_append(self.log_box.get("1.0", "end"))
         self.log("[Журнал] Скопирован в буфер обмена")
 
+    # ---------- Страница «Консоль»: полный живой вывод процессов ----------
+    def tab_console(self):
+        f = self.page("🖥", "Консоль")
+        bar = ttk.Frame(f)
+        bar.pack(fill="x", pady=(0, 6))
+        ttk.Button(bar, text="Очистить",
+                   command=self.clear_console).pack(side="left")
+        ttk.Button(bar, text="Скопировать",
+                   command=self.copy_console).pack(side="left", padx=6)
+        self.autoscroll_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(bar, text="Автопрокрутка",
+                        variable=self.autoscroll_var).pack(side="left", padx=10)
+        ttk.Label(bar, text="Всё, что происходит под капотом: команды, живой "
+                            "прогресс ffmpeg (кадр/время/скорость), вывод "
+                            "Whisper и полные тексты ошибок.",
+                  style="Muted.TLabel").pack(side="left", padx=8)
+        self.console_box = self.make_text(f, mono=True, state="disabled",
+                                          wrap="none")
+        self.with_scroll(f, self.console_box).pack(fill="both", expand=True)
+        for tag, color in (("ok", C["ok"]), ("err", C["err"]),
+                           ("warn", C["warn"]), ("muted", C["muted"])):
+            self.console_box.tag_configure(tag, foreground=color)
+
+    def console(self, msg: str):
+        """Потокобезопасно: строка только в «Консоль» (журнал не засоряем)."""
+        self.ui(lambda: self.append_console(msg, "muted"))
+
+    def append_console(self, msg: str, tag: str = ""):
+        if not hasattr(self, "console_box"):
+            return
+        box = self.console_box
+        box.configure(state="normal")
+        box.insert("end", datetime.now().strftime("%H:%M:%S  "), "muted")
+        box.insert("end", msg + "\n", tag)
+        # не даём консоли распухнуть: держим последние ~8000 строк
+        if int(box.index("end-1c").split(".")[0]) > 8000:
+            box.delete("1.0", "2000.0")
+        if self.autoscroll_var.get():
+            box.see("end")
+        box.configure(state="disabled")
+
+    def clear_console(self):
+        self.console_box.configure(state="normal")
+        self.console_box.delete("1.0", "end")
+        self.console_box.configure(state="disabled")
+
+    def copy_console(self):
+        self.clipboard_clear()
+        self.clipboard_append(self.console_box.get("1.0", "end"))
+        self.log("[Консоль] Скопирована в буфер обмена")
+
     # ---------- Статус-бар ----------
     def build_statusbar(self, parent):
         bar = ttk.Frame(parent, style="Panel.TFrame", padding=(12, 6))
@@ -583,6 +639,7 @@ class App(tk.Tk):
         self.log_box.insert("end", msg + "\n", tag)
         self.log_box.see("end")
         self.log_box.configure(state="disabled")
+        self.append_console(msg, tag)  # в «Консоли» — полная история
 
     def greet_log(self):
         self.append_log("Готов к работе. Порядок: 1 Сценарий → 2 Озвучка → "

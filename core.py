@@ -635,13 +635,35 @@ def ken_burns(image: Path, dest: Path, duration: float = 8.0, fps: int = 25):
 
 # ---------- Субтитры ----------
 
+CONSOLE = None  # хук GUI: живой вывод дочерних процессов (страница «Консоль»)
+
+
+def _console(msg: str):
+    if CONSOLE:
+        try:
+            CONSOLE(msg)
+        except Exception:
+            pass
+
+
 def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log) -> Path:
     subs_dir = out_dir / "subs"
     subs_dir.mkdir(parents=True, exist_ok=True)
     log(f"[Субтитры] Whisper ({model})... первый запуск скачает модель, подожди")
-    subprocess.run(["whisper", str(audio_path), "--model", model,
-                    "--language", "en", "--output_format", "srt",
-                    "--output_dir", str(subs_dir)], check=True)
+    cmd = ["whisper", str(audio_path), "--model", model,
+           "--language", "en", "--output_format", "srt",
+           "--output_dir", str(subs_dir)]
+    _console("[whisper] $ " + " ".join(cmd))
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         text=True, encoding="utf-8", errors="replace")
+    for line in p.stdout:
+        line = line.strip()
+        if line:
+            _console(f"[whisper] {line}")
+    p.wait()
+    if p.returncode != 0:
+        raise RuntimeError(f"whisper упал (код {p.returncode}) — подробности "
+                           "на странице «Консоль»")
     # Whisper может назвать файл по-своему — ищем самый свежий .srt в папке
     srt_files = sorted(subs_dir.glob("*.srt"),
                        key=lambda p: p.stat().st_mtime, reverse=True)

@@ -18,12 +18,25 @@
 
 import re
 import json
+import time
 import random
 import zlib
+import threading
 import subprocess
+from collections import deque
 from pathlib import Path
 
 from core import srt_to_seconds, parse_srt, audio_duration
+
+CONSOLE = None  # хук GUI: сюда льётся живой вывод ffmpeg (кадр/время/скорость)
+
+
+def _console(msg: str):
+    if CONSOLE:
+        try:
+            CONSOLE(msg)
+        except Exception:
+            pass
 
 RESOLUTIONS = {"1080p": (1920, 1080), "4K": (3840, 2160)}
 GROUP_SIZE = 8          # сегментов в одной xfade-команде
@@ -60,12 +73,40 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm"}
 
 
-def _run(cmd: list[str]):
-    """ffmpeg с внятной ошибкой (хвост stderr) вместо молчаливого падения."""
-    p = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+def _run(cmd: list[str], label: str = "ffmpeg"):
+    """ffmpeg с живым прогрессом в Консоль и внятной ошибкой (хвост stderr)."""
+    full = list(cmd)
+    if full and full[0] == "ffmpeg":
+        # -progress pipe:1 даёт машиночитаемый прогресс построчно в stdout
+        full[1:1] = ["-hide_banner", "-loglevel", "error",
+                     "-nostats", "-progress", "pipe:1"]
+    _console(f"[{label}] $ " + " ".join(str(a) for a in full))
+    p = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, encoding="utf-8", errors="replace")
+    err_tail = deque(maxlen=40)
+
+    def read_err():
+        for line in p.stderr:
+            line = line.rstrip()
+            if line:
+                err_tail.append(line)
+                _console(f"[{label}] ! {line}")
+
+    t = threading.Thread(target=read_err, daemon=True)
+    t.start()
+    stat, last = {}, 0.0
+    for line in p.stdout:
+        key, _, val = line.strip().partition("=")
+        stat[key] = val
+        if key == "progress" and time.time() - last >= 1.0:
+            last = time.time()
+            _console(f"[{label}] кадр {stat.get('frame', '?')}   "
+                     f"время {stat.get('out_time', '?')[:11]}   "
+                     f"скорость {stat.get('speed', '?')}")
+    p.wait()
+    t.join(timeout=2)
     if p.returncode != 0:
-        tail = p.stderr.decode("utf-8", "replace")[-500:]
-        raise RuntimeError(f"ffmpeg упал ({' '.join(cmd[:3])}...):\n{tail}")
+        raise RuntimeError(f"ffmpeg упал ({label}):\n" + "\n".join(err_tail))
 
 
 # ---------- 1. План сцен ----------
@@ -216,7 +257,7 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
               f"format=yuv420p,setsar=1")
         _run(["ffmpeg", "-y", "-i", str(src), "-vf", vf,
               "-c:v", "libx264", "-preset", "fast", "-crf", CRF_SEGMENT,
-              "-an", str(dest)])
+              "-an", str(dest)], label=dest.stem)
     else:
         src_dur = audio_duration(src) or dur
         offset = rng.uniform(0, src_dur - dur) if src_dur > dur + 0.5 else 0
@@ -230,7 +271,7 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
         _run(["ffmpeg", "-y", "-ss", f"{offset:.2f}", "-i", str(src),
               "-t", f"{dur:.3f}", "-vf", vf,
               "-c:v", "libx264", "-preset", "fast", "-crf", CRF_SEGMENT,
-              "-an", str(dest)])
+              "-an", str(dest)], label=dest.stem)
 
 
 # ---------- 3. Переходы ----------
@@ -282,7 +323,7 @@ def render_group(seg_files: list[Path], durs: list[float],
     cmd += ["-filter_complex", fc, "-map", acc,
             "-c:v", "libx264", "-preset", "fast", "-crf", CRF_SEGMENT,
             "-r", str(fps), str(dest)]
-    _run(cmd)
+    _run(cmd, label=dest.stem)
 
 
 # ---------- 4. Финальная сборка ----------
@@ -330,7 +371,7 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
            "-t", f"{total:.3f}",
            "-c:v", "libx264", "-preset", "medium", "-crf", CRF_FINAL,
            "-c:a", "aac", "-b:a", "192k", str(dest)]
-    _run(cmd)
+    _run(cmd, label="финал")
 
 
 # ---------- Оркестратор ----------
