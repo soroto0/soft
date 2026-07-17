@@ -764,8 +764,13 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log) -> Path
            "--language", "en", "--output_format", "srt",
            "--output_dir", str(subs_dir)]
     _console("[whisper] $ " + " ".join(cmd))
+    # PYTHONUTF8: без него whisper на Windows печатает в cp1251 и падает
+    # с UnicodeEncodeError на первой же нелатинской букве (é, ü, ...) —
+    # транскрипция обрывается и .srt не записывается
+    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                         text=True, encoding="utf-8", errors="replace")
+                         text=True, encoding="utf-8", errors="replace",
+                         env=env)
     for line in p.stdout:
         line = line.strip()
         if line:
