@@ -146,6 +146,42 @@ def _run(cmd: list[str], label: str = "ffmpeg"):
         raise RuntimeError(f"ffmpeg упал ({label}):\n" + "\n".join(err_tail))
 
 
+def _has_video(path: Path) -> bool:
+    """Есть ли в файле видеопоток. ffmpeg может «успешно» записать пустой
+    файл (например, -ss за концом видео) — такой сегмент рвёт xfade-склейку
+    ошибкой «matches no streams»."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True)
+        return Path(path).exists() and "video" in r.stdout
+    except OSError:
+        return False
+
+
+def _video_dur(path: Path) -> float | None:
+    """Длительность именно ВИДЕОпотока (контейнер бывает длиннее видео —
+    например, из-за звуковой дорожки; -ss по контейнеру попадает в пустоту)."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-select_streams", "v:0",
+             "-show_entries", "stream=duration", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True)
+        return float(r.stdout.strip().splitlines()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _placeholder(dest: Path, dur: float, w: int, h: int, fps: int):
+    """Тёмная заглушка вместо битого сегмента — рендер продолжается."""
+    _run(["ffmpeg", "-y", "-f", "lavfi",
+          "-i", f"color=c=0x14120f:s={w}x{h}:r={fps}",
+          "-t", f"{max(dur, 0.2):.3f}", "-vf", "format=yuv420p,setsar=1",
+          "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
+          str(dest)], label=dest.stem + "~заглушка")
+
+
 # ---------- 1. План сцен ----------
 
 def project_seed(out_dir: Path) -> int:
@@ -337,19 +373,37 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
                 f"[bg][fg]overlay=eof_action=repeat:"
                 f"x='(W-w)/2-{amp}+{amp * 2}*n/{frames}':y='(H-h)/2',"
                 + tail_vf)
-            _run(["ffmpeg", "-y", "-i", str(src), "-filter_complex", fc,
-                  "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
-                  "-an", str(dest)], label=dest.stem)
+            try:
+                _run(["ffmpeg", "-y", "-i", str(src), "-filter_complex", fc,
+                      "-c:v", "libx264", "-preset", PRESET_SEG,
+                      "-crf", CRF_SEGMENT, "-an", str(dest)], label=dest.stem)
+                if not _has_video(dest):
+                    raise RuntimeError("пустой результат")
+            except RuntimeError as e:
+                if CANCEL.is_set():
+                    raise
+                _console(f"[{dest.stem}] parallax не получился "
+                         f"({str(e)[:80]}) — заглушка")
+                _placeholder(dest, dur, w, h, fps)
             return
         vf = (f"scale={w * 2}:-2:flags=lanczos,"
               f"zoompan={_motion_expr(motion, frames, fps)}"
               f":d={frames}:s={w}x{h}:fps={fps},"
               + tail_vf)
-        _run(["ffmpeg", "-y", "-i", str(src), "-vf", vf,
-              "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
-              "-an", str(dest)], label=dest.stem)
+        try:
+            _run(["ffmpeg", "-y", "-i", str(src), "-vf", vf,
+                  "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
+                  "-an", str(dest)], label=dest.stem)
+            if not _has_video(dest):
+                raise RuntimeError("пустой результат")
+        except RuntimeError as e:
+            if CANCEL.is_set():
+                raise
+            _console(f"[{dest.stem}] картинка не закодировалась "
+                     f"({str(e)[:80]}) — заглушка")
+            _placeholder(dest, dur, w, h, fps)
     else:
-        src_dur = audio_duration(src) or dur
+        src_dur = _video_dur(src) or audio_duration(src) or dur
         offset = rng.uniform(0, src_dur - dur) if src_dur > dur + 0.5 else 0
         motion = motion or rng.choice(VIDEO_MOTIONS)
         D = max(dur, 0.5)
@@ -382,11 +436,38 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
             # исходник короче сцены — замораживаем последний кадр, иначе
             # сегмент выйдет коротким и xfade-склейка оборвёт видеодорожку
             vf += "tpad=stop_mode=clone:stop=-1,"
-        vf += tail_vf
-        _run(["ffmpeg", "-y", "-ss", f"{offset:.2f}", "-i", str(src),
-              "-t", f"{dur:.3f}", "-vf", vf,
-              "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
-              "-an", str(dest)], label=dest.stem)
+
+        def enc(off: float, pad: bool = False):
+            v = vf
+            if pad and "tpad" not in v:
+                v += "tpad=stop_mode=clone:stop=-1,"
+            _run(["ffmpeg", "-y", "-ss", f"{off:.2f}", "-i", str(src),
+                  "-t", f"{dur:.3f}", "-vf", v + tail_vf,
+                  "-c:v", "libx264", "-preset", PRESET_SEG,
+                  "-crf", CRF_SEGMENT, "-an", str(dest)], label=dest.stem)
+
+        try:
+            enc(offset)
+            ok = _has_video(dest)
+        except RuntimeError as e:
+            if CANCEL.is_set():
+                raise
+            _console(f"[{dest.stem}] не закодировался ({str(e)[:100]})")
+            ok = False
+        if not ok:
+            _console(f"[{dest.stem}] пустой сегмент (offset {offset:.1f} c "
+                     f"за концом видеопотока {src.name}?) — пробую с начала")
+            try:
+                enc(0, pad=True)
+                ok = _has_video(dest)
+            except RuntimeError as e:
+                if CANCEL.is_set():
+                    raise
+                ok = False
+        if not ok:
+            _console(f"[{dest.stem}] исходник не читается — ставлю заглушку, "
+                     "рендер продолжается")
+            _placeholder(dest, dur, w, h, fps)
 
 
 # ---------- 3. Переходы ----------
@@ -409,9 +490,15 @@ def pick_transitions(n: int, rng: random.Random) -> list[tuple[str, float]]:
 
 def render_group(seg_files: list[Path], durs: list[float],
                  trans: list[tuple[str, float]], dest: Path, fps: int,
-                 chromab: bool = False):
+                 chromab: bool = False, w: int = 1920, h: int = 1080):
     """Склейка группы сегментов цепочкой xfade одной командой.
     chromab — хроматическая аберрация в момент каждого перехода."""
+    # страховка: сегмент без видеопотока рвёт xfade ошибкой
+    # «matches no streams» — заменяем такой заглушкой до склейки
+    for f, d in zip(seg_files, durs):
+        if not _has_video(f):
+            _console(f"[{dest.stem}] {f.name} без видеопотока — заглушка")
+            _placeholder(f, d + 1.0, w, h, fps)
     if len(seg_files) == 1:
         seg_files[0].replace(dest)
         return
@@ -672,7 +759,7 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
         dest = tmp / f"group_{g:03d}.mp4"
         render_group(seg_files[lo:hi], seg_durs[lo:hi],
                      trans[lo:hi - 1], dest, fps,
-                     chromab=bool(opts.get("chromab")))
+                     chromab=bool(opts.get("chromab")), w=w, h=h)
         group_files.append(dest)
         log(f"[Рендер] Группа {g + 1}/{n_groups} склеена "
             f"(сцены {lo + 1}-{hi})")

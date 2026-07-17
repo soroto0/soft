@@ -57,20 +57,20 @@ WHISPER_MODELS = ["tiny.en", "base.en", "small.en", "medium.en"]
 SCENES_SAMPLE = ("dark city street at night, rain | type: video | count: 2\n"
                  "old newspaper archive | type: image\n")
 
-# ---------- Палитра: почти чёрный фон + фиолетовый акцент ----------
+# ---------- Палитра: тёплый чёрный + шампань-золото ----------
 C = {
-    "bg":      "#0f0f15",   # фон окна
-    "panel":   "#15151d",   # сайдбар, статус-бар, карточки
-    "field":   "#1d1d27",   # поля ввода и текст-боксы
-    "hover":   "#232330",   # кнопки и наведение
-    "border":  "#2a2a38",   # рамки полей
-    "text":    "#f2f2f7",
-    "muted":   "#8b8b9e",
-    "accent":  "#7c5cff",   # фиолетовый акцент
-    "accent2": "#9d85ff",   # акцент при наведении
-    "ok":      "#4ade80",
-    "err":     "#f87171",
-    "warn":    "#fbbf24",
+    "bg":      "#131210",   # фон окна
+    "panel":   "#1a1815",   # сайдбар, статус-бар, карточки
+    "field":   "#232019",   # поля ввода и текст-боксы
+    "hover":   "#2b2720",   # кнопки и наведение
+    "border":  "#3a342a",   # рамки полей
+    "text":    "#f3ecdd",
+    "muted":   "#a2977f",
+    "accent":  "#d9b36c",   # золото
+    "accent2": "#eccf94",   # золото при наведении
+    "ok":      "#8fce85",
+    "err":     "#f28b82",
+    "warn":    "#e8c47c",
 }
 FONT = ("Segoe UI", 10)
 FONT_SMALL = ("Segoe UI", 9)
@@ -122,6 +122,7 @@ class App(tk.Tk):
         self.content = ttk.Frame(right)
         self.content.pack(fill="both", expand=True, padx=6)
 
+        self.tab_dashboard()
         self.tab_script()
         self.tab_tts()
         self.tab_subs()
@@ -130,7 +131,7 @@ class App(tk.Tk):
         self.tab_render()
         self.tab_build()
         self.tab_console()
-        self.show_page("Сценарий")
+        self.show_page("Главная")
 
         # живой вывод ffmpeg/whisper из фоновых потоков -> страница «Консоль»
         render.CONSOLE = self.console
@@ -178,9 +179,9 @@ class App(tk.Tk):
                   background=[("pressed", C["border"]), ("active", "#2b2b3c")],
                   foreground=[("disabled", C["muted"])])
         style.configure("Accent.TButton", background=C["accent"],
-                        foreground="#ffffff", font=FONT_BOLD)
+                        foreground="#221604", font=FONT_BOLD)
         style.map("Accent.TButton",
-                  background=[("pressed", "#6a4de6"), ("active", C["accent2"])])
+                  background=[("pressed", "#c1965a"), ("active", C["accent2"])])
 
         style.configure("TEntry", padding=6, insertcolor=C["text"])
         style.configure("TCombobox", padding=5, arrowcolor=C["muted"],
@@ -412,6 +413,10 @@ class App(tk.Tk):
         ttk.Entry(row, textvariable=self.project_var).pack(
             side="left", fill="x", expand=True, padx=8)
         ttk.Button(row, text="Обзор…", command=self.pick_folder).pack(side="left")
+        ttk.Button(row, text="Новый проект",
+                   command=self.new_project).pack(side="left", padx=4)
+        ttk.Button(row, text="Удалить",
+                   command=self.delete_project).pack(side="left")
         ttk.Button(row, text="🎬  Собрать видео", style="Accent.TButton",
                    command=lambda: self.show_page("Авторендер")).pack(
             side="left", padx=(10, 0))
@@ -590,6 +595,17 @@ class App(tk.Tk):
         except OSError:
             pass
         self.sysinfo_var.set(self._sys_info())
+        if hasattr(self, "stage_chips"):
+            try:
+                for name, ok in self._stage_checks(d).items():
+                    chip = self.stage_chips.get(name)
+                    if chip:
+                        chip.configure(
+                            text="• Готов" if ok else "• Ожидание",
+                            fg=C["ok"] if ok else C["warn"],
+                            bg="#25301f" if ok else "#332b1a")
+            except OSError:
+                pass
         self.after(3000, self.refresh_status)
 
     # ---------- Сервис ----------
@@ -860,6 +876,192 @@ class App(tk.Tk):
 
         ttk.Button(frm, text="Сохранить", style="Accent.TButton",
                    command=do_save).pack(pady=12)
+
+    # ---------- 0. Главная (dashboard) ----------
+    STAGES = [
+        ("📝", "Сценарий",   "Сценарий"),
+        ("🎙", "Озвучка",    "Озвучка"),
+        ("💬", "Субтитры",   "Субтитры"),
+        ("🎬", "Раскадровка", "Видеоматериал"),
+        ("✨", "Оверлеи",    "Оверлеи"),
+        ("🎞", "Рендер",     "Авторендер"),
+        ("📦", "Premiere",   "Сборка"),
+    ]
+
+    def _stage_checks(self, d: Path) -> dict:
+        def nonempty(p):
+            return p.exists() and any(p.iterdir())
+        return {
+            "Сценарий": (d / "script.txt").exists(),
+            "Озвучка": (d / "audio" / "voiceover.mp3").exists(),
+            "Субтитры": (d / "subs" / "voiceover.srt").exists(),
+            "Раскадровка": (d / "timeline.json").exists()
+                           or nonempty(d / "video") or nonempty(d / "storyboard"),
+            "Оверлеи": (d / "overlays.txt").exists(),
+            "Рендер": (d / "output_final.mp4").exists(),
+            "Premiere": (d / "sequence.xml").exists(),
+        }
+
+    def tab_dashboard(self):
+        f = self.page("🏠", "Главная")
+        wrap = tk.Frame(f, bg=C["bg"])
+        wrap.pack(fill="both", expand=True)
+
+        tk.Label(wrap, text=APP_TITLE, bg=C["bg"], fg=C["accent"],
+                 font=("Segoe UI Semibold", 22)).pack(pady=(6, 0))
+        tk.Label(wrap, text="—  пайплайн генерации видео  —", bg=C["bg"],
+                 fg=C["muted"], font=FONT_SMALL).pack(pady=(0, 8))
+
+        tk.Label(wrap, text="Этапы", bg=C["bg"], fg=C["text"],
+                 font=FONT_BOLD).pack(anchor="w", padx=60)
+        grid = tk.Frame(wrap, bg=C["bg"])
+        grid.pack(pady=4)
+        self.stage_chips = {}
+        for i, (emoji, name, target) in enumerate(self.STAGES):
+            card = tk.Frame(grid, bg=C["panel"], highlightthickness=1,
+                            highlightbackground=C["border"], cursor="hand2")
+            card.grid(row=i // 4, column=i % 4, padx=7, pady=7, sticky="nsew")
+            icon = tk.Label(card, text=emoji, bg=C["field"], fg=C["text"],
+                            font=("Segoe UI Emoji", 13), width=3, height=1)
+            icon.pack(side="left", padx=(10, 8), pady=10)
+            col = tk.Frame(card, bg=C["panel"])
+            col.pack(side="left", padx=(0, 14), pady=7)
+            tk.Label(col, text=name, bg=C["panel"], fg=C["text"],
+                     font=FONT_BOLD, anchor="w").pack(anchor="w")
+            chip = tk.Label(col, text="• Ожидание", bg="#332b1a", fg=C["warn"],
+                            font=("Segoe UI", 8), padx=8)
+            chip.pack(anchor="w", pady=(3, 0))
+            self.stage_chips[name] = chip
+            for w in (card, icon, col, *col.winfo_children()):
+                w.bind("<Button-1>", lambda e, t=target: self.show_page(t))
+
+        gen = tk.Button(wrap, text="✨  Генерировать видео",
+                        command=self.do_generate_all,
+                        bg=C["accent"], fg="#221604",
+                        activebackground=C["accent2"],
+                        activeforeground="#221604",
+                        font=("Segoe UI Semibold", 12), bd=0,
+                        padx=30, pady=10, cursor="hand2")
+        gen.pack(pady=10)
+        tk.Label(wrap, text="Одной кнопкой: озвучка → субтитры → стоки по "
+                            "таймлайну → рендер (ИИ-генерация клипов в цепочке "
+                            "выключена, чтобы не тратить кредиты без спроса)",
+                 bg=C["bg"], fg=C["muted"], font=FONT_SMALL).pack()
+
+        prow = tk.Frame(wrap, bg=C["bg"])
+        prow.pack(fill="x", padx=60, pady=(10, 2))
+        tk.Label(prow, text="Проекты", bg=C["bg"], fg=C["text"],
+                 font=FONT_BOLD).pack(side="left")
+        self.projects_count = tk.Label(prow, text="", bg=C["bg"], fg=C["muted"])
+        self.projects_count.pack(side="left", padx=8)
+        ttk.Button(prow, text="+ Новый проект",
+                   command=self.new_project).pack(side="right")
+        self.projects_box = tk.Frame(wrap, bg=C["bg"])
+        self.projects_box.pack(fill="x", padx=60)
+        self.refresh_projects()
+
+    def refresh_projects(self):
+        if not hasattr(self, "projects_box"):
+            return
+        for w in self.projects_box.winfo_children():
+            w.destroy()
+        try:
+            root = self.out_dir().parent
+            projs = [p for p in sorted(root.iterdir()) if p.is_dir() and
+                     ((p / "script.txt").exists() or (p / "audio").exists())]
+        except OSError:
+            projs = []
+        self.projects_count.configure(text=str(len(projs)))
+        for p in projs[:6]:
+            done = sum(self._stage_checks(p).values())
+            row = tk.Frame(self.projects_box, bg=C["panel"],
+                           highlightthickness=1, highlightbackground=C["border"])
+            row.pack(fill="x", pady=3)
+            cur = " ◀" if p == self.out_dir() else ""
+            tk.Label(row, text=f"  {p.name}{cur}", bg=C["panel"], fg=C["text"],
+                     font=FONT_BOLD).pack(side="left", padx=8, pady=8)
+            tk.Label(row, text=f"этапов готово: {done}/7", bg=C["panel"],
+                     fg=C["ok"] if done >= 6 else C["muted"],
+                     font=FONT_SMALL).pack(side="left", padx=10)
+            ttk.Button(row, text="🗑", width=3,
+                       command=lambda d=p: self.delete_project(d)
+                       ).pack(side="right", padx=6, pady=4)
+            ttk.Button(row, text="Открыть",
+                       command=lambda d=p: (self.project_var.set(str(d)),
+                                            self.refresh_projects())
+                       ).pack(side="right", padx=2)
+
+    def new_project(self):
+        from tkinter import simpledialog
+        name = simpledialog.askstring(APP_TITLE, "Имя нового проекта (папки):",
+                                      parent=self)
+        if not name:
+            return
+        import re as _re
+        safe = _re.sub(r"[^\w\- ]+", "_", name).strip() or "project"
+        d = self.out_dir().parent / safe
+        d.mkdir(parents=True, exist_ok=True)
+        self.project_var.set(str(d))
+        self.log(f"[Проект] Создан: {d}")
+        self.refresh_projects()
+
+    def delete_project(self, d: Path | None = None):
+        d = Path(d) if d else self.out_dir()
+        if not d.exists():
+            return
+        if not messagebox.askyesno(
+                APP_TITLE, f"Удалить проект целиком?\n\n{d}\n\n"
+                           "Все файлы проекта будут стёрты безвозвратно."):
+            return
+        shutil.rmtree(d, ignore_errors=True)
+        self.log(f"[Проект] Удалён: {d}")
+        if d == self.out_dir():
+            self.project_var.set(str(d.parent / "project1"))
+        self.refresh_projects()
+
+    def do_generate_all(self):
+        text = self._script_for_actions()
+        if not text:
+            self.show_page("Сценарий")
+            return
+        if not self.ensure_project_dir():
+            return
+        d = self.out_dir()
+        (d / "script.txt").write_text(text, encoding="utf-8")
+        # снимок настроек в UI-потоке (виджеты нельзя трогать из фонового)
+        edge = "Edge" in self.provider_var.get()
+        voice, engine = self.voice_var.get(), self.engine_var.get()
+        rate = int(self.rate_var.get().replace("%", "").replace("+", ""))
+        pauses = self.pauses_var.get()
+        wmodel = self.whisper_var.get()
+        beat = float(self.beat_var.get().split()[0])
+        opts = self._render_opts()
+        pex = self.settings.get("pexels_keys", "")
+        pix = self.settings.get("pixabay_keys", "")
+        gem = self.settings.get("gemini_key", "")
+        agn = self.settings.get("agnes_key", "")
+        ov = self.overlays_text.get("1.0", "end").strip()
+        if ov and not ov.startswith("# Примеры"):
+            self.save_overlays()
+
+        def prog(done, total):
+            self.ui(lambda: self.progress.configure(maximum=total, value=done))
+
+        def job():
+            self.log("[Цепочка] Шаг 1/4 — озвучка…")
+            if edge:
+                core.tts_edge(text, voice, d, self.log, rate)
+            else:
+                core.tts_polly(text, voice, engine, d, self.log, rate, pauses)
+            self.log("[Цепочка] Шаг 2/4 — субтитры…")
+            core.transcribe_whisper(d / "audio" / "voiceover.mp3", wmodel,
+                                    d, self.log)
+            self.log("[Цепочка] Шаг 3/4 — стоки по таймлайну…")
+            core.auto_storyboard(d, self.log, pex, pix, beat, gem, agn, False)
+            self.log("[Цепочка] Шаг 4/4 — рендер…")
+            render.render_project(d, self.log, prog, opts)
+            self.ui(self.refresh_projects)
+        self.run_bg(job, name="Генерация видео")
 
     # ---------- 1. Сценарий ----------
     def tab_script(self):
