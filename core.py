@@ -610,6 +610,29 @@ def pick_music_by_mood(music_dir: Path, mood: str) -> Path:
     return random.choice(cands)
 
 
+# ---------- Вырезание фона (rembg) ----------
+
+def rembg_cutout(image_path: Path, log=print) -> Path:
+    """Удаляет фон с картинки локально (rembg + onnxruntime).
+    Результат: images/cutout_имя.png с прозрачностью — такие вырезки
+    в popup-оверлеях выглядят как коллаж."""
+    image_path = Path(image_path)
+    try:
+        from rembg import remove
+    except ImportError:
+        raise RuntimeError(
+            "Библиотека rembg не установлена. Выполни в терминале:\n"
+            "pip install rembg onnxruntime")
+    log(f"[Вырезка] Убираю фон: {image_path.name} "
+        "(первый запуск скачает модель ~170 МБ — подожди)...")
+    data = image_path.read_bytes()
+    result = remove(data)
+    dest = image_path.with_name(f"cutout_{image_path.stem}.png")
+    dest.write_bytes(result)
+    log(f"[Вырезка] Готово: {dest} — используй её в popup-оверлеях")
+    return dest
+
+
 # ---------- Ken Burns ----------
 
 def ken_burns(image: Path, dest: Path, duration: float = 8.0, fps: int = 25):
@@ -713,6 +736,8 @@ def parse_scenes(scenes_text: str) -> list[dict]:
             low = part.lower()
             if re.search(r"\bgen\b", low):
                 mtype = "gen"
+            elif re.search(r"\b(wiki|person)\b", low):
+                mtype = "wiki"
             elif "image" in low:
                 mtype = "image"
             elif "video" in low:
@@ -803,6 +828,56 @@ def _stock_getters(pexels: KeyRotator, pixabay: KeyRotator, log):
     return pexels_get, pixabay_get
 
 
+def fetch_wiki_images(query: str, count: int, dest_dir: Path, prefix: str,
+                      used: dict, log=print) -> list[Path]:
+    """Фото реальных людей, мест и событий из Wikimedia Commons (свободные
+    лицензии — стоки Pexels/Pixabay таких фото не содержат). Качает до count
+    картинок шириной от 800px; автор и лицензия пишутся в лог: для CC-BY
+    обязательно укажи атрибуцию в описании видео."""
+    import requests
+    ua = {"User-Agent": "ContentFactory/2.0 (YouTube pipeline; personal use)"}
+    r = requests.get(
+        "https://commons.wikimedia.org/w/api.php",
+        params={"action": "query", "generator": "search",
+                "gsrsearch": f"filetype:bitmap {query}", "gsrnamespace": 6,
+                "gsrlimit": 25, "prop": "imageinfo",
+                "iiprop": "url|size|extmetadata", "iiurlwidth": 1920,
+                "format": "json"},
+        headers=ua, timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(f"Wikimedia API {r.status_code}: {r.text[:200]}")
+    pages = (r.json().get("query") or {}).get("pages") or {}
+
+    def _meta(info: dict, key: str) -> str:
+        raw = str(((info.get("extmetadata") or {}).get(key) or {}).get("value", ""))
+        return re.sub(r"<[^>]+>", "", raw).strip()
+
+    cands = []
+    for p in sorted(pages.values(), key=lambda p: p.get("index", 999)):
+        ii = (p.get("imageinfo") or [{}])[0]
+        url = ii.get("thumburl") or ii.get("url")
+        if not url or (ii.get("width") or 0) < 800:
+            continue
+        if url.lower().endswith((".svg", ".gif", ".tif", ".tiff", ".pdf")):
+            continue
+        cands.append({"id": p.get("title") or url, "url": url,
+                      "author": _meta(ii, "Artist")[:60],
+                      "license": _meta(ii, "LicenseShortName")})
+    out = []
+    for j, c in enumerate(_pick_unused(cands, "wikimedia", used, count, log), 1):
+        suffix = f"_{j}" if count > 1 else ""
+        dest = dest_dir / f"{prefix}{suffix}_wiki.jpg"
+        with requests.get(c["url"], headers=ua, stream=True, timeout=120) as rr:
+            rr.raise_for_status()
+            with open(dest, "wb") as f:
+                for chunk in rr.iter_content(chunk_size=1 << 16):
+                    f.write(chunk)
+        out.append(dest)
+        log(f"[Wiki] {dest.name}: лицензия {c['license'] or '?'}, "
+            f"автор {c['author'] or 'не указан'} — укажи атрибуцию в описании!")
+    return out
+
+
 def fetch_media(scenes_text: str, out_dir: Path, log,
                 pexels_keys: str = "", pixabay_keys: str = "",
                 kenburns: bool = True, gemini_key: str = ""):
@@ -810,6 +885,7 @@ def fetch_media(scenes_text: str, out_dir: Path, log,
     - На сцену качается count клипов (по умолчанию 1), выбор случайный из
       топ-15 результатов, уже использованные в прошлых видео клипы пропускаются.
     - type: gen — картинка генерируется через Gemini вместо стоков.
+    - type: wiki — фото реального человека/места из Wikimedia Commons.
     - kenburns=True: каждая картинка дополнительно превращается в клип
       с движением камеры (кладётся в video/).
     Ключи — многострочные списки (ротация при лимите); если пусто — из окружения."""
@@ -848,6 +924,19 @@ def fetch_media(scenes_text: str, out_dir: Path, log,
                     files.append(dest.name)
                     if kenburns:
                         clip = vdir / f"scene_{s['n']:03d}{suffix}_{safe}_gen_kb.mp4"
+                        try:
+                            ken_burns(dest, clip)
+                            files.append(clip.name)
+                        except Exception as e:
+                            log(f"[Видеоматериал] Ken Burns не получился "
+                                f"({e.__class__.__name__}) — оставил только jpg.")
+            elif s["type"] == "wiki":
+                for dest in fetch_wiki_images(s["keywords"], s["count"], idir,
+                                              f"scene_{s['n']:03d}_{safe}",
+                                              used, log):
+                    files.append(dest.name)
+                    if kenburns:
+                        clip = vdir / f"{dest.stem}_kb.mp4"
                         try:
                             ken_burns(dest, clip)
                             files.append(clip.name)

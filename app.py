@@ -38,6 +38,7 @@ except ImportError:
 
 import core
 import render
+import overlays
 
 APP_TITLE = "Контент-фабрика"
 APP_VERSION = "2.0"
@@ -125,6 +126,7 @@ class App(tk.Tk):
         self.tab_tts()
         self.tab_subs()
         self.tab_media()
+        self.tab_overlays()
         self.tab_render()
         self.tab_build()
         self.tab_console()
@@ -136,6 +138,7 @@ class App(tk.Tk):
 
         self._fix_hotkeys_any_layout()
         self._loaded_script, self._loaded_scenes = "", ""
+        self._loaded_overlays = ""
         self._project_after = None
         self.load_project_state(announce=True)
         self.project_var.trace_add("write", self._on_project_edit)
@@ -524,6 +527,8 @@ class App(tk.Tk):
                   style="Panel.TLabel").pack(side="left")
         self.progress = ttk.Progressbar(bar, length=240, mode="determinate")
         self.progress.pack(side="left", padx=12)
+        ttk.Button(bar, text="⛔ Стоп",
+                   command=self.stop_render).pack(side="left", padx=(0, 8))
         # живой пульс: последняя строка Консоли видна из любого раздела
         self.pulse_var = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self.pulse_var,
@@ -724,6 +729,21 @@ class App(tk.Tk):
                     self.append_log(f"[Проект] Сцены загружены: {p}")
             if text:
                 self._loaded_scenes = text
+        p = d / "overlays.txt"
+        cur = self.overlays_text.get("1.0", "end").strip()
+        if p.exists() and (cur in ("", self._loaded_overlays)
+                           or cur.startswith("# Примеры")):
+            try:
+                text = p.read_text(encoding="utf-8").strip()
+            except OSError:
+                text = ""
+            if text and text != cur:
+                self.overlays_text.delete("1.0", "end")
+                self.overlays_text.insert("1.0", text + "\n")
+                if announce:
+                    self.append_log(f"[Проект] Оверлеи загружены: {p}")
+            if text:
+                self._loaded_overlays = text
         p = d / "subs" / "voiceover.srt"
         if p.exists():
             try:
@@ -1201,7 +1221,10 @@ class App(tk.Tk):
         f = self.page("🎬", "Видеоматериал")
         ttk.Label(f, text="Сцены — одна на строку:   keywords | type: video | count: 2   "
                           "(count — сколько разных клипов скачать, до 5; "
-                          "type: gen — сгенерировать картинку через Gemini). "
+                          "type: gen — сгенерировать картинку через ИИ; "
+                          "type: wiki — фото реального человека/места из "
+                          "Wikimedia Commons, например «D.B. Cooper | type: wiki | "
+                          "count: 3» — лицензия и автор пишутся в консоль). "
                           "Клипы выбираются случайно из топ-15 и не повторяют "
                           "использованные в прошлых видео.",
                   style="Muted.TLabel", wraplength=900).pack(anchor="w")
@@ -1213,6 +1236,8 @@ class App(tk.Tk):
                    command=self.load_scenes).pack(side="left", padx=8)
         ttk.Button(bar, text="🎬  Скачать стоки", style="Accent.TButton",
                    command=self.do_media).pack(side="left")
+        ttk.Button(bar, text="✂  Вырезать фон…",
+                   command=self.do_cutout).pack(side="left", padx=8)
         self.kenburns_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(bar, text="Ken Burns: делать из картинок клипы "
                                   "с движением камеры (в video/)",
@@ -1247,6 +1272,19 @@ class App(tk.Tk):
         if p:
             self.scenes_text.delete("1.0", "end")
             self.scenes_text.insert("1.0", Path(p).read_text(encoding="utf-8"))
+
+    def do_cutout(self):
+        """Убрать фон с картинки (rembg) — результат PNG с прозрачностью
+        для popup-оверлеев."""
+        idir = self.out_dir() / "images"
+        p = filedialog.askopenfilename(
+            title="Картинка для вырезания фона",
+            initialdir=str(idir if idir.exists() else self.out_dir()),
+            filetypes=[("Картинки", "*.jpg *.jpeg *.png *.webp"),
+                       ("Все файлы", "*.*")])
+        if p:
+            self.run_bg(core.rembg_cutout, Path(p), self.log,
+                        name="Вырезание фона")
 
     def _stock_keys_ok(self) -> bool:
         has_keys = (self.settings.get("pexels_keys", "").strip()
@@ -1291,6 +1329,88 @@ class App(tk.Tk):
                     self.settings.get("agnes_key", ""), name="Раскадровка")
 
     # ---------- 5. Авторендер ----------
+    # ---------- Оверлеи (моушн-графика) ----------
+    def tab_overlays(self):
+        f = self.page("✨", "Оверлеи")
+        ttk.Label(f, text="Моушн-графика поверх видеоряда: popup-картинки "
+                          "с пружинкой, плашки (lower3), выноски (callout), "
+                          "счётчики (counter), бары (bars) и таймлайн "
+                          "(timeline). Одна строка — один оверлей:  "
+                          "таймкод | тип | контент | позиция | длительность. "
+                          "«Автопредложить» анализирует субтитры по правилам "
+                          "(деньги → счётчик, имена → popup, даты и места → "
+                          "плашка, вопросы → выноска) и пишет черновик — "
+                          "обязательно вычитай и поправь его перед рендером.",
+                  style="Muted.TLabel", wraplength=900).pack(anchor="w")
+        bar = ttk.Frame(f)
+        bar.pack(fill="x", pady=6)
+        ttk.Button(bar, text="🪄  Автопредложить (по субтитрам)",
+                   style="Accent.TButton",
+                   command=self.do_suggest_overlays).pack(side="left")
+        ttk.Button(bar, text="Загрузить overlays.txt…",
+                   command=self.load_overlays).pack(side="left", padx=8)
+        ttk.Button(bar, text="Сохранить в проект",
+                   command=self.save_overlays).pack(side="left")
+        ttk.Label(bar, text="Применяются автоматически при сборке видео",
+                  style="Muted.TLabel").pack(side="right")
+        self.overlays_text = self.make_text(f, mono=True, wrap="none")
+        self.with_scroll(f, self.overlays_text).pack(fill="both", expand=True)
+        self.overlays_text.insert("1.0",
+            "# Примеры (строки с # не рендерятся):\n"
+            "# 00:01:23 | popup | images/suspect1.jpg | top-right | 5s\n"
+            "# 00:02:10 | lower3 | Portland Airport, 1971 | bottom | 4s\n"
+            "# 00:03:45 | callout | The rear stairs | point:70,60 | 3s\n"
+            "# 00:05:00 | counter | $200,000 | center | 3s\n"
+            "# 00:06:00 | bars | Found:30,Missing:70 | center | 4s\n"
+            "# 00:07:00 | timeline | 1971:Hijacking,1980:Money found | bottom | 5s\n")
+
+    def load_overlays(self):
+        p = filedialog.askopenfilename(filetypes=[("Text", "*.txt"),
+                                                  ("All", "*.*")])
+        if p:
+            self.overlays_text.delete("1.0", "end")
+            self.overlays_text.insert("1.0",
+                                      Path(p).read_text(encoding="utf-8"))
+            self.log(f"[Оверлеи] Загружено: {p}")
+
+    def save_overlays(self) -> bool:
+        if not self.ensure_project_dir():
+            return False
+        text = self.overlays_text.get("1.0", "end").strip()
+        dest = self.out_dir() / "overlays.txt"
+        dest.write_text(text, encoding="utf-8")
+        self._loaded_overlays = text
+        n = len(overlays.parse_overlays(text))
+        self.log(f"[Оверлеи] Сохранено: {dest} ({n} рабочих оверлеев)")
+        return True
+
+    def do_suggest_overlays(self):
+        d = self.out_dir()
+        srt = d / "subs" / "voiceover.srt"
+        if not srt.exists():
+            messagebox.showwarning(APP_TITLE, "Нужны субтитры (вкладка 3) — "
+                                              "авторасстановка анализирует их "
+                                              "текст и таймкоды.")
+            return
+        rows = core.parse_srt(srt)
+        manifest = []
+        mf = d / "manifest.json"
+        if mf.exists():
+            try:
+                manifest = json.loads(mf.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        draft = overlays.suggest_overlays(rows, manifest)
+        self.overlays_text.delete("1.0", "end")
+        self.overlays_text.insert("1.0",
+            "# ЧЕРНОВИК автоанализа субтитров — вычитай и поправь!\n"
+            "# Строки NEEDS_IMAGE: добавь картинку и допиши строку popup.\n"
+            + draft + "\n")
+        n = len(overlays.parse_overlays(draft))
+        needs = draft.count("NEEDS_IMAGE")
+        self.log(f"[Оверлеи] Автопредложение: {n} готовых + {needs} мест, "
+                 "где нужна картинка. Это черновик — проверь перед рендером!")
+
     def tab_render(self):
         f = self.page("🎞", "Авторендер")
         ro = self.settings.get("render_opts", {})
@@ -1310,6 +1430,20 @@ class App(tk.Tk):
         ttk.Combobox(row, textvariable=self.intensity_var,
                      values=["слабая", "средняя", "сильная"],
                      width=9, state="readonly").pack(side="left", padx=8)
+        ttk.Label(row, text="Цветокор:").pack(side="left")
+        self.look_var = tk.StringVar(value=ro.get("look", "нет"))
+        ttk.Combobox(row, textvariable=self.look_var,
+                     values=["нет", "случайный"] + sorted(render.LOOKS),
+                     width=13, state="readonly").pack(side="left", padx=8)
+        ttk.Label(row, text="Субтитры:").pack(side="left")
+        self.subs_style_var = tk.StringVar(value=ro.get("subs_style", "средние"))
+        ttk.Combobox(row, textvariable=self.subs_style_var,
+                     values=list(render.SUB_SIZES),
+                     width=9, state="readonly").pack(side="left", padx=8)
+        self.draft_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(row, text="Черновик 720p (быстро)",
+                        variable=self.draft_var,
+                        style="Switch.TCheckbutton").pack(side="left", padx=8)
 
         row2 = ttk.Frame(f)
         row2.pack(fill="x", pady=6)
@@ -1318,11 +1452,15 @@ class App(tk.Tk):
         self.vignette_var = tk.BooleanVar(value=ro.get("vignette", False))
         self.letterbox_var = tk.BooleanVar(value=ro.get("letterbox", False))
         self.vhs_var = tk.BooleanVar(value=ro.get("vhs", False))
+        self.chromab_var = tk.BooleanVar(value=ro.get("chromab", False))
+        self.chapters_var = tk.BooleanVar(value=ro.get("chapters_grade", False))
         for text, var in (("Вшить субтитры", self.rsubs_var),
                           ("Зерно", self.grain_var),
                           ("Виньетка", self.vignette_var),
                           ("Letterbox 2.35:1", self.letterbox_var),
-                          ("VHS", self.vhs_var)):
+                          ("VHS", self.vhs_var),
+                          ("Аберрация на переходах", self.chromab_var),
+                          ("Цветокор по главам", self.chapters_var)):
             ttk.Checkbutton(row2, text=text, variable=var,
                             style="Switch.TCheckbutton").pack(
                 side="left", padx=(0, 14))
@@ -1352,8 +1490,12 @@ class App(tk.Tk):
                   style="Muted.TLabel", wraplength=900).pack(anchor="w")
 
         ttk.Separator(f).pack(fill="x", pady=8)
-        ttk.Button(f, text="🎬  СОБРАТЬ ВИДЕО (черновик)", style="Accent.TButton",
-                   command=self.do_render).pack(anchor="w", pady=10)
+        rrow = ttk.Frame(f)
+        rrow.pack(fill="x")
+        ttk.Button(rrow, text="🎬  СОБРАТЬ ВИДЕО", style="Accent.TButton",
+                   command=self.do_render).pack(side="left", pady=10)
+        ttk.Button(rrow, text="▶  Открыть готовое видео",
+                   command=self.open_result).pack(side="left", padx=10)
         ttk.Label(f, text="Вход: озвучка + субтитры (таймкоды) + материал из "
                           "video/, images/, storyboard/ (раскадровка сохраняет "
                           "смысловую привязку). Смены кадров — по границам фраз, "
@@ -1369,7 +1511,12 @@ class App(tk.Tk):
                 "vignette": self.vignette_var.get(),
                 "letterbox": self.letterbox_var.get(),
                 "vhs": self.vhs_var.get(),
-                "no_music": self.nomusic_var.get()}
+                "chromab": self.chromab_var.get(),
+                "chapters_grade": self.chapters_var.get(),
+                "no_music": self.nomusic_var.get(),
+                "look": self.look_var.get(),
+                "subs_style": self.subs_style_var.get(),
+                "draft": self.draft_var.get()}
 
     def do_render(self):
         d = self.out_dir()
@@ -1383,6 +1530,10 @@ class App(tk.Tk):
         opts = self._render_opts()
         self.settings["render_opts"] = opts
         save_settings(self.settings)
+        # поле «Оверлеи» — источник истины: сохраняем перед рендером
+        ov = self.overlays_text.get("1.0", "end").strip()
+        if ov and not ov.startswith("# Примеры"):
+            self.save_overlays()
 
         def prog(done, total):
             def upd():
@@ -1390,6 +1541,19 @@ class App(tk.Tk):
             self.ui(upd)
         self.run_bg(render.render_project, d, self.log, prog, opts,
                     name="Рендер")
+
+    def stop_render(self):
+        """Останавливает текущий рендер: убивает активный ffmpeg."""
+        render.CANCEL.set()
+        self.log("[Рендер] ⛔ Остановка по кнопке — текущий ffmpeg будет убит")
+
+    def open_result(self):
+        p = self.out_dir() / "output_final.mp4"
+        if not p.exists():
+            messagebox.showinfo(APP_TITLE, "output_final.mp4 ещё нет — "
+                                           "сначала собери видео.")
+            return
+        self._open_path(p)
 
     def do_render_music_file(self):
         p = filedialog.askopenfilename(
