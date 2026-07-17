@@ -759,6 +759,18 @@ class App(tk.Tk):
         self.update_script_stats()
 
     def run_bg(self, fn, *args, name="Задача"):
+        # защита от двойного клика: одна и та же задача не запускается
+        # повторно, пока не закончилась (иначе два Whisper душат процессор)
+        if not hasattr(self, "_busy_tasks"):
+            self._busy_tasks = set()
+        if name in self._busy_tasks:
+            messagebox.showwarning(
+                APP_TITLE, f"«{name}» уже выполняется — подожди завершения.\n"
+                           "Ход операции виден на странице «Консоль» и в "
+                           "статус-баре внизу.")
+            return
+        self._busy_tasks.add(name)
+
         def wrapper():
             t0 = datetime.now()
             self.ui(lambda: self.status_var.set(
@@ -772,6 +784,7 @@ class App(tk.Tk):
                 self.console(traceback.format_exc().rstrip())
                 self.log(f"[ОШИБКА] {e} — полный traceback на странице «Консоль»")
             finally:
+                self._busy_tasks.discard(name)
                 sec = (datetime.now() - t0).total_seconds()
                 self.log(f"{'✔' if ok else '✖'} {name}: "
                          f"{'завершено' if ok else 'прервано'} за {sec:.0f} c")
@@ -1222,6 +1235,8 @@ class App(tk.Tk):
         ttk.Label(f, text="Сцены — одна на строку:   keywords | type: video | count: 2   "
                           "(count — сколько разных клипов скачать, до 5; "
                           "type: gen — сгенерировать картинку через ИИ; "
+                          "type: genvideo — сгенерировать видеоклип через ИИ "
+                          "(тратит кредиты Agnes, 1-3 мин на клип); "
                           "type: wiki — фото реального человека/места из "
                           "Wikimedia Commons, например «D.B. Cooper | type: wiki | "
                           "count: 3» — лицензия и автор пишутся в консоль). "
@@ -1260,6 +1275,11 @@ class App(tk.Tk):
                      width=6, state="readonly").pack(side="left", padx=8)
         ttk.Button(srow, text="🪄  Собрать по субтитрам", style="Accent.TButton",
                    command=self.do_storyboard).pack(side="left", padx=8)
+        self.genvideo_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(srow, text="ИИ-видео для ненайденных планов "
+                                   "(тратит кредиты!)",
+                        variable=self.genvideo_var,
+                        style="Switch.TCheckbutton").pack(side="left", padx=12)
         ttk.Label(f, text="Вместо списка сцен: материал подбирается под то, о чём "
                           "говорится в каждый момент озвучки (по таймкодам субтитров). "
                           "Результат — storyboard/ с клипами и sequence.xml: "
@@ -1322,11 +1342,17 @@ class App(tk.Tk):
         if not self._stock_keys_ok():
             return
         beat = float(self.beat_var.get().split()[0])
+        if self.genvideo_var.get() and not messagebox.askyesno(
+                APP_TITLE, "Включена генерация ИИ-видео для ненайденных "
+                           "планов. Каждый клип тратит кредиты Agnes и "
+                           "делается 1-3 минуты.\n\nПродолжить?"):
+            return
         self.run_bg(core.auto_storyboard, d, self.log,
                     self.settings.get("pexels_keys", ""),
                     self.settings.get("pixabay_keys", ""), beat,
                     self.settings.get("gemini_key", ""),
-                    self.settings.get("agnes_key", ""), name="Раскадровка")
+                    self.settings.get("agnes_key", ""),
+                    self.genvideo_var.get(), name="Раскадровка")
 
     # ---------- 5. Авторендер ----------
     # ---------- Оверлеи (моушн-графика) ----------

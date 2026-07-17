@@ -11,6 +11,7 @@ GUI передаёт свой потокобезопасный логгер.
 import os
 import re
 import json
+import time
 import random
 import shutil
 import subprocess
@@ -331,8 +332,8 @@ def llm_chat(messages: list[dict], api_key: str = "",
     """Тексты: сначала Gemini (GEMINI_API_KEY), потом Agnes (api_key или
     AGNES_API_KEY). api_key — ключ Agnes из «Настроек API» (для совместимости)."""
     gem = os.getenv("GEMINI_API_KEY", "").strip()
-    agn = (api_key or os.getenv("AGNES_API_KEY", "")).strip()
-    if not gem and not agn:
+    agn_keys = _agnes_keys(api_key)
+    if not gem and not agn_keys:
         raise RuntimeError("Нет ключей для текстов: задай GEMINI_API_KEY или "
                            "AGNES_API_KEY (.env или «Настройки API»).")
     errors = []
@@ -341,9 +342,9 @@ def llm_chat(messages: list[dict], api_key: str = "",
             return gemini_chat(messages, gem, temperature, max_tokens)
         except Exception as e:
             errors.append(str(e))
-    if agn:
+    for key in agn_keys:
         try:
-            return agnes_chat(messages, agn, temperature, max_tokens)
+            return agnes_chat(messages, key, temperature, max_tokens)
         except Exception as e:
             errors.append(f"Agnes: {e}")
     raise RuntimeError("; ".join(errors))
@@ -502,47 +503,35 @@ def gen_seo(script_text: str, api_key: str = "", log=print) -> str:
 # ---------- Генерация изображений (Agnes -> Gemini) ----------
 
 GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
-AGNES_IMAGE_MODEL = os.getenv("AGNES_IMAGE_MODEL", "")  # пусто = автоопределение
+AGNES_IMAGE_MODEL = os.getenv("AGNES_IMAGE_MODEL", "agnes-image-2.1-flash")
 
 IMAGE_STYLE = ("Cinematic photography, realistic, high detail, "
                "no text or watermarks.")
 
 
-def _agnes_pick_image_model(headers) -> str:
-    """Ищет модель картинок в списке моделей хаба (image/dall/flux/imagen)."""
-    import requests
-    try:
-        r = requests.get(f"{AGNES_BASE_URL}/models", headers=headers, timeout=30)
-        ids = [m.get("id", "") for m in r.json().get("data", [])]
-    except Exception:
-        ids = []
-    for pat in ("image", "dall", "flux", "imagen"):
-        for i in ids:
-            if pat in i.lower():
-                return i
-    return "gpt-image-1"  # типовое имя для OpenAI-совместимых хабов
-
-
 def agnes_image(prompt: str, dest: Path, api_key: str, log=print) -> Path:
-    """Картинка через Agnes (OpenAI-совместимый /images/generations)."""
+    """Картинка через Agnes (/images/generations по официальной доке:
+    size-тир 2K + ratio 16:9, response_format внутри extra_body)."""
     import base64
     import requests
-    headers = {"Authorization": f"Bearer {api_key}"}
-    model = AGNES_IMAGE_MODEL or _agnes_pick_image_model(headers)
-    r = requests.post(f"{AGNES_BASE_URL}/images/generations", headers=headers,
-                      json={"model": model, "n": 1, "size": "1792x1024",
-                            "prompt": f"{prompt}. {IMAGE_STYLE}"},
-                      timeout=300)
+    r = requests.post(f"{AGNES_BASE_URL}/images/generations",
+                      headers={"Authorization": f"Bearer {api_key}"},
+                      json={"model": AGNES_IMAGE_MODEL,
+                            "prompt": f"{prompt}. {IMAGE_STYLE}",
+                            "size": "2K", "ratio": "16:9",
+                            "extra_body": {"response_format": "url"}},
+                      timeout=360)
     if r.status_code != 200:
-        raise RuntimeError(f"Agnes images ({model}) {r.status_code}: "
-                           f"{r.text[:200]}")
+        raise RuntimeError(f"Agnes images ({AGNES_IMAGE_MODEL}) "
+                           f"{r.status_code}: {r.text[:200]}")
     item = (r.json().get("data") or [{}])[0]
     if item.get("b64_json"):
         dest.write_bytes(base64.b64decode(item["b64_json"]))
     elif item.get("url"):
         download_file(item["url"], dest)
     else:
-        raise RuntimeError(f"Agnes images ({model}): ответ без картинки")
+        raise RuntimeError(f"Agnes images ({AGNES_IMAGE_MODEL}): "
+                           "ответ без картинки")
     return dest
 
 
@@ -573,21 +562,26 @@ def gemini_image(prompt: str, dest: Path, api_key: str) -> Path:
 
 
 def gen_image(prompt: str, dest: Path, api_key: str = "", log=print) -> Path:
-    """Картинка: сначала Agnes (AGNES_API_KEY), потом Gemini (api_key или
+    """Картинка: Agnes (с ротацией всех ключей), потом Gemini (api_key или
     GEMINI_API_KEY). api_key — ключ Gemini из «Настроек API» (совместимость)."""
-    agn = os.getenv("AGNES_API_KEY", "").strip()
+    agn_keys = _agnes_keys()
     gem = (api_key or os.getenv("GEMINI_API_KEY", "")).strip()
-    if not agn and not gem:
+    if not agn_keys and not gem:
         raise RuntimeError("Нет ключей для картинок: задай AGNES_API_KEY или "
                            "GEMINI_API_KEY (.env или «Настройки API»).")
-    if agn:
+    last = None
+    for i, key in enumerate(agn_keys, 1):
         try:
-            return agnes_image(prompt, dest, agn, log)
+            return agnes_image(prompt, dest, key, log)
         except Exception as e:
-            if not gem:
-                raise
-            log(f"[Картинка] Agnes не справился ({e}) — пробую Gemini...")
-    return gemini_image(prompt, dest, gem)
+            last = e
+            if i < len(agn_keys):
+                log(f"[Картинка] Ключ Agnes #{i} не сработал ({e}) — следующий...")
+    if gem:
+        if last:
+            log(f"[Картинка] Agnes не справился ({last}) — пробую Gemini...")
+        return gemini_image(prompt, dest, gem)
+    raise last
 
 
 def pick_music_by_mood(music_dir: Path, mood: str) -> Path:
@@ -608,6 +602,99 @@ def pick_music_by_mood(music_dir: Path, mood: str) -> Path:
             f"Нет треков настроения «{mood}»: создай папку {sub} и положи "
             f"туда mp3, либо добавь «{mood}» в имя файла.")
     return random.choice(cands)
+
+
+# ---------- Генерация видео (Agnes Video V2.0, асинхронный API) ----------
+
+AGNES_VIDEO_MODEL = os.getenv("AGNES_VIDEO_MODEL", "agnes-video-v2.0")
+
+
+def _agnes_keys(extra: str = "") -> list[str]:
+    """Все ключи Agnes для ротации: параметр, AGNES_API_KEY, AGNES_API_KEY2..."""
+    keys = []
+    for k in (extra, os.getenv("AGNES_API_KEY", ""),
+              os.getenv("AGNES_API_KEY2", ""),
+              os.getenv("AGNES_API_KEY3", "")):
+        k = (k or "").strip()
+        if k and k not in keys:
+            keys.append(k)
+    return keys
+
+
+def agnes_video(prompt: str, dest: Path, api_key: str, log=print,
+                seconds: float = 5.0, timeout_s: int = 900) -> Path:
+    """Видеоклип через Agnes Video V2.0: POST /v1/videos создаёт задачу,
+    затем опрос GET /agnesapi?video_id=... до status=completed.
+    Длительность = num_frames / frame_rate, num_frames по правилу 8n+1."""
+    import requests
+    headers = {"Authorization": f"Bearer {api_key}"}
+    fr = 24
+    frames = min(int(round(seconds * fr / 8)) * 8 + 1, 441)
+    r = requests.post(f"{AGNES_BASE_URL}/videos", headers=headers,
+                      json={"model": AGNES_VIDEO_MODEL,
+                            "prompt": f"{prompt}. Cinematic, realistic, "
+                                      "high detail, no text or watermarks.",
+                            "width": 1152, "height": 768,
+                            "num_frames": frames, "frame_rate": fr},
+                      timeout=120)
+    if r.status_code != 200:
+        raise RuntimeError(f"Agnes video {r.status_code}: {r.text[:300]}")
+    task = r.json()
+    vid = task.get("video_id") or task.get("task_id") or task.get("id")
+    if not vid:
+        raise RuntimeError(f"Agnes video: ответ без id ({str(task)[:200]})")
+    log(f"[Видео-ИИ] Задача создана: ~{task.get('seconds', seconds)} c, "
+        f"{task.get('size', '1152x768')} — генерация...")
+    host = AGNES_BASE_URL.rsplit("/v1", 1)[0]
+    t0, last_prog = time.time(), -1
+    while time.time() - t0 < timeout_s:
+        time.sleep(10)
+        g = requests.get(f"{host}/agnesapi", params={"video_id": vid},
+                         headers=headers, timeout=60)
+        if g.status_code != 200:
+            raise RuntimeError(f"Agnes video (опрос) {g.status_code}: "
+                               f"{g.text[:200]}")
+        jd = g.json()
+        status = jd.get("status", "")
+        if status == "completed" and jd.get("url"):
+            download_file(jd["url"], dest)
+            return dest
+        if status == "failed":
+            raise RuntimeError(f"Agnes video: задача failed "
+                               f"({str(jd.get('error'))[:200]})")
+        prog = jd.get("progress", 0)
+        if prog != last_prog:
+            log(f"[Видео-ИИ] {status or 'в очереди'}: {prog}%")
+            last_prog = prog
+    raise RuntimeError(f"Agnes video: не дождался за {timeout_s // 60} мин")
+
+
+def gen_video(prompt: str, dest: Path, log=print,
+              seconds: float = 5.0) -> Path:
+    """Генерация видеоклипа ИИ с ротацией ключей Agnes при занятости."""
+    keys = _agnes_keys()
+    if not keys:
+        raise RuntimeError("Нет ключа Agnes (AGNES_API_KEY) — видеогенерация "
+                           "работает только через Agnes.")
+    log(f"[Видео-ИИ] Клип ~{seconds:.0f} c: «{prompt[:60]}» (1-3 мин)")
+    last = None
+    for attempt in (1, 2):
+        for i, key in enumerate(keys, 1):
+            try:
+                agnes_video(prompt, dest, key, log, seconds)
+                log(f"[Видео-ИИ] Готово: {dest.name}")
+                return dest
+            except RuntimeError as e:
+                last = e
+                s = str(e)
+                if not any(x in s for x in ("429", "503", "饱和", "saturat")):
+                    raise      # настоящая ошибка — не маскируем ротацией
+                log(f"[Видео-ИИ] Занято (ключ {i}/{len(keys)}, "
+                    f"попытка {attempt}/2)")
+        if attempt == 1:
+            log("[Видео-ИИ] Все ключи заняты — пауза 45 c и повтор...")
+            time.sleep(45)
+    raise last
 
 
 # ---------- Вырезание фона (rembg) ----------
@@ -734,7 +821,9 @@ def parse_scenes(scenes_text: str) -> list[dict]:
         mtype, count = "video", 1
         for part in parts[1:]:
             low = part.lower()
-            if re.search(r"\bgen\b", low):
+            if re.search(r"\b(genvideo|genvid|videogen)\b", low):
+                mtype = "genvideo"
+            elif re.search(r"\bgen\b", low):
                 mtype = "gen"
             elif re.search(r"\b(wiki|person)\b", low):
                 mtype = "wiki"
@@ -930,6 +1019,12 @@ def fetch_media(scenes_text: str, out_dir: Path, log,
                         except Exception as e:
                             log(f"[Видеоматериал] Ken Burns не получился "
                                 f"({e.__class__.__name__}) — оставил только jpg.")
+            elif s["type"] == "genvideo":
+                for j in range(1, s["count"] + 1):
+                    suffix = f"_{j}" if s["count"] > 1 else ""
+                    dest = vdir / f"scene_{s['n']:03d}{suffix}_{safe}_ai.mp4"
+                    gen_video(s["keywords"], dest, log, seconds=8)
+                    files.append(dest.name)
             elif s["type"] == "wiki":
                 for dest in fetch_wiki_images(s["keywords"], s["count"], idir,
                                               f"scene_{s['n']:03d}_{safe}",
@@ -1165,7 +1260,8 @@ def export_premiere_xml(timeline: list[dict], audio_path: Path, dest: Path,
 
 def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     pixabay_keys: str = "", min_beat: float = 6.0,
-                    gemini_key: str = "", agnes_key: str = ""):
+                    gemini_key: str = "", agnes_key: str = "",
+                    genvideo: bool = False):
     """Подбирает материал по таймлайну озвучки: субтитры -> планы по min_beat
     секунд -> ключевые слова из текста каждого плана -> сток под план
     (видео нужной длины; если нет — фото + Ken Burns ровно на длину плана;
@@ -1249,15 +1345,26 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         except Exception as e:
             log(f"[Раскадровка] План {i}: ошибка {e}")
             clip = None
-        if clip is None and (gemini_key or os.getenv("GEMINI_API_KEY", "")):
-            # сток не нашёлся — генерируем картинку и оживляем её
+        if clip is None and genvideo:
+            # сток не нашёлся — генерируем настоящий видеоклип под длину плана
+            try:
+                clip = sdir / f"beat_{i:03d}_{safe}_ai.mp4"
+                gen_video(query, clip, log, seconds=min(need, 18))
+                src_dur = audio_duration(clip) or need
+                log(f"[Раскадровка] План {i}: видео сгенерировано ИИ")
+            except Exception as e:
+                log(f"[Раскадровка] План {i}: видео-ИИ не удалось ({e})")
+                clip = None
+        if clip is None and (gemini_key or os.getenv("GEMINI_API_KEY", "")
+                             or os.getenv("AGNES_API_KEY", "")):
+            # запасной путь: картинка ИИ + Ken Burns на длину плана
             try:
                 jpg = sdir / f"beat_{i:03d}_{safe}_gen.jpg"
                 gen_image(query, jpg, gemini_key, log)
                 clip = sdir / f"beat_{i:03d}_{safe}_gen_kb.mp4"
                 ken_burns(jpg, clip, duration=need)
                 src_dur = need
-                log(f"[Раскадровка] План {i}: сгенерировано через Gemini")
+                log(f"[Раскадровка] План {i}: картинка сгенерирована ИИ")
             except Exception as e:
                 log(f"[Раскадровка] План {i}: генерация не удалась ({e})")
                 clip = None
