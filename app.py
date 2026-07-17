@@ -1245,14 +1245,17 @@ class App(tk.Tk):
                   style="Muted.TLabel", wraplength=900).pack(anchor="w")
         bar = ttk.Frame(f)
         bar.pack(fill="x", pady=6)
+        ttk.Button(bar, text="🚀  Стоки по сценарию (авто)",
+                   style="Accent.TButton",
+                   command=self.do_auto_stocks).pack(side="left")
         ttk.Button(bar, text="🤖  Сцены через ИИ",
-                   command=self.do_ai_scenes).pack(side="left")
+                   command=self.do_ai_scenes).pack(side="left", padx=8)
         ttk.Button(bar, text="Загрузить scenes.txt…",
-                   command=self.load_scenes).pack(side="left", padx=8)
-        ttk.Button(bar, text="🎬  Скачать стоки", style="Accent.TButton",
-                   command=self.do_media).pack(side="left")
+                   command=self.load_scenes).pack(side="left")
+        ttk.Button(bar, text="🎬  Скачать стоки",
+                   command=self.do_media).pack(side="left", padx=8)
         ttk.Button(bar, text="✂  Вырезать фон…",
-                   command=self.do_cutout).pack(side="left", padx=8)
+                   command=self.do_cutout).pack(side="left")
         self.kenburns_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(bar, text="Ken Burns: делать из картинок клипы "
                                   "с движением камеры (в video/)",
@@ -1317,6 +1320,47 @@ class App(tk.Tk):
                        "стоки скачиваться не будут. Ключи бесплатные: "
                        "pexels.com/api и pixabay.com/api/docs.\n\n"
                        "Продолжить всё равно?")
+
+    def do_auto_stocks(self):
+        """Полный автомат: сцены из сценария (ИИ, при неудаче — по абзацам)
+        и сразу скачивание стоков — одна фоновая задача, один клик."""
+        text = self._script_for_actions()
+        if not text:
+            return
+        if not self.ensure_project_dir() or not self._stock_keys_ok():
+            return
+        agnes = (self.settings.get("agnes_key", "")
+                 or os.getenv("AGNES_API_KEY", ""))
+        has_ai = bool(agnes or os.getenv("GEMINI_API_KEY", ""))
+        kenburns = self.kenburns_var.get()
+
+        def job():
+            scenes = None
+            if has_ai:
+                try:
+                    scenes = core.gen_scenes_ai(text, agnes, self.log)
+                except Exception as e:
+                    self.log(f"[Авто] ИИ-сцены не получились ({e}) — "
+                             "разметка по абзацам.")
+            if not scenes:
+                scenes = core.auto_scenes(text)
+            (self.out_dir() / "scenes.txt").write_text(scenes,
+                                                       encoding="utf-8")
+
+            def show():
+                self.scenes_text.delete("1.0", "end")
+                self.scenes_text.insert("1.0", scenes + "\n")
+            self.ui(show)
+            n = scenes.count("\n") + 1
+            self.log(f"[Авто] Сцены готовы: {n} шт. — качаю стоки...")
+            core.fetch_media(scenes, self.out_dir(), self.log,
+                             self.settings.get("pexels_keys", ""),
+                             self.settings.get("pixabay_keys", ""),
+                             kenburns,
+                             self.settings.get("gemini_key", ""))
+            self.log("[Авто] Готово: сцены + стоки скачаны. Дальше — "
+                     "«Оверлеи → Автопредложить» и «Авторендер».")
+        self.run_bg(job, name="Стоки по сценарию")
 
     def do_media(self):
         scenes = self.scenes_text.get("1.0", "end").strip()
@@ -1411,6 +1455,8 @@ class App(tk.Tk):
         return True
 
     def do_suggest_overlays(self):
+        """Полный автомат: анализ субтитров + автопоиск картинок для popup
+        в Wikimedia Commons + автосохранение overlays.txt."""
         d = self.out_dir()
         srt = d / "subs" / "voiceover.srt"
         if not srt.exists():
@@ -1426,16 +1472,26 @@ class App(tk.Tk):
                 manifest = json.loads(mf.read_text(encoding="utf-8"))
             except Exception:
                 pass
-        draft = overlays.suggest_overlays(rows, manifest)
-        self.overlays_text.delete("1.0", "end")
-        self.overlays_text.insert("1.0",
-            "# ЧЕРНОВИК автоанализа субтитров — вычитай и поправь!\n"
-            "# Строки NEEDS_IMAGE: добавь картинку и допиши строку popup.\n"
-            + draft + "\n")
-        n = len(overlays.parse_overlays(draft))
-        needs = draft.count("NEEDS_IMAGE")
-        self.log(f"[Оверлеи] Автопредложение: {n} готовых + {needs} мест, "
-                 "где нужна картинка. Это черновик — проверь перед рендером!")
+
+        def job():
+            draft = ("# ЧЕРНОВИК автоанализа субтитров — вычитай и поправь!\n"
+                     + overlays.suggest_overlays_auto(rows, manifest, d,
+                                                      self.log) + "\n")
+            (d / "overlays.txt").write_text(draft.strip() + "\n",
+                                            encoding="utf-8")
+
+            def show():
+                self.overlays_text.delete("1.0", "end")
+                self.overlays_text.insert("1.0", draft)
+                self._loaded_overlays = draft.strip()
+            self.ui(show)
+            n = len(overlays.parse_overlays(draft))
+            needs = draft.count("NEEDS_IMAGE")
+            msg = (f"[Оверлеи] Готово и сохранено в overlays.txt: {n} оверлеев"
+                   + (f"; {needs} имён без фото (в Wikimedia не нашлись — "
+                      "добавь картинки вручную)" if needs else ""))
+            self.log(msg + ". Проверь черновик перед рендером!")
+        self.run_bg(job, name="Оверлеи (авто)")
 
     def tab_render(self):
         f = self.page("🎞", "Авторендер")

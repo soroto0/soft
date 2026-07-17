@@ -645,6 +645,45 @@ def _phrase_candidate(t: float, text: str, manifest: list):
     return None
 
 
+def suggest_overlays_auto(rows: list, manifest: list, out_dir,
+                          log=print, min_gap: float = 20.0) -> str:
+    """Полный автомат: авторасстановка + автоподбор картинок для popup.
+    Имена без картинки в manifest ищутся в Wikimedia Commons (реальные
+    люди/места, свободные лицензии). ИИ-генерация лиц реальных людей
+    сознательно НЕ используется — фейковое лицо в документалке вводит
+    зрителя в заблуждение; если фото не нашлось, остаётся пометка
+    NEEDS_IMAGE для ручного добавления."""
+    from pathlib import Path as _P
+    from core import fetch_wiki_images, _load_used, _save_used
+    draft = suggest_overlays(rows, manifest, min_gap)
+    idir = _P(out_dir) / "images"
+    idir.mkdir(parents=True, exist_ok=True)
+    used = _load_used()
+    out_lines = []
+    for line in draft.splitlines():
+        m = re.match(r"# NEEDS_IMAGE: (.+?) — .*?(\d{2}:\d{2}:\d{2}) \| popup",
+                     line)
+        if not m:
+            out_lines.append(line)
+            continue
+        name, tc = m.group(1), m.group(2)
+        safe = re.sub(r"[^\w\-]+", "_", name)[:30]
+        img_rel = None
+        try:
+            got = fetch_wiki_images(name, 1, idir, f"ovl_{safe}", used, log)
+            if got:
+                img_rel = f"images/{got[0].name}"
+        except Exception as e:
+            log(f"[Оверлеи] Wikimedia для «{name}»: не вышло ({e})")
+        if img_rel:
+            out_lines.append(f"{tc} | popup | {img_rel} | top-right | 5s")
+            log(f"[Оверлеи] {tc} popup «{name}»: фото найдено в Wikimedia")
+        else:
+            out_lines.append(line)
+    _save_used(used)
+    return "\n".join(out_lines)
+
+
 def suggest_overlays(rows: list, manifest: list, min_gap: float = 20.0) -> str:
     """Анализ srt по правилам (не рандом): деньги -> counter,
     имена -> popup, даты/места -> lower3, вопросы -> callout.
