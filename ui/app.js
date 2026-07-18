@@ -125,20 +125,24 @@ function renderProjects() {
   for (const p of projs) {
     const pct = Math.round(100 * p.done / (p.total || 7));
     const row = document.createElement("div");
-    row.className = "projrow";
+    row.className = "projrow" + (p.current ? " current" : "");
     row.innerHTML = `
-      <div style="flex:1">
-        <div class="pname">${p.name}${p.current ? " ◀" : ""}</div>
+      <div class="popen" style="flex:1; cursor:pointer">
+        <div class="pname">${p.name}${p.current ? " ● текущий" : ""}</div>
         <div style="margin-top:4px">${(p.tags || []).map(t => `<span class="tag">${t}</span>`).join("")}</div>
       </div>
       <span class="hint" style="margin:0">${p.done}/${p.total || 7}</span>
       <div class="pbar"><i style="width:${pct}%"></i></div>
-      <button class="iconbtn" title="Открыть папку">📂</button>
-      <button class="iconbtn" title="Сделать текущим">▶</button>
-      <button class="iconbtn" title="Удалить">🗑</button>`;
-    const [fold, open, del] = row.querySelectorAll(".iconbtn");
+      <button class="btn gold pbtn-open">Открыть</button>
+      <button class="iconbtn" title="Папка в проводнике">📂</button>
+      <button class="iconbtn" title="Удалить проект">🗑</button>`;
+    const openIt = () => rpc("set_project", p.path).then(() => {
+      addLog(`Открыт проект: ${p.name}`, "ok"); refresh();
+    });
+    row.querySelector(".popen").onclick = openIt;
+    row.querySelector(".pbtn-open").onclick = openIt;
+    const [fold, del] = row.querySelectorAll(".iconbtn");
     fold.onclick = () => rpc("open_project_folder", p.path);
-    open.onclick = () => rpc("set_project", p.path).then(refresh);
     del.onclick = () => {
       if (confirm(`Удалить проект «${p.name}» целиком?\nВсе файлы будут стёрты безвозвратно.`))
         rpc("delete_project", p.path).then(refresh);
@@ -205,6 +209,7 @@ const app = {
                       parseInt($("musicGain").value)),
   runSubs: () => rpc("subs", $("whisperModel").value),
   fetchStocks: () => rpc("stocks", $("scenesText").value, $("kenburns").checked),
+  addMedia: () => rpc("add_own_media").then(refresh),
   storyboard() {
     if ($("genvideo").checked && !confirm(
         "Включена ИИ-генерация клипов для ненайденных планов.\n" +

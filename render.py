@@ -48,47 +48,22 @@ PRESET_SEG = "fast"
 PRESET_FINAL = "medium"
 
 # (xfade transition, длительность, вес). "cut" — жёсткая склейка.
-# Полная палитра xfade ffmpeg 5+ (58 переходов + cut). Веса подобраны так,
-# чтобы база (fade/cut/zoom) оставалась частой, а экзотика шла акцентами —
-# иначе монтаж превращается в калейдоскоп.
+# КИНОМОНТАЖ, а не телевизор 2010-х. В реальном монтаже большинство склеек
+# это hard cut, остальное — мягкие переходы (crossfade, dip-to-black,
+# короткий dissolve, редкий white-flash, лёгкий zoom-blur на акцентах).
+# Кричащие wipe/slide/circle/cover/reveal/wind/slice/squeeze УБРАНЫ —
+# именно они выдавали «старьё».
 TRANSITIONS = [
-    # база
-    ("fade",        0.55, 26), ("cut",       0.00, 12),
-    ("fadefast",    0.35, 6),  ("fadeslow",  0.80, 4),
-    ("dissolve",    0.45, 6),  ("fadegrays", 0.50, 3),
-    ("fadeblack",   0.60, 9),  ("fadewhite", 0.25, 4),
-    ("distance",    0.50, 2),  ("hblur",     0.40, 3),
-    ("pixelize",    0.40, 2),  ("zoomin",    0.40, 7),
-    # wipes
-    ("wipeleft",    0.40, 3),  ("wiperight", 0.40, 3),
-    ("wipeup",      0.40, 2),  ("wipedown",  0.40, 2),
-    ("wipetl",      0.40, 1),  ("wipetr",    0.40, 1),
-    ("wipebl",      0.40, 1),  ("wipebr",    0.40, 1),
-    # слайды, накрытия, открытия
-    ("slideleft",   0.40, 3),  ("slideright", 0.40, 3),
-    ("slideup",     0.40, 2),  ("slidedown",  0.40, 2),
-    ("coverleft",   0.40, 2),  ("coverright", 0.40, 2),
-    ("coverup",     0.40, 1),  ("coverdown",  0.40, 1),
-    ("revealleft",  0.40, 2),  ("revealright", 0.40, 2),
-    ("revealup",    0.40, 1),  ("revealdown", 0.40, 1),
-    # плавные свайпы
-    ("smoothleft",  0.35, 4),  ("smoothright", 0.35, 4),
-    ("smoothup",    0.35, 2),  ("smoothdown",  0.35, 2),
-    # геометрия
-    ("circlecrop",  0.50, 2),  ("rectcrop",   0.50, 2),
-    ("circleopen",  0.50, 3),  ("circleclose", 0.50, 3),
-    ("vertopen",    0.45, 2),  ("vertclose",  0.45, 2),
-    ("horzopen",    0.45, 2),  ("horzclose",  0.45, 2),
-    ("radial",      0.50, 3),
-    # диагонали и слайсы
-    ("diagtl",      0.45, 1),  ("diagtr",     0.45, 1),
-    ("diagbl",      0.45, 1),  ("diagbr",     0.45, 1),
-    ("hlslice",     0.45, 2),  ("hrslice",    0.45, 2),
-    ("vuslice",     0.45, 2),  ("vdslice",    0.45, 2),
-    # ветер и сжатие
-    ("hlwind",      0.50, 2),  ("hrwind",     0.50, 2),
-    ("vuwind",      0.50, 2),  ("vdwind",     0.50, 2),
-    ("squeezeh",    0.45, 2),  ("squeezev",   0.45, 2),
+    ("cut",        0.00, 34),   # жёсткая склейка — основа киномонтажа
+    ("fade",       0.45, 22),   # crossfade — мягкий переход
+    ("fadefast",   0.28, 10),   # быстрый crossfade между близкими кадрами
+    ("dissolve",   0.40, 8),    # растворение
+    ("fadeblack",  0.55, 9),    # dip to black — на смене главы
+    ("fadewhite",  0.18, 4),    # white flash — акцент открытия/удара
+    ("hblur",      0.40, 6),    # blur-dissolve — плавно, кинематографично
+    ("zoomin",     0.38, 5),    # лёгкий zoom-переход на динамике
+    ("smoothleft", 0.35, 1),    # редкий мягкий сдвиг — для разнообразия
+    ("smoothright",0.35, 1),
 ]
 
 INTENSITY = {

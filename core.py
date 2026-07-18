@@ -812,8 +812,13 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log) -> Path
             "Whisper не найден. Установи его командой:  python -m pip install "
             "openai-whisper  — и перезапусти приложение. (Он же причина "
             "ошибки «[WinError 2] Не удается найти указанный файл».)")
+    # word_timestamps + max_line_width/count: Whisper режет длинные фразы
+    # (по 6-10 с целыми предложениями) на короткие ровные строки <=42 симв.,
+    # максимум 2 строки — иначе субтитры «расползаются» по всему кадру
     cmd = [exe, str(audio_path), "--model", model,
            "--language", "en", "--output_format", "srt",
+           "--word_timestamps", "True",
+           "--max_line_width", "42", "--max_line_count", "2",
            "--output_dir", str(subs_dir)]
     _console("[whisper] $ " + " ".join(cmd))
     # PYTHONUTF8: без него whisper на Windows печатает в cp1251 и падает
@@ -1354,6 +1359,47 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         log("[Раскадровка] Составляю умные запросы по смыслу текста (LLM)...")
         queries = smart_queries(beats, agnes_key, log)
 
+    def fetch_video(query, need, dest):
+        r = pexels_get("https://api.pexels.com/videos/search",
+                       {"query": query, "per_page": SEARCH_POOL,
+                        "orientation": "landscape"})
+        vids = r.json().get("videos") if r is not None and r.status_code == 200 else None
+        if not vids:
+            return None
+        long_enough = [v for v in vids if (v.get("duration") or 0) >= need]
+        picked = _pick_unused(long_enough or vids, "pexels_video", used, 1, log)
+        if not picked:
+            return None
+        v = picked[0]
+        download_file(pick_video_file(v["video_files"])["link"], dest)
+        return v.get("duration") or audio_duration(dest) or need
+
+    def fetch_photo(query, need, dest):
+        r = pexels_get("https://api.pexels.com/v1/search",
+                       {"query": query, "per_page": SEARCH_POOL,
+                        "orientation": "landscape"})
+        photos = r.json().get("photos") if r is not None and r.status_code == 200 else None
+        picked = [(p["src"]["original"], p) for p in
+                  _pick_unused(photos or [], "pexels_photo", used, 1, log)]
+        if not picked:
+            r = pixabay_get({"q": query, "per_page": SEARCH_POOL,
+                             "orientation": "horizontal", "image_type": "photo"})
+            hits = r.json().get("hits") if r is not None and r.status_code == 200 else None
+            picked = [(h["largeImageURL"], h) for h in
+                      _pick_unused(hits or [], "pixabay", used, 1, log)]
+        if not picked:
+            return None
+        jpg = dest.with_suffix(".jpg")
+        download_file(picked[0][0], jpg)
+        ken_burns(jpg, dest, duration=need)   # фото оживает зумом/панорамой
+        return need
+
+    # Чередуем видео и фото: раньше фото попадали только когда видео не
+    # нашлось — ролик выходил «чисто из видео». Первые два плана — живое
+    # видео (хук), дальше через один фото с Ken Burns (документальный вид).
+    plan_kinds = ["video" if i < 2 or i % 2 == 0 else "photo"
+                  for i in range(len(beats))]
+
     timeline, prev_query = [], "cinematic background"
     for i, b in enumerate(beats, 1):
         need = b["end"] - b["start"]
@@ -1363,42 +1409,22 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         safe = re.sub(r"[^\w\-]+", "_", query)[:40]
         mm, ss = divmod(int(b["start"]), 60)
         clip, src_dur = None, None
+        want_photo = plan_kinds[i - 1] == "photo"
         try:
-            r = pexels_get("https://api.pexels.com/videos/search",
-                           {"query": query, "per_page": SEARCH_POOL,
-                            "orientation": "landscape"})
-            vids = r.json().get("videos") if r is not None and r.status_code == 200 else None
-            if vids:
-                # предпочитаем клипы не короче плана
-                long_enough = [v for v in vids if (v.get("duration") or 0) >= need]
-                picked = _pick_unused(long_enough or vids, "pexels_video",
-                                      used, 1, log)
-                if picked:
-                    v = picked[0]
+            if want_photo:
+                clip = sdir / f"beat_{i:03d}_{safe}_kb.mp4"
+                src_dur = fetch_photo(query, need, clip)
+                if src_dur is None:                       # фото нет — берём видео
                     clip = sdir / f"beat_{i:03d}_{safe}.mp4"
-                    download_file(pick_video_file(v["video_files"])["link"], clip)
-                    src_dur = v.get("duration") or audio_duration(clip) or need
-            if clip is None:
-                # фото + Ken Burns ровно на длину плана
-                r = pexels_get("https://api.pexels.com/v1/search",
-                               {"query": query, "per_page": SEARCH_POOL,
-                                "orientation": "landscape"})
-                photos = r.json().get("photos") if r is not None and r.status_code == 200 else None
-                picked = [(p["src"]["large2x"], p) for p in
-                          _pick_unused(photos or [], "pexels_photo", used, 1, log)]
-                if not picked:
-                    r = pixabay_get({"q": query, "per_page": SEARCH_POOL,
-                                     "orientation": "horizontal",
-                                     "image_type": "photo"})
-                    hits = r.json().get("hits") if r is not None and r.status_code == 200 else None
-                    picked = [(h["largeImageURL"], h) for h in
-                              _pick_unused(hits or [], "pixabay", used, 1, log)]
-                if picked:
-                    jpg = sdir / f"beat_{i:03d}_{safe}.jpg"
-                    download_file(picked[0][0], jpg)
+                    src_dur = fetch_video(query, need, clip)
+            else:
+                clip = sdir / f"beat_{i:03d}_{safe}.mp4"
+                src_dur = fetch_video(query, need, clip)
+                if src_dur is None:                       # видео нет — берём фото
                     clip = sdir / f"beat_{i:03d}_{safe}_kb.mp4"
-                    ken_burns(jpg, clip, duration=need)
-                    src_dur = need
+                    src_dur = fetch_photo(query, need, clip)
+            if src_dur is None:
+                clip = None
         except Exception as e:
             log(f"[Раскадровка] План {i}: ошибка {e}")
             clip = None
@@ -1439,9 +1465,27 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     _save_used(used)
     (out_dir / "timeline.json").write_text(
         json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
-    xml = export_premiere_xml(timeline, voice, out_dir / "sequence.xml")
+    xml = export_premiere_xml(timeline, voice, out_dir / "sequence.xml", fps=30)
+    # инструкция рядом: почему .xml, а не .prproj, и как получить порядок
+    (out_dir / "КАК_ОТКРЫТЬ_В_PREMIERE.txt").write_text(
+        "КАК ИМПОРТИРОВАТЬ В ADOBE PREMIERE PRO\n"
+        "=" * 40 + "\n\n"
+        "1. Premiere: File > Import… > выбери sequence.xml\n"
+        "   Появится готовая секвенция: видео-клипы стоят ПО ПОРЯДКУ по\n"
+        "   таймкодам, под ними — дорожка с озвучкой. Всё уже выстроено.\n\n"
+        "2. Субтитры: File > Import… > subs\\voiceover.srt\n"
+        "   Перетащи на таймлайн — получишь дорожку подписей (Captions).\n\n"
+        "ПОЧЕМУ НЕ .prproj?\n"
+        ".prproj — закрытый бинарный формат Adobe, его нельзя создать\n"
+        "снаружи программы. sequence.xml (Final Cut Pro XML) — ОФИЦИАЛЬНЫЙ\n"
+        "формат обмена, который Premiere открывает напрямую и превращает\n"
+        "в такой же редактируемый таймлайн, как .prproj. После открытия\n"
+        "сохрани через File > Save As — и получишь свой .prproj.\n\n"
+        "Клипы лежат в папке storyboard\\ — не перемещай её до импорта.\n",
+        encoding="utf-8")
     log(f"[Раскадровка] Готово: {len(timeline)}/{len(beats)} планов, "
         f"{out_dir / 'timeline.json'}")
-    log(f"[Раскадровка] Premiere Pro: File > Import > {xml} — "
-        "получишь готовый таймлайн с озвучкой.")
+    log("[Раскадровка] Premiere Pro: File > Import > sequence.xml — готовый "
+        "таймлайн по порядку (видео + озвучка). Субтитры: импортируй "
+        "voiceover.srt. Подробности — файл КАК_ОТКРЫТЬ_В_PREMIERE.txt")
     return timeline

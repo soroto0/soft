@@ -205,6 +205,34 @@ class Api:
         if Path(path).exists():
             os.startfile(path)
 
+    def add_own_media(self):
+        """Свои фото/видео -> storyboard/ проекта (попадут в пул рендера)."""
+        import shutil
+        res = self._win.create_file_dialog(
+            webview.OPEN_DIALOG, allow_multiple=True,
+            file_types=("Медиа (*.mp4;*.mov;*.jpg;*.jpeg;*.png;*.webp)",
+                        "Все файлы (*.*)"))
+        if not res:
+            return 0
+        dst = self._project / "storyboard"
+        dst.mkdir(parents=True, exist_ok=True)
+        n = 0
+        for src in res:
+            s = Path(src)
+            if s.suffix.lower() not in {".mp4", ".mov", ".mkv", ".webm",
+                                        ".jpg", ".jpeg", ".png", ".webp"}:
+                continue
+            target = dst / f"own_{s.name}"
+            try:
+                shutil.copy2(s, target)
+                n += 1
+                self.log(f"[Материалы] Добавлен: {target.name}", "ok")
+            except OSError as e:
+                self.log(f"[Материалы] {s.name}: {e}", "err")
+        self.log(f"[Материалы] Добавлено своих файлов: {n} "
+                 "(попадут в рендер вперемешку со стоками)")
+        return n
+
     def open_folder(self):
         self._project.mkdir(parents=True, exist_ok=True)
         os.startfile(self._project)

@@ -128,8 +128,11 @@
         <h1 class="pagetitle">🎞 Раскадровка и стоки</h1>
         <div class="row">
           <button class="btn" onclick="app.fetchStocks()">Скачать стоки по сценам</button>
+          <button class="btn" onclick="app.addMedia()">➕ Добавить свои фото/видео</button>
           <label class="switch"><input type="checkbox" id="kenburns" checked><span class="tr"></span>Ken Burns для картинок</label>
         </div>
+        <div class="hint">«Свои фото/видео» копируются в проект и идут в рендер
+          вперемешку со стоками (фото автоматически оживают зумом Ken Burns).</div>
         <textarea id="scenesText" rows="7" spellcheck="false" placeholder="keywords | type: video | count: 2"></textarea>
         <div class="divider"></div>
         <div class="row">
