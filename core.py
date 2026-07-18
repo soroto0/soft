@@ -415,32 +415,71 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print) -> str:
     return text
 
 
+def _parse_query_list(out: str, expect: int) -> list[str]:
+    """Достаёт список запросов из ответа LLM. Терпим к обрезке, markdown-
+    обёртке и нумерованным спискам (иначе оборванный JSON рушил весь шаг)."""
+    m = re.search(r"\[.*\]", out, re.S)          # 1) целый JSON-массив
+    if m:
+        try:
+            return [str(x).strip() for x in json.loads(m.group(0))]
+        except Exception:
+            pass
+    frag = out[out.find("["):] if "[" in out else out
+    parts = re.findall(r'"([^"]{1,60})"', frag)   # 2) строки в кавычках
+    if len(parts) >= expect // 2:
+        return [p.strip() for p in parts]
+    lines = []                                    # 3) построчно
+    for ln in out.splitlines():
+        ln = re.sub(r'^[\s\-\*\d.)\]\[",]+', "", ln.strip())
+        ln = ln.strip().strip('",').strip()
+        if ln and not ln.startswith("```") and len(ln) < 60:
+            lines.append(ln)
+    return lines
+
+
 def smart_queries(beats: list[dict], api_key: str = "", log=print) -> list[str] | None:
     """Поисковые запросы для стока по смыслу текста каждого плана (LLM).
-    None при любой ошибке — вызывающий откатится на extract_keywords."""
-    try:
-        numbered = "\n".join(f"{i}. {b['text'][:300]}"
-                             for i, b in enumerate(beats, 1))
-        out = llm_chat(
-            [{"role": "system", "content":
-              "You convert narration fragments into stock-footage search queries."},
-             {"role": "user", "content":
-              "For each numbered narration fragment, output one stock video "
-              "search query: 2-4 English words, concrete and visual — what "
-              "should literally be on screen while these words are spoken. "
-              f"Output a JSON array of exactly {len(beats)} strings, nothing else.\n\n"
-              + numbered}],
-            api_key, 0.4, 3000)
-        m = re.search(r"\[.*\]", out, re.S)
-        qs = json.loads(m.group(0))
-        if len(qs) == len(beats):
-            return [str(q).strip() for q in qs]
-        log(f"[Агент] Умные запросы: ждал {len(beats)}, получил {len(qs)} — "
-            "откатываюсь на ключевые слова.")
-    except Exception as e:
-        log(f"[Агент] Умные запросы не получились ({e.__class__.__name__}) — "
-            "использую ключевые слова.")
-    return None
+    Идёт батчами по 20: один общий запрос на десятки планов обрезается по
+    лимиту токенов, JSON рвётся посередине. Возвращает список длиной
+    len(beats), где пустая строка = откат на ключевые слова для этого плана;
+    None только если ни один план не удался."""
+    n = len(beats)
+    if not n:
+        return None
+    result = [""] * n
+    got = 0
+    BATCH = 20
+    for start in range(0, n, BATCH):
+        chunk = beats[start:start + BATCH]
+        numbered = "\n".join(f"{i}. {b['text'][:280]}"
+                             for i, b in enumerate(chunk, 1))
+        try:
+            out = llm_chat(
+                [{"role": "system", "content":
+                  "You convert narration fragments into stock-footage search queries."},
+                 {"role": "user", "content":
+                  "For each numbered narration fragment output ONE stock video "
+                  "search query: 2-4 English words, concrete and visual — what "
+                  "should literally be on screen while these words are spoken. "
+                  f"Reply with a JSON array of exactly {len(chunk)} strings, "
+                  "no markdown, nothing else.\n\n" + numbered}],
+                api_key, 0.4, 1200)
+            qs = _parse_query_list(out, len(chunk))
+            for j in range(len(chunk)):
+                if j < len(qs) and qs[j]:
+                    result[start + j] = qs[j]
+                    got += 1
+        except Exception as e:
+            log(f"[Агент] Умные запросы, планы {start + 1}-{start + len(chunk)}: "
+                f"{e.__class__.__name__} — эти уйдут на ключевые слова.")
+    if got == 0:
+        return None
+    if got < n:
+        log(f"[Агент] Умные запросы: {got}/{n} по смыслу, остальные — "
+            "по ключевым словам.")
+    else:
+        log(f"[Агент] Умные запросы: все {n} по смыслу текста.")
+    return result
 
 
 def gen_scenes_ai(script_text: str, api_key: str = "", log=print,
