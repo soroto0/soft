@@ -143,7 +143,11 @@ def _run(cmd: list[str], label: str = "ffmpeg"):
     if CANCEL.is_set():
         raise RuntimeError("Остановлено пользователем")
     if p.returncode != 0:
-        raise RuntimeError(f"ffmpeg упал ({label}):\n" + "\n".join(err_tail))
+        tail = "\n".join(err_tail) or (
+            f"код {p.returncode}, stderr пуст — процесс, похоже, был убит "
+            "системой (обычно не хватило оперативной памяти: 60fps и большие "
+            "группы прожорливы; попробуй 30 fps или черновой режим)")
+        raise RuntimeError(f"ffmpeg упал ({label}):\n" + tail)
 
 
 def _has_video(path: Path) -> bool:
@@ -535,7 +539,35 @@ def render_group(seg_files: list[Path], durs: list[float],
     cmd += ["-filter_complex", fc, "-map", acc,
             "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
             "-r", str(fps), str(dest)]
-    _run(cmd, label=dest.stem)
+    try:
+        _run(cmd, label=dest.stem)
+    except RuntimeError as e:
+        if CANCEL.is_set():
+            raise
+        # xfade-цепочка тяжёлая (8 декодеров разом): если ffmpeg убит или
+        # упал — собираем группу встык, рендер продолжается без переходов
+        _console(f"[{dest.stem}] xfade-склейка не удалась "
+                 f"({str(e)[:120]}) — собираю группу встык (hard cut)")
+        _group_concat_fallback(seg_files, durs, dest, fps)
+
+
+def _group_concat_fallback(seg_files: list[Path], durs: list[float],
+                           dest: Path, fps: int):
+    """Запасная склейка группы без переходов: каждый сегмент обрезается до
+    плановой длительности (хвосты под переходы больше не нужны) и клеится
+    concat-демуксером. Дешевле по памяти в разы."""
+    parts = []
+    for i, (f, d) in enumerate(zip(seg_files, durs)):
+        p = dest.parent / f"{dest.stem}_cut{i:02d}.mp4"
+        _run(["ffmpeg", "-y", "-i", str(f), "-t", f"{d:.3f}", "-r", str(fps),
+              "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
+              "-an", str(p)], label=p.stem)
+        parts.append(p)
+    lst = dest.parent / f"{dest.stem}_list.txt"
+    lst.write_text("\n".join(f"file '{p.resolve().as_posix()}'" for p in parts),
+                   encoding="utf-8")
+    _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
+          "-c", "copy", str(dest)], label=dest.stem)
 
 
 # ---------- 4. Финальная сборка ----------

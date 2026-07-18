@@ -1,0 +1,434 @@
+#!/usr/bin/env python3
+"""
+Контент-фабрика — новый интерфейс (HTML/CSS в окне pywebview).
+
+Вся логика пайплайна остаётся в core.py / render.py / overlays.py —
+этот файл только мост между веб-страницей ui/ и питоном.
+
+Запуск:  python webapp.py        (старый tkinter-интерфейс: python app.py)
+"""
+
+import os
+import json
+import threading
+import traceback
+from datetime import datetime
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+import webview
+
+import core
+import render
+import overlays
+
+APP_TITLE = "Контент-фабрика"
+APP_VERSION = "3.0"
+BASE = Path(__file__).resolve().parent
+SETTINGS_FILE = BASE / "settings.json"
+LOG_FILE = BASE / "app.log"
+
+STAGE_NAMES = ["Сценарий", "Озвучка", "Субтитры", "Раскадровка",
+               "Оверлеи", "Рендер", "Premiere"]
+
+
+def load_settings() -> dict:
+    if SETTINGS_FILE.exists():
+        try:
+            return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+class Api:
+    def __init__(self):
+        self.settings = load_settings()
+        self.project = Path(self.settings.get("last_project")
+                            or BASE / "project1")
+        self.busy = None
+        self.win = None
+        core.CONSOLE = lambda m: self.log(m, "dim")
+        render.CONSOLE = lambda m: self.log(m, "dim")
+
+    # ---------- связь с JS ----------
+    def _js(self, code: str):
+        if self.win:
+            try:
+                self.win.evaluate_js(code)
+            except Exception:
+                pass
+
+    def log(self, msg: str, cls: str = ""):
+        msg = str(msg)
+        if not cls:
+            low = msg.lower()
+            if "[ошибка]" in low or "ошибка" in low or "упал" in low:
+                cls = "err"
+            elif "готово" in low or "-> ok" in low or "✔" in msg:
+                cls = "ok"
+            elif "не найдено" in low or "[ключи]" in low or "⛔" in msg:
+                cls = "warn"
+        try:
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}  {msg}\n")
+        except OSError:
+            pass
+        self._js(f"addLog({json.dumps(msg)}, {json.dumps(cls)})")
+
+    def _progress(self, done, total):
+        self._js(f"setProgress({int(done)}, {int(total)})")
+
+    def _bg(self, name: str, fn):
+        if self.busy:
+            self.log(f"[Занято] Уже идёт «{self.busy}» — «{name}» не запущена. "
+                     "Дождись завершения или останови (⛔ Стоп).", "warn")
+            return
+        self.busy = name
+
+        def wrap():
+            t0 = datetime.now()
+            self._js(f"setStatus({json.dumps('⏳ ' + name + '…')})")
+            self.log(f"▶ {name}: запущено")
+            ok = True
+            try:
+                fn()
+            except Exception as e:
+                ok = False
+                self.log(traceback.format_exc().rstrip(), "dim")
+                self.log(f"[ОШИБКА] {e}")
+            finally:
+                self.busy = None
+                sec = (datetime.now() - t0).total_seconds()
+                self.log(f"{'✔' if ok else '✖'} {name}: "
+                         f"{'завершено' if ok else 'прервано'} за {sec:.0f} c",
+                         "ok" if ok else "err")
+                self._js("taskDone()")
+        threading.Thread(target=wrap, daemon=True).start()
+
+    # ---------- состояние ----------
+    def _read(self, name: str) -> str:
+        p = self.project / name
+        try:
+            return p.read_text(encoding="utf-8") if p.exists() else ""
+        except OSError:
+            return ""
+
+    def _checks(self, d: Path) -> dict:
+        def nonempty(p):
+            return p.exists() and any(p.iterdir())
+        return {
+            "Сценарий": (d / "script.txt").exists(),
+            "Озвучка": (d / "audio" / "voiceover.mp3").exists(),
+            "Субтитры": (d / "subs" / "voiceover.srt").exists(),
+            "Раскадровка": (d / "timeline.json").exists()
+                           or nonempty(d / "video") or nonempty(d / "storyboard"),
+            "Оверлеи": (d / "overlays.txt").exists(),
+            "Рендер": (d / "output_final.mp4").exists(),
+            "Premiere": (d / "sequence.xml").exists(),
+        }
+
+    def get_state(self):
+        d = self.project
+        subs = []
+        srt = d / "subs" / "voiceover.srt"
+        if srt.exists():
+            try:
+                subs = [list(r) for r in core.parse_srt(srt)]
+            except Exception:
+                pass
+        projects = []
+        try:
+            for p in sorted(d.parent.iterdir()):
+                if p.is_dir() and ((p / "script.txt").exists()
+                                   or (p / "audio").exists()):
+                    ch = self._checks(p)
+                    projects.append({
+                        "name": p.name, "path": str(p),
+                        "done": sum(ch.values()), "total": len(ch),
+                        "current": p == d,
+                        "tags": [t for t, v in
+                                 [("готов к загрузке", ch["Рендер"])] if v],
+                    })
+        except OSError:
+            pass
+        return {
+            "project": str(d), "version": APP_VERSION,
+            "checks": self._checks(d), "projects": projects[:8],
+            "script": self._read("script.txt"),
+            "scenes": self._read("scenes.txt"),
+            "overlays": self._read("overlays.txt"),
+            "subs": subs,
+        }
+
+    def noop(self):
+        return True
+
+    # ---------- проект ----------
+    def set_project(self, path: str):
+        if path:
+            self.project = Path(path)
+            self.settings["last_project"] = str(self.project)
+            self._save_settings_file()
+
+    def browse_project(self):
+        res = self.win.create_file_dialog(webview.FOLDER_DIALOG)
+        if res:
+            self.set_project(res[0])
+
+    def new_project(self, name: str):
+        import re
+        safe = re.sub(r"[^\w\- ]+", "_", name or "").strip() or "project"
+        d = self.project.parent / safe
+        d.mkdir(parents=True, exist_ok=True)
+        self.set_project(str(d))
+        self.log(f"[Проект] Создан: {d}")
+
+    def delete_project(self, path: str):
+        import shutil
+        d = Path(path)
+        if d.exists():
+            shutil.rmtree(d, ignore_errors=True)
+            self.log(f"[Проект] Удалён: {d}")
+        if d == self.project:
+            self.set_project(str(d.parent / "project1"))
+
+    def delete_current_project(self):
+        self.delete_project(str(self.project))
+
+    def open_project_folder(self, path: str):
+        if Path(path).exists():
+            os.startfile(path)
+
+    def open_folder(self):
+        self.project.mkdir(parents=True, exist_ok=True)
+        os.startfile(self.project)
+
+    def open_result(self):
+        p = self.project / "output_final.mp4"
+        if p.exists():
+            os.startfile(p)
+        else:
+            self.log("output_final.mp4 ещё нет — сначала собери видео", "warn")
+
+    # ---------- сценарий ----------
+    def save_script(self, text: str):
+        self.project.mkdir(parents=True, exist_ok=True)
+        (self.project / "script.txt").write_text(text.strip(), encoding="utf-8")
+        self.log(f"[Сценарий] Сохранён: {self.project / 'script.txt'}")
+
+    def auto_scenes(self, text: str):
+        scenes = core.auto_scenes(text)
+        self.project.mkdir(parents=True, exist_ok=True)
+        (self.project / "scenes.txt").write_text(scenes + "\n", encoding="utf-8")
+        self.log(f"[Сцены] Размечено {scenes.count(chr(10)) + 1} сцен по абзацам")
+        return scenes
+
+    def gen_script(self, topic: str, minutes: int):
+        key = self.settings.get("gemini_key", "") or self.settings.get("agnes_key", "")
+
+        def job():
+            text = core.gen_script(topic, int(minutes), key, self.log)
+            self.save_script(text)
+            self._js(f"$('scriptText').value = {json.dumps(text)}; updateStats()")
+        self._bg("Генерация сценария", job)
+
+    # ---------- озвучка / музыка ----------
+    def _tts_step(self, p: dict):
+        text = (p.get("script") or "").strip() or self._read("script.txt")
+        if not text:
+            raise RuntimeError("Нет сценария — заполни страницу «Сценарий».")
+        self.save_script(text)
+        rate = int(str(p.get("rate", "0%")).replace("%", "").replace("+", ""))
+        if "Edge" in p.get("engine", "Edge"):
+            core.tts_edge(text, p.get("voice"), self.project, self.log, rate)
+        else:
+            core.tts_polly(text, p.get("voice"), "neural", self.project,
+                           self.log, rate, bool(p.get("pauses", True)))
+
+    def tts(self, p: dict):
+        self._bg("Озвучка", lambda: self._tts_step(p))
+
+    def pick_music(self):
+        res = self.win.create_file_dialog(webview.OPEN_DIALOG)
+        return res[0] if res else None
+
+    def mix_music(self, path: str, mood: str, gain: int):
+        def job():
+            voice = self.project / "audio" / "voiceover.mp3"
+            if not voice.exists():
+                raise RuntimeError("Сначала озвучка.")
+            src = Path(path) if path else None
+            if src and src.is_dir():
+                src = core.pick_music_by_mood(src, mood)
+            if not src or not src.exists():
+                md = self.settings.get("music_dir", "")
+                if not md:
+                    raise RuntimeError("Укажи файл или папку с музыкой.")
+                src = core.pick_music_by_mood(Path(md), mood)
+            core.add_music(voice, src, self.log, int(gain))
+        self._bg("Музыка", job)
+
+    # ---------- субтитры / стоки / раскадровка ----------
+    def subs(self, model: str):
+        def job():
+            audio = self.project / "audio" / "voiceover.mp3"
+            if not audio.exists():
+                raise RuntimeError("Сначала озвучка.")
+            core.transcribe_whisper(audio, model, self.project, self.log)
+        self._bg("Транскрибация", job)
+
+    def stocks(self, scenes_text: str, kenburns: bool):
+        def job():
+            if not scenes_text.strip():
+                raise RuntimeError("Список сцен пуст — «Сцены по абзацам» "
+                                   "на странице Сценарий.")
+            (self.project / "scenes.txt").write_text(scenes_text,
+                                                     encoding="utf-8")
+            core.fetch_media(scenes_text, self.project, self.log,
+                             pexels_keys=self.settings.get("pexels_keys", ""),
+                             pixabay_keys=self.settings.get("pixabay_keys", ""),
+                             kenburns=bool(kenburns))
+        self._bg("Стоки", job)
+
+    def storyboard(self, beat: float, genvideo: bool):
+        def job():
+            core.auto_storyboard(
+                self.project, self.log,
+                self.settings.get("pexels_keys", ""),
+                self.settings.get("pixabay_keys", ""),
+                float(beat),
+                self.settings.get("gemini_key", ""),
+                self.settings.get("agnes_key", ""),
+                bool(genvideo))
+        self._bg("Раскадровка", job)
+
+    # ---------- оверлеи ----------
+    def suggest_overlays(self):
+        srt = self.project / "subs" / "voiceover.srt"
+        if not srt.exists():
+            self.log("Сначала транскрибация — оверлеи ставятся по таймкодам",
+                     "warn")
+            return None
+        manifest = []
+        mf = self.project / "manifest.json"
+        if mf.exists():
+            try:
+                manifest = json.loads(mf.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        text = overlays.suggest_overlays(core.parse_srt(srt), manifest)
+        self.log("[Оверлеи] Черновик готов — вычитай перед рендером")
+        return text
+
+    def save_overlays(self, text: str):
+        self.project.mkdir(parents=True, exist_ok=True)
+        (self.project / "overlays.txt").write_text(text.strip() + "\n",
+                                                   encoding="utf-8")
+        self.log("[Оверлеи] Сохранено: overlays.txt")
+
+    # ---------- рендер ----------
+    def _render_opts(self, p: dict) -> dict:
+        return {"resolution": p.get("resolution", "1080p"),
+                "fps": int(p.get("fps", 30)),
+                "intensity": p.get("intensity", "средняя"),
+                "sub_size": p.get("sub_size", "средние"),
+                "subs": bool(p.get("subs", True)),
+                "grain": bool(p.get("grain")),
+                "vignette": bool(p.get("vignette")),
+                "letterbox": bool(p.get("letterbox")),
+                "vhs": bool(p.get("vhs")),
+                "chromab": bool(p.get("chromab")),
+                "chapters": bool(p.get("chapters")),
+                "draft": bool(p.get("draft"))}
+
+    def render(self, p: dict):
+        opts = self._render_opts(p)
+        self.settings["render_opts"] = opts
+        self._save_settings_file()
+        if (p.get("overlays") or "").strip():
+            self.save_overlays(p["overlays"])
+        self._bg("Рендер", lambda: render.render_project(
+            self.project, self.log, self._progress, opts))
+
+    def stop_render(self):
+        render.CANCEL.set()
+        self.log("[Рендер] ⛔ Остановка — текущий ffmpeg будет убит", "warn")
+
+    def seo(self):
+        text = self._read("script.txt")
+        if not text:
+            self.log("Нет сценария для SEO", "warn")
+            return None
+        key = self.settings.get("gemini_key", "") or self.settings.get("agnes_key", "")
+        out = core.gen_seo(text, key, self.log)
+        (self.project / "seo.txt").write_text(out, encoding="utf-8")
+        self.log("[SEO] Сохранено: seo.txt")
+        return out
+
+    # ---------- одна кнопка ----------
+    def generate_all(self, p: dict):
+        opts = self._render_opts(p)
+        if (p.get("overlays") or "").strip():
+            self.save_overlays(p["overlays"])
+
+        def job():
+            self.log("[Цепочка] Шаг 1/4 — озвучка…")
+            self._tts_step(p)
+            self.log("[Цепочка] Шаг 2/4 — субтитры…")
+            core.transcribe_whisper(self.project / "audio" / "voiceover.mp3",
+                                    p.get("whisper", "base.en"),
+                                    self.project, self.log)
+            self.log("[Цепочка] Шаг 3/4 — стоки по таймлайну…")
+            core.auto_storyboard(
+                self.project, self.log,
+                self.settings.get("pexels_keys", ""),
+                self.settings.get("pixabay_keys", ""),
+                float(p.get("beat", 6)),
+                self.settings.get("gemini_key", ""),
+                self.settings.get("agnes_key", ""), False)
+            self.log("[Цепочка] Шаг 4/4 — рендер…")
+            render.render_project(self.project, self.log,
+                                  self._progress, opts)
+        self._bg("Генерация видео", job)
+
+    # ---------- настройки ----------
+    def settings_get(self):
+        keys = ("aws_access_key", "aws_secret_key", "aws_region",
+                "gemini_key", "agnes_key", "pexels_keys", "pixabay_keys")
+        return {k: self.settings.get(k, "") for k in keys}
+
+    def _save_settings_file(self):
+        SETTINGS_FILE.write_text(
+            json.dumps(self.settings, ensure_ascii=False, indent=2),
+            encoding="utf-8")
+
+    def settings_save(self, data: dict):
+        self.settings.update({k: str(v) for k, v in (data or {}).items()})
+        self._save_settings_file()
+        for k, env in (("aws_access_key", "AWS_ACCESS_KEY_ID"),
+                       ("aws_secret_key", "AWS_SECRET_ACCESS_KEY"),
+                       ("aws_region", "AWS_REGION")):
+            if self.settings.get(k):
+                os.environ[env] = self.settings[k]
+        self.log("[Настройки] Сохранено в settings.json")
+        return True
+
+
+def main():
+    api = Api()
+    win = webview.create_window(
+        APP_TITLE, url=str(BASE / "ui" / "index.html"), js_api=api,
+        width=1280, height=840, min_size=(1080, 700),
+        background_color="#131109")
+    api.win = win
+    webview.start()
+
+
+if __name__ == "__main__":
+    main()

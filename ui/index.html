@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Контент-фабрика</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">🎬</div><b>Контент-фабрика</b></div>
+    <nav class="nav" id="nav">
+      <div class="nav-item active" data-page="dash"><span class="ico">🏠</span>Dashboard</div>
+      <div class="nav-item" data-page="script"><span class="ico">📝</span>Сценарий</div>
+      <div class="nav-item" data-page="tts"><span class="ico">🎙</span>Озвучка</div>
+      <div class="nav-item" data-page="subs"><span class="ico">💬</span>Транскрибация</div>
+      <div class="nav-item" data-page="media"><span class="ico">🎞</span>Раскадровка</div>
+      <div class="nav-item" data-page="overlays"><span class="ico">✨</span>Оверлеи</div>
+      <div class="nav-item" data-page="render"><span class="ico">🎬</span>Рендер</div>
+      <div class="nav-item" data-page="build"><span class="ico">📦</span>Сборка + Premiere</div>
+      <div class="nav-item" data-page="log"><span class="ico">🖥</span>Журнал</div>
+    </nav>
+    <div class="version" id="version">v3.0</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <label>Проект:</label>
+      <input class="proj-input" id="projPath" spellcheck="false">
+      <button class="btn ghost" onclick="app.browse()">…</button>
+      <button class="btn" onclick="app.newProject()">Новый проект</button>
+      <button class="btn danger" onclick="app.deleteProject()">Удалить</button>
+      <div class="spacer"></div>
+      <button class="btn" onclick="app.openSettings()">⚙ Настройки</button>
+    </div>
+
+    <div class="content">
+
+      <!-- ================= DASHBOARD ================= -->
+      <section class="page active" id="page-dash">
+        <div class="hero">
+          <div class="title">Контент-фабрика <span class="play">▶</span></div>
+          <div class="sub">Пайплайн генерации видео</div>
+        </div>
+        <div class="sect">Этапы</div>
+        <div class="cards" id="stageCards"></div>
+        <div class="cta">
+          <button class="btn gold big" id="genBtn" onclick="app.generateAll()">✦&nbsp; Генерировать видео</button>
+          <div class="hint">Одной кнопкой: озвучка → субтитры → стоки по таймлайну → рендер.
+            ИИ-генерация клипов в цепочке выключена, чтобы не тратить кредиты без спроса.</div>
+        </div>
+        <div class="projhead">
+          <div class="sect" style="margin:0">Проекты</div>
+          <span class="count" id="projCount">0</span>
+          <div class="spacer"></div>
+          <button class="btn" onclick="app.newProject()">+ Новый проект</button>
+        </div>
+        <div id="projList"></div>
+      </section>
+
+      <!-- ================= СЦЕНАРИЙ ================= -->
+      <section class="page" id="page-script">
+        <h1 class="pagetitle">📝 Сценарий</h1>
+        <div class="row">
+          <label>Тема:</label>
+          <input type="text" id="topic" style="flex:1" placeholder="о чём видео — для генерации черновика">
+          <label>Хронометраж:</label>
+          <select id="minutes"><option>15 мин</option><option>30 мин</option><option selected>45 мин</option><option>60 мин</option><option>90 мин</option></select>
+          <button class="btn gold" onclick="app.genScript()">🤖 Сгенерировать черновик</button>
+        </div>
+        <div class="row">
+          <button class="btn" onclick="app.saveScript()">Сохранить в проект</button>
+          <button class="btn" onclick="app.autoScenes()">Сцены по абзацам</button>
+          <div class="spacer"></div>
+          <span class="hint" id="scriptStats">0 слов</span>
+        </div>
+        <div class="hint">Сгенерированный текст — черновик: вычитай и переработай перед озвучкой,
+          иначе это «inauthentic content».</div>
+        <textarea id="scriptText" class="prose" rows="18" spellcheck="false"></textarea>
+      </section>
+
+      <!-- ================= ОЗВУЧКА ================= -->
+      <section class="page" id="page-tts">
+        <h1 class="pagetitle">🎙 Озвучка</h1>
+        <div class="row">
+          <label>Движок:</label>
+          <select id="ttsEngine" onchange="app.fillVoices()">
+            <option>Edge TTS (бесплатно)</option><option>Amazon Polly</option>
+          </select>
+          <label>Голос:</label><select id="ttsVoice"></select>
+          <label>Темп:</label>
+          <select id="ttsRate"><option>-10%</option><option>-5%</option><option selected>0%</option><option>+5%</option><option>+10%</option></select>
+          <label class="switch" id="pausesWrap"><input type="checkbox" id="ttsPauses" checked><span class="tr"></span>Паузы между абзацами</label>
+        </div>
+        <div class="row">
+          <button class="btn gold" onclick="app.runTts()">🎙 Озвучить сценарий</button>
+        </div>
+        <div class="divider"></div>
+        <div class="sect">Фоновая музыка</div>
+        <div class="row">
+          <input type="text" id="musicPath" style="flex:1" placeholder="папка или файл с музыкой">
+          <button class="btn ghost" onclick="app.pickMusic()">…</button>
+          <label>Настроение:</label>
+          <select id="mood"><option>dark</option><option>tense</option><option>neutral</option><option>uplifting</option></select>
+          <label>Громкость:</label>
+          <select id="musicGain"><option>-10 dB</option><option selected>-14 dB</option><option>-18 dB</option><option>-22 dB</option></select>
+          <button class="btn" onclick="app.mixMusic()">🎵 Подмешать</button>
+        </div>
+        <div class="hint">Трек подкладывается под озвучку с автоприглушением. Музыка должна быть
+          лицензионной (YouTube Audio Library и т.п.) — источник пишется в журнал.</div>
+      </section>
+
+      <!-- ================= ТРАНСКРИБАЦИЯ ================= -->
+      <section class="page" id="page-subs">
+        <h1 class="pagetitle">💬 Транскрибация</h1>
+        <div class="row">
+          <label>Модель Whisper:</label>
+          <select id="whisperModel"><option>tiny.en</option><option selected>base.en</option><option>small.en</option><option>medium.en</option></select>
+          <button class="btn gold" onclick="app.runSubs()">💬 Транскрибировать</button>
+        </div>
+        <div class="hint">Таймкоды фраз — основа монтажа: по ним ставятся смены кадров и оверлеи.</div>
+        <div class="subslist" id="subsList"></div>
+      </section>
+
+      <!-- ================= РАСКАДРОВКА ================= -->
+      <section class="page" id="page-media">
+        <h1 class="pagetitle">🎞 Раскадровка и стоки</h1>
+        <div class="row">
+          <button class="btn" onclick="app.fetchStocks()">Скачать стоки по сценам</button>
+          <label class="switch"><input type="checkbox" id="kenburns" checked><span class="tr"></span>Ken Burns для картинок</label>
+        </div>
+        <textarea id="scenesText" rows="7" spellcheck="false" placeholder="keywords | type: video | count: 2"></textarea>
+        <div class="divider"></div>
+        <div class="row">
+          <button class="btn gold" onclick="app.storyboard()">🪄 Собрать по субтитрам</button>
+          <label>Длина плана:</label>
+          <select id="beat"><option>4 c</option><option selected>6 c</option><option>8 c</option><option>10 c</option></select>
+          <label class="switch"><input type="checkbox" id="genvideo"><span class="tr"></span>ИИ-видео для ненайденных планов (кредиты!)</label>
+        </div>
+        <div class="hint">Материал подбирается под то, о чём говорится в каждый момент озвучки.
+          Результат: storyboard/, timeline.json и sequence.xml для Premiere.</div>
+      </section>
+
+      <!-- ================= ОВЕРЛЕИ ================= -->
+      <section class="page" id="page-overlays">
+        <h1 class="pagetitle">✨ Оверлеи (моушн-графика)</h1>
+        <div class="row">
+          <button class="btn gold" onclick="app.suggestOverlays()">🧠 Автопредложить по субтитрам</button>
+          <button class="btn" onclick="app.saveOverlays()">Сохранить в проект</button>
+        </div>
+        <div class="hint">Формат: timecode | тип | контент | позиция | длительность.
+          Типы: popup, lower3, callout, counter, bars, timeline. Автопредложение — черновик:
+          обязательно вычитай перед рендером.</div>
+        <textarea id="overlaysText" rows="14" spellcheck="false"></textarea>
+      </section>
+
+      <!-- ================= РЕНДЕР ================= -->
+      <section class="page" id="page-render">
+        <h1 class="pagetitle">🎬 Авторендер</h1>
+        <div class="row">
+          <label>Разрешение:</label><select id="rRes"><option selected>1080p</option><option>4K</option></select>
+          <label>FPS:</label><select id="rFps"><option>24</option><option selected>30</option><option>60</option></select>
+          <label>Интенсивность:</label><select id="rInt"><option>слабая</option><option selected>средняя</option><option>сильная</option></select>
+          <label>Субтитры:</label><select id="rSubSize"><option>мелкие</option><option selected>средние</option><option>крупные</option></select>
+        </div>
+        <div class="subrow" id="renderSwitches">
+          <label class="switch"><input type="checkbox" id="rSubs" checked><span class="tr"></span>Вшить субтитры</label>
+          <label class="switch"><input type="checkbox" id="rGrain"><span class="tr"></span>Зерно</label>
+          <label class="switch"><input type="checkbox" id="rVignette"><span class="tr"></span>Виньетка</label>
+          <label class="switch"><input type="checkbox" id="rLetterbox"><span class="tr"></span>Letterbox 2.35:1</label>
+          <label class="switch"><input type="checkbox" id="rVhs"><span class="tr"></span>VHS</label>
+          <label class="switch"><input type="checkbox" id="rChromab"><span class="tr"></span>Аберрация на переходах</label>
+          <label class="switch"><input type="checkbox" id="rChapters"><span class="tr"></span>Цветокор по главам</label>
+          <label class="switch"><input type="checkbox" id="rDraft"><span class="tr"></span>Черновик 720p (быстро)</label>
+        </div>
+        <div class="row">
+          <button class="btn gold big" onclick="app.render()">🎬 СОБРАТЬ ВИДЕО</button>
+          <button class="btn danger" onclick="app.stopRender()">⛔ Стоп</button>
+          <button class="btn" onclick="app.openResult()">▶ Открыть результат</button>
+        </div>
+        <div class="hint">Смены кадров — по границам фраз; ритм и переходы — от seed проекта.
+          Выход: output_final.mp4. Живой прогресс ffmpeg — в Журнале и в статус-баре.</div>
+      </section>
+
+      <!-- ================= СБОРКА ================= -->
+      <section class="page" id="page-build">
+        <h1 class="pagetitle">📦 Сборка + Premiere</h1>
+        <div class="row">
+          <button class="btn gold" onclick="app.openFolder()">📂 Открыть папку проекта</button>
+          <button class="btn" onclick="app.runSeo()">📝 SEO: названия и описание</button>
+        </div>
+        <div class="hint">Premiere Pro: File → Import → sequence.xml — готовый таймлайн:
+          клипы по таймкодам, озвучка под ними. Субтитры: File → Import → subs/voiceover.srt.
+          Дальше — обычный монтаж: заменить неудачные планы, добавить переходы.</div>
+        <div class="console" id="seoOut" style="height:300px"></div>
+      </section>
+
+      <!-- ================= ЖУРНАЛ ================= -->
+      <section class="page" id="page-log">
+        <h1 class="pagetitle">🖥 Журнал</h1>
+        <div class="row">
+          <button class="btn" onclick="app.clearLog()">Очистить</button>
+          <button class="btn" onclick="app.copyLog()">Скопировать</button>
+          <label class="switch"><input type="checkbox" id="autoscroll" checked><span class="tr"></span>Автопрокрутка</label>
+        </div>
+        <div class="console" id="console"></div>
+      </section>
+
+    </div>
+
+    <div class="statusbar">
+      <span id="status">Готов</span>
+      <div class="sbar"><i id="sbarFill"></i></div>
+      <span class="pulse" id="pulse"></span>
+      <span class="checklist" id="checklist"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= НАСТРОЙКИ ================= -->
+<div class="modal-bg" id="settingsModal">
+  <div class="modal">
+    <h2>⚙ Настройки API</h2>
+    <div class="row"><label style="width:170px">AWS Access Key (Polly)</label><input type="text" id="sAwsKey"></div>
+    <div class="row"><label style="width:170px">AWS Secret Key</label><input type="text" id="sAwsSecret"></div>
+    <div class="row"><label style="width:170px">AWS Region</label><input type="text" id="sAwsRegion" placeholder="us-east-1"></div>
+    <div class="warnnote">⚠ Ключи хранятся в settings.json открытым текстом — не передавай файл никому.</div>
+    <div class="divider"></div>
+    <div class="row"><label style="width:170px">Gemini API Key</label><input type="text" id="sGemini"></div>
+    <div class="row"><label style="width:170px">Agnes API Key</label><input type="text" id="sAgnes"></div>
+    <div class="divider"></div>
+    <label class="hint">Pexels — несколько ключей, по одному на строку (ротация при лимите):</label>
+    <textarea id="sPexels" spellcheck="false"></textarea>
+    <label class="hint">Pixabay:</label>
+    <textarea id="sPixabay" spellcheck="false"></textarea>
+    <div class="row" style="justify-content:flex-end; margin-top:14px">
+      <button class="btn ghost" onclick="app.closeSettings()">Отмена</button>
+      <button class="btn gold" onclick="app.saveSettings()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

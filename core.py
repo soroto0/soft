@@ -760,7 +760,20 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log) -> Path
     subs_dir = out_dir / "subs"
     subs_dir.mkdir(parents=True, exist_ok=True)
     log(f"[Субтитры] Whisper ({model})... первый запуск скачает модель, подожди")
-    cmd = ["whisper", str(audio_path), "--model", model,
+    # ищем whisper.exe: PATH -> Scripts рядом с текущим Python. Иначе Popen
+    # падает с невнятным «[WinError 2] Не удается найти указанный файл»
+    import sys
+    exe = shutil.which("whisper")
+    if not exe:
+        cand = Path(sys.executable).parent / "Scripts" / "whisper.exe"
+        if cand.exists():
+            exe = str(cand)
+    if not exe:
+        raise RuntimeError(
+            "Whisper не найден. Установи его командой:  python -m pip install "
+            "openai-whisper  — и перезапусти приложение. (Он же причина "
+            "ошибки «[WinError 2] Не удается найти указанный файл».)")
+    cmd = [exe, str(audio_path), "--model", model,
            "--language", "en", "--output_format", "srt",
            "--output_dir", str(subs_dir)]
     _console("[whisper] $ " + " ".join(cmd))
