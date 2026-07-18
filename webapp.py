@@ -48,19 +48,19 @@ def load_settings() -> dict:
 
 class Api:
     def __init__(self):
-        self.settings = load_settings()
-        self.project = Path(self.settings.get("last_project")
+        self._settings = load_settings()
+        self._project = Path(self._settings.get("last_project")
                             or BASE / "project1")
-        self.busy = None
-        self.win = None
+        self._busy = None
+        self._win = None
         core.CONSOLE = lambda m: self.log(m, "dim")
         render.CONSOLE = lambda m: self.log(m, "dim")
 
     # ---------- связь с JS ----------
     def _js(self, code: str):
-        if self.win:
+        if self._win:
             try:
-                self.win.evaluate_js(code)
+                self._win.evaluate_js(code)
             except Exception:
                 pass
 
@@ -85,11 +85,11 @@ class Api:
         self._js(f"setProgress({int(done)}, {int(total)})")
 
     def _bg(self, name: str, fn):
-        if self.busy:
-            self.log(f"[Занято] Уже идёт «{self.busy}» — «{name}» не запущена. "
+        if self._busy:
+            self.log(f"[Занято] Уже идёт «{self._busy}» — «{name}» не запущена. "
                      "Дождись завершения или останови (⛔ Стоп).", "warn")
             return
-        self.busy = name
+        self._busy = name
 
         def wrap():
             t0 = datetime.now()
@@ -103,7 +103,7 @@ class Api:
                 self.log(traceback.format_exc().rstrip(), "dim")
                 self.log(f"[ОШИБКА] {e}")
             finally:
-                self.busy = None
+                self._busy = None
                 sec = (datetime.now() - t0).total_seconds()
                 self.log(f"{'✔' if ok else '✖'} {name}: "
                          f"{'завершено' if ok else 'прервано'} за {sec:.0f} c",
@@ -113,7 +113,7 @@ class Api:
 
     # ---------- состояние ----------
     def _read(self, name: str) -> str:
-        p = self.project / name
+        p = self._project / name
         try:
             return p.read_text(encoding="utf-8") if p.exists() else ""
         except OSError:
@@ -134,7 +134,7 @@ class Api:
         }
 
     def get_state(self):
-        d = self.project
+        d = self._project
         subs = []
         srt = d / "subs" / "voiceover.srt"
         if srt.exists():
@@ -172,19 +172,19 @@ class Api:
     # ---------- проект ----------
     def set_project(self, path: str):
         if path:
-            self.project = Path(path)
-            self.settings["last_project"] = str(self.project)
+            self._project = Path(path)
+            self._settings["last_project"] = str(self._project)
             self._save_settings_file()
 
     def browse_project(self):
-        res = self.win.create_file_dialog(webview.FOLDER_DIALOG)
+        res = self._win.create_file_dialog(webview.FOLDER_DIALOG)
         if res:
             self.set_project(res[0])
 
     def new_project(self, name: str):
         import re
         safe = re.sub(r"[^\w\- ]+", "_", name or "").strip() or "project"
-        d = self.project.parent / safe
+        d = self._project.parent / safe
         d.mkdir(parents=True, exist_ok=True)
         self.set_project(str(d))
         self.log(f"[Проект] Создан: {d}")
@@ -195,22 +195,22 @@ class Api:
         if d.exists():
             shutil.rmtree(d, ignore_errors=True)
             self.log(f"[Проект] Удалён: {d}")
-        if d == self.project:
+        if d == self._project:
             self.set_project(str(d.parent / "project1"))
 
     def delete_current_project(self):
-        self.delete_project(str(self.project))
+        self.delete_project(str(self._project))
 
     def open_project_folder(self, path: str):
         if Path(path).exists():
             os.startfile(path)
 
     def open_folder(self):
-        self.project.mkdir(parents=True, exist_ok=True)
-        os.startfile(self.project)
+        self._project.mkdir(parents=True, exist_ok=True)
+        os.startfile(self._project)
 
     def open_result(self):
-        p = self.project / "output_final.mp4"
+        p = self._project / "output_final.mp4"
         if p.exists():
             os.startfile(p)
         else:
@@ -218,19 +218,19 @@ class Api:
 
     # ---------- сценарий ----------
     def save_script(self, text: str):
-        self.project.mkdir(parents=True, exist_ok=True)
-        (self.project / "script.txt").write_text(text.strip(), encoding="utf-8")
-        self.log(f"[Сценарий] Сохранён: {self.project / 'script.txt'}")
+        self._project.mkdir(parents=True, exist_ok=True)
+        (self._project / "script.txt").write_text(text.strip(), encoding="utf-8")
+        self.log(f"[Сценарий] Сохранён: {self._project / 'script.txt'}")
 
     def auto_scenes(self, text: str):
         scenes = core.auto_scenes(text)
-        self.project.mkdir(parents=True, exist_ok=True)
-        (self.project / "scenes.txt").write_text(scenes + "\n", encoding="utf-8")
+        self._project.mkdir(parents=True, exist_ok=True)
+        (self._project / "scenes.txt").write_text(scenes + "\n", encoding="utf-8")
         self.log(f"[Сцены] Размечено {scenes.count(chr(10)) + 1} сцен по абзацам")
         return scenes
 
     def gen_script(self, topic: str, minutes: int):
-        key = self.settings.get("gemini_key", "") or self.settings.get("agnes_key", "")
+        key = self._settings.get("gemini_key", "") or self._settings.get("agnes_key", "")
 
         def job():
             text = core.gen_script(topic, int(minutes), key, self.log)
@@ -246,28 +246,28 @@ class Api:
         self.save_script(text)
         rate = int(str(p.get("rate", "0%")).replace("%", "").replace("+", ""))
         if "Edge" in p.get("engine", "Edge"):
-            core.tts_edge(text, p.get("voice"), self.project, self.log, rate)
+            core.tts_edge(text, p.get("voice"), self._project, self.log, rate)
         else:
-            core.tts_polly(text, p.get("voice"), "neural", self.project,
+            core.tts_polly(text, p.get("voice"), "neural", self._project,
                            self.log, rate, bool(p.get("pauses", True)))
 
     def tts(self, p: dict):
         self._bg("Озвучка", lambda: self._tts_step(p))
 
     def pick_music(self):
-        res = self.win.create_file_dialog(webview.OPEN_DIALOG)
+        res = self._win.create_file_dialog(webview.OPEN_DIALOG)
         return res[0] if res else None
 
     def mix_music(self, path: str, mood: str, gain: int):
         def job():
-            voice = self.project / "audio" / "voiceover.mp3"
+            voice = self._project / "audio" / "voiceover.mp3"
             if not voice.exists():
                 raise RuntimeError("Сначала озвучка.")
             src = Path(path) if path else None
             if src and src.is_dir():
                 src = core.pick_music_by_mood(src, mood)
             if not src or not src.exists():
-                md = self.settings.get("music_dir", "")
+                md = self._settings.get("music_dir", "")
                 if not md:
                     raise RuntimeError("Укажи файл или папку с музыкой.")
                 src = core.pick_music_by_mood(Path(md), mood)
@@ -277,10 +277,10 @@ class Api:
     # ---------- субтитры / стоки / раскадровка ----------
     def subs(self, model: str):
         def job():
-            audio = self.project / "audio" / "voiceover.mp3"
+            audio = self._project / "audio" / "voiceover.mp3"
             if not audio.exists():
                 raise RuntimeError("Сначала озвучка.")
-            core.transcribe_whisper(audio, model, self.project, self.log)
+            core.transcribe_whisper(audio, model, self._project, self.log)
         self._bg("Транскрибация", job)
 
     def stocks(self, scenes_text: str, kenburns: bool):
@@ -288,35 +288,35 @@ class Api:
             if not scenes_text.strip():
                 raise RuntimeError("Список сцен пуст — «Сцены по абзацам» "
                                    "на странице Сценарий.")
-            (self.project / "scenes.txt").write_text(scenes_text,
+            (self._project / "scenes.txt").write_text(scenes_text,
                                                      encoding="utf-8")
-            core.fetch_media(scenes_text, self.project, self.log,
-                             pexels_keys=self.settings.get("pexels_keys", ""),
-                             pixabay_keys=self.settings.get("pixabay_keys", ""),
+            core.fetch_media(scenes_text, self._project, self.log,
+                             pexels_keys=self._settings.get("pexels_keys", ""),
+                             pixabay_keys=self._settings.get("pixabay_keys", ""),
                              kenburns=bool(kenburns))
         self._bg("Стоки", job)
 
     def storyboard(self, beat: float, genvideo: bool):
         def job():
             core.auto_storyboard(
-                self.project, self.log,
-                self.settings.get("pexels_keys", ""),
-                self.settings.get("pixabay_keys", ""),
+                self._project, self.log,
+                self._settings.get("pexels_keys", ""),
+                self._settings.get("pixabay_keys", ""),
                 float(beat),
-                self.settings.get("gemini_key", ""),
-                self.settings.get("agnes_key", ""),
+                self._settings.get("gemini_key", ""),
+                self._settings.get("agnes_key", ""),
                 bool(genvideo))
         self._bg("Раскадровка", job)
 
     # ---------- оверлеи ----------
     def suggest_overlays(self):
-        srt = self.project / "subs" / "voiceover.srt"
+        srt = self._project / "subs" / "voiceover.srt"
         if not srt.exists():
             self.log("Сначала транскрибация — оверлеи ставятся по таймкодам",
                      "warn")
             return None
         manifest = []
-        mf = self.project / "manifest.json"
+        mf = self._project / "manifest.json"
         if mf.exists():
             try:
                 manifest = json.loads(mf.read_text(encoding="utf-8"))
@@ -327,8 +327,8 @@ class Api:
         return text
 
     def save_overlays(self, text: str):
-        self.project.mkdir(parents=True, exist_ok=True)
-        (self.project / "overlays.txt").write_text(text.strip() + "\n",
+        self._project.mkdir(parents=True, exist_ok=True)
+        (self._project / "overlays.txt").write_text(text.strip() + "\n",
                                                    encoding="utf-8")
         self.log("[Оверлеи] Сохранено: overlays.txt")
 
@@ -349,12 +349,12 @@ class Api:
 
     def render(self, p: dict):
         opts = self._render_opts(p)
-        self.settings["render_opts"] = opts
+        self._settings["render_opts"] = opts
         self._save_settings_file()
         if (p.get("overlays") or "").strip():
             self.save_overlays(p["overlays"])
         self._bg("Рендер", lambda: render.render_project(
-            self.project, self.log, self._progress, opts))
+            self._project, self.log, self._progress, opts))
 
     def stop_render(self):
         render.CANCEL.set()
@@ -365,9 +365,9 @@ class Api:
         if not text:
             self.log("Нет сценария для SEO", "warn")
             return None
-        key = self.settings.get("gemini_key", "") or self.settings.get("agnes_key", "")
+        key = self._settings.get("gemini_key", "") or self._settings.get("agnes_key", "")
         out = core.gen_seo(text, key, self.log)
-        (self.project / "seo.txt").write_text(out, encoding="utf-8")
+        (self._project / "seo.txt").write_text(out, encoding="utf-8")
         self.log("[SEO] Сохранено: seo.txt")
         return out
 
@@ -381,19 +381,19 @@ class Api:
             self.log("[Цепочка] Шаг 1/4 — озвучка…")
             self._tts_step(p)
             self.log("[Цепочка] Шаг 2/4 — субтитры…")
-            core.transcribe_whisper(self.project / "audio" / "voiceover.mp3",
+            core.transcribe_whisper(self._project / "audio" / "voiceover.mp3",
                                     p.get("whisper", "base.en"),
-                                    self.project, self.log)
+                                    self._project, self.log)
             self.log("[Цепочка] Шаг 3/4 — стоки по таймлайну…")
             core.auto_storyboard(
-                self.project, self.log,
-                self.settings.get("pexels_keys", ""),
-                self.settings.get("pixabay_keys", ""),
+                self._project, self.log,
+                self._settings.get("pexels_keys", ""),
+                self._settings.get("pixabay_keys", ""),
                 float(p.get("beat", 6)),
-                self.settings.get("gemini_key", ""),
-                self.settings.get("agnes_key", ""), False)
+                self._settings.get("gemini_key", ""),
+                self._settings.get("agnes_key", ""), False)
             self.log("[Цепочка] Шаг 4/4 — рендер…")
-            render.render_project(self.project, self.log,
+            render.render_project(self._project, self.log,
                                   self._progress, opts)
         self._bg("Генерация видео", job)
 
@@ -401,21 +401,21 @@ class Api:
     def settings_get(self):
         keys = ("aws_access_key", "aws_secret_key", "aws_region",
                 "gemini_key", "agnes_key", "pexels_keys", "pixabay_keys")
-        return {k: self.settings.get(k, "") for k in keys}
+        return {k: self._settings.get(k, "") for k in keys}
 
     def _save_settings_file(self):
         SETTINGS_FILE.write_text(
-            json.dumps(self.settings, ensure_ascii=False, indent=2),
+            json.dumps(self._settings, ensure_ascii=False, indent=2),
             encoding="utf-8")
 
     def settings_save(self, data: dict):
-        self.settings.update({k: str(v) for k, v in (data or {}).items()})
+        self._settings.update({k: str(v) for k, v in (data or {}).items()})
         self._save_settings_file()
         for k, env in (("aws_access_key", "AWS_ACCESS_KEY_ID"),
                        ("aws_secret_key", "AWS_SECRET_ACCESS_KEY"),
                        ("aws_region", "AWS_REGION")):
-            if self.settings.get(k):
-                os.environ[env] = self.settings[k]
+            if self._settings.get(k):
+                os.environ[env] = self._settings[k]
         self.log("[Настройки] Сохранено в settings.json")
         return True
 
@@ -426,7 +426,7 @@ def main():
         APP_TITLE, url=str(BASE / "ui" / "index.html"), js_api=api,
         width=1280, height=840, min_size=(1080, 700),
         background_color="#131109")
-    api.win = win
+    api._win = win
     webview.start()
 
 
