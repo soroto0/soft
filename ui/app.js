@@ -228,7 +228,7 @@ const app = {
   pickMusic: () => rpc("pick_music").then(p => { if (p) $("musicPath").value = p; }),
   mixMusic: () => rpc("mix_music", $("musicPath").value, $("mood").value,
                       parseInt($("musicGain").value)),
-  runSubs: () => rpc("subs", $("whisperModel").value),
+  runSubs: () => rpc("subs", $("whisperModel").value, parseInt($("subLineWidth").value)),
   fetchStocks: () => rpc("stocks", $("scenesText").value, $("kenburns").checked),
   addMedia: () => rpc("add_own_media").then(refresh),
   storyboard() {
@@ -238,13 +238,13 @@ const app = {
       return;
     rpc("storyboard", parseFloat($("beat").value), $("genvideo").checked);
   },
-  suggestOverlays: () => rpc("suggest_overlays")
+  suggestOverlays: () => rpc("suggest_overlays", parseFloat($("ovDur").value))
       .then(r => { if (r) $("overlaysText").value = r; }),
   saveOverlays: () => rpc("save_overlays", $("overlaysText").value),
   render: () => rpc("render", {
     resolution: $("rRes").value, fps: parseInt($("rFps").value),
     intensity: $("rInt").value, sub_size: $("rSubSize").value,
-    sub_style: $("rSubStyle").value,
+    quality: $("rQuality").value, sub_style: $("rSubStyle").value,
     subs: $("rSubs").checked, grain: $("rGrain").checked,
     vignette: $("rVignette").checked, letterbox: $("rLetterbox").checked,
     vhs: $("rVhs").checked, chromab: $("rChromab").checked,
@@ -266,7 +266,7 @@ const app = {
       whisper: $("whisperModel").value, beat: parseFloat($("beat").value),
       resolution: $("rRes").value, fps: parseInt($("rFps").value),
       intensity: $("rInt").value, sub_size: $("rSubSize").value,
-    sub_style: $("rSubStyle").value,
+    quality: $("rQuality").value, sub_style: $("rSubStyle").value,
       subs: $("rSubs").checked, grain: $("rGrain").checked,
       vignette: $("rVignette").checked, letterbox: $("rLetterbox").checked,
       vhs: $("rVhs").checked, chromab: $("rChromab").checked,

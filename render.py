@@ -767,8 +767,12 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
         PRESET_SEG = PRESET_FINAL = "ultrafast"
     else:
         w, h = RESOLUTIONS.get(opts.get("resolution", "1080p"), (1920, 1080))
-        CRF_SEGMENT, CRF_FINAL = "18", "19"
-        PRESET_SEG, PRESET_FINAL = "fast", "medium"
+        # пресет качества: чем ниже CRF, тем лучше картинка (и больше файл)
+        q = {"обычное":    ("18", "19", "fast", "medium"),
+             "высокое":    ("16", "16", "medium", "slow"),
+             "максимум":   ("14", "14", "medium", "slow")}
+        CRF_SEGMENT, CRF_FINAL, PRESET_SEG, PRESET_FINAL = \
+            q.get(opts.get("quality", "обычное"), q["обычное"])
     fps = int(opts.get("fps", 30))
     intensity = opts.get("intensity", "средняя")
 
@@ -875,6 +879,21 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
     if not out_name.lower().endswith(".mp4"):
         out_name += ".mp4"
     final = out_dir / out_name
+    # Файл с таким именем уже есть? Раньше рендер падал в самом конце, если
+    # старый файл был открыт в плеере/Premiere (Windows блокирует запись).
+    # Пробуем перезаписать, при блокировке — пишем с суффиксом _2, _3…
+    if final.exists():
+        try:
+            final.unlink()
+        except OSError:
+            stem = final.stem
+            for k in range(2, 100):
+                alt = out_dir / f"{stem}_{k}.mp4"
+                if not alt.exists():
+                    final = alt
+                    log(f"[Рендер] «{out_name}» занят (открыт в плеере?) — "
+                        f"сохраняю как {alt.name}")
+                    break
     log("[Рендер] Финальный проход: звук + оверлеи + субтитры + цветокор...")
     assemble(group_files, audio, srt, final, fps, total, opts, tmp,
              look_chain, ovls)

@@ -684,23 +684,27 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     return "\n".join(out_lines)
 
 
-def suggest_overlays(rows: list, manifest: list, min_gap: float = 13.0) -> str:
+def suggest_overlays(rows: list, manifest: list, min_gap: float = 13.0,
+                     dur: float = 0) -> str:
     """Анализ srt по правилам (не рандом): деньги -> counter,
     имена -> popup, даты/места -> lower3, вопросы -> callout.
     Плотность: не чаще 1 оверлея в min_gap секунд; при конфликте окон
-    выигрывает более приоритетный тип (counter > popup > lower3 > callout)."""
+    выигрывает более приоритетный тип (counter > popup > lower3 > callout).
+    dur > 0 — принудительная длительность каждого оверлея (сек)."""
     cands = []
     for start_s, _end, text in rows:
         t = srt_to_seconds(start_s)
         c = _phrase_candidate(t, text, manifest)
         if c:
             cands.append((c[0], t, c[1]))
-    # приоритетные занимают окна первыми, остальные — если окно свободно
     accepted = []
     for prio, t, line in sorted(cands, key=lambda c: (c[0], c[1])):
         if all(abs(t - ta) >= min_gap for _, ta, _ in accepted):
             accepted.append((prio, t, line))
     if not accepted:
         return "# По субтитрам ничего не найдено — добавь оверлеи вручную."
-    return "\n".join(line for _, _, line in sorted(accepted,
-                                                   key=lambda c: c[1]))
+    lines = [line for _, _, line in sorted(accepted, key=lambda c: c[1])]
+    if dur and dur > 0:   # переопределяем длительность (последнее поле "| Ns")
+        d = f"{dur:g}s"
+        lines = [re.sub(r"\|\s*[\d.]+s\s*$", f"| {d}", ln) for ln in lines]
+    return "\n".join(lines)

@@ -795,7 +795,8 @@ def _console(msg: str):
             pass
 
 
-def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log) -> Path:
+def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
+                       max_line_width: int = 42) -> Path:
     subs_dir = out_dir / "subs"
     subs_dir.mkdir(parents=True, exist_ok=True)
     log(f"[Субтитры] Whisper ({model})... первый запуск скачает модель, подожди")
@@ -818,7 +819,7 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log) -> Path
     cmd = [exe, str(audio_path), "--model", model,
            "--language", "en", "--output_format", "srt",
            "--word_timestamps", "True",
-           "--max_line_width", "42", "--max_line_count", "2",
+           "--max_line_width", str(max_line_width), "--max_line_count", "2",
            "--output_dir", str(subs_dir)]
     _console("[whisper] $ " + " ".join(cmd))
     # PYTHONUTF8: без него whisper на Windows печатает в cp1251 и падает

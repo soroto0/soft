@@ -334,12 +334,13 @@ class Api:
         self._bg("Музыка", job)
 
     # ---------- субтитры / стоки / раскадровка ----------
-    def subs(self, model: str):
+    def subs(self, model: str, line_width: int = 42):
         def job():
             audio = self._project / "audio" / "voiceover.mp3"
             if not audio.exists():
                 raise RuntimeError("Сначала озвучка.")
-            core.transcribe_whisper(audio, model, self._project, self.log)
+            core.transcribe_whisper(audio, model, self._project, self.log,
+                                    int(line_width))
         self._bg("Транскрибация", job)
 
     def stocks(self, scenes_text: str, kenburns: bool):
@@ -368,7 +369,7 @@ class Api:
         self._bg("Раскадровка", job)
 
     # ---------- оверлеи ----------
-    def suggest_overlays(self):
+    def suggest_overlays(self, dur: float = 0):
         srt = self._project / "subs" / "voiceover.srt"
         if not srt.exists():
             self.log("Сначала транскрибация — оверлеи ставятся по таймкодам",
@@ -381,7 +382,8 @@ class Api:
                 manifest = json.loads(mf.read_text(encoding="utf-8"))
             except Exception:
                 pass
-        text = overlays.suggest_overlays(core.parse_srt(srt), manifest)
+        text = overlays.suggest_overlays(core.parse_srt(srt), manifest,
+                                         dur=float(dur or 0))
         self.log("[Оверлеи] Черновик готов — вычитай перед рендером")
         return text
 
@@ -396,6 +398,7 @@ class Api:
         opts = {"resolution": p.get("resolution", "1080p"),
                 "fps": int(p.get("fps", 30)),
                 "intensity": p.get("intensity", "средняя"),
+                "quality": p.get("quality", "обычное"),
                 "sub_size": p.get("sub_size", "средние"),
                 "sub_style": p.get("sub_style", "bold_box"),
                 "look": p.get("look", "нет"),
