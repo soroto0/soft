@@ -646,7 +646,7 @@ def _phrase_candidate(t: float, text: str, manifest: list):
 
 
 def suggest_overlays_auto(rows: list, manifest: list, out_dir,
-                          log=print, min_gap: float = 20.0) -> str:
+                          log=print, min_gap: float = 13.0) -> str:
     """Полный автомат: авторасстановка + автоподбор картинок для popup.
     Имена без картинки в manifest ищутся в Wikimedia Commons (реальные
     люди/места, свободные лицензии). ИИ-генерация лиц реальных людей
@@ -684,7 +684,7 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     return "\n".join(out_lines)
 
 
-def suggest_overlays(rows: list, manifest: list, min_gap: float = 20.0) -> str:
+def suggest_overlays(rows: list, manifest: list, min_gap: float = 13.0) -> str:
     """Анализ srt по правилам (не рандом): деньги -> counter,
     имена -> popup, даты/места -> lower3, вопросы -> callout.
     Плотность: не чаще 1 оверлея в min_gap секунд; при конфликте окон

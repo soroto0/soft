@@ -249,10 +249,13 @@ const app = {
     vignette: $("rVignette").checked, letterbox: $("rLetterbox").checked,
     vhs: $("rVhs").checked, chromab: $("rChromab").checked,
     chapters: $("rChapters").checked, draft: $("rDraft").checked,
+    bloom: $("rBloom").checked, light_leak: $("rLeak").checked,
+    dust: $("rDust").checked, flicker: $("rFlicker").checked,
+    out_name: $("outName").value,
     overlays: $("overlaysText").value,
   }),
   stopRender: () => rpc("stop_render"),
-  openResult: () => rpc("open_result"),
+  openResult: () => rpc("open_result", $("outName").value),
   openFolder: () => rpc("open_folder"),
   runSeo: () => rpc("seo").then(r => { if (r) $("seoOut").textContent = r; }),
   generateAll() {
@@ -269,6 +272,7 @@ const app = {
       vhs: $("rVhs").checked, chromab: $("rChromab").checked,
       chapters: $("rChapters").checked, draft: $("rDraft").checked,
       overlays: $("overlaysText").value,
+      randomize: $("randomize").checked,
     });
   },
   clearLog() { $("console").innerHTML = ""; $("console2").innerHTML = ""; },

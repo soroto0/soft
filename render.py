@@ -53,21 +53,33 @@ PRESET_FINAL = "medium"
 # короткий dissolve, редкий white-flash, лёгкий zoom-blur на акцентах).
 # Кричащие wipe/slide/circle/cover/reveal/wind/slice/squeeze УБРАНЫ —
 # именно они выдавали «старьё».
+# МНОГО видов, но веса держат киномонтаж: cut/fade доминируют, кричащие
+# (wipe/slide/circle/…) — редкие акценты, а не каждый стык.
 TRANSITIONS = [
-    ("cut",        0.00, 34),   # жёсткая склейка — основа киномонтажа
-    ("fade",       0.45, 22),   # crossfade — мягкий переход
-    ("fadefast",   0.28, 10),   # быстрый crossfade между близкими кадрами
-    ("dissolve",   0.40, 8),    # растворение
-    ("fadeblack",  0.55, 9),    # dip to black — на смене главы
-    ("fadewhite",  0.18, 4),    # white flash — акцент открытия/удара
-    ("hblur",      0.40, 6),    # blur-dissolve — плавно, кинематографично
-    ("zoomin",     0.38, 6),    # лёгкий zoom-переход на динамике
-    ("pixelize",   0.30, 3),    # пикселизация — стильный цифровой стык
-    ("distance",   0.42, 3),    # растяжение-«разлёт» — мягко и современно
-    ("fadegrays",  0.45, 2),    # обесцвечивание на стыке — кинематографично
-    ("radial",     0.45, 2),    # круговой свайп из центра — редкий акцент
-    ("smoothleft", 0.35, 1),    # редкий мягкий сдвиг — для разнообразия
-    ("smoothright",0.35, 1),
+    # ---- основа (частые) ----
+    ("cut",        0.00, 30),   # жёсткая склейка — основа монтажа
+    ("fade",       0.45, 18),   # crossfade
+    ("fadefast",   0.28, 9),    # быстрый crossfade
+    ("dissolve",   0.40, 7),    # растворение
+    ("fadeblack",  0.55, 7),    # dip to black — смена главы
+    ("hblur",      0.40, 5),    # blur-dissolve
+    ("zoomin",     0.38, 5),    # zoom-переход
+    # ---- акценты (реже) ----
+    ("fadewhite",  0.18, 3),    # white flash
+    ("pixelize",   0.30, 3),    # пикселизация
+    ("distance",   0.42, 3),    # разлёт
+    ("fadegrays",  0.45, 2),    # обесцвечивание
+    ("radial",     0.45, 2),    # круговой свайп
+    ("smoothleft", 0.35, 2),
+    ("smoothright",0.35, 2),
+    ("smoothup",   0.35, 1),
+    ("smoothdown", 0.35, 1),
+    # ---- экзотика (совсем редко, для разнообразия канала) ----
+    ("wipeleft",   0.40, 1), ("wiperight", 0.40, 1),
+    ("slideup",    0.40, 1), ("slidedown", 0.40, 1),
+    ("circleopen", 0.50, 1), ("circleclose", 0.50, 1),
+    ("rectcrop",   0.45, 1), ("diagtl", 0.45, 1),
+    ("squeezev",   0.45, 1), ("coverleft", 0.40, 1),
 ]
 
 INTENSITY = {
@@ -218,7 +230,23 @@ def build_render_plan(rows, total: float, rng: random.Random,
 
     if total and total > scenes[-1]["end"]:
         scenes[-1]["end"] = round(total, 3)
-    return scenes
+
+    # Кадр не висит дольше MAX_SCENE секунд — длинные сцены дробятся на
+    # равные куски (каждому потом назначается СВОЙ материал). Требование:
+    # «одно фото/видео не должно быть на экране дольше 5 секунд».
+    MAX_SCENE = 5.0
+    split = []
+    for sc in scenes:
+        dur = sc["end"] - sc["start"]
+        if dur <= MAX_SCENE * 1.12:
+            split.append(sc)
+        else:
+            n = int(dur // MAX_SCENE) + 1
+            step = dur / n
+            for k in range(n):
+                split.append({"start": round(sc["start"] + k * step, 3),
+                              "end": round(sc["start"] + (k + 1) * step, 3)})
+    return split
 
 
 def assign_materials(scenes: list[dict], out_dir: Path,
@@ -245,7 +273,8 @@ def assign_materials(scenes: list[dict], out_dir: Path,
         raise RuntimeError("Нет материала: пусто в video/, images/, storyboard/ "
                            "и нет timeline.json — сначала скачай стоки.")
 
-    pi = 0
+    pi, last = 0, None
+    reused = 0
     for sc in scenes:
         f = None
         for item in timeline:                # привязка по смыслу (раскадровка)
@@ -254,16 +283,29 @@ def assign_materials(scenes: list[dict], out_dir: Path,
                 if p.exists():
                     f = p
                 break
+        # не показывать один и тот же кадр два раза подряд — берём из пула
+        # следующий файл, отличный от предыдущего (смена каждые <=5 сек)
+        if (f is None or f == last) and pool:
+            for _ in range(len(pool)):
+                cand = pool[pi % len(pool)]
+                pi += 1
+                if cand != last:
+                    f = cand
+                    break
         if f is None and pool:
             f = pool[pi % len(pool)]
             pi += 1
         if f is None:
             raise RuntimeError("Не хватило материала для сцены "
                                f"{sc['start']:.0f}s.")
+        if f == last:
+            reused += 1
         sc["file"] = f
         sc["kind"] = "image" if f.suffix.lower() in IMAGE_EXTS else "video"
-    log(f"[Рендер] Материал: {len(scenes)} сцен "
-        f"({'таймлайн раскадровки + ' if timeline else ''}пул {len(pool)} файлов)")
+        last = f
+    log(f"[Рендер] Материал: {len(scenes)} сцен, кадр меняется каждые <=5 c "
+        f"({'таймлайн + ' if timeline else ''}пул {len(pool)} файлов"
+        + (f", повторов подряд: {reused}" if reused else "") + ")")
 
 
 # ---------- 2. Сегменты ----------
@@ -564,13 +606,28 @@ def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box") -
     p = str(srt.resolve()).replace("\\", "/").replace(":", "\\:")
     common = (f"FontName=Segoe UI Semibold,FontSize={size},Bold=1,"
               "Alignment=2,MarginV=60,MarginL=90,MarginR=90,Spacing=0.3")
-    if style_name == "pill":
+    if style_name == "pill":            # текст на полупрозрачной плашке
         style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
                  "BackColour=&HA0000000,BorderStyle=4,Outline=14,Shadow=0")
-    elif style_name == "yellow_pop":
+    elif style_name == "yellow_pop":    # жёлтый viral (MrBeast-стиль)
         style = (common + ",PrimaryColour=&H0000F0FF,OutlineColour=&H00101010,"
                  "BorderStyle=1,Outline=3.2,Shadow=1.2")
-    else:  # bold_box — по умолчанию
+    elif style_name == "cyan_pop":      # голубой неон
+        style = (common + ",PrimaryColour=&H00F0FF00,OutlineColour=&H00201000,"
+                 "BorderStyle=1,Outline=3.0,Shadow=1.4")
+    elif style_name == "red_alert":     # красный акцент (под красную тему)
+        style = (common + ",PrimaryColour=&H004040FF,OutlineColour=&H00101010,"
+                 "BorderStyle=1,Outline=3.2,Shadow=1.2")
+    elif style_name == "thin_clean":    # тонкий контур, минимализм
+        style = (common.replace("Bold=1", "Bold=0")
+                 + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+                 "BorderStyle=1,Outline=1.6,Shadow=0.8")
+    elif style_name == "top":           # субтитры сверху (не мешают кадру)
+        style = (common.replace("Alignment=2", "Alignment=8")
+                 .replace("MarginV=60", "MarginV=50")
+                 + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00151515,"
+                 "BorderStyle=1,Outline=3.2,Shadow=1.2")
+    else:  # bold_box — по умолчанию: жирный белый, толстая обводка + тень
         style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00151515,"
                  "BorderStyle=1,Outline=3.4,Shadow=1.4,BackColour=&H40000000")
     return f"subtitles='{p}':force_style='{style}'"
@@ -626,6 +683,21 @@ def _style_chain(opts: dict) -> list[str]:
     else:
         if opts.get("grain"):
             chain.append("noise=alls=6:allf=t")
+    # --- эффекты поверх кадра (световые блики, засветка, пыль, мерцание) ---
+    if opts.get("light_leak"):
+        # мягкое движущееся световое пятно у края — «плёночная» засветка
+        chain.append("vignette=angle=PI/5:x0=w*0.85:y0=h*0.2:mode=backward,"
+                     "eq=brightness=0.015")
+    if opts.get("bloom"):
+        # свечение светлых участков — кинематографичный «glow»
+        chain.append("split[a][b];[b]gblur=sigma=18[bl];"
+                     "[a][bl]blend=all_mode=screen:all_opacity=0.28")
+    if opts.get("dust"):
+        # редкие крапинки-пылинки, как на старой плёнке
+        chain.append("noise=alls=3:allf=t+u,eq=contrast=1.02")
+    if opts.get("flicker"):
+        # лёгкое мерцание яркости — «живая» плёнка
+        chain.append("eq=brightness='0.012*sin(2*PI*t*3)'")
     if opts.get("vignette"):
         chain.append("vignette=angle=PI/5")
     if opts.get("letterbox"):
@@ -797,7 +869,12 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
     except Exception as e:
         log(f"[Оверлеи] Пропущены целиком ({e.__class__.__name__}: {e})")
 
-    final = out_dir / "output_final.mp4"
+    # имя выходного файла настраивается (иначе output_final.mp4)
+    out_name = str(opts.get("out_name") or "output_final").strip()
+    out_name = re.sub(r"[^\w\- ]+", "_", out_name) or "output_final"
+    if not out_name.lower().endswith(".mp4"):
+        out_name += ".mp4"
+    final = out_dir / out_name
     log("[Рендер] Финальный проход: звук + оверлеи + субтитры + цветокор...")
     assemble(group_files, audio, srt, final, fps, total, opts, tmp,
              look_chain, ovls)

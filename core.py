@@ -1029,6 +1029,37 @@ def fetch_wiki_images(query: str, count: int, dest_dir: Path, prefix: str,
     return out
 
 
+def openverse_search(query: str, used: dict, log=print) -> str | None:
+    """URL одной свежей CC-картинки из Openverse (агрегатор ~800 млн
+    свободных изображений: Flickr CC, музеи, Wikimedia). Ключ не нужен.
+    None, если ничего нового не нашлось."""
+    import requests
+    try:
+        r = requests.get(
+            "https://api.openverse.org/v1/images/",
+            params={"q": query, "page_size": SEARCH_POOL,
+                    "license_type": "all-cc", "aspect_ratio": "wide",
+                    "mature": "false"},
+            headers={"User-Agent": "ContentFactory/2.0 (personal use)"},
+            timeout=30)
+        if r.status_code != 200:
+            return None
+        items = [{"id": it["id"], "url": it.get("url"),
+                  "license": it.get("license", ""), "author": it.get("creator", "")}
+                 for it in r.json().get("results", []) if it.get("url")]
+        picked = _pick_unused(items, "openverse", used, 1, log)
+        if not picked:
+            return None
+        p = picked[0]
+        if p.get("license"):
+            log(f"[Openverse] лицензия {p['license'].upper()}, автор "
+                f"{p.get('author') or '?'} — укажи атрибуцию в описании")
+        return p["url"]
+    except Exception as e:
+        log(f"[Openverse] недоступен ({e.__class__.__name__})")
+        return None
+
+
 def fetch_media(scenes_text: str, out_dir: Path, log,
                 pexels_keys: str = "", pixabay_keys: str = "",
                 kenburns: bool = True, gemini_key: str = ""):
@@ -1165,6 +1196,34 @@ def extract_keywords(text: str, n: int = 3) -> str:
         freq[w] = freq.get(w, 0) + 1
     top = sorted(order, key=lambda w: -freq[w])[:n]
     return " ".join(sorted(top, key=order.index))
+
+
+RANDOM_VOICES = ["en-US-GuyNeural", "en-US-ChristopherNeural",
+                 "en-US-EricNeural", "en-US-AndrewNeural", "en-US-BrianNeural",
+                 "en-US-JennyNeural", "en-US-AriaNeural", "en-US-MichelleNeural"]
+
+
+def project_style(project_dir) -> dict:
+    """«Почерк» проекта — детерминированно от его пути: разные проекты дают
+    разные голос/темп/субтитры/цветокор/интенсивность. Против шаблонности
+    (YouTube «inauthentic content»): ролики канала не похожи друг на друга,
+    но один проект всегда рендерится одинаково (стабильность)."""
+    import zlib
+    r = random.Random(zlib.crc32(str(Path(project_dir).resolve()).encode()))
+    return {
+        "voice": r.choice(RANDOM_VOICES),
+        "rate": r.choice([-8, -5, -3, 0, 0, 3, 5]),
+        "sub_style": r.choice(["bold_box", "bold_box", "pill", "yellow_pop",
+                               "cyan_pop", "red_alert", "thin_clean"]),
+        "sub_size": r.choice(["средние", "средние", "крупные"]),
+        "intensity": r.choice(["слабая", "средняя", "средняя", "сильная"]),
+        "look": "случайный",
+        # 1-2 случайных эффекта поверх кадра — добавляют «плёночности»
+        "bloom": r.random() < 0.5,
+        "light_leak": r.random() < 0.4,
+        "dust": r.random() < 0.35,
+        "flicker": r.random() < 0.25,
+    }
 
 
 def auto_scenes(script_text: str) -> str:
@@ -1384,22 +1443,35 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         return v.get("duration") or audio_duration(dest) or need
 
     def fetch_photo(query, need, dest):
+        # источники по очереди: Pexels -> Pixabay -> Openverse -> Wikimedia
+        url = None
         r = pexels_get("https://api.pexels.com/v1/search",
                        {"query": query, "per_page": SEARCH_POOL,
                         "orientation": "landscape"})
         photos = r.json().get("photos") if r is not None and r.status_code == 200 else None
-        picked = [(p["src"]["original"], p) for p in
-                  _pick_unused(photos or [], "pexels_photo", used, 1, log)]
-        if not picked:
+        picked = _pick_unused(photos or [], "pexels_photo", used, 1, log)
+        if picked:
+            url = picked[0]["src"]["original"]
+        if url is None:
             r = pixabay_get({"q": query, "per_page": SEARCH_POOL,
                              "orientation": "horizontal", "image_type": "photo"})
             hits = r.json().get("hits") if r is not None and r.status_code == 200 else None
-            picked = [(h["largeImageURL"], h) for h in
-                      _pick_unused(hits or [], "pixabay", used, 1, log)]
-        if not picked:
+            picked = _pick_unused(hits or [], "pixabay", used, 1, log)
+            if picked:
+                url = picked[0]["largeImageURL"]
+        if url is None:
+            url = openverse_search(query, used, log)
+        if url is None:                         # реальные люди/места
+            try:
+                wiki = fetch_wiki_images(query, 1, sdir, dest.stem, used, log)
+                if wiki:
+                    ken_burns(wiki[0], dest, duration=need)
+                    return need
+            except Exception:
+                pass
             return None
         jpg = dest.with_suffix(".jpg")
-        download_file(picked[0][0], jpg)
+        download_file(url, jpg)
         ken_burns(jpg, dest, duration=need)   # фото оживает зумом/панорамой
         return need
 

@@ -256,12 +256,18 @@ class Api:
         self._project.mkdir(parents=True, exist_ok=True)
         os.startfile(self._project)
 
-    def open_result(self):
-        p = self._project / "output_final.mp4"
+    def open_result(self, name: str = ""):
+        import re
+        name = re.sub(r"[^\w\- ]+", "_", (name or "").strip()) or "output_final"
+        if not name.lower().endswith(".mp4"):
+            name += ".mp4"
+        p = self._project / name
+        if not p.exists():                      # запасной — стандартное имя
+            p = self._project / "output_final.mp4"
         if p.exists():
             os.startfile(p)
         else:
-            self.log("output_final.mp4 ещё нет — сначала собери видео", "warn")
+            self.log(f"{name} ещё нет — сначала собери видео", "warn")
 
     # ---------- сценарий ----------
     def save_script(self, text: str):
@@ -291,11 +297,17 @@ class Api:
         if not text:
             raise RuntimeError("Нет сценария — заполни страницу «Сценарий».")
         self.save_script(text)
+        voice = p.get("voice")
         rate = int(str(p.get("rate", "0%")).replace("%", "").replace("+", ""))
+        if p.get("randomize"):
+            st = core.project_style(self._project)
+            voice, rate = st["voice"], st["rate"]
+            self.log(f"[Разнообразие] Голос {voice}, темп {rate:+d}% "
+                     "(случайно под этот проект)")
         if "Edge" in p.get("engine", "Edge"):
-            core.tts_edge(text, p.get("voice"), self._project, self.log, rate)
+            core.tts_edge(text, voice, self._project, self.log, rate)
         else:
-            core.tts_polly(text, p.get("voice"), "neural", self._project,
+            core.tts_polly(text, voice, "neural", self._project,
                            self.log, rate, bool(p.get("pauses", True)))
 
     def tts(self, p: dict):
@@ -381,11 +393,12 @@ class Api:
 
     # ---------- рендер ----------
     def _render_opts(self, p: dict) -> dict:
-        return {"resolution": p.get("resolution", "1080p"),
+        opts = {"resolution": p.get("resolution", "1080p"),
                 "fps": int(p.get("fps", 30)),
                 "intensity": p.get("intensity", "средняя"),
                 "sub_size": p.get("sub_size", "средние"),
                 "sub_style": p.get("sub_style", "bold_box"),
+                "look": p.get("look", "нет"),
                 "subs": bool(p.get("subs", True)),
                 "grain": bool(p.get("grain")),
                 "vignette": bool(p.get("vignette")),
@@ -393,7 +406,24 @@ class Api:
                 "vhs": bool(p.get("vhs")),
                 "chromab": bool(p.get("chromab")),
                 "chapters": bool(p.get("chapters")),
+                "bloom": bool(p.get("bloom")),
+                "light_leak": bool(p.get("light_leak")),
+                "dust": bool(p.get("dust")),
+                "flicker": bool(p.get("flicker")),
                 "draft": bool(p.get("draft"))}
+        if p.get("randomize"):   # свой «почерк» на каждый проект
+            st = core.project_style(self._project)
+            opts.update(intensity=st["intensity"], sub_style=st["sub_style"],
+                        sub_size=st["sub_size"], look=st["look"],
+                        bloom=st["bloom"], light_leak=st["light_leak"],
+                        dust=st["dust"], flicker=st["flicker"])
+            fx = [n for n, k in (("bloom", "bloom"), ("засветка", "light_leak"),
+                                 ("пыль", "dust"), ("мерцание", "flicker"))
+                  if st[k]]
+            self.log(f"[Разнообразие] Субтитры «{st['sub_style']}», монтаж "
+                     f"«{st['intensity']}», цветокор случайный, эффекты: "
+                     f"{', '.join(fx) or 'нет'} (под этот проект)")
+        return opts
 
     def _auto_overlays(self):
         """Если overlays.txt пуст — авто-предложить моушн-графику по субтитрам,
@@ -421,6 +451,7 @@ class Api:
 
     def render(self, p: dict):
         opts = self._render_opts(p)
+        opts["out_name"] = p.get("out_name", "")
         self._settings["render_opts"] = opts
         self._save_settings_file()
         if (p.get("overlays") or "").strip():

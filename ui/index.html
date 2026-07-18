@@ -47,8 +47,16 @@
         <div class="cards" id="stageCards"></div>
         <div class="cta">
           <button class="btn gold big" id="genBtn" onclick="app.generateAll()">✦&nbsp; Генерировать видео</button>
+          <div style="margin-top:12px">
+            <label class="switch" style="justify-content:center">
+              <input type="checkbox" id="randomize" checked><span class="tr"></span>
+              🎲 Разнообразие: свой стиль на каждый проект (против шаблона YouTube)
+            </label>
+          </div>
           <div class="hint">Одной кнопкой: озвучка → субтитры → стоки по таймлайну → рендер.
-            ИИ-генерация клипов в цепочке выключена, чтобы не тратить кредиты без спроса.</div>
+            С «Разнообразием» голос, темп, стиль субтитров, цветокор и монтаж
+            выбираются случайно под каждый проект — ролики канала не похожи
+            друг на друга (снижает риск флага «inauthentic content»).</div>
         </div>
         <div class="projhead">
           <div class="sect" style="margin:0">Проекты</div>
@@ -166,7 +174,7 @@
           <label>FPS:</label><select id="rFps"><option>24</option><option selected>30</option><option>60</option></select>
           <label>Интенсивность:</label><select id="rInt"><option>слабая</option><option selected>средняя</option><option>сильная</option></select>
           <label>Субтитры:</label><select id="rSubSize"><option>мелкие</option><option selected>средние</option><option>крупные</option></select>
-          <label>Стиль:</label><select id="rSubStyle"><option value="bold_box" selected>жирный (контур+тень)</option><option value="pill">плашка</option><option value="yellow_pop">жёлтый viral</option></select>
+          <label>Стиль:</label><select id="rSubStyle"><option value="bold_box" selected>жирный (контур+тень)</option><option value="pill">плашка</option><option value="yellow_pop">жёлтый viral</option><option value="cyan_pop">голубой неон</option><option value="red_alert">красный акцент</option><option value="thin_clean">тонкий минимал</option><option value="top">сверху кадра</option></select>
         </div>
         <div class="subrow" id="renderSwitches">
           <label class="switch"><input type="checkbox" id="rSubs" checked><span class="tr"></span>Вшить субтитры</label>
@@ -177,6 +185,18 @@
           <label class="switch"><input type="checkbox" id="rChromab"><span class="tr"></span>Аберрация на переходах</label>
           <label class="switch"><input type="checkbox" id="rChapters"><span class="tr"></span>Цветокор по главам</label>
           <label class="switch"><input type="checkbox" id="rDraft"><span class="tr"></span>Черновик 720p (быстро)</label>
+        </div>
+        <div class="sect" style="font-size:13px">Эффекты поверх кадра</div>
+        <div class="subrow">
+          <label class="switch"><input type="checkbox" id="rBloom"><span class="tr"></span>Свечение (bloom)</label>
+          <label class="switch"><input type="checkbox" id="rLeak"><span class="tr"></span>Световая засветка</label>
+          <label class="switch"><input type="checkbox" id="rDust"><span class="tr"></span>Плёночная пыль</label>
+          <label class="switch"><input type="checkbox" id="rFlicker"><span class="tr"></span>Мерцание</label>
+        </div>
+        <div class="row">
+          <label>Имя файла:</label>
+          <input type="text" id="outName" placeholder="output_final" style="width:220px">
+          <span class="hint" style="margin:0">.mp4 добавится сам</span>
         </div>
         <div class="row">
           <button class="btn gold big" onclick="app.render()">🎬 СОБРАТЬ ВИДЕО</button>
