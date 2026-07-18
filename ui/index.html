@@ -233,6 +233,21 @@
   </div>
 </div>
 
+<!-- ================= ИМЯ ПРОЕКТА ================= -->
+<div class="modal-bg" id="nameModal">
+  <div class="modal" style="width:440px">
+    <h2 id="nameTitle">Новый проект</h2>
+    <div class="hint" id="nameHint">Введи имя папки проекта:</div>
+    <input type="text" id="nameInput" style="width:100%; margin:10px 0"
+           placeholder="например: cannibalism-doc"
+           onkeydown="if(event.key==='Enter')app.confirmName();if(event.key==='Escape')app.closeName()">
+    <div class="row" style="justify-content:flex-end; margin-top:12px">
+      <button class="btn ghost" onclick="app.closeName()">Отмена</button>
+      <button class="btn gold" onclick="app.confirmName()">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- ================= НАСТРОЙКИ ================= -->
 <div class="modal-bg" id="settingsModal">
   <div class="modal">

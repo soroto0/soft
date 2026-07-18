@@ -1210,6 +1210,15 @@ def build_beats(rows: list[tuple[str, str, str]], min_beat: float = 6.0,
     return beats
 
 
+def _premiere_pathurl(p: Path) -> str:
+    """pathurl для Premiere Pro на Windows. Именно 'file://localhost/C:/…' —
+    формат 'file:///C:/…' (как даёт Path.as_uri) Premiere читает неверно и
+    показывает клипы как 'Media offline'. Пробелы/юникод -> %-кодирование."""
+    from urllib.parse import quote
+    s = str(Path(p).resolve()).replace("\\", "/")
+    return "file://localhost/" + quote(s, safe="/:")
+
+
 def export_premiere_xml(timeline: list[dict], audio_path: Path, dest: Path,
                         fps: int = 25, name: str = "AutoStoryboard"):
     """Секвенция в формате FCP7 XML (xmeml) — Premiere Pro: File > Import.
@@ -1239,7 +1248,7 @@ def export_premiere_xml(timeline: list[dict], audio_path: Path, dest: Path,
             <out>{out_f}</out>
             <file id="file-{i}">
               <name>{fname}</name>
-              <pathurl>{escape(f.as_uri())}</pathurl>
+              <pathurl>{escape(_premiere_pathurl(f))}</pathurl>
               <rate><timebase>{fps}</timebase><ntsc>FALSE</ntsc></rate>
               <duration>{src_frames}</duration>
               <media>
@@ -1296,7 +1305,7 @@ def export_premiere_xml(timeline: list[dict], audio_path: Path, dest: Path,
             <out>{a_frames}</out>
             <file id="file-audio">
               <name>{aname}</name>
-              <pathurl>{escape(a.as_uri())}</pathurl>
+              <pathurl>{escape(_premiere_pathurl(a))}</pathurl>
               <rate><timebase>{fps}</timebase><ntsc>FALSE</ntsc></rate>
               <duration>{a_frames}</duration>
               <media>

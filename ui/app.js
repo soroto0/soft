@@ -75,6 +75,15 @@ function addLog(msg, cls = "") {
   }
   $("pulse").textContent = msg.slice(0, 90);
 }
+let nameTarget = null;
+function openName(title, hint, value, target) {
+  nameTarget = target;
+  $("nameTitle").textContent = title;
+  $("nameHint").textContent = hint;
+  $("nameInput").value = value || "";
+  $("nameModal").classList.add("open");
+  setTimeout(() => $("nameInput").focus(), 50);
+}
 function setStatus(text) { $("status").textContent = text; }
 function setProgress(done, total) {
   $("sbarFill").style.width = total ? (100 * done / total) + "%" : "0%";
@@ -134,6 +143,7 @@ function renderProjects() {
       <span class="hint" style="margin:0">${p.done}/${p.total || 7}</span>
       <div class="pbar"><i style="width:${pct}%"></i></div>
       <button class="btn gold pbtn-open">Открыть</button>
+      <button class="iconbtn" title="Переименовать">✏️</button>
       <button class="iconbtn" title="Папка в проводнике">📂</button>
       <button class="iconbtn" title="Удалить проект">🗑</button>`;
     const openIt = () => rpc("set_project", p.path).then(() => {
@@ -141,7 +151,8 @@ function renderProjects() {
     });
     row.querySelector(".popen").onclick = openIt;
     row.querySelector(".pbtn-open").onclick = openIt;
-    const [fold, del] = row.querySelectorAll(".iconbtn");
+    const [ren, fold, del] = row.querySelectorAll(".iconbtn");
+    ren.onclick = () => app.renameProject(p.path, p.name);
     fold.onclick = () => rpc("open_project_folder", p.path);
     del.onclick = () => {
       if (confirm(`Удалить проект «${p.name}» целиком?\nВсе файлы будут стёрты безвозвратно.`))
@@ -177,9 +188,19 @@ $("scriptText").addEventListener("input", updateStats);
 /* ---------- Действия ---------- */
 const app = {
   browse: () => rpc("browse_project").then(refresh),
-  newProject() {
-    const name = prompt("Имя нового проекта (папки):");
-    if (name) rpc("new_project", name).then(refresh);
+  newProject() { openName("Новый проект", "Введи имя папки проекта:", "", null); },
+  renameProject(path, cur) {
+    openName("Переименовать проект", "Новое имя папки:", cur, path);
+  },
+  closeName() { $("nameModal").classList.remove("open"); },
+  confirmName() {
+    const name = $("nameInput").value.trim();
+    if (!name) return;
+    $("nameModal").classList.remove("open");
+    if (nameTarget)
+      rpc("rename_project", nameTarget, name).then(refresh);
+    else
+      rpc("new_project", name).then(refresh);
   },
   deleteProject() {
     if (confirm("Удалить ТЕКУЩИЙ проект целиком?\nВсе файлы будут стёрты безвозвратно."))

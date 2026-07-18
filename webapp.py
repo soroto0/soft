@@ -189,6 +189,25 @@ class Api:
         self.set_project(str(d))
         self.log(f"[Проект] Создан: {d}")
 
+    def rename_project(self, path: str, new_name: str):
+        import re
+        safe = re.sub(r"[^\w\- ]+", "_", new_name or "").strip()
+        if not safe:
+            return
+        old = Path(path)
+        dst = old.parent / safe
+        if dst.exists() and dst != old:
+            self.log(f"[Проект] «{safe}» уже существует — выбери другое имя",
+                     "warn")
+            return
+        try:
+            old.rename(dst)
+            self.log(f"[Проект] Переименован: {old.name} -> {safe}", "ok")
+            if old == self._project:
+                self.set_project(str(dst))
+        except OSError as e:
+            self.log(f"[Проект] Не удалось переименовать: {e}", "err")
+
     def delete_project(self, path: str):
         import shutil
         d = Path(path)
