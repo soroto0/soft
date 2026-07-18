@@ -385,6 +385,7 @@ class Api:
                 "fps": int(p.get("fps", 30)),
                 "intensity": p.get("intensity", "средняя"),
                 "sub_size": p.get("sub_size", "средние"),
+                "sub_style": p.get("sub_style", "bold_box"),
                 "subs": bool(p.get("subs", True)),
                 "grain": bool(p.get("grain")),
                 "vignette": bool(p.get("vignette")),
@@ -393,6 +394,30 @@ class Api:
                 "chromab": bool(p.get("chromab")),
                 "chapters": bool(p.get("chapters")),
                 "draft": bool(p.get("draft"))}
+
+    def _auto_overlays(self):
+        """Если overlays.txt пуст — авто-предложить моушн-графику по субтитрам,
+        чтобы popup/счётчики/плашки появились в ролике сами."""
+        ov = self._project / "overlays.txt"
+        if ov.exists() and ov.read_text(encoding="utf-8").strip():
+            return
+        srt = self._project / "subs" / "voiceover.srt"
+        if not srt.exists():
+            return
+        manifest = []
+        mf = self._project / "manifest.json"
+        if mf.exists():
+            try:
+                manifest = json.loads(mf.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        text = overlays.suggest_overlays(core.parse_srt(srt), manifest)
+        if text.strip():
+            ov.write_text(text.strip() + "\n", encoding="utf-8")
+            n = len([l for l in text.splitlines()
+                     if l.strip() and not l.startswith("#")])
+            self.log(f"[Оверлеи] Авто-расстановка: {n} моушн-элементов "
+                     "(popup/счётчики/плашки) добавлены в ролик")
 
     def render(self, p: dict):
         opts = self._render_opts(p)
@@ -439,6 +464,8 @@ class Api:
                 float(p.get("beat", 6)),
                 self._settings.get("gemini_key", ""),
                 self._settings.get("agnes_key", ""), False)
+            if not (p.get("overlays") or "").strip():
+                self._auto_overlays()   # моушн-графика сама, если не задана
             self.log("[Цепочка] Шаг 4/4 — рендер…")
             render.render_project(self._project, self.log,
                                   self._progress, opts)
@@ -472,7 +499,7 @@ def main():
     win = webview.create_window(
         APP_TITLE, url=str(BASE / "ui" / "index.html"), js_api=api,
         width=1280, height=840, min_size=(1080, 700),
-        background_color="#131109")
+        background_color="#130a0a")
     api._win = win
     webview.start()
 

@@ -244,6 +244,7 @@ const app = {
   render: () => rpc("render", {
     resolution: $("rRes").value, fps: parseInt($("rFps").value),
     intensity: $("rInt").value, sub_size: $("rSubSize").value,
+    sub_style: $("rSubStyle").value,
     subs: $("rSubs").checked, grain: $("rGrain").checked,
     vignette: $("rVignette").checked, letterbox: $("rLetterbox").checked,
     vhs: $("rVhs").checked, chromab: $("rChromab").checked,
@@ -262,6 +263,7 @@ const app = {
       whisper: $("whisperModel").value, beat: parseFloat($("beat").value),
       resolution: $("rRes").value, fps: parseInt($("rFps").value),
       intensity: $("rInt").value, sub_size: $("rSubSize").value,
+    sub_style: $("rSubStyle").value,
       subs: $("rSubs").checked, grain: $("rGrain").checked,
       vignette: $("rVignette").checked, letterbox: $("rLetterbox").checked,
       vhs: $("rVhs").checked, chromab: $("rChromab").checked,

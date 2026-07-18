@@ -61,7 +61,11 @@ TRANSITIONS = [
     ("fadeblack",  0.55, 9),    # dip to black — на смене главы
     ("fadewhite",  0.18, 4),    # white flash — акцент открытия/удара
     ("hblur",      0.40, 6),    # blur-dissolve — плавно, кинематографично
-    ("zoomin",     0.38, 5),    # лёгкий zoom-переход на динамике
+    ("zoomin",     0.38, 6),    # лёгкий zoom-переход на динамике
+    ("pixelize",   0.30, 3),    # пикселизация — стильный цифровой стык
+    ("distance",   0.42, 3),    # растяжение-«разлёт» — мягко и современно
+    ("fadegrays",  0.45, 2),    # обесцвечивание на стыке — кинематографично
+    ("radial",     0.45, 2),    # круговой свайп из центра — редкий акцент
     ("smoothleft", 0.35, 1),    # редкий мягкий сдвиг — для разнообразия
     ("smoothright",0.35, 1),
 ]
@@ -280,30 +284,30 @@ def _motion_expr(motion: str, frames: int, fps: int) -> str:
     center = "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
     xmid = "x='iw/2-(iw/zoom/2)'"
     ymid = "y='ih/2-(ih/zoom/2)'"
-    zr = 0.15 / frames
-    zrf = 0.28 / frames
+    zr = 0.24 / frames    # заметный наезд (было 0.15 — почти не видно)
+    zrf = 0.44 / frames   # быстрый драматичный наезд
     n1 = max(frames - 1, 1)
     e = {
-        "zoom_in":       f"z='min(zoom+{zr:.6f},1.15)':{center}",
-        "zoom_out":      f"z='if(lte(on,1),1.15,max(zoom-{zr:.6f},1.0))':{center}",
-        "zoom_in_fast":  f"z='min(zoom+{zrf:.6f},1.28)':{center}",
-        "zoom_out_fast": f"z='if(lte(on,1),1.28,max(zoom-{zrf:.6f},1.0))':{center}",
-        "pulse":         f"z='1.09+0.05*sin(on/{fps}*1.3)':{center}",
-        "pan_right":     f"z=1.15:x='(iw-iw/zoom)*on/{n1}':{ymid}",
-        "pan_left":      f"z=1.15:x='(iw-iw/zoom)*(1-on/{n1})':{ymid}",
-        "pan_up":        f"z=1.15:{xmid}:y='(ih-ih/zoom)*(1-on/{n1})'",
-        "pan_down":      f"z=1.15:{xmid}:y='(ih-ih/zoom)*on/{n1}'",
-        "diag_tl":       f"z=1.13:x='(iw-iw/zoom)*on/{n1}':y='(ih-ih/zoom)*on/{n1}'",
-        "diag_tr":       f"z=1.13:x='(iw-iw/zoom)*(1-on/{n1})':y='(ih-ih/zoom)*on/{n1}'",
-        "diag_bl":       f"z=1.13:x='(iw-iw/zoom)*on/{n1}':y='(ih-ih/zoom)*(1-on/{n1})'",
-        "diag_br":       f"z=1.13:x='(iw-iw/zoom)*(1-on/{n1})':y='(ih-ih/zoom)*(1-on/{n1})'",
-        "zoompan_r":     f"z='1+0.15*on/{n1}':x='(iw-iw/zoom)*on/{n1}':{ymid}",
-        "zoompan_l":     f"z='1+0.15*on/{n1}':x='(iw-iw/zoom)*(1-on/{n1})':{ymid}",
-        "pullpan_r":     f"z='1.15-0.13*on/{n1}':x='(iw-iw/zoom)*on/{n1}':{ymid}",
-        "pullpan_l":     f"z='1.15-0.13*on/{n1}':x='(iw-iw/zoom)*(1-on/{n1})':{ymid}",
-        "arc_r":         (f"z=1.15:x='(iw-iw/zoom)*on/{n1}':"
+        "zoom_in":       f"z='min(zoom+{zr:.6f},1.24)':{center}",
+        "zoom_out":      f"z='if(lte(on,1),1.24,max(zoom-{zr:.6f},1.0))':{center}",
+        "zoom_in_fast":  f"z='min(zoom+{zrf:.6f},1.44)':{center}",
+        "zoom_out_fast": f"z='if(lte(on,1),1.44,max(zoom-{zrf:.6f},1.0))':{center}",
+        "pulse":         f"z='1.12+0.07*sin(on/{fps}*1.3)':{center}",
+        "pan_right":     f"z=1.22:x='(iw-iw/zoom)*on/{n1}':{ymid}",
+        "pan_left":      f"z=1.22:x='(iw-iw/zoom)*(1-on/{n1})':{ymid}",
+        "pan_up":        f"z=1.22:{xmid}:y='(ih-ih/zoom)*(1-on/{n1})'",
+        "pan_down":      f"z=1.22:{xmid}:y='(ih-ih/zoom)*on/{n1}'",
+        "diag_tl":       f"z=1.20:x='(iw-iw/zoom)*on/{n1}':y='(ih-ih/zoom)*on/{n1}'",
+        "diag_tr":       f"z=1.20:x='(iw-iw/zoom)*(1-on/{n1})':y='(ih-ih/zoom)*on/{n1}'",
+        "diag_bl":       f"z=1.20:x='(iw-iw/zoom)*on/{n1}':y='(ih-ih/zoom)*(1-on/{n1})'",
+        "diag_br":       f"z=1.20:x='(iw-iw/zoom)*(1-on/{n1})':y='(ih-ih/zoom)*(1-on/{n1})'",
+        "zoompan_r":     f"z='1+0.24*on/{n1}':x='(iw-iw/zoom)*on/{n1}':{ymid}",
+        "zoompan_l":     f"z='1+0.24*on/{n1}':x='(iw-iw/zoom)*(1-on/{n1})':{ymid}",
+        "pullpan_r":     f"z='1.24-0.22*on/{n1}':x='(iw-iw/zoom)*on/{n1}':{ymid}",
+        "pullpan_l":     f"z='1.24-0.22*on/{n1}':x='(iw-iw/zoom)*(1-on/{n1})':{ymid}",
+        "arc_r":         (f"z=1.20:x='(iw-iw/zoom)*on/{n1}':"
                           f"y='(ih-ih/zoom)*(0.5+0.45*sin(on/{n1}*3.1416))'"),
-        "arc_l":         (f"z=1.15:x='(iw-iw/zoom)*(1-on/{n1})':"
+        "arc_l":         (f"z=1.20:x='(iw-iw/zoom)*(1-on/{n1})':"
                           f"y='(ih-ih/zoom)*(0.5-0.45*sin(on/{n1}*3.1416))'"),
         "drift":         (f"z=1.04:x='iw/2-(iw/zoom/2)+9*sin(on/{fps}*0.7)':"
                           f"y='ih/2-(ih/zoom/2)+6*sin(on/{fps}*0.45)'"),
@@ -547,16 +551,28 @@ def _group_concat_fallback(seg_files: list[Path], durs: list[float],
 
 # ---------- 4. Финальная сборка ----------
 
-SUB_SIZES = {"мелкие": 12, "средние": 15, "крупные": 19}
+SUB_SIZES = {"мелкие": 15, "средние": 19, "крупные": 24}
 
 
-def _subtitles_filter(srt: Path, size: int = 15) -> str:
-    """Экранирование Windows-пути для фильтра subtitles + стиль:
-    белый с чёрной обводкой, нижняя треть кадра, размер настраивается."""
+def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box") -> str:
+    """Красивые субтитры для YouTube. Стили:
+      bold_box   — крупный жирный белый, толстая обводка + мягкая тень
+                   (универсальный «документальный» вид)
+      pill       — белый текст на полупрозрачной тёмной плашке
+      yellow_pop — жёлтый жирный с чёрной обводкой (viral/MrBeast-стиль)
+    Позиция — нижняя треть, с воздухом от края."""
     p = str(srt.resolve()).replace("\\", "/").replace(":", "\\:")
-    style = (f"FontName=Arial,FontSize={size},Bold=1,"
-             "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-             "Outline=2,Shadow=0,BorderStyle=1,Alignment=2,MarginV=45")
+    common = (f"FontName=Segoe UI Semibold,FontSize={size},Bold=1,"
+              "Alignment=2,MarginV=60,MarginL=90,MarginR=90,Spacing=0.3")
+    if style_name == "pill":
+        style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+                 "BackColour=&HA0000000,BorderStyle=4,Outline=14,Shadow=0")
+    elif style_name == "yellow_pop":
+        style = (common + ",PrimaryColour=&H0000F0FF,OutlineColour=&H00101010,"
+                 "BorderStyle=1,Outline=3.2,Shadow=1.2")
+    else:  # bold_box — по умолчанию
+        style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00151515,"
+                 "BorderStyle=1,Outline=3.4,Shadow=1.4,BackColour=&H40000000")
     return f"subtitles='{p}':force_style='{style}'"
 
 
@@ -632,8 +648,9 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
         filters.append(look_chain)
     post = []                             # после оверлеев: субтитры и стиль
     if srt and srt.exists() and opts.get("subs", True):
+        size = SUB_SIZES.get(opts.get("sub_size", "средние"), 19)
         post.append(_subtitles_filter(
-            srt, SUB_SIZES.get(opts.get("subs_style", "средние"), 15)))
+            srt, size, opts.get("sub_style", "bold_box")))
     post += _style_chain(opts)
     post.append("format=yuv420p")
 
