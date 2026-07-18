@@ -59,17 +59,20 @@ function showPage(name) {
 
 /* ---------- Журнал / статус (вызывается и из Python) ---------- */
 function addLog(msg, cls = "") {
-  const box = $("console");
   const t = new Date().toLocaleTimeString("ru", { hour12: false });
-  const line = document.createElement("div");
-  line.innerHTML = `<span class="t">${t}</span>  `;
-  const span = document.createElement("span");
-  span.className = cls;
-  span.textContent = msg;
-  line.appendChild(span);
-  box.appendChild(line);
-  while (box.childNodes.length > 4000) box.removeChild(box.firstChild);
-  if ($("autoscroll").checked) box.scrollTop = box.scrollHeight;
+  // лента идёт в две консоли: страница «Журнал» + нижняя панель
+  for (const [box, cap] of [[$("console"), 4000], [$("console2"), 600]]) {
+    if (!box) continue;
+    const line = document.createElement("div");
+    line.innerHTML = `<span class="t">${t}</span>  `;
+    const span = document.createElement("span");
+    span.className = cls;
+    span.textContent = msg;
+    line.appendChild(span);
+    box.appendChild(line);
+    while (box.childNodes.length > cap) box.removeChild(box.firstChild);
+    if ($("autoscroll").checked) box.scrollTop = box.scrollHeight;
+  }
   $("pulse").textContent = msg.slice(0, 90);
 }
 function setStatus(text) { $("status").textContent = text; }
@@ -240,10 +243,18 @@ const app = {
       overlays: $("overlaysText").value,
     });
   },
-  clearLog() { $("console").innerHTML = ""; },
+  clearLog() { $("console").innerHTML = ""; $("console2").innerHTML = ""; },
   copyLog() {
     navigator.clipboard.writeText($("console").innerText);
     addLog("Журнал скопирован в буфер обмена", "dim");
+  },
+  toggleDrawer() {
+    const d = $("drawer");
+    d.classList.toggle("collapsed");
+    try {
+      localStorage.setItem("drawer",
+        d.classList.contains("collapsed") ? "0" : "1");
+    } catch (e) { /* file:-песочница может запрещать localStorage */ }
   },
   openSettings() {
     rpc("settings_get").then(s => {
@@ -276,6 +287,10 @@ $("projPath").addEventListener("change",
   () => rpc("set_project", $("projPath").value).then(refresh));
 
 /* ---------- Старт ---------- */
+try {
+  if (localStorage.getItem("drawer") === "0")
+    $("drawer").classList.add("collapsed");
+} catch (e) { /* file:-песочница может запрещать localStorage */ }
 app.fillVoices();
 addLog("Интерфейс загружен. Порядок: Сценарий → Озвучка → Транскрибация → " +
        "Раскадровка → Рендер, или одна кнопка «Генерировать видео».", "dim");

@@ -253,6 +253,28 @@ textarea.prose { font-family: "Segoe UI", sans-serif; }
 .console .warn { color: var(--wait); }
 .console .dim { color: var(--muted); }
 
+/* Консоль-панель внизу (видна с любой страницы) */
+.drawer {
+  border-top: 1px solid var(--border);
+  background: #0e0c07;
+}
+.drawer-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 5px 16px; cursor: pointer;
+  color: var(--muted); font-size: 12.5px;
+  user-select: none;
+}
+.drawer-head:hover { color: var(--text); }
+.drawer-head .dh-title { font-weight: 600; color: var(--text); }
+.drawer-head .btn { padding: 3px 10px; font-size: 11.5px; }
+#drawerChevron { transition: transform .2s; }
+.drawer.collapsed #drawerChevron { transform: rotate(180deg); }
+.drawer-body {
+  height: 168px; border: none; border-top: 1px solid var(--border);
+  border-radius: 0; margin: 0;
+}
+.drawer.collapsed .drawer-body { display: none; }
+
 /* Статус-бар */
 .statusbar {
   display: flex; align-items: center; gap: 12px;

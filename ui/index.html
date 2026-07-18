@@ -209,6 +209,18 @@
 
     </div>
 
+    <div class="drawer" id="drawer">
+      <div class="drawer-head" onclick="app.toggleDrawer()">
+        <span class="dh-title">🖥 Консоль</span>
+        <span class="hint" style="margin:0">живой ход текущей операции</span>
+        <div class="spacer"></div>
+        <button class="btn ghost" onclick="event.stopPropagation(); app.clearLog()">Очистить</button>
+        <button class="btn ghost" onclick="event.stopPropagation(); app.copyLog()">Скопировать</button>
+        <span id="drawerChevron">▾</span>
+      </div>
+      <div class="console drawer-body" id="console2"></div>
+    </div>
+
     <div class="statusbar">
       <span id="status">Готов</span>
       <div class="sbar"><i id="sbarFill"></i></div>
