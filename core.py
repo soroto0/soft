@@ -263,40 +263,131 @@ def tts_preview(edge: bool, voice: str, engine: str, rate: int,
 
 # ---------- Фоновая музыка ----------
 
-def add_music(voice_mp3: Path, music_path: Path, log, gain_db: int = -14) -> Path:
+def _collect_tracks(music_path) -> list[Path]:
+    """Список аудиофайлов: папка -> все треки; строка с '|' или переносами ->
+    несколько путей; один файл -> [файл]."""
+    if isinstance(music_path, (list, tuple)):
+        items = [Path(p) for p in music_path]
+    else:
+        s = str(music_path)
+        if "\n" in s or "|" in s:
+            items = [Path(p.strip()) for p in re.split(r"[\n|]", s) if p.strip()]
+        else:
+            items = [Path(s)]
+    tracks = []
+    for it in items:
+        if it.is_dir():
+            tracks += sorted(p for p in it.iterdir()
+                             if p.suffix.lower() in MUSIC_EXTS)
+        elif it.exists() and it.suffix.lower() in MUSIC_EXTS:
+            tracks.append(it)
+    return tracks
+
+
+def add_music(voice_mp3: Path, music_path, log, gain_db: int = -14) -> Path:
     """Подмешивает музыку под озвучку с автопригушением под голосом (sidechain).
-    music_path — файл или папка (из папки берётся случайный трек).
-    Результат: voiceover_music.mp3 рядом с озвучкой, оригинал не трогается."""
+    music_path — файл, папка, список файлов или многострочный/через | список.
+    Несколько треков склеиваются последовательно (плейлист) и зацикливаются
+    под всю длину озвучки. Результат: voiceover_music.mp3 рядом с озвучкой."""
     voice_mp3 = Path(voice_mp3)
-    music_path = Path(music_path)
     if not voice_mp3.exists():
         raise FileNotFoundError(f"Нет озвучки: {voice_mp3}")
-    if music_path.is_dir():
-        tracks = [p for p in music_path.iterdir() if p.suffix.lower() in MUSIC_EXTS]
-        if not tracks:
-            raise FileNotFoundError(
-                f"В {music_path} нет аудио ({', '.join(sorted(MUSIC_EXTS))})")
-        music = random.choice(tracks)
-    else:
-        music = music_path
+    tracks = _collect_tracks(music_path)
+    if not tracks:
+        raise FileNotFoundError(
+            f"Нет аудио-треков ({', '.join(sorted(MUSIC_EXTS))})")
+    random.shuffle(tracks)
 
     dest = voice_mp3.with_name("voiceover_music.mp3")
-    log(f"[Музыка] Трек: {music.name}, громкость {gain_db} dB, "
-        "приглушение под голосом, fade in/out... (проверь лицензию трека!)")
     dur = audio_duration(voice_mp3)
     fades = "afade=t=in:d=2"
     if dur and dur > 8:
         fades += f",afade=t=out:st={dur - 3:.2f}:d=3"
-    fc = (f"[1:a]volume={gain_db}dB,{fades}[m];"
-          "[m][0:a]sidechaincompress=threshold=0.02:ratio=12:attack=25:release=700[duck];"
-          "[0:a][duck]amix=inputs=2:duration=first:normalize=0[mix]")
-    subprocess.run(["ffmpeg", "-y", "-i", str(voice_mp3),
-                    "-stream_loop", "-1", "-i", str(music),
-                    "-filter_complex", fc, "-map", "[mix]",
-                    "-c:a", "libmp3lame", "-q:a", "2", str(dest)],
+
+    if len(tracks) == 1:
+        log(f"[Музыка] Трек: {tracks[0].name}, громкость {gain_db} dB, "
+            "приглушение под голосом... (проверь лицензию!)")
+        inputs = ["-stream_loop", "-1", "-i", str(tracks[0])]
+        music_lbl = "[1:a]"
+    else:
+        # плейлист: склеиваем все треки подряд и зацикливаем под длину видео
+        log(f"[Музыка] Плейлист из {len(tracks)} треков (чередуются), "
+            f"громкость {gain_db} dB, приглушение под голосом...")
+        for t in tracks:
+            log(f"[Музыка]   • {t.name}")
+        inputs = []
+        for t in tracks:
+            inputs += ["-i", str(t)]
+        concat_in = "".join(f"[{k + 1}:a]" for k in range(len(tracks)))
+        pre = (f"{concat_in}concat=n={len(tracks)}:v=0:a=1[pl];"
+               "[pl]aloop=loop=-1:size=2e9[loopmus];")
+        music_lbl = "[loopmus]"
+        fades = "_PRE_" + fades
+
+    if len(tracks) == 1:
+        fc = (f"[1:a]volume={gain_db}dB,{fades}[m];"
+              "[m][0:a]sidechaincompress=threshold=0.02:ratio=12:attack=25:release=700[duck];"
+              "[0:a][duck]amix=inputs=2:duration=first:normalize=0[mix]")
+    else:
+        fc = (pre + f"{music_lbl}volume={gain_db}dB,{fades.replace('_PRE_','')}[m];"
+              "[m][0:a]sidechaincompress=threshold=0.02:ratio=12:attack=25:release=700[duck];"
+              "[0:a][duck]amix=inputs=2:duration=first:normalize=0[mix]")
+
+    subprocess.run(["ffmpeg", "-y", "-i", str(voice_mp3)] + inputs
+                   + ["-filter_complex", fc, "-map", "[mix]",
+                      "-c:a", "libmp3lame", "-q:a", "2", str(dest)],
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     log(f"[Музыка] Готово: {dest} (чистый голос остался в {voice_mp3.name})")
     return dest
+
+
+def add_ambience(base_mp3: Path, sfx_path, log, gain_db: int = -19,
+                 every: float = 22.0) -> Path:
+    """Сам раскидывает ASMR-звуки быта (шорох, звон ложки, вода) по дорожке:
+    случайный звук из папки примерно каждые `every` секунд, тихо под голосом.
+    Создаёт эффект присутствия, как в документалках Hidden Homestead.
+    sfx_path — папка/файлы со звуками. Пишет поверх base_mp3."""
+    base_mp3 = Path(base_mp3)
+    if not base_mp3.exists():
+        raise FileNotFoundError(f"Нет дорожки: {base_mp3}")
+    sfx = _collect_tracks(sfx_path)
+    if not sfx:
+        raise FileNotFoundError(
+            "Нет ASMR-звуков. Положи в папку короткие звуки быта (шорох, "
+            "звон, вода) — mp3/wav, и укажи её. Скачать можно бесплатно "
+            "на pixabay.com/sound-effects.")
+    dur = audio_duration(base_mp3) or 0
+    if dur < 5:
+        return base_mp3
+    n = max(2, int(dur / every))
+    picks = [random.choice(sfx) for _ in range(n)]
+    # каждый звук — со случайной задержкой по таймлайну, тихо
+    inputs, parts = [], []
+    for k, s in enumerate(picks, 1):
+        inputs += ["-i", str(s)]
+        at = random.uniform(2, dur - 2)
+        parts.append(f"[{k}:a]volume={gain_db}dB,"
+                     f"adelay={int(at * 1000)}|{int(at * 1000)}[a{k}]")
+    mixn = len(picks) + 1
+    fc = (";".join(parts) + ";"
+          + "[0:a]" + "".join(f"[a{k}]" for k in range(1, len(picks) + 1))
+          + f"amix=inputs={mixn}:duration=first:normalize=0[mix]")
+    dest = base_mp3.with_name("voiceover_asmr.mp3")
+    log(f"[ASMR] Раскидываю {n} звуков быта каждые ~{every:.0f} c "
+        f"(тихо, {gain_db} dB) — эффект присутствия")
+    try:
+        subprocess.run(["ffmpeg", "-y", "-i", str(base_mp3)] + inputs
+                       + ["-filter_complex", fc, "-map", "[mix]",
+                          "-c:a", "libmp3lame", "-q:a", "2", str(dest)],
+                       check=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
+    except Exception as e:
+        log(f"[ASMR] Пропустил ({e.__class__.__name__})")
+        return base_mp3
+    # заменяем итоговую дорожку, которую берёт рендер
+    dest.replace(base_mp3)
+    log(f"[ASMR] Готово: звуки быта вплетены в {base_mp3.name}")
+    return base_mp3
 
 
 # ---------- LLM-агенты ----------
@@ -1522,8 +1613,20 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     # планов, а у стоков лимиты. Качаем до max_unique уникальных клипов,
     # дальше переиспользуем уже скачанные — рендер даёт им РАЗНОЕ движение
     # камеры (зум/панорама), так что визуально это разные кадры.
-    pool, downloaded = [], 0
-    reused = 0
+    # Требование: один клип не чаще MAX_REUSE раз за ролик. Чтобы этого
+    # хватило на длинное видео, качаем не меньше планов/MAX_REUSE уникальных.
+    MAX_REUSE = 2
+    max_unique = max(max_unique, (len(beats) + MAX_REUSE - 1) // MAX_REUSE)
+    pool, use_count, downloaded, reused = [], {}, 0, 0
+
+    def reuse_from_pool():
+        """Клип из пула, показанный меньше всего раз (в идеале <MAX_REUSE)."""
+        if not pool:
+            return None
+        fresh = [c for c in pool if use_count.get(c, 0) < MAX_REUSE]
+        c = min(fresh or pool, key=lambda c: use_count.get(c, 0))
+        use_count[c] = use_count.get(c, 0) + 1
+        return c
 
     timeline, prev_query = [], "cinematic background"
     for i, b in enumerate(beats, 1):
@@ -1536,9 +1639,9 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         clip, src_dur = None, None
         want_photo = plan_kinds[i - 1] == "photo"
 
-        # лимит уникальных достигнут — сразу переиспользуем из пула
+        # лимит уникальных достигнут — берём наименее показанный из пула
         if downloaded >= max_unique and pool:
-            clip = pool[(i - 1) % len(pool)]
+            clip = reuse_from_pool()
             src_dur = audio_duration(clip) or need
             reused += 1
         else:
@@ -1559,13 +1662,14 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     clip = None
                 else:
                     pool.append(clip)
+                    use_count[clip] = 1
                     downloaded += 1
             except Exception as e:
                 log(f"[Раскадровка] План {i}: ошибка {e}")
                 clip = None
             # стоки не дали (лимит/не нашлось), но пул есть — переиспользуем
             if clip is None and pool:
-                clip = pool[(i - 1) % len(pool)]
+                clip = reuse_from_pool()
                 src_dur = audio_duration(clip) or need
                 reused += 1
         if clip is None and genvideo:
@@ -1603,9 +1707,10 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                              "src_duration": src_dur})
 
     if reused:
-        log(f"[Раскадровка] Скачано уникальных: {downloaded}, "
-            f"переиспользовано (с разным движением): {reused} — "
-            "экономия запросов к стокам для длинного видео")
+        mx = max(use_count.values()) if use_count else 1
+        log(f"[Раскадровка] Скачано уникальных: {downloaded}, повторов: "
+            f"{reused} (каждый клип максимум {mx} раз/ролик, с разным "
+            "движением камеры) — экономия запросов к стокам")
     _save_used(used)
     (out_dir / "timeline.json").write_text(
         json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")

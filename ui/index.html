@@ -108,18 +108,26 @@
         <div class="hint">«Глубокий голос» — компрессия + нижние частоты + нормализация,
           как у диктора документального фильма (звучит плотно и убедительно).</div>
         <div class="divider"></div>
-        <div class="sect">Фоновая музыка</div>
+        <div class="sect">Фоновая музыка (можно несколько треков — чередуются)</div>
         <div class="row">
-          <input type="text" id="musicPath" style="flex:1" placeholder="папка или файл с музыкой">
-          <button class="btn ghost" onclick="app.pickMusic()">…</button>
-          <label>Настроение:</label>
-          <select id="mood"><option>dark</option><option>tense</option><option>neutral</option><option>uplifting</option></select>
+          <input type="text" id="musicPath" style="flex:1" placeholder="папка, файл или несколько файлов через |">
+          <button class="btn ghost" onclick="app.pickMusic()">Файлы…</button>
           <label>Громкость:</label>
           <select id="musicGain"><option>-10 dB</option><option selected>-14 dB</option><option>-18 dB</option><option>-22 dB</option></select>
           <button class="btn" onclick="app.mixMusic()">🎵 Подмешать</button>
         </div>
-        <div class="hint">Трек подкладывается под озвучку с автоприглушением. Музыка должна быть
-          лицензионной (YouTube Audio Library и т.п.) — источник пишется в журнал.</div>
+        <div class="hint">Несколько треков склеиваются в плейлист и зацикливаются под всю длину видео.
+          Музыка должна быть лицензионной (YouTube Audio Library и т.п.).</div>
+        <div class="sect" style="font-size:13px; margin-top:12px">ASMR-звуки быта (эффект присутствия)</div>
+        <div class="row">
+          <input type="text" id="asmrPath" style="flex:1" placeholder="папка со звуками: шорох, звон, вода…">
+          <button class="btn ghost" onclick="app.pickAsmr()">Папка…</button>
+          <label>Каждые:</label>
+          <select id="asmrEvery"><option value="15">15 сек</option><option value="22" selected>22 сек</option><option value="35">35 сек</option></select>
+          <button class="btn" onclick="app.addAsmr()">🔊 Вплести звуки</button>
+        </div>
+        <div class="hint">Софт сам раскидывает короткие звуки быта по таймлайну тихо под голосом —
+          создаёт «честное» ощущение присутствия. Звуки скачай бесплатно на pixabay.com/sound-effects.</div>
       </section>
 
       <!-- ================= ТРАНСКРИБАЦИЯ ================= -->

@@ -244,8 +244,10 @@ const app = {
     }
   },
   pickMusic: () => rpc("pick_music").then(p => { if (p) $("musicPath").value = p; }),
-  mixMusic: () => rpc("mix_music", $("musicPath").value, $("mood").value,
+  mixMusic: () => rpc("mix_music", $("musicPath").value,
                       parseInt($("musicGain").value)),
+  pickAsmr: () => rpc("pick_folder").then(p => { if (p) $("asmrPath").value = p; }),
+  addAsmr: () => rpc("add_asmr", $("asmrPath").value, parseFloat($("asmrEvery").value)),
   runSubs: () => rpc("subs", $("whisperModel").value, parseInt($("subLineWidth").value)),
   fetchStocks: () => rpc("stocks", $("scenesText").value, $("kenburns").checked),
   addMedia: () => rpc("add_own_media").then(refresh),

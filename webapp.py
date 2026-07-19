@@ -315,24 +315,41 @@ class Api:
         self._bg("Озвучка", lambda: self._tts_step(p))
 
     def pick_music(self):
-        res = self._win.create_file_dialog(webview.OPEN_DIALOG)
+        # мультивыбор файлов -> несколько путей через | (плейлист)
+        res = self._win.create_file_dialog(
+            webview.OPEN_DIALOG, allow_multiple=True,
+            file_types=("Аудио (*.mp3;*.wav;*.m4a;*.ogg;*.flac)",
+                        "Все файлы (*.*)"))
+        return " | ".join(res) if res else None
+
+    def pick_folder(self):
+        res = self._win.create_file_dialog(webview.FOLDER_DIALOG)
         return res[0] if res else None
 
-    def mix_music(self, path: str, mood: str, gain: int):
+    def mix_music(self, path: str, gain: int):
         def job():
             voice = self._project / "audio" / "voiceover.mp3"
             if not voice.exists():
                 raise RuntimeError("Сначала озвучка.")
-            src = Path(path) if path else None
-            if src and src.is_dir():
-                src = core.pick_music_by_mood(src, mood)
-            if not src or not src.exists():
-                md = self._settings.get("music_dir", "")
-                if not md:
-                    raise RuntimeError("Укажи файл или папку с музыкой.")
-                src = core.pick_music_by_mood(Path(md), mood)
+            src = path.strip() if path else self._settings.get("music_dir", "")
+            if not src:
+                raise RuntimeError("Укажи файл(ы) или папку с музыкой.")
+            self._settings["music_dir"] = src
+            self._save_settings_file()
             core.add_music(voice, src, self.log, int(gain))
         self._bg("Музыка", job)
+
+    def add_asmr(self, path: str, every: float):
+        def job():
+            base = self._project / "audio" / "voiceover_music.mp3"
+            if not base.exists():
+                base = self._project / "audio" / "voiceover.mp3"
+            if not base.exists():
+                raise RuntimeError("Сначала озвучка (и по желанию музыка).")
+            if not (path or "").strip():
+                raise RuntimeError("Укажи папку со звуками быта.")
+            core.add_ambience(base, path.strip(), self.log, every=float(every))
+        self._bg("ASMR-звуки", job)
 
     # ---------- субтитры / стоки / раскадровка ----------
     def subs(self, model: str, line_width: int = 42):
