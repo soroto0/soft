@@ -118,7 +118,7 @@ def parse_overlays(text: str) -> list[dict]:
         t = srt_to_seconds(tc.replace(".", ","))
         otype = parts[1].lower()
         if otype not in ("popup", "lower3", "callout", "counter",
-                         "bars", "timeline"):
+                         "bars", "timeline", "infographic"):
             continue
         pos = parts[3] if len(parts) > 3 and parts[3] else ""
         dur = 4.0
@@ -510,8 +510,82 @@ def _position(pos: str, otype: str, cw: int, ch: int, W: int, H: int):
         "bottom-right": (W - cw - 60, H - ch - int(H * 0.16)),
     }
     default = {"popup": "top-right", "lower3": "bottom", "counter": "center",
-               "bars": "center", "timeline": "bottom"}.get(otype, "center")
+               "bars": "center", "timeline": "bottom",
+               "infographic": "center"}.get(otype, "center")
     return table.get(p, table[default])
+
+
+GOLD = (222, 179, 92, 255)     # золото, как акцент инфографики Hidden Homestead
+GOLD_DIM = (150, 120, 55, 255)
+
+
+def render_infographic(content: str, dur: float, fps: int, W: int, H: int,
+                       dest_dir: Path):
+    """Полноэкранная инфографика в стиле документального канала: сетка на
+    тёмном фоне + заголовок сверху + растущий вертикальный бар + крупное
+    золотое число + источник внизу мелким. Формат content:
+    «94% Заголовок :: Источник исследования» (после :: — подпись-источник)."""
+    from PIL import Image, ImageDraw, ImageFilter
+
+    head, _, source = content.partition("::")
+    head, source = head.strip(), source.strip()
+    m = re.search(r"([\d][\d,.]*)\s*(%|[a-zA-Zа-яА-Я$]*)", head)
+    num = m.group(1) if m else "100"
+    unit = (m.group(2) if m else "").strip()
+    value = float(re.sub(r"[^\d.]", "", num) or "0")
+    is_pct = unit == "%" or value <= 100
+    title = re.sub(r"^\s*[\d][\d,.]*\s*%?\s*", "", head).strip() or "Data"
+
+    Wp, Hp = W, H
+    f_title = _font(int(H * 0.048) * SS)
+    f_big = _font(int(H * 0.14) * SS)
+    f_src = _font(int(H * 0.026) * SS)
+    bx = int(Wp * 0.42)                       # бар слева от центра
+    bw = int(Wp * 0.055)
+    btop, bbot = int(Hp * 0.24), int(Hp * 0.80)
+    bh = bbot - btop
+
+    n = max(int(dur * fps), 2)
+    frames = []
+    for i in range(n):
+        t = i / fps
+        k = _ease_out(min(t / max(dur * 0.55, 0.1), 1.0))   # рост бара
+        cur = value * k
+        big = Image.new("RGBA", (Wp * SS, Hp * SS), (10, 9, 7, 235))
+        d = ImageDraw.Draw(big)
+        # сетка
+        step = int(Wp * SS / 14)
+        for gx in range(0, Wp * SS, step):
+            d.line([(gx, 0), (gx, Hp * SS)], fill=(60, 55, 40, 90), width=1)
+        for gy in range(0, Hp * SS, step):
+            d.line([(0, gy), (Wp * SS, gy)], fill=(60, 55, 40, 90), width=1)
+        # заголовок
+        tw = d.textlength(title, font=f_title)
+        d.text(((Wp * SS - tw) / 2, int(Hp * SS * 0.10)), title, font=f_title,
+               fill=WHITE, stroke_width=2 * SS, stroke_fill=(0, 0, 0, 200))
+        # рамка бара + заливка снизу вверх
+        x0, x1 = bx * SS, (bx + bw) * SS
+        d.rectangle([x0, btop * SS, x1, bbot * SS], outline=(120, 110, 80, 200),
+                    width=2 * SS)
+        frac = (cur / max(value, 1)) if is_pct else k
+        fill_top = int((bbot - bh * max(min(frac, 1.0), 0.0)) * SS)
+        y_bot = bbot * SS - 2 * SS
+        if fill_top < y_bot:                  # рисуем только непустой бар
+            d.rectangle([x0 + 2 * SS, fill_top, x1 - 2 * SS, y_bot], fill=GOLD)
+        # крупное число справа от бара
+        label = f"{cur:.0f}{unit}" if is_pct else f"{cur:,.0f}{unit}"
+        d.text((x1 + int(Wp * SS * 0.03), int(Hp * SS * 0.45)), label,
+               font=f_big, fill=GOLD, stroke_width=3 * SS,
+               stroke_fill=(0, 0, 0, 220))
+        # источник внизу
+        if source:
+            sw = d.textlength(source, font=f_src)
+            d.text(((Wp * SS - sw) / 2, int(Hp * SS * 0.92)), source,
+                   font=f_src, fill=(180, 175, 160, 220))
+        _fade(big, min(_ease_out(t / 0.35), _ease_out((dur - t) / 0.4)))
+        frames.append(big.resize((Wp, Hp), Image.LANCZOS))
+    _save_frames(frames, dest_dir)
+    return Wp, Hp
 
 
 def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
@@ -527,7 +601,8 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
     log(f"[Оверлеи] {len(items)} шт. — рендерю анимации (Pillow)...")
     renderers = {"popup": None, "lower3": render_lower3,
                  "callout": None, "counter": render_counter,
-                 "bars": render_bars, "timeline": render_timeline}
+                 "bars": render_bars, "timeline": render_timeline,
+                 "infographic": render_infographic}
     out = []
     for k, it in enumerate(items):
         try:
@@ -606,6 +681,15 @@ def _phrase_candidate(t: float, text: str, manifest: list):
     """Лучший кандидат фразы: (приоритет, строка overlays.txt) или None.
     Приоритет: 1 counter > 2 popup > 3 lower3 > 4 callout."""
     tc = f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
+
+    # процент/статистика -> полноэкранная инфографика (визитка канала)
+    mp = re.search(r"\b(\d{1,3}(?:\.\d+)?)\s*(?:%|percent|процент)", text, re.I)
+    if mp:
+        # заголовок — 3-5 значимых слов фразы для контекста
+        words = re.findall(r"[A-Za-zА-Яа-я]{4,}", text)[:4]
+        title = " ".join(words).title() if words else "Statistic"
+        return 1, (f"{tc} | infographic | {mp.group(1)}% {title} :: "
+                   f"по данным исследования | center | 5s")
 
     m = RE_MONEY.search(text)
     if m:

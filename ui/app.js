@@ -215,7 +215,8 @@ const app = {
   genScript() {
     const t = $("topic").value.trim();
     if (!t) return addLog("Напиши тему видео", "warn");
-    rpc("gen_script", t, parseInt($("minutes").value));
+    rpc("gen_script", t, parseInt($("minutes").value),
+        $("tone").value, $("lang").value);
   },
   saveScript: () => rpc("save_script", $("scriptText").value),
   autoScenes: () => rpc("auto_scenes", $("scriptText").value)
@@ -248,7 +249,8 @@ const app = {
                       parseInt($("musicGain").value)),
   pickAsmr: () => rpc("pick_folder").then(p => { if (p) $("asmrPath").value = p; }),
   addAsmr: () => rpc("add_asmr", $("asmrPath").value, parseFloat($("asmrEvery").value)),
-  runSubs: () => rpc("subs", $("whisperModel").value, parseInt($("subLineWidth").value)),
+  runSubs: () => rpc("subs", $("whisperModel").value,
+                     parseInt($("subLineWidth").value), $("lang").value),
   fetchStocks: () => rpc("stocks", $("scenesText").value, $("kenburns").checked),
   addMedia: () => rpc("add_own_media").then(refresh),
   storyboard() {
@@ -280,6 +282,7 @@ const app = {
   runSeo: () => rpc("seo").then(r => { if (r) $("seoOut").textContent = r; }),
   generateAll() {
     rpc("generate_all", {
+      lang: $("lang").value, tone: $("tone").value,
       script: $("scriptText").value,
       engine: $("ttsEngine").value, voice: $("ttsVoice").value,
       rate: $("ttsRate").value, pauses: $("ttsPauses").checked,

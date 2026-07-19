@@ -477,31 +477,53 @@ def llm_chat(messages: list[dict], api_key: str = "",
     raise RuntimeError("; ".join(errors))
 
 
-SCRIPT_SYSTEM = (
-    "You write long-form YouTube documentary narration in English. "
+# Жанры/тон — под ЛЮБУЮ тему. base — общий каркас, дальше добавка тона.
+SCRIPT_BASE = (
+    "You write long-form YouTube voice-over narration in {lang}. "
     "Style: tight, specific, zero filler. Every sentence carries a fact, an "
     "image, or tension. Banned phrases: 'in this video', 'let's dive in', "
     "'stay tuned', 'as we mentioned', 'in conclusion', 'without further ado'. "
     "No headings, no lists, no stage directions — pure spoken narration. "
-    "Separate paragraphs with a blank line.")
+    "Separate paragraphs with a blank line. ")
+
+TONES = {
+    "документальный": "Tone: authoritative documentary — calm, factual, "
+        "builds trust; weave in concrete numbers, dates and named sources.",
+    "истории/крайм":  "Tone: gripping true-story storytelling — suspense, "
+        "vivid scenes, cliffhangers between chapters.",
+    "образовательный": "Tone: clear educational explainer — simple analogies, "
+        "step-by-step logic, a curious friendly voice.",
+    "топ-лист":       "Tone: engaging countdown/list — each item a punchy "
+        "mini-story, rising stakes toward number one.",
+    "мотивация":      "Tone: cinematic motivational — vivid imagery, rhythm, "
+        "an emotional arc that lands on an uplifting payoff.",
+    "мистика/хоррор": "Tone: eerie atmospheric — dread, unanswered questions, "
+        "slow-burning tension.",
+}
+LANGS = {"английский": "English", "русский": "Russian", "испанский": "Spanish",
+         "немецкий": "German", "французский": "French", "португальский": "Portuguese"}
 
 
-def gen_script(topic: str, minutes: int, api_key: str = "", log=print) -> str:
-    """Длинный сценарий без воды: план из глав, потом главы по очереди
-    (каждая продолжает предыдущую). ~150 слов на минуту хронометража."""
+def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
+               tone: str = "документальный", lang: str = "английский") -> str:
+    """Длинный сценарий без воды на ЛЮБУЮ тему: план из глав, потом главы по
+    очереди. tone — жанр/подача, lang — язык. ~150 слов на минуту."""
     target_words = minutes * WORDS_PER_MINUTE
     n_sections = max(5, round(minutes / 4))
     sec_words = target_words // n_sections
+    lang_name = LANGS.get(lang, "English")
+    system = SCRIPT_BASE.format(lang=lang_name) + TONES.get(
+        tone, TONES["документальный"])
     log(f"[Агент] Сценарий «{topic}»: ~{minutes} мин (~{target_words} слов), "
-        f"{n_sections} глав по ~{sec_words} слов")
+        f"{n_sections} глав, жанр «{tone}», язык {lang_name}")
 
     outline = llm_chat(
-        [{"role": "system", "content": SCRIPT_SYSTEM},
+        [{"role": "system", "content": system},
          {"role": "user", "content":
-          f"Create an outline for a {minutes}-minute documentary about: {topic}. "
-          f"Output exactly {n_sections} chapter titles, one per line, numbered "
-          "1..N. Each chapter is a concrete sub-topic with a specific angle — "
-          "no vague titles. The chapters must build a narrative arc: hook, "
+          f"Create an outline for a {minutes}-minute video about: {topic}. "
+          f"Output exactly {n_sections} chapter titles in {lang_name}, one per "
+          "line, numbered 1..N. Each chapter is a concrete sub-topic with a "
+          "specific angle — no vague titles. Build a narrative arc: hook, "
           "escalation, payoff."}],
         api_key, 0.8, 1500)
     chapters = [re.sub(r"^\s*\d+[.)]\s*", "", ln).strip()
@@ -524,12 +546,12 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print) -> str:
         else:
             flow += "End on a note that pulls the viewer into the next chapter. "
         part = llm_chat(
-            [{"role": "system", "content": SCRIPT_SYSTEM},
+            [{"role": "system", "content": system},
              {"role": "user", "content":
-              f"Documentary about: {topic}.\n"
+              f"Video about: {topic}.\n"
               f"Chapter {i} of {len(chapters)}: {ch}.\n"
-              f"Write about {sec_words} words of narration for this chapter. "
-              + flow}],
+              f"Write about {sec_words} words of narration in {lang_name} for "
+              "this chapter. " + flow}],
             api_key, 0.75, min(max(sec_words * 3, 1200), 8000))
         parts.append(part)
         prev_tail = " ".join(part.split()[-25:])
@@ -922,10 +944,18 @@ def _console(msg: str):
             pass
 
 
+WHISPER_LANGS = {"английский": "en", "русский": "ru", "испанский": "es",
+                 "немецкий": "de", "французский": "fr", "португальский": "pt"}
+
+
 def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
-                       max_line_width: int = 42) -> Path:
+                       max_line_width: int = 42, lang: str = "en") -> Path:
     subs_dir = out_dir / "subs"
     subs_dir.mkdir(parents=True, exist_ok=True)
+    wl = WHISPER_LANGS.get(lang, lang or "en")
+    if wl != "en" and model.endswith(".en"):   # .en-модели только английский
+        model = model[:-3]
+        log(f"[Субтитры] Язык {wl} — беру мультиязычную модель {model}")
     log(f"[Субтитры] Whisper ({model})... первый запуск скачает модель, подожди")
     # ищем whisper.exe: PATH -> Scripts рядом с текущим Python. Иначе Popen
     # падает с невнятным «[WinError 2] Не удается найти указанный файл»
@@ -944,8 +974,8 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
     # (по 6-10 с целыми предложениями) на короткие ровные строки <=42 симв.,
     # максимум 2 строки — иначе субтитры «расползаются» по всему кадру
     cmd = [exe, str(audio_path), "--model", model,
-           "--language", "en", "--output_format", "srt",
-           "--word_timestamps", "True",
+           "--language", WHISPER_LANGS.get(lang, lang or "en"),
+           "--output_format", "srt", "--word_timestamps", "True",
            "--max_line_width", str(max_line_width), "--max_line_count", "2",
            "--output_dir", str(subs_dir)]
     _console("[whisper] $ " + " ".join(cmd))

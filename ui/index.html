@@ -72,9 +72,15 @@
         <h1 class="pagetitle">📝 Сценарий</h1>
         <div class="row">
           <label>Тема:</label>
-          <input type="text" id="topic" style="flex:1" placeholder="о чём видео — для генерации черновика">
+          <input type="text" id="topic" style="flex:1" placeholder="любая тема: история, наука, крайм, топ-10, мотивация…">
           <label>Хронометраж:</label>
           <select id="minutes"><option>15 мин</option><option>30 мин</option><option selected>45 мин</option><option>60 мин</option><option>90 мин</option></select>
+        </div>
+        <div class="row">
+          <label>Жанр:</label>
+          <select id="tone"><option selected>документальный</option><option>истории/крайм</option><option>образовательный</option><option>топ-лист</option><option>мотивация</option><option>мистика/хоррор</option></select>
+          <label>Язык:</label>
+          <select id="lang"><option selected>английский</option><option>русский</option><option>испанский</option><option>немецкий</option><option>французский</option><option>португальский</option></select>
           <button class="btn gold" onclick="app.genScript()">🤖 Сгенерировать черновик</button>
         </div>
         <div class="row">

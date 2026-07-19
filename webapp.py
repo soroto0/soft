@@ -282,11 +282,13 @@ class Api:
         self.log(f"[Сцены] Размечено {scenes.count(chr(10)) + 1} сцен по абзацам")
         return scenes
 
-    def gen_script(self, topic: str, minutes: int):
+    def gen_script(self, topic: str, minutes: int,
+                   tone: str = "документальный", lang: str = "английский"):
         key = self._settings.get("gemini_key", "") or self._settings.get("agnes_key", "")
 
         def job():
-            text = core.gen_script(topic, int(minutes), key, self.log)
+            text = core.gen_script(topic, int(minutes), key, self.log,
+                                   tone=tone, lang=lang)
             self.save_script(text)
             self._js(f"$('scriptText').value = {json.dumps(text)}; updateStats()")
         self._bg("Генерация сценария", job)
@@ -352,13 +354,13 @@ class Api:
         self._bg("ASMR-звуки", job)
 
     # ---------- субтитры / стоки / раскадровка ----------
-    def subs(self, model: str, line_width: int = 42):
+    def subs(self, model: str, line_width: int = 42, lang: str = "английский"):
         def job():
             audio = self._project / "audio" / "voiceover.mp3"
             if not audio.exists():
                 raise RuntimeError("Сначала озвучка.")
             core.transcribe_whisper(audio, model, self._project, self.log,
-                                    int(line_width))
+                                    int(line_width), lang)
         self._bg("Транскрибация", job)
 
     def stocks(self, scenes_text: str, kenburns: bool):
@@ -508,7 +510,8 @@ class Api:
             self.log("[Цепочка] Шаг 2/4 — субтитры…")
             core.transcribe_whisper(self._project / "audio" / "voiceover.mp3",
                                     p.get("whisper", "base.en"),
-                                    self._project, self.log)
+                                    self._project, self.log, 42,
+                                    p.get("lang", "английский"))
             self.log("[Цепочка] Шаг 3/4 — стоки по таймлайну…")
             core.auto_storyboard(
                 self._project, self.log,
