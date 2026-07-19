@@ -1392,7 +1392,7 @@ def export_premiere_xml(timeline: list[dict], audio_path: Path, dest: Path,
 def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     pixabay_keys: str = "", min_beat: float = 6.0,
                     gemini_key: str = "", agnes_key: str = "",
-                    genvideo: bool = False):
+                    genvideo: bool = False, max_unique: int = 200):
     """Подбирает материал по таймлайну озвучки: субтитры -> планы по min_beat
     секунд -> ключевые слова из текста каждого плана -> сток под план
     (видео нужной длины; если нет — фото + Ken Burns ровно на длину плана;
@@ -1482,6 +1482,13 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     plan_kinds = ["video" if i < 2 or i % 2 == 0 else "photo"
                   for i in range(len(beats))]
 
+    # Пул скачанных клипов для переиспользования: часовое видео = сотни
+    # планов, а у стоков лимиты. Качаем до max_unique уникальных клипов,
+    # дальше переиспользуем уже скачанные — рендер даёт им РАЗНОЕ движение
+    # камеры (зум/панорама), так что визуально это разные кадры.
+    pool, downloaded = [], 0
+    reused = 0
+
     timeline, prev_query = [], "cinematic background"
     for i, b in enumerate(beats, 1):
         need = b["end"] - b["start"]
@@ -1492,24 +1499,39 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         mm, ss = divmod(int(b["start"]), 60)
         clip, src_dur = None, None
         want_photo = plan_kinds[i - 1] == "photo"
-        try:
-            if want_photo:
-                clip = sdir / f"beat_{i:03d}_{safe}_kb.mp4"
-                src_dur = fetch_photo(query, need, clip)
-                if src_dur is None:                       # фото нет — берём видео
-                    clip = sdir / f"beat_{i:03d}_{safe}.mp4"
-                    src_dur = fetch_video(query, need, clip)
-            else:
-                clip = sdir / f"beat_{i:03d}_{safe}.mp4"
-                src_dur = fetch_video(query, need, clip)
-                if src_dur is None:                       # видео нет — берём фото
+
+        # лимит уникальных достигнут — сразу переиспользуем из пула
+        if downloaded >= max_unique and pool:
+            clip = pool[(i - 1) % len(pool)]
+            src_dur = audio_duration(clip) or need
+            reused += 1
+        else:
+            try:
+                if want_photo:
                     clip = sdir / f"beat_{i:03d}_{safe}_kb.mp4"
                     src_dur = fetch_photo(query, need, clip)
-            if src_dur is None:
+                    if src_dur is None:                   # фото нет — берём видео
+                        clip = sdir / f"beat_{i:03d}_{safe}.mp4"
+                        src_dur = fetch_video(query, need, clip)
+                else:
+                    clip = sdir / f"beat_{i:03d}_{safe}.mp4"
+                    src_dur = fetch_video(query, need, clip)
+                    if src_dur is None:                   # видео нет — берём фото
+                        clip = sdir / f"beat_{i:03d}_{safe}_kb.mp4"
+                        src_dur = fetch_photo(query, need, clip)
+                if src_dur is None:
+                    clip = None
+                else:
+                    pool.append(clip)
+                    downloaded += 1
+            except Exception as e:
+                log(f"[Раскадровка] План {i}: ошибка {e}")
                 clip = None
-        except Exception as e:
-            log(f"[Раскадровка] План {i}: ошибка {e}")
-            clip = None
+            # стоки не дали (лимит/не нашлось), но пул есть — переиспользуем
+            if clip is None and pool:
+                clip = pool[(i - 1) % len(pool)]
+                src_dur = audio_duration(clip) or need
+                reused += 1
         if clip is None and genvideo:
             # сток не нашёлся — генерируем настоящий видеоклип под длину плана
             try:
@@ -1544,6 +1566,10 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                              "file": str(clip.resolve()),
                              "src_duration": src_dur})
 
+    if reused:
+        log(f"[Раскадровка] Скачано уникальных: {downloaded}, "
+            f"переиспользовано (с разным движением): {reused} — "
+            "экономия запросов к стокам для длинного видео")
     _save_used(used)
     (out_dir / "timeline.json").write_text(
         json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")

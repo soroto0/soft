@@ -365,7 +365,8 @@ class Api:
                 float(beat),
                 self._settings.get("gemini_key", ""),
                 self._settings.get("agnes_key", ""),
-                bool(genvideo))
+                bool(genvideo),
+                int(self._settings.get("max_unique", 200)))
         self._bg("Раскадровка", job)
 
     # ---------- оверлеи ----------
@@ -497,7 +498,8 @@ class Api:
                 self._settings.get("pixabay_keys", ""),
                 float(p.get("beat", 6)),
                 self._settings.get("gemini_key", ""),
-                self._settings.get("agnes_key", ""), False)
+                self._settings.get("agnes_key", ""), False,
+                int(self._settings.get("max_unique", 200)))
             if not (p.get("overlays") or "").strip():
                 self._auto_overlays()   # моушн-графика сама, если не задана
             self.log("[Цепочка] Шаг 4/4 — рендер…")
