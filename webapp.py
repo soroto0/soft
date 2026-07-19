@@ -304,11 +304,12 @@ class Api:
             voice, rate = st["voice"], st["rate"]
             self.log(f"[Разнообразие] Голос {voice}, темп {rate:+d}% "
                      "(случайно под этот проект)")
+        enh = bool(p.get("enhance"))
         if "Edge" in p.get("engine", "Edge"):
-            core.tts_edge(text, voice, self._project, self.log, rate)
+            core.tts_edge(text, voice, self._project, self.log, rate, enh)
         else:
             core.tts_polly(text, voice, "neural", self._project,
-                           self.log, rate, bool(p.get("pauses", True)))
+                           self.log, rate, bool(p.get("pauses", True)), enh)
 
     def tts(self, p: dict):
         self._bg("Озвучка", lambda: self._tts_step(p))

@@ -100,10 +100,13 @@
           <label>Темп:</label>
           <select id="ttsRate"><option>-10%</option><option>-5%</option><option selected>0%</option><option>+5%</option><option>+10%</option></select>
           <label class="switch" id="pausesWrap"><input type="checkbox" id="ttsPauses" checked><span class="tr"></span>Паузы между абзацами</label>
+          <label class="switch"><input type="checkbox" id="ttsEnhance" checked><span class="tr"></span>🎚 Глубокий голос (дикторская компрессия)</label>
         </div>
         <div class="row">
           <button class="btn gold" onclick="app.runTts()">🎙 Озвучить сценарий</button>
         </div>
+        <div class="hint">«Глубокий голос» — компрессия + нижние частоты + нормализация,
+          как у диктора документального фильма (звучит плотно и убедительно).</div>
         <div class="divider"></div>
         <div class="sect">Фоновая музыка</div>
         <div class="row">
@@ -176,6 +179,7 @@
         <div class="row">
           <label>Разрешение:</label><select id="rRes"><option selected>1080p</option><option>4K</option></select>
           <label>FPS:</label><select id="rFps"><option>24</option><option selected>30</option><option>60</option></select>
+          <label>Стиль:</label><select id="rPreset" onchange="app.applyPreset()"><option value="custom" selected>как настроено</option><option value="documentary">📜 документальный (минимал)</option><option value="dynamic">⚡ динамичный</option></select>
           <label>Интенсивность:</label><select id="rInt"><option>слабая</option><option selected>средняя</option><option>сильная</option></select>
           <label>Качество:</label><select id="rQuality"><option selected>обычное</option><option>высокое</option><option>максимум</option></select>
           <label>Субтитры:</label><select id="rSubSize"><option>мелкие</option><option selected>средние</option><option>крупные</option></select>

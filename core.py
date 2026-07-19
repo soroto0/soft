@@ -127,9 +127,40 @@ def audio_duration(path: Path) -> float | None:
 
 # ---------- Озвучка ----------
 
-def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0) -> Path:
+def enhance_voice(mp3: Path, log=print) -> Path:
+    """Делает голос глубоким и «дикторским», как в документалках: сильная
+    компрессия (плотность), лёгкий подъём низов (глубина), де-эссер (убрать
+    свист «с»), нормализация громкости под стандарт YouTube. Перезаписывает
+    файл. При сбое ffmpeg — оставляет оригинал."""
+    mp3 = Path(mp3)
+    if not mp3.exists():
+        return mp3
+    tmp = mp3.with_name(mp3.stem + "_enh.mp3")
+    chain = (
+        "highpass=f=80,"                                  # убрать гул
+        "equalizer=f=110:t=q:w=1:g=2.5,"                  # тепло/глубина низов
+        "equalizer=f=6500:t=q:w=2:g=-3,"                  # де-эссер (мягче «с»)
+        "acompressor=threshold=-20dB:ratio=4:attack=6:release=180:makeup=3,"
+        "equalizer=f=3000:t=q:w=2:g=2,"                   # presence — разборчивость
+        "loudnorm=I=-16:TP=-1.5:LRA=11")                  # громкость под YouTube
+    try:
+        subprocess.run(["ffmpeg", "-y", "-i", str(mp3), "-af", chain,
+                        "-c:a", "libmp3lame", "-q:a", "2", str(tmp)],
+                       check=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
+        tmp.replace(mp3)
+        log("[Озвучка] Голос обработан: компрессия + глубина + нормализация "
+            "(документальный «дикторский» звук)")
+    except Exception as e:
+        tmp.unlink(missing_ok=True)
+        log(f"[Озвучка] Обработку голоса пропустил ({e.__class__.__name__})")
+    return mp3
+
+
+def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
+             enhance: bool = False) -> Path:
     """Бесплатная озвучка через Edge TTS (голоса Microsoft, ключи не нужны).
-    rate — отклонение темпа в процентах, например -5 или +10."""
+    rate — отклонение темпа в процентах; enhance — «дикторская» обработка."""
     import asyncio
     import edge_tts
 
@@ -142,15 +173,18 @@ def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0) -> Path:
         await edge_tts.Communicate(text, voice, rate=f"{rate:+d}%").save(str(final))
 
     asyncio.run(run())
+    if enhance:
+        enhance_voice(final, log)
     log(f"[Озвучка] Готово: {final}")
     return final
 
 
 def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
-              rate: int = 0, pauses: bool = True) -> Path:
+              rate: int = 0, pauses: bool = True, enhance: bool = False) -> Path:
     """Озвучка через Amazon Polly: куски по предложениям + склейка ffmpeg.
-    rate — отклонение темпа в процентах; pauses — паузы между абзацами (SSML).
-    Если движок не принимает SSML, автоматически откатывается на обычный текст."""
+    rate — отклонение темпа; pauses — паузы между абзацами (SSML);
+    enhance — «дикторская» обработка голоса. Если движок не принимает SSML,
+    автоматически откатывается на обычный текст."""
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
 
@@ -191,6 +225,8 @@ def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
                     "-i", str(concat), "-c", "copy", str(final)],
                    check=True, cwd=audio_dir,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if enhance:
+        enhance_voice(final, log)
     log(f"[Озвучка] Готово: {final}")
     return final
 

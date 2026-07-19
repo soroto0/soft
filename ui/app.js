@@ -223,8 +223,26 @@ const app = {
   runTts: () => rpc("tts", {
     engine: $("ttsEngine").value, voice: $("ttsVoice").value,
     rate: $("ttsRate").value, pauses: $("ttsPauses").checked,
+    enhance: $("ttsEnhance").checked,
     script: $("scriptText").value,
   }),
+  applyPreset() {
+    const p = $("rPreset").value;
+    const set = (id, v) => { if ($(id)) $(id).checked = v; };
+    if (p === "documentary") {          // минимал: чистые плашки, jump cuts
+      $("rSubStyle").value = "pill"; $("rInt").value = "слабая";
+      set("rGrain", false); set("rVhs", false); set("rChromab", false);
+      set("rBloom", false); set("rLeak", false); set("rDust", false);
+      set("rFlicker", false); set("rVignette", true); set("rLetterbox", true);
+      addLog("Пресет «документальный»: чистые плашки, jump cuts, "
+             + "минимум эффектов, спокойный тон", "dim");
+    } else if (p === "dynamic") {       // ярко: эффекты, быстрый монтаж
+      $("rSubStyle").value = "yellow_pop"; $("rInt").value = "сильная";
+      set("rGrain", true); set("rBloom", true); set("rLeak", true);
+      set("rChromab", true); set("rFlicker", true);
+      addLog("Пресет «динамичный»: жёлтые субтитры, быстрый монтаж, эффекты", "dim");
+    }
+  },
   pickMusic: () => rpc("pick_music").then(p => { if (p) $("musicPath").value = p; }),
   mixMusic: () => rpc("mix_music", $("musicPath").value, $("mood").value,
                       parseInt($("musicGain").value)),
@@ -263,6 +281,7 @@ const app = {
       script: $("scriptText").value,
       engine: $("ttsEngine").value, voice: $("ttsVoice").value,
       rate: $("ttsRate").value, pauses: $("ttsPauses").checked,
+      enhance: $("ttsEnhance").checked,
       whisper: $("whisperModel").value, beat: parseFloat($("beat").value),
       resolution: $("rRes").value, fps: parseInt($("rFps").value),
       intensity: $("rInt").value, sub_size: $("rSubSize").value,
