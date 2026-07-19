@@ -696,8 +696,33 @@ AGNES_IMAGE_MODEL = os.getenv("AGNES_IMAGE_MODEL", "agnes-image-2.1-flash")
 IMAGE_STYLE = ("Cinematic photography, realistic, high detail, "
                "no text or watermarks.")
 
+# Единый визуальный стиль проекта — главное, что делает канал «фильмом», а
+# не нарезкой стоков: ВСЕ кадры генерируются в одной эстетике. Выбирается
+# на проект; строка добавляется к каждому промпту генерации.
+VISUAL_STYLES = {
+    "кинематографичный": IMAGE_STYLE,
+    "винтаж/документ.":  "Vintage documentary photograph, warm faded film "
+        "colors, subtle grain, nostalgic 1950s-1970s aesthetic, soft natural "
+        "light, no text or watermarks.",
+    "тёплый уют":        "Cozy warm cinematic photo, golden hour light, soft "
+        "focus background, inviting homely atmosphere, film look, no text.",
+    "тёмный кино":       "Dark moody cinematic still, low-key dramatic "
+        "lighting, deep shadows, teal-orange grade, film grain, no text.",
+    "архив ч/б":         "Authentic black and white archival photograph, "
+        "historical documentary look, fine grain, aged tone, no text.",
+    "яркий научпоп":     "Clean bright editorial photo, vivid colors, sharp "
+        "detail, modern documentary style, no text or watermarks.",
+}
 
-def agnes_image(prompt: str, dest: Path, api_key: str, log=print) -> Path:
+
+def _image_prompt(prompt: str, style: str = "") -> str:
+    """Промпт для генерации: описание сцены + единый стиль проекта."""
+    style_text = VISUAL_STYLES.get(style, "") or IMAGE_STYLE
+    return f"{prompt}. {style_text}"
+
+
+def agnes_image(prompt: str, dest: Path, api_key: str, log=print,
+                style: str = "") -> Path:
     """Картинка через Agnes (/images/generations по официальной доке:
     size-тир 2K + ratio 16:9, response_format внутри extra_body)."""
     import base64
@@ -705,7 +730,7 @@ def agnes_image(prompt: str, dest: Path, api_key: str, log=print) -> Path:
     r = requests.post(f"{AGNES_BASE_URL}/images/generations",
                       headers={"Authorization": f"Bearer {api_key}"},
                       json={"model": AGNES_IMAGE_MODEL,
-                            "prompt": f"{prompt}. {IMAGE_STYLE}",
+                            "prompt": _image_prompt(prompt, style),
                             "size": "2K", "ratio": "16:9",
                             "extra_body": {"response_format": "url"}},
                       timeout=360)
@@ -723,12 +748,12 @@ def agnes_image(prompt: str, dest: Path, api_key: str, log=print) -> Path:
     return dest
 
 
-def gemini_image(prompt: str, dest: Path, api_key: str) -> Path:
+def gemini_image(prompt: str, dest: Path, api_key: str, style: str = "") -> Path:
     """Картинка 16:9 через Gemini (AI Studio или Vertex Express по типу ключа)."""
     import base64
     import requests
     body = {
-        "contents": [{"parts": [{"text": f"{prompt}. {IMAGE_STYLE}"}]}],
+        "contents": [{"parts": [{"text": _image_prompt(prompt, style)}]}],
         "generationConfig": {"responseModalities": ["IMAGE"],
                              "imageConfig": {"aspectRatio": "16:9"}},
     }
@@ -749,9 +774,10 @@ def gemini_image(prompt: str, dest: Path, api_key: str) -> Path:
     raise RuntimeError(f"Gemini не сгенерировал изображение: {last_err}")
 
 
-def gen_image(prompt: str, dest: Path, api_key: str = "", log=print) -> Path:
-    """Картинка: Agnes (с ротацией всех ключей), потом Gemini (api_key или
-    GEMINI_API_KEY). api_key — ключ Gemini из «Настроек API» (совместимость)."""
+def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
+              style: str = "") -> Path:
+    """Картинка: Agnes (с ротацией всех ключей), потом Gemini. style — единый
+    визуальный стиль проекта (VISUAL_STYLES), добавляется к промпту."""
     agn_keys = _agnes_keys()
     gem = (api_key or os.getenv("GEMINI_API_KEY", "")).strip()
     if not agn_keys and not gem:
@@ -760,7 +786,7 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print) -> Path:
     last = None
     for i, key in enumerate(agn_keys, 1):
         try:
-            return agnes_image(prompt, dest, key, log)
+            return agnes_image(prompt, dest, key, log, style)
         except Exception as e:
             last = e
             if i < len(agn_keys):
@@ -768,7 +794,7 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print) -> Path:
     if gem:
         if last:
             log(f"[Картинка] Agnes не справился ({last}) — пробую Gemini...")
-        return gemini_image(prompt, dest, gem)
+        return gemini_image(prompt, dest, gem, style)
     raise last
 
 
@@ -1549,7 +1575,8 @@ def export_premiere_xml(timeline: list[dict], audio_path: Path, dest: Path,
 def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     pixabay_keys: str = "", min_beat: float = 6.0,
                     gemini_key: str = "", agnes_key: str = "",
-                    genvideo: bool = False, max_unique: int = 200):
+                    genvideo: bool = False, max_unique: int = 200,
+                    visual_mode: str = "stock", visual_style: str = ""):
     """Подбирает материал по таймлайну озвучки: субтитры -> планы по min_beat
     секунд -> ключевые слова из текста каждого плана -> сток под план
     (видео нужной длины; если нет — фото + Ken Burns ровно на длину плана;
@@ -1674,6 +1701,27 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             clip = reuse_from_pool()
             src_dur = audio_duration(clip) or need
             reused += 1
+        elif visual_mode == "ai" and (agnes_key or os.getenv("AGNES_API_KEY", "")
+                                      or gemini_key or os.getenv("GEMINI_API_KEY", "")):
+            # ЕДИНЫЙ СТИЛЬ: каждый кадр генерируется ИИ в одной эстетике —
+            # это и отличает «фильм» канала от разношёрстной нарезки стоков.
+            try:
+                jpg = sdir / f"beat_{i:03d}_{safe}_ai.jpg"
+                gen_image(query, jpg, gemini_key, log, visual_style)
+                clip = sdir / f"beat_{i:03d}_{safe}_ai_kb.mp4"
+                ken_burns(jpg, clip, duration=need)
+                src_dur = need
+                pool.append(clip)
+                use_count[clip] = 1
+                downloaded += 1
+            except Exception as e:
+                log(f"[Раскадровка] План {i}: генерация не удалась ({e}) — "
+                    "беру сток")
+                clip = None
+                if pool:
+                    clip = reuse_from_pool()
+                    src_dur = audio_duration(clip) or need
+                    reused += 1
         else:
             try:
                 if want_photo:

@@ -254,11 +254,17 @@ const app = {
   fetchStocks: () => rpc("stocks", $("scenesText").value, $("kenburns").checked),
   addMedia: () => rpc("add_own_media").then(refresh),
   storyboard() {
-    if ($("genvideo").checked && !confirm(
-        "Включена ИИ-генерация клипов для ненайденных планов.\n" +
-        "Каждый клип тратит кредиты Agnes и делается 1-3 минуты.\n\nПродолжить?"))
+    const mode = $("visualMode").value;
+    if (mode === "ai" && !confirm(
+        "Режим «ИИ в едином стиле»: каждый кадр генерируется ИИ.\n" +
+        "Это даёт вид как у канала, но идёт долго (сотни картинок) и\n" +
+        "тратит кредиты Agnes.\n\nПродолжить?"))
       return;
-    rpc("storyboard", parseFloat($("beat").value), $("genvideo").checked);
+    if ($("genvideo").checked && mode !== "ai" && !confirm(
+        "ИИ-генерация клипов для ненайденных планов тратит кредиты Agnes.\n\nПродолжить?"))
+      return;
+    rpc("storyboard", parseFloat($("beat").value), $("genvideo").checked,
+        mode, $("visualStyle").value);
   },
   suggestOverlays: () => rpc("suggest_overlays", parseFloat($("ovDur").value))
       .then(r => { if (r) $("overlaysText").value = r; }),
@@ -283,6 +289,7 @@ const app = {
   generateAll() {
     rpc("generate_all", {
       lang: $("lang").value, tone: $("tone").value,
+      visual_mode: $("visualMode").value, visual_style: $("visualStyle").value,
       script: $("scriptText").value,
       engine: $("ttsEngine").value, voice: $("ttsVoice").value,
       rate: $("ttsRate").value, pauses: $("ttsPauses").checked,

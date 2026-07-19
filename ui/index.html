@@ -166,10 +166,17 @@
           <button class="btn gold" onclick="app.storyboard()">🪄 Собрать по субтитрам</button>
           <label>Длина плана:</label>
           <select id="beat"><option>4 c</option><option selected>6 c</option><option>8 c</option><option>10 c</option></select>
-          <label class="switch"><input type="checkbox" id="genvideo"><span class="tr"></span>ИИ-видео для ненайденных планов (кредиты!)</label>
+          <label class="switch"><input type="checkbox" id="genvideo"><span class="tr"></span>ИИ-видео для ненайденных (кредиты!)</label>
         </div>
-        <div class="hint">Материал подбирается под то, о чём говорится в каждый момент озвучки.
-          Результат: storyboard/, timeline.json и sequence.xml для Premiere.</div>
+        <div class="row">
+          <label>Источник кадров:</label>
+          <select id="visualMode"><option value="stock" selected>стоки (быстро)</option><option value="ai">🎨 ИИ в едином стиле (уровень канала)</option></select>
+          <label>Визуальный стиль:</label>
+          <select id="visualStyle"><option>кинематографичный</option><option selected>винтаж/документ.</option><option>тёплый уют</option><option>тёмный кино</option><option>архив ч/б</option><option>яркий научпоп</option></select>
+        </div>
+        <div class="hint">«ИИ в едином стиле» генерирует КАЖДЫЙ кадр в одной эстетике — это главное,
+          что делает видео похожим на настоящий канал (а не нарезку разношёрстных стоков).
+          Идёт медленно (сотни картинок) и тратит кредиты Agnes, зато выглядит цельно.</div>
       </section>
 
       <!-- ================= ОВЕРЛЕИ ================= -->
