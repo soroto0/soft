@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Полный тестовый прогон: сценарий (ИИ) -> озвучка -> субтитры (word-level)
 -> раскадровка (mixed 35% ИИ-кадров) -> оверлеи (авто) -> рендер с
-караоке-субтитрами. Тема: муравьи-суперорганизм, 5 минут, документальный тон.
+караоке-субтитрами. Тема: муравьи-суперорганизм, 3 минуты, документальный тон.
 """
 import sys
 import json
@@ -24,7 +24,7 @@ PIXABAY = core.os.getenv("PIXABAY_API_KEY", "")
 
 print("=== 1. Сценарий (ИИ, 5 минут) ===")
 topic = "The Ant Superorganism: How a Colony Thinks Without a Brain"
-script = core.gen_script(topic, 5, GEMINI, print, tone="документальный",
+script = core.gen_script(topic, 3, GEMINI, print, tone="документальный",
                          lang="английский")
 (PROJ / "script.txt").write_text(script, encoding="utf-8")
 print(f"Слов: {len(script.split())}")

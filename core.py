@@ -594,6 +594,19 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
 
     text = "\n\n".join(parts)
     words = len(text.split())
+    # заказанная длительность — это и минимум (retry выше), и максимум:
+    # модель нередко расходится и сильно перевыполняет план, особенно
+    # если совместить неск. коротких глав с ретраем на расширение
+    limit = round(target_words * 1.2)
+    if words > limit:
+        cut = " ".join(text.split()[:limit])
+        m = list(re.finditer(r"[.!?](?:\s|$)", cut))
+        if m:
+            cut = cut[:m[-1].end()].rstrip()
+        log(f"[Агент] Сценарий вышел длиннее заказа ({words} слов) — "
+            f"обрезаю по последнему законченному предложению до ~{limit}.")
+        text = cut
+        words = len(text.split())
     log(f"[Агент] Сценарий готов: {words} слов (~{words // WORDS_PER_MINUTE} мин). "
         "Обязательно вычитай и переработай его перед озвучкой — сырой текст "
         "нейросети это «inauthentic content».")
