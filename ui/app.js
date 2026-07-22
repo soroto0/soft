@@ -3,14 +3,23 @@
 
 const $ = (id) => document.getElementById(id);
 
+const ICO = {
+  script: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l5 5v13H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>',
+  tts: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3M8 21h8"/></svg>',
+  subs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>',
+  media: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="7" height="7" rx="1"/><rect x="14" y="5" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  overlays: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M19 15l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/></svg>',
+  render: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-4h14L20 9"/><rect x="3" y="9" width="18" height="10" rx="1.5"/><path d="M3 9l3-4M9 9l3-4M15 9l3-4"/></svg>',
+  build: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5L12 12l8-4.5M12 12v9"/></svg>',
+};
 const STAGES = [
-  ["📝", "Сценарий", "script"],
-  ["🎙", "Озвучка", "tts"],
-  ["💬", "Субтитры", "subs"],
-  ["🎞", "Раскадровка", "media"],
-  ["✨", "Оверлеи", "overlays"],
-  ["🎬", "Рендер", "render"],
-  ["📦", "Premiere", "build"],
+  [ICO.script, "Сценарий", "materials", "script"],
+  [ICO.tts, "Озвучка", "materials", "tts"],
+  [ICO.subs, "Субтитры", "materials", "subs"],
+  [ICO.media, "Раскадровка", "video", "media"],
+  [ICO.overlays, "Оверлеи", "video", "overlays"],
+  [ICO.render, "Рендер", "video", "render"],
+  [ICO.build, "Premiere", "build", null],
 ];
 
 const EDGE_VOICES = ["en-US-GuyNeural", "en-US-ChristopherNeural",
@@ -50,11 +59,25 @@ async function rpc(method, ...args) {
 document.querySelectorAll(".nav-item").forEach((el) => {
   el.onclick = () => showPage(el.dataset.page);
 });
-function showPage(name) {
+document.querySelectorAll(".subnav").forEach((nav) => {
+  nav.querySelectorAll(".pill").forEach((btn) => {
+    btn.onclick = () => showSub(nav, btn.dataset.sub);
+  });
+});
+function showPage(name, sub) {
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
   $("page-" + name).classList.add("active");
   document.querySelector(`.nav-item[data-page="${name}"]`).classList.add("active");
+  if (sub) {
+    const nav = $("page-" + name).querySelector(".subnav");
+    if (nav) showSub(nav, sub);
+  }
+}
+function showSub(nav, sub) {
+  const page = nav.closest(".page");
+  nav.querySelectorAll(".pill").forEach((b) => b.classList.toggle("active", b.dataset.sub === sub));
+  page.querySelectorAll(".subpage").forEach((sp) => sp.classList.toggle("active", sp.id === "sub-" + sub));
 }
 
 /* ---------- Журнал / статус (вызывается и из Python) ---------- */
@@ -114,11 +137,11 @@ async function refresh() {
 function renderCards() {
   const box = $("stageCards");
   box.innerHTML = "";
-  for (const [ico, name, page] of STAGES) {
+  for (const [ico, name, page, sub] of STAGES) {
     const ok = state.checks && state.checks[name];
     const card = document.createElement("div");
     card.className = "card";
-    card.onclick = () => showPage(page);
+    card.onclick = () => showPage(page, sub);
     card.innerHTML = `<div class="cico">${ico}</div>
       <div><div class="cname">${name}</div>
       <span class="chip ${ok ? "ok" : "wait"}">${ok ? "Готов" : "Ожидание"}</span></div>`;
@@ -220,7 +243,7 @@ const app = {
   },
   saveScript: () => rpc("save_script", $("scriptText").value),
   autoScenes: () => rpc("auto_scenes", $("scriptText").value)
-      .then(r => { if (r) { $("scenesText").value = r; showPage("media"); } }),
+      .then(r => { if (r) { $("scenesText").value = r; showPage("video", "media"); } }),
   runTts: () => rpc("tts", {
     engine: $("ttsEngine").value, voice: $("ttsVoice").value,
     rate: $("ttsRate").value, pauses: $("ttsPauses").checked,

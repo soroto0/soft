@@ -1180,21 +1180,55 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
     return srt
 
 
+def _delower_after_period(text: str) -> str:
+    """«insane gaze. But the dry...» -> «insane gaze. but the dry...» —
+    точку дальше уберёт strip_srt_punctuation(), а без этого шага слово
+    после неё осталось бы с большой буквы посреди фразы, будто это начало
+    нового предложения. "I" и акронимы (ALL CAPS) не трогаем."""
+    def _fix(m):
+        word = m.group(2)
+        if word == "I" or (len(word) > 1 and word.isupper()):
+            return m.group(0)
+        return m.group(1) + word[0].lower() + word[1:]
+    return re.sub(r"([.!?]\s+)([A-Z]\w*)", _fix, text)
+
+
 def strip_srt_punctuation(srt_path: Path):
     """Убирает запятые/точки/двоеточия/тире из текста субтитров (номера и
     таймкоды не трогает) — по просьбе: чистые строки без пунктуации,
     только слова. Знаки вопроса/восклицания и апострофы внутри слов
-    оставляем — они несут интонацию/орфографию, а не «шум»."""
-    lines = srt_path.read_text(encoding="utf-8").splitlines()
-    out = []
-    for line in lines:
-        if re.match(r"^\d+$", line) or "-->" in line or not line.strip():
-            out.append(line)
-        else:
-            cleaned = re.sub(r"[,.;:—–]+", "", line)
-            cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).strip()
-            out.append(cleaned)
-    srt_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    оставляем — они несут интонацию/орфографию, а не «шум». Блок может
+    состоять из 2 строк текста (Whisper max_line_count=2, перенос ради
+    ширины кадра, не новое предложение) — исходные переносы строк не
+    трогаем (важно для обычного, некараоке стиля субтитров), но точку на
+    стыке строк всё равно ловим, иначе слово после неё осталось бы с
+    большой буквы посреди фразы."""
+    raw = srt_path.read_text(encoding="utf-8")
+    blocks = re.split(r"\n\s*\n", raw.strip())
+    out_blocks = []
+    for block in blocks:
+        lines = block.splitlines()
+        if len(lines) < 2:
+            out_blocks.append(block)
+            continue
+        head, text_lines = lines[:2], lines[2:]
+        for i in range(len(text_lines) - 1):
+            if (re.search(r"[.!?]\s*$", text_lines[i].strip())
+                    and re.match(r"[A-Z]", text_lines[i + 1].strip())):
+                nxt = text_lines[i + 1]
+                m = re.match(r"(\s*)([A-Z]\w*)(.*)", nxt, re.S)
+                if m and not (m.group(2) == "I"
+                             or (len(m.group(2)) > 1 and m.group(2).isupper())):
+                    text_lines[i + 1] = (m.group(1) + m.group(2)[0].lower()
+                                         + m.group(2)[1:] + m.group(3))
+        cleaned = []
+        for t in text_lines:
+            t = _delower_after_period(t)
+            t = re.sub(r"[,.;:—–]+", "", t)
+            t = re.sub(r"[ \t]{2,}", " ", t).strip()
+            cleaned.append(t)
+        out_blocks.append("\n".join(head + cleaned))
+    srt_path.write_text("\n\n".join(out_blocks) + "\n", encoding="utf-8")
 
 
 def load_whisper_words(json_path: Path) -> list[dict]:
@@ -1755,6 +1789,55 @@ def export_premiere_xml(timeline: list[dict], audio_path: Path, dest: Path,
     return dest
 
 
+def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
+                       plan_kinds: list[str], sdir: Path, gemini_key: str,
+                       visual_style: str, log):
+    """Параллельно (до 4 задач одновременно — лимит тарифа VeoNonStop)
+    генерирует ВСЕ кадры для visual_mode="ai" заранее, до основного цикла
+    auto_storyboard. Раньше раскадровка шла строго по одной задаче —
+    для ролика из ~20 планов это давало ~20x1-3 мин последовательно.
+    Имена файлов вычисляются 1-в-1 как в основном цикле — он их просто
+    находит на диске (см. os.path.exists проверки там) и пропускает
+    повторную генерацию; план, который префетч не осилил (ошибка сети и
+    т.п.), основной цикл досоздаст сам, как и раньше."""
+    from concurrent.futures import ThreadPoolExecutor
+    jobs = []
+    prev_query = "cinematic background"
+    for i, b in enumerate(beats, 1):
+        query = ((queries[i - 1] if queries else "")
+                 or extract_keywords(b["text"]) or prev_query)
+        prev_query = query
+        safe = re.sub(r"[^\w\-]+", "_", query)[:40]
+        want_photo = plan_kinds[i - 1] == "photo"
+        if want_photo:
+            jobs.append((i, "photo", query, sdir / f"beat_{i:03d}_{safe}_ai.jpg"))
+        else:
+            jobs.append((i, "video", query, sdir / f"beat_{i:03d}_{safe}_ai.mp4"))
+
+    def run_job(job):
+        i, kind, query, dest = job
+        try:
+            if kind == "photo":
+                gen_image(query, dest, gemini_key, log, visual_style)
+            else:
+                gen_video(_image_prompt(query, visual_style), dest, log)
+            return (i, True, None)
+        except Exception as e:
+            return (i, False, e)
+
+    log(f"[Раскадровка] Параллельная генерация: {len(jobs)} кадров, "
+        "до 4 одновременно (лимит VeoNonStop)...")
+    ok = 0
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for i, success, err in ex.map(run_job, jobs):
+            if success:
+                ok += 1
+            else:
+                log(f"[Раскадровка] План {i}: параллельно не вышло "
+                    f"({err}) — досоздастся в обычном проходе")
+    log(f"[Раскадровка] Параллельно готово: {ok}/{len(jobs)}")
+
+
 def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     pixabay_keys: str = "", min_beat: float = 6.0,
                     gemini_key: str = "", agnes_key: str = "",
@@ -1898,6 +1981,10 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         use_count[c] = use_count.get(c, 0) + 1
         return c
 
+    if visual_mode == "ai" and os.getenv("VEO_API_KEY", "").strip():
+        _prefetch_ai_beats(beats, queries, plan_kinds, sdir, gemini_key,
+                           visual_style, log)
+
     timeline, prev_query = [], "cinematic background"
     for i, b in enumerate(beats, 1):
         need = b["end"] - b["start"]
@@ -1926,14 +2013,16 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             try:
                 if want_photo:
                     jpg = sdir / f"beat_{i:03d}_{safe}_ai.jpg"
-                    gen_image(query, jpg, gemini_key, log, visual_style)
+                    if not jpg.exists():   # уже мог подготовить префетч
+                        gen_image(query, jpg, gemini_key, log, visual_style)
                     clip = sdir / f"beat_{i:03d}_{safe}_ai_kb.mp4"
                     ken_burns(jpg, clip, duration=need)
                     src_dur = need
                 else:
                     clip = sdir / f"beat_{i:03d}_{safe}_ai.mp4"
-                    gen_video(_image_prompt(query, visual_style), clip, log,
-                             seconds=need)
+                    if not clip.exists():   # уже мог подготовить префетч
+                        gen_video(_image_prompt(query, visual_style), clip, log,
+                                 seconds=need)
                     src_dur = audio_duration(clip) or need
                 pool.append(clip)
                 use_count[clip] = 1

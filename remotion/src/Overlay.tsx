@@ -1,160 +1,74 @@
 import React from 'react';
-import {
-  AbsoluteFill,
-  Img,
-  interpolate,
-  spring,
-  useCurrentFrame,
-  useVideoConfig,
-} from 'remotion';
+import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 
-// Движок моушн-графики «Контент-фабрики». Рендерится в PNG-секвенцию
-// с альфа-каналом; python накладывает её через ffmpeg overlay.
+export type OverlayProps = { type: string; content: string; pos: string; dur: number; fps?: number; width?: number; height?: number; img?: string; };
 
-export type OverlayProps = {
-  type: string; // lower3 | counter | callout | popup | bars | timeline
-  content: string;
-  pos: string; // top-right / bottom / point:70,60 / ...
-  dur: number; // секунды
-  fps?: number;
-  width?: number;
-  height?: number;
-  img?: string; // имя файла в public/ (для popup)
-};
-
-const ACCENT = '#e8a33d';
-const ACCENT_LIGHT = '#ffd27a';
-const PLATE = 'rgba(10,10,14,0.86)';
-const FONT = "'Segoe UI Black', 'Segoe UI', 'Arial', sans-serif";
-
-// Затухание в конце: 1 -> 0 за последние 0.3 c
 const useExit = (dur: number) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const t = frame / fps;
-  return interpolate(t, [dur - 0.3, dur], [1, 0], {
+  return interpolate(t, [dur - 0.3, dur], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+};
+
+const useEnter = (dur: number) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const t = frame / fps;
+  return interpolate(t, [0, 0.4], [0, 1], {
+    easing: Easing.bezier(0.25, 0.1, 0.25, 1),
     extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
+    extrapolateRight: 'clamp'
   });
 };
 
-// ---------- lower3: плашка ----------
-const Lower3: React.FC<OverlayProps> = (p) => {
+const formatCounter = (value: number) => {
+  if (value < 1000) return Math.floor(value).toString();
+  return value.toLocaleString('en-US');
+};
+
+const LowerThird = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
   const frame = useCurrentFrame();
-  const {fps, height: H} = useVideoConfig();
-  const exit = useExit(p.dur);
-  const strip = spring({frame, fps, config: {damping: 16}, durationInFrames: fps * 0.3});
-  const plate = spring({
-    frame: frame - fps * 0.1,
-    fps,
-    config: {damping: 13, stiffness: 120},
-    durationInFrames: fps * 0.45,
+  const { width } = useVideoConfig();
+
+  // Animation logic
+  const slideIn = interpolate(frame, [0, 40], [-width * 0.2, 0], {
+    easing: Easing.out(Easing.ease),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp'
   });
-  const text = spring({
-    frame: frame - fps * 0.3,
-    fps,
-    config: {damping: 15},
-    durationInFrames: fps * 0.35,
-  });
-  const fontSize = H * 0.042;
-  const kicker = spring({
-    frame: frame - fps * 0.42,
-    fps,
-    config: {damping: 15},
-    durationInFrames: fps * 0.3,
-  });
+  
+  const opacity = enter * exit;
+  const scale = interpolate(enter, [0, 1], [0.95, 1]);
+
   return (
-    <AbsoluteFill>
-      {/* мягкое свечение под плашкой — доп. слой глубины */}
-      <div
-        style={{
-          position: 'absolute',
-          left: 20,
-          bottom: H * 0.1,
-          width: 420,
-          height: 200,
-          background: `radial-gradient(ellipse, ${ACCENT}33 0%, rgba(0,0,0,0) 70%)`,
-          opacity: exit * plate,
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          left: 80 - (1 - exit) * 60,
-          bottom: H * 0.16,
-          opacity: exit,
-          display: 'flex',
-          alignItems: 'stretch',
-          borderRadius: 12,
-          overflow: 'hidden',
-          boxShadow: `0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px ${ACCENT}22`,
-        }}
-      >
-        <div
-          style={{
-            width: 9,
-            background: `linear-gradient(180deg, ${ACCENT_LIGHT}, ${ACCENT})`,
-            transform: `scaleY(${strip})`,
-            transformOrigin: 'top',
-          }}
-        />
-        <div
-          style={{
-            position: 'relative',
-            background: `linear-gradient(180deg, rgba(20,20,26,0.92), ${PLATE})`,
-            padding: `${fontSize * 0.4}px ${fontSize * 0.8}px`,
-            maxWidth: '58vw',
-            transform: `scaleX(${Math.max(plate, 0.001)})`,
-            transformOrigin: 'left',
-            overflow: 'hidden',
-          }}
-        >
-          {/* тонкая световая линия сверху плашки */}
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 1,
-              background: `linear-gradient(90deg, ${ACCENT_LIGHT}aa, transparent)`,
-            }}
-          />
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              opacity: kicker,
-              transform: `translateY(${(1 - kicker) * 6}px)`,
-              marginBottom: fontSize * 0.16,
-            }}
-          >
-            <div
-              style={{
-                width: 5,
-                height: 5,
-                borderRadius: '50%',
-                background: ACCENT_LIGHT,
-                boxShadow: `0 0 6px ${ACCENT_LIGHT}`,
-              }}
-            />
-            <div style={{width: fontSize * 0.7, height: 1.5, background: `${ACCENT_LIGHT}99`}} />
-          </div>
-          <div
-            style={{
-              fontFamily: FONT,
-              fontWeight: 800,
-              fontSize,
-              color: '#fff',
-              whiteSpace: 'nowrap',
-              letterSpacing: 0.5,
-              textShadow: '0 3px 10px rgba(0,0,0,0.6)',
-              transform: `translateY(${(1 - text) * fontSize * 1.4}px)`,
-              opacity: text,
-            }}
-          >
-            {p.content}
+    <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'flex-start', padding: '80px 60px' }}>
+      <div style={{ 
+        transform: `translateX(${slideIn}px) scale(${scale})`, 
+        opacity: opacity,
+        display: 'flex',
+        flexDirection: 'column',
+        width: '60%',
+        gap: '12px'
+      }}>
+        {/* Glow/Background Plate */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(90deg, rgba(232,163,61,0.15) 0%, rgba(20,20,20,0.0) 100%)', borderRadius: '4px' }} />
+        
+        {/* Main Text Container */}
+        <div style={{ position: 'relative', zIndex: 2 }}>
+          {/* Accent Line */}
+          <div style={{ 
+            position: 'absolute', top: '50%', left: '-20px', width: '12px', height: '3px', background: '#e8a33d', boxShadow: '0 0 8px #e8a33d' 
+          }} />
+          
+          <div style={{ 
+            fontFamily: "'Segoe UI Black', 'Arial', sans-serif", 
+            fontSize: '64px', 
+            lineHeight: 1, 
+            color: '#ffffff',
+            textShadow: '0 4px 12px rgba(0,0,0,0.8)',
+            letterSpacing: '-1px'
+          }}>
+            {content}
           </div>
         </div>
       </div>
@@ -162,431 +76,356 @@ const Lower3: React.FC<OverlayProps> = (p) => {
   );
 };
 
-// ---------- counter: накручивающийся счётчик ----------
-const Counter: React.FC<OverlayProps> = (p) => {
+const Counter = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
   const frame = useCurrentFrame();
-  const {fps, height: H} = useVideoConfig();
-  const exit = useExit(p.dur);
-  const t = frame / fps;
-  const m = p.content.match(/([^\d]*)([\d][\d,. ]*)(.*)/);
-  const prefix = m?.[1] ?? '';
-  const digits = m?.[2] ?? '0';
-  const suffix = m?.[3] ?? '';
-  const value = parseInt(digits.replace(/[^\d]/g, ''), 10) || 0;
-  const grouped = digits.includes(',') || value >= 10000;
-  const tHit = Math.max(p.dur * 0.6, 0.1);
-  const k = interpolate(t, [0, tHit], [0, 1], {
-    extrapolateRight: 'clamp',
-    easing: (x) => 1 - Math.pow(1 - x, 3),
+
+  // Parse content
+  const match = content.match(/([^\d]*)([\d][\d,.\s]*)(.*)/);
+  const prefix = match ? match[1] : '';
+  const suffix = match ? match[3] : '';
+  const rawNumStr = match ? match[2].replace(/[,\s]/g, '') : '0';
+  const targetNum = parseFloat(rawNumStr) || 0;
+
+  const currentVal = interpolate(frame, [0, 60], [0, targetNum], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp'
   });
-  const cur = Math.round(value * k);
-  const shown = grouped ? cur.toLocaleString('en-US') : String(cur);
-  const hit = spring({
-    frame: frame - tHit * fps,
-    fps,
-    config: {damping: 9, stiffness: 190},
-    durationInFrames: fps * 0.5,
-  });
-  const scale = t < tHit ? 1 : 1 + 0.09 * (1 - hit);
-  const enter = spring({frame, fps, config: {damping: 14}, durationInFrames: fps * 0.3});
-  const jitter = k < 1 ? Math.sin(t * 43) * 2 : 0;
+
+  const opacity = enter * exit;
+  const scale = interpolate(enter, [0, 1], [0.8, 1]);
+
   return (
-    <AbsoluteFill style={{justifyContent: 'center', alignItems: 'center'}}>
-      <div
-        style={{
-          position: 'absolute',
-          width: '62%',
-          height: '30%',
-          background:
-            'radial-gradient(ellipse, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 70%)',
-          opacity: exit * enter,
-        }}
-      />
-      <div
-        style={{
-          fontFamily: FONT,
-          fontWeight: 800,
-          fontSize: H * 0.13,
-          color: '#fff',
-          WebkitTextStroke: `${H * 0.006}px rgba(0,0,0,0.9)`,
-          textShadow: '0 6px 30px rgba(0,0,0,0.8)',
-          transform: `scale(${enter * scale}) translateY(${jitter}px)`,
-          opacity: exit,
-          letterSpacing: 2,
-        }}
-      >
-        {prefix}
-        {shown}
-        {suffix}
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+      <div style={{ 
+        opacity: opacity,
+        transform: `scale(${scale})`,
+        textAlign: 'center',
+        filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.6))'
+      }}>
+        <div style={{ 
+          fontFamily: "'Segoe UI Black', 'Arial', sans-serif", 
+          fontSize: '140px', 
+          color: '#ffffff',
+          textShadow: '0 0 40px rgba(232,163,61,0.3)'
+        }}>
+          {prefix}{formatCounter(currentVal)}{suffix}
+        </div>
+        <div style={{ 
+          width: '100px', 
+          height: '4px', 
+          background: '#e8a33d', 
+          margin: '20px auto 0', 
+          borderRadius: '2px',
+          boxShadow: '0 0 10px #e8a33d'
+        }} />
       </div>
     </AbsoluteFill>
   );
 };
 
-// ---------- callout: выноска с прорисовкой линии ----------
-const Callout: React.FC<OverlayProps> = (p) => {
+const BarChart = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
   const frame = useCurrentFrame();
-  const {fps, width: W, height: H} = useVideoConfig();
-  const exit = useExit(p.dur);
-  const t = frame / fps;
-  const pm = p.pos.match(/point:([\d.]+),([\d.]+)/);
-  const px = (W * (pm ? parseFloat(pm[1]) : 70)) / 100;
-  const py = (H * (pm ? parseFloat(pm[2]) : 55)) / 100;
-  const right = px < W * 0.55;
-  const bw = Math.min(p.content.length * H * 0.023 + 90, W * 0.42);
-  const bh = H * 0.038 + 44;
-  const bx = right ? Math.min(px + W * 0.12, W - bw - 30) : Math.max(px - W * 0.12 - bw, 30);
-  const by = Math.max(Math.min(py - H * 0.14, H - bh - 30), 30);
-  const ex = right ? bx : bx + bw;
-  const ey = by + bh / 2;
-  const draw = interpolate(t, [0, 0.35], [0, 1], {
-    extrapolateRight: 'clamp',
-    easing: (x) => 1 - Math.pow(1 - x, 3),
+
+  const items = content.split(',').map(pair => {
+    const [label, val] = pair.split(':');
+    return { label: label.trim(), val: parseFloat(val) };
   });
-  const lineLen = Math.hypot(ex - px, ey - py);
-  const blockIn = spring({
-    frame: frame - 0.3 * fps,
-    fps,
-    config: {damping: 11, stiffness: 150},
-    durationInFrames: fps * 0.4,
-  });
-  const ring = (t0: number) => {
-    const kp = interpolate(t, [t0, t0 + 0.7], [0, 1], {
-      extrapolateLeft: 'clamp',
-      extrapolateRight: 'clamp',
-    });
-    return {r: 34 + 60 * (1 - Math.pow(1 - kp, 3)), o: (1 - kp) * 0.9};
-  };
-  const r1 = ring(0.45);
-  const r2 = ring(1.2);
+
+  const maxVal = Math.max(...items.map(i => i.val), 1);
+  const opacity = enter * exit;
+  const scale = interpolate(enter, [0, 1], [0.9, 1]);
+
   return (
-    <AbsoluteFill style={{opacity: exit}}>
-      <svg width={W} height={H}>
-        <circle
-          cx={px}
-          cy={py}
-          r={34}
-          fill="none"
-          stroke={ACCENT}
-          strokeWidth={6}
-          strokeDasharray={2 * Math.PI * 34}
-          strokeDashoffset={(1 - draw) * 2 * Math.PI * 34}
-          transform={`rotate(-90 ${px} ${py})`}
-        />
-        {[r1, r2].map((r, i) => (
-          <circle key={i} cx={px} cy={py} r={r.r} fill="none" stroke={ACCENT} strokeWidth={3} opacity={r.o} />
-        ))}
-        <line
-          x1={px}
-          y1={py}
-          x2={px + (ex - px) * draw}
-          y2={py + (ey - py) * draw}
-          stroke={ACCENT}
-          strokeWidth={5}
-          strokeDasharray={lineLen}
-        />
-        {draw < 1 && (
-          <circle cx={px + (ex - px) * draw} cy={py + (ey - py) * draw} r={8} fill="#fff" />
-        )}
-      </svg>
-      <div
-        style={{
-          position: 'absolute',
-          left: bx,
-          top: by,
-          width: bw,
-          height: bh,
-          background: PLATE,
-          border: `3px solid ${ACCENT}`,
-          borderRadius: 12,
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', padding: '40px' }}>
+      <div style={{ 
+        opacity: opacity,
+        transform: `scale(${scale})`,
+        width: '70%',
+        maxWidth: '800px'
+      }}>
+        {items.map((item, idx) => {
+          const barWidth = (item.val / maxVal) * 100;
+          const animWidth = interpolate(frame, [idx * 10 + 10, idx * 10 + 40], [0, barWidth], {
+            easing: Easing.out(Easing.cubic),
+            extrapolateLeft: 'clamp',
+            extrapolateRight: 'clamp'
+          });
+
+          return (
+            <div key={idx} style={{ marginBottom: '24px', display: 'flex', alignItems: 'center' }}>
+              <div style={{ width: '150px', textAlign: 'right', paddingRight: '20px', color: '#ccc', fontFamily: "'Segoe UI', sans-serif", fontSize: '24px' }}>
+                {item.label}
+              </div>
+              <div style={{ flex: 1, height: '30px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
+                <div style={{ 
+                  position: 'absolute', top: 0, left: 0, bottom: 0, width: `${animWidth}%`, 
+                  background: 'linear-gradient(90deg, #e8a33d, #ffd27a)',
+                  boxShadow: '0 0 15px rgba(232,163,61,0.5)',
+                  transition: 'width 0.1s linear'
+                }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const Timeline = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
+  const frame = useCurrentFrame();
+
+  const events = content.split(',').map(pair => {
+    const [year, label] = pair.split(':');
+    return { year: year.trim(), label: label.trim() };
+  });
+
+  const opacity = enter * exit;
+  const scale = interpolate(enter, [0, 1], [0.9, 1]);
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'center', paddingBottom: '150px' }}>
+      <div style={{ 
+        opacity: opacity,
+        transform: `scale(${scale})`,
+        width: '80%',
+        position: 'relative',
+        height: '100px'
+      }}>
+        {/* Line */}
+        <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '2px', background: 'rgba(255,255,255,0.2)' }} />
+        
+        {events.map((evt, idx) => {
+          const xPos = (idx / (events.length - 1 || 1)) * 100;
+          const dotAnim = interpolate(frame, [idx * 10 + 10, idx * 10 + 20], [0, 1], {
+            easing: Easing.out(Easing.back(1.5)),
+            extrapolateLeft: 'clamp',
+            extrapolateRight: 'clamp'
+          });
+
+          return (
+            <div key={idx} style={{ position: 'absolute', top: '50%', left: `${xPos}%`, transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+              <div style={{ 
+                width: '16px', height: '16px', borderRadius: '50%', 
+                background: '#e8a33d', 
+                boxShadow: '0 0 10px #e8a33d',
+                transform: `scale(${dotAnim})`,
+                marginBottom: '10px'
+              }} />
+              <div style={{ color: '#fff', fontFamily: "'Segoe UI Black', sans-serif", fontSize: '20px' }}>{evt.year}</div>
+              <div style={{ color: '#aaa', fontFamily: "'Segoe UI', sans-serif", fontSize: '14px', marginTop: '4px' }}>{evt.label}</div>
+            </div>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const Callout = ({ content, pos, exit, enter }: { content: string; pos: string; exit: number; enter: number }) => {
+  const { width, height } = useVideoConfig();
+
+  // Parse position
+  let x = 70, y = 55;
+  if (pos.startsWith('point:')) {
+    const parts = pos.replace('point:', '').split(',');
+    if (parts.length === 2) {
+      x = parseFloat(parts[0]);
+      y = parseFloat(parts[1]);
+    }
+  }
+
+  const opacity = enter * exit;
+  const scale = interpolate(enter, [0, 1], [0.8, 1]);
+
+  // Calculate absolute pixels for the pointer
+  const pxX = (x / 100) * width;
+  const pxY = (y / 100) * height;
+
+  // Target box position (offset from point)
+  const boxW = 300;
+  const boxH = 80;
+  let boxX = pxX + 40;
+  let boxY = pxY - 40;
+
+  // Keep in bounds roughly
+  if (boxX + boxW > width) boxX = pxX - boxW - 40;
+  if (boxY < 0) boxY = 20;
+  if (boxY + boxH > height) boxY = height - boxH - 20;
+
+  return (
+    <AbsoluteFill>
+      <div style={{ 
+        opacity: opacity,
+        transform: `translate(${pxX}px, ${pxY}px) scale(${scale})`,
+        position: 'absolute',
+        pointerEvents: 'none'
+      }}>
+        {/* Connector Line */}
+        <svg width={Math.abs(boxX - pxX) + boxW} height={Math.abs(boxY - pxY) + boxH} style={{ position: 'absolute', top: -boxH/2, left: -boxW/2 }}>
+           <line x1="0" y1={boxH/2} x2={boxW} y2={boxH/2} stroke="#e8a33d" strokeWidth="2" strokeDasharray="4 4" opacity="0.6" />
+        </svg>
+        
+        {/* The Box */}
+        <div style={{ 
+          position: 'absolute', top: -boxH/2, left: boxX > pxX ? 40 : -boxW - 40, 
+          width: boxW, height: boxH,
+          background: 'rgba(20,20,20,0.9)',
+          border: '1px solid rgba(232,163,61,0.3)',
+          borderRadius: '8px',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.8)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          fontFamily: FONT,
-          fontWeight: 700,
-          fontSize: H * 0.034,
-          color: '#fff',
-          boxShadow: '0 10px 35px rgba(0,0,0,0.5)',
-          transform: `scale(${0.7 + 0.3 * blockIn})`,
-          opacity: blockIn,
-          padding: '0 18px',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        {p.content}
-      </div>
-    </AbsoluteFill>
-  );
-};
-
-// ---------- popup: картинка-«вырезка» ----------
-const Popup: React.FC<OverlayProps> = (p) => {
-  const frame = useCurrentFrame();
-  const {fps, width: W, height: H} = useVideoConfig();
-  const t = frame / fps;
-  const enter = spring({frame, fps, config: {damping: 10, stiffness: 130}, durationInFrames: fps * 0.5});
-  const exitSlide = (p.img || p.content).length % 2 === 0;
-  const tExit = p.dur - 0.35;
-  const ke = interpolate(t, [tExit, p.dur], [0, 1], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-    easing: (x) => x * x * x,
-  });
-  const sway = 2.5 + 1.2 * Math.sin(t * 0.9);
-  const float = 6 * Math.sin(t * 1.6);
-  const scale = exitSlide ? enter : enter * (1 - ke);
-  const dx = exitSlide ? ke * W * 0.6 : 0;
-  const posMap: Record<string, React.CSSProperties> = {
-    'top-right': {right: 60, top: 60},
-    'top-left': {left: 60, top: 60},
-    top: {left: '50%', top: 60, transform: 'translateX(-50%)'},
-    center: {left: '50%', top: '50%', transform: 'translate(-50%,-50%)'},
-    bottom: {left: 80, bottom: H * 0.16},
-  };
-  const place = posMap[p.pos] ?? posMap['top-right'];
-  return (
-    <AbsoluteFill>
-      <div style={{position: 'absolute', ...place}}>
-        <div
-          style={{
-            background: '#fff',
-            padding: 14,
-            borderRadius: 4,
-            boxShadow: '0 24px 60px rgba(0,0,0,0.55)',
-            transform: `translate(${dx}px, ${float}px) rotate(${sway + ke * 10}deg) scale(${Math.max(
-              scale,
-              0.001
-            )})`,
-            filter: t < 0.3 ? `blur(${(1 - t / 0.3) * 5}px)` : undefined,
-          }}
-        >
-          {p.img ? (
-            <Img
-              src={p.img}
-              style={{maxWidth: W * 0.36, maxHeight: H * 0.5, display: 'block'}}
-            />
-          ) : null}
+          padding: '0 20px',
+          transform: 'translate(-50%, -50%)' // Center on calculated anchor relative to SVG
+        }}>
+          <div style={{ 
+            width: '4px', height: '40px', background: '#e8a33d', marginRight: '16px', borderRadius: '2px',
+            boxShadow: '0 0 8px #e8a33d'
+          }} />
+          <span style={{ color: '#fff', fontFamily: "'Segoe UI', sans-serif", fontSize: '24px', lineHeight: 1.2 }}>
+            {content}
+          </span>
         </div>
       </div>
     </AbsoluteFill>
   );
 };
 
-// ---------- bars: растущие бары ----------
-const Bars: React.FC<OverlayProps> = (p) => {
+const Popup = ({ img, exit, enter }: { img: string; exit: number; enter: number }) => {
   const frame = useCurrentFrame();
-  const {fps, width: W, height: H} = useVideoConfig();
-  const exit = useExit(p.dur);
-  const pairs = p.content
-    .split(',')
-    .map((c) => c.split(':'))
-    .filter((x) => x.length === 2)
-    .map(([label, v]) => ({label: label.trim(), value: parseFloat(v.replace(/[^\d.]/g, '')) || 0}));
-  const vmax = Math.max(...pairs.map((x) => x.value), 1);
-  const enter = spring({frame, fps, config: {damping: 14}, durationInFrames: fps * 0.3});
+
+  const opacity = enter * exit;
+  const sway = Math.sin(frame * 0.05) * 10;
+  const scale = interpolate(enter, [0, 1], [0.5, 1]);
+
   return (
-    <AbsoluteFill style={{justifyContent: 'center', alignItems: 'center'}}>
-      <div
-        style={{
-          background: PLATE,
-          borderRadius: 16,
-          padding: 28,
-          width: W * 0.5,
-          boxShadow: '0 16px 50px rgba(0,0,0,0.5)',
-          opacity: exit * enter,
-          transform: `scale(${0.9 + 0.1 * enter})`,
-        }}
-      >
-        {pairs.map((pair, j) => {
-          const k = spring({
-            frame: frame - j * 0.15 * fps,
-            fps,
-            config: {damping: 12, stiffness: 110},
-            durationInFrames: fps * 0.8,
-          });
-          return (
-            <div key={j} style={{display: 'flex', alignItems: 'center', margin: '14px 0'}}>
-              <div
-                style={{
-                  fontFamily: FONT,
-                  fontWeight: 700,
-                  fontSize: H * 0.03,
-                  color: '#fff',
-                  width: '26%',
-                }}
-              >
-                {pair.label}
-              </div>
-              <div style={{flex: 1, height: H * 0.045, borderRadius: 10, overflow: 'hidden', background: 'rgba(255,255,255,0.08)'}}>
-                <div
-                  style={{
-                    width: `${(pair.value / vmax) * 100 * k}%`,
-                    height: '100%',
-                    borderRadius: 10,
-                    background: `linear-gradient(180deg, ${ACCENT_LIGHT}, ${ACCENT})`,
-                  }}
-                />
-              </div>
-              <div
-                style={{
-                  fontFamily: FONT,
-                  fontWeight: 700,
-                  fontSize: H * 0.03,
-                  color: '#fff',
-                  width: 90,
-                  textAlign: 'right',
-                }}
-              >
-                {Math.round(pair.value * Math.min(k, 1))}
-              </div>
-            </div>
-          );
-        })}
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+      <div style={{ 
+        opacity: opacity,
+        transform: `scale(${scale}) rotate(${sway}deg)`,
+        position: 'relative',
+        filter: 'drop-shadow(0 20px 40px rgba(0,0,0,0.8))'
+      }}>
+        <Img src={img} style={{ maxHeight: '60vh', maxWidth: '80vw', borderRadius: '8px' }} />
+        {/* Tactile shadow layer simulation */}
+        <div style={{ 
+          position: 'absolute', top: '20px', left: '20px', right: '-20px', bottom: '-20px', 
+          background: 'rgba(0,0,0,0.4)', borderRadius: '8px', zIndex: -1 
+        }} />
       </div>
     </AbsoluteFill>
   );
 };
 
-// ---------- timeline: полоска с датами ----------
-const Timeline: React.FC<OverlayProps> = (p) => {
+const Compare = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
+
+  const [left, right] = content.split('|').map(s => s.trim());
+  
+  const opacity = enter * exit;
+  const scale = interpolate(enter, [0, 1], [0.9, 1]);
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', padding: '60px' }}>
+      <div style={{ 
+        opacity: opacity,
+        transform: `scale(${scale})`,
+        width: '90%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}>
+        {/* Left Box */}
+        <div style={{ 
+          flex: 1, background: 'rgba(20,20,20,0.8)', border: '1px solid rgba(255,255,255,0.1)', 
+          borderRadius: '12px', padding: '40px', textAlign: 'center',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+        }}>
+          <div style={{ color: '#fff', fontFamily: "'Segoe UI Black', sans-serif", fontSize: '48px', lineHeight: 1.2 }}>
+            {left}
+          </div>
+        </div>
+
+        {/* Connector */}
+        <div style={{ width: '100px', height: '2px', background: 'linear-gradient(90deg, transparent, #e8a33d, transparent)', margin: '0 20px' }} />
+
+        {/* Right Box */}
+        <div style={{ 
+          flex: 1, background: 'rgba(20,20,20,0.8)', border: '1px solid rgba(255,255,255,0.1)', 
+          borderRadius: '12px', padding: '40px', textAlign: 'center',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+        }}>
+          <div style={{ color: '#fff', fontFamily: "'Segoe UI Black', sans-serif", fontSize: '48px', lineHeight: 1.2 }}>
+            {right}
+          </div>
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const Banner = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
   const frame = useCurrentFrame();
-  const {fps, width: W, height: H} = useVideoConfig();
-  const exit = useExit(p.dur);
-  const t = frame / fps;
-  const pts = p.content
-    .split(',')
-    .map((c) => {
-      const i = c.indexOf(':');
-      return i > 0 ? {year: c.slice(0, i).trim(), label: c.slice(i + 1).trim()} : null;
-    })
-    .filter(Boolean) as {year: string; label: string}[];
-  const cw = W * 0.82;
-  const margin = 90;
-  const step = (cw - margin * 2) / Math.max(pts.length - 1, 1);
-  const grow = interpolate(t, [0, 0.55], [0, 1], {
-    extrapolateRight: 'clamp',
-    easing: (x) => 1 - Math.pow(1 - x, 3),
+  const { height } = useVideoConfig();
+
+  const opacity = enter * exit;
+  const slideDown = interpolate(frame, [0, 30], [-height, 0], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp'
   });
-  const enter = spring({frame, fps, config: {damping: 14}, durationInFrames: fps * 0.3});
+
   return (
-    <AbsoluteFill style={{justifyContent: 'flex-end', alignItems: 'center'}}>
-      <div
-        style={{
-          position: 'relative',
-          width: cw,
-          height: H * 0.18,
-          marginBottom: H * 0.14,
-          background: 'rgba(12,12,18,0.72)',
-          borderRadius: 16,
-          boxShadow: '0 16px 50px rgba(0,0,0,0.5)',
-          opacity: exit * enter,
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            left: margin,
-            top: '55%',
-            width: (cw - margin * 2) * grow,
-            height: 5,
-            background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT_LIGHT})`,
-            borderRadius: 3,
-          }}
-        />
-        {pts.map((pt, j) => {
-          const tShow = 0.45 + j * 0.35;
-          const pop = spring({
-            frame: frame - tShow * fps,
-            fps,
-            config: {damping: 10, stiffness: 170},
-            durationInFrames: fps * 0.4,
-          });
-          const ringK = interpolate(t, [tShow, tShow + 0.55], [0, 1], {
-            extrapolateLeft: 'clamp',
-            extrapolateRight: 'clamp',
-          });
-          const x = margin + step * j;
-          return (
-            <div key={j} style={{position: 'absolute', left: x, top: '55%', opacity: pop}}>
-              <div
-                style={{
-                  position: 'absolute',
-                  left: -11,
-                  top: -9,
-                  width: 22,
-                  height: 22,
-                  borderRadius: '50%',
-                  background: ACCENT,
-                  transform: `scale(${pop})`,
-                  boxShadow: `0 0 18px ${ACCENT}`,
-                }}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  left: -11 - 28 * ringK,
-                  top: -9 - 28 * ringK,
-                  width: 22 + 56 * ringK,
-                  height: 22 + 56 * ringK,
-                  borderRadius: '50%',
-                  border: `3px solid ${ACCENT}`,
-                  opacity: 1 - ringK,
-                }}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  transform: 'translateX(-50%)',
-                  bottom: 22,
-                  fontFamily: FONT,
-                  fontWeight: 800,
-                  fontSize: H * 0.036,
-                  color: '#fff',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {pt.year}
-              </div>
-              <div
-                style={{
-                  position: 'absolute',
-                  transform: 'translateX(-50%)',
-                  top: 26,
-                  fontFamily: FONT,
-                  fontWeight: 400,
-                  fontSize: H * 0.025,
-                  color: 'rgba(225,225,235,1)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {pt.label}
-              </div>
-            </div>
-          );
-        })}
+    <AbsoluteFill style={{ justifyContent: 'flex-start', alignItems: 'center', paddingTop: '40px' }}>
+      <div style={{ 
+        transform: `translateY(${slideDown}px)`,
+        opacity: opacity,
+        background: 'linear-gradient(180deg, #f0f0f0 0%, #dcdcdc 100%)',
+        width: '90%',
+        padding: '20px 40px',
+        borderRadius: '8px',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{ 
+          color: '#111', 
+          fontFamily: "'Segoe UI Black', sans-serif", 
+          fontSize: '42px',
+          textTransform: 'uppercase',
+          letterSpacing: '1px'
+        }}>
+          {content}
+        </div>
       </div>
     </AbsoluteFill>
   );
 };
 
-// ---------- диспетчер ----------
 export const Overlay: React.FC<OverlayProps> = (p) => {
+  const exit = useExit(p.dur);
+  const enter = useEnter(p.dur);
+
   switch (p.type) {
     case 'lower3':
-      return <Lower3 {...p} />;
+      return <LowerThird content={p.content} exit={exit} enter={enter} />;
     case 'counter':
-      return <Counter {...p} />;
-    case 'callout':
-      return <Callout {...p} />;
-    case 'popup':
-      return <Popup {...p} />;
+      return <Counter content={p.content} exit={exit} enter={enter} />;
     case 'bars':
     case 'infographic':
-      return <Bars {...p} />;
+      return <BarChart content={p.content} exit={exit} enter={enter} />;
     case 'timeline':
-      return <Timeline {...p} />;
+      return <Timeline content={p.content} exit={exit} enter={enter} />;
+    case 'callout':
+      return <Callout content={p.content} pos={p.pos} exit={exit} enter={enter} />;
+    case 'popup':
+      return <Popup img={p.img ?? ''} exit={exit} enter={enter} />;
+    case 'compare':
+      return <Compare content={p.content} exit={exit} enter={enter} />;
+    case 'banner':
+      return <Banner content={p.content} exit={exit} enter={enter} />;
     default:
       return <AbsoluteFill />;
   }

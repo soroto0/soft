@@ -318,7 +318,7 @@ IMAGE_MOTIONS = [
     "diag_tl", "diag_tr", "diag_bl", "diag_br",
     "zoompan_r", "zoompan_l", "pullpan_r", "pullpan_l",
     "arc_r", "arc_l", "drift", "drift_fast",
-    "push_in", "push_out", "shake", "shake_soft", "hold", "parallax",
+    "push_in", "push_out", "hold", "parallax",
 ]
 
 
@@ -368,7 +368,7 @@ def _motion_expr(motion: str, frames: int, fps: int) -> str:
 
 # движения для видео: статика чаще, лёгкие панорамы/зумы/дрейф — акцентами
 VIDEO_MOTIONS = ["static", "static", "static", "static",
-                 "v_pan_r", "v_pan_l", "v_drift", "v_shake",
+                 "v_pan_r", "v_pan_l", "v_drift",
                  "v_zoom_in", "v_zoom_out"]
 
 
@@ -593,7 +593,7 @@ def _group_concat_fallback(seg_files: list[Path], durs: list[float],
 
 # ---------- 4. Финальная сборка ----------
 
-SUB_SIZES = {"мелкие": 15, "средние": 19, "крупные": 24}
+SUB_SIZES = {"мелкие": 15, "средние": 19, "крупные": 24, "огромные": 36}
 
 
 def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box") -> str:

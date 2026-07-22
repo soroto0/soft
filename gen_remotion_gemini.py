@@ -22,12 +22,14 @@ CONTRACT = """Write a complete TSX file for a Remotion overlay component.
 STRICT REQUIREMENTS (this is a fixed contract, do not deviate):
 - `export type OverlayProps = { type: string; content: string; pos: string; dur: number; fps?: number; width?: number; height?: number; img?: string; };`
 - `export const Overlay: React.FC<OverlayProps>` — switches on `p.type`, rendering one of these cases (default: render nothing, `<AbsoluteFill />`):
-  - "lower3": p.content is a short text label (a date, name or place). Classic broadcast lower-third.
+  - "lower3": p.content is a short text label — could be a date, a name, a place, or ANY short phrase. Classic broadcast lower-third. Do NOT prepend an invented category kicker word above it (no "EVIDENCE", no "LOCATION", no "FACT" etc.) — you cannot know what the label represents, inventing a category is often wrong. A purely decorative kicker (small dot, thin accent line, no text) is fine.
   - "counter": p.content is like "$200,000" or "30,000" — animate counting up to that number, big and bold, center screen.
   - "bars": (alias "infographic") p.content is comma-separated "label:value" pairs, e.g. "Found:30,Missing:70" — animated bar chart.
   - "timeline": p.content is comma-separated "year:label" pairs — animated horizontal timeline with dots/markers.
-  - "callout": p.content is short text; p.pos may be "point:X,Y" (percent of frame width/height) — draw a pointer line/circle from that point to a text box. Default point if not "point:" format: 70,55.
+  - "callout": p.content is short text; p.pos may be "point:X,Y" (percent of frame width/height) — draw a pointer line/circle from that point to a text box. Default point if not "point:" format: 70,55. Do NOT prepend an invented category kicker like "KEY DETAIL" — same reasoning as lower3.
   - "popup": show `<Img src={p.img} />` — a picture cutout with physical, tactile motion (float/sway/drop-shadow). content unused here.
+  - "compare": p.content is "left text|right text" (split on the pipe `|` character) — two boxes side by side with a dashed connector line between them, for contrasting two facts/claims.
+  - "banner": p.content is a short punchy sentence — a wide bright banner bar spanning most of the frame width, anchored to the top, bold dark text on a bright/light background (this is the ONE type that should use a light/bright background rather than a dark plate — everything else stays dark/translucent).
 - Only import from 'react' and 'remotion' (AbsoluteFill, Img, interpolate, spring, useCurrentFrame, useVideoConfig, Easing, random — whichever you need). NO other packages, NO external fonts/URLs/network calls, NO <video>/<audio> tags — this is a transparent alpha-channel PNG-sequence overlay composited on top of existing footage via ffmpeg, nothing else.
 - Fonts: use only "Segoe UI Black", "Segoe UI", "Arial", sans-serif (system fonts only).
 - Every element must fully animate in using useCurrentFrame()/useVideoConfig() (fps = p.fps ?? 30) and fade/scale out during the last ~0.3s of `p.dur` seconds — never appear as a static, unanimated element.

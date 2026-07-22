@@ -3,8 +3,9 @@
 Моушн-графика: оверлеи поверх видеоряда.
 
 Типы: popup (картинка-вырезка с пружинкой), lower3 (плашка),
-callout (выноска с линией), counter (счётчик), bars (растущие бары),
-timeline (полоска с датами).
+callout (выноска с изогнутой стрелкой), counter (счётчик),
+bars (растущие бары), timeline (полоска с датами), compare (два блока
+текста с пунктиром между ними), banner (широкая яркая плашка сверху).
 
 Управление — overlays.txt в папке проекта, одна строка на оверлей:
     timecode | тип | контент | позиция | длительность
@@ -14,6 +15,8 @@ timeline (полоска с датами).
     00:05:00 | counter | $200,000 | center | 3s
     00:06:00 | bars | Found:30,Missing:70 | center | 4s
     00:07:00 | timeline | 1971:Hijacking,1980:Money found | bottom | 5s
+    00:08:00 | compare | Hidden foundation gaps|Dry bait reaches deep crevices | center | 4s
+    00:09:00 | banner | Dates matter: note the year and context | top | 4s
 
 Кадры анимации считаются в Pillow (пружина/ease-out), пишутся
 PNG-секвенциями и накладываются в финальном проходе ffmpeg через
@@ -122,7 +125,8 @@ def parse_overlays(text: str) -> list[dict]:
         t = srt_to_seconds(tc.replace(".", ","))
         otype = parts[1].lower()
         if otype not in ("popup", "lower3", "callout", "counter",
-                         "bars", "timeline", "infographic"):
+                         "bars", "timeline", "infographic",
+                         "compare", "banner"):
             continue
         pos = parts[3] if len(parts) > 3 and parts[3] else ""
         dur = 4.0
@@ -865,10 +869,23 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     заблуждение; если фото не нашлось, остаётся пометка NEEDS_IMAGE для
     ручного добавления. Для остального (места, понятия, абстрактные темы) —
     VeoNonStop (Banana) как ОСНОВНОЙ генератор иллюстрации, Wikimedia —
-    фолбэк, если Veo недоступен/упал."""
+    фолбэк, если Veo недоступен/упал. Если жёсткие правила (деньги/даты/
+    имена/вопросы) вообще ничего не нашли в тексте — просим Gemini выбрать
+    моменты для баннеров по смыслу (suggest_overlays_llm), а не оставляем
+    ролик совсем без оверлеев."""
     from pathlib import Path as _P
     from core import fetch_wiki_images, _load_used, _save_used, veo_image
     draft = suggest_overlays(rows, manifest, min_gap)
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if draft.startswith("#") and gemini_key:
+        llm_draft = suggest_overlays_llm(rows, gemini_key, log, min_gap)
+        if llm_draft:
+            draft = llm_draft
+        else:
+            log("[Оверлеи] LLM недоступен для этого текста (возможно, "
+                "фильтр безопасности на тяжёлой теме) — беру моменты "
+                "локально, без LLM")
+            draft = suggest_overlays_local(rows, min_gap)
     idir = _P(out_dir) / "images"
     idir.mkdir(parents=True, exist_ok=True)
     used = _load_used()
@@ -935,3 +952,141 @@ def suggest_overlays(rows: list, manifest: list, min_gap: float = 13.0,
         d = f"{dur:g}s"
         lines = [re.sub(r"\|\s*[\d.]+s\s*$", f"| {d}", ln) for ln in lines]
     return "\n".join(lines)
+
+
+def suggest_overlays_llm(rows: list, api_key: str, log=print,
+                         min_gap: float = 13.0, target: int = 6,
+                         attempts: int = 3) -> str | None:
+    """Фолбэк, когда suggest_overlays() по жёстким правилам (деньги/даты/
+    имена/вопросы) ничего не нашла — многие сценарии просто не содержат
+    таких формальных фактов. Вместо пустого ролика без единого оверлея
+    просим LLM самому выбрать ~target моментов по смыслу текста И тип
+    оверлея для каждого (микс banner/lower3/compare/callout — не всё
+    подряд баннерами). До attempts попыток — модель не всегда с первого
+    раза отдаёт валидный JSON. None, если так и не получилось — тогда
+    ролик остаётся без оверлеев, как раньше."""
+    from core import llm_chat
+    total = srt_to_seconds(rows[-1][1]) if rows else 0
+    if not total:
+        return None
+    numbered = "\n".join(
+        f"{i}. [{int(srt_to_seconds(r[0]) // 60):02d}:"
+        f"{int(srt_to_seconds(r[0]) % 60):02d}] {r[2]}"
+        for i, r in enumerate(rows, 1))
+    n = max(3, min(target, round(total / max(min_gap, 8))))
+    picks = None
+    for attempt in range(1, attempts + 1):
+        try:
+            out = llm_chat(
+                [{"role": "system", "content":
+                  "You are a motion-graphics editor choosing on-screen text "
+                  "overlays for a documentary — varied types, not the same "
+                  "one repeated."},
+                 {"role": "user", "content":
+                  f"Pick exactly {n} moments from this timestamped narration "
+                  "worth an on-screen text overlay, and choose the best TYPE "
+                  "for each — use a MIX, don't pick the same type every time:\n"
+                  "  'banner' — a punchy quoted phrase or claim, under 9 words\n"
+                  "  'lower3' — a short 2-5 word label (a place, term, or "
+                  "short title mentioned right there)\n"
+                  "  'compare' — two short CONTRASTING phrases from that "
+                  "moment, as text formatted exactly as \"first | second\"\n"
+                  "  'callout' — a short pointed remark or aside, under 8 words\n"
+                  "Roughly aim for 2 banners, 2 lower3, 1 compare, 1 callout "
+                  "(adjust to fit naturally). Reply with a JSON array of "
+                  '{"line": <line number>, "type": "banner|lower3|compare|'
+                  'callout", "text": "..."}, nothing else.\n\n' + numbered}],
+                api_key, 0.6, 1500)
+            m = re.search(r"\[.*\]", out, re.S)
+            if not m:
+                log(f"[Оверлеи] LLM-фолбэк (попытка {attempt}/{attempts}): "
+                    f"ответ без JSON-массива: {out[:200]!r}")
+                continue
+            picks = json.loads(m.group(0))
+            break
+        except Exception as e:
+            log(f"[Оверлеи] LLM-фолбэк (попытка {attempt}/{attempts}) "
+                f"не сработал: {e}")
+    if not picks:
+        log("[Оверлеи] LLM-фолбэк: пустой список — вернулся ролик без оверлеев")
+        return None
+    # LLM отдаёт моменты НЕ по хронологии — без сортировки min_gap-фильтр
+    # (сравнивает с последним ПРИНЯТЫМ t) отбраковывает случайные пункты
+    POS = {"banner": "top", "lower3": "bottom", "compare": "center",
+          "callout": "point:70,40"}
+    dated = []
+    for p in picks:
+        idx = int(p.get("line", 0)) - 1
+        text = str(p.get("text", "")).strip()
+        otype = str(p.get("type", "banner")).strip().lower()
+        if otype not in POS:
+            otype = "banner"
+        if otype == "compare" and "|" not in text:
+            otype = "banner"          # без парного текста compare не соберётся
+        if text and 0 <= idx < len(rows):
+            dated.append((srt_to_seconds(rows[idx][0]), otype, text))
+    dated.sort(key=lambda x: x[0])
+    out_lines, last_t = [], -1e9
+    for t, otype, text in dated:
+        if t - last_t < min_gap:
+            continue
+        last_t = t
+        tc = f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
+        out_lines.append(f"{tc} | {otype} | {text} | {POS[otype]} | 4s")
+    if not out_lines:
+        log(f"[Оверлеи] LLM-фолбэк: {len(picks)} пунктов от LLM, но все "
+            "отфильтрованы min_gap")
+        return None
+    kinds = ", ".join(sorted({o for _, o, _ in dated}))
+    log(f"[Оверлеи] LLM-фолбэк: {len(out_lines)} оверлеев по смыслу текста "
+        f"({kinds}) — в тексте не нашлось явных денег/дат/имён/вопросов")
+    return "\n".join(out_lines)
+
+
+def suggest_overlays_local(rows: list, min_gap: float = 13.0,
+                           target: int = 6) -> str:
+    """Последний фолбэк без единого обращения к LLM — на случай, если
+    Gemini недоступен ИЛИ заблокировал тяжёлую тему фильтром безопасности
+    (true crime, хоррор и т.п. иногда попадают под safety-фильтр даже на
+    безобидный запрос вроде «выбери цитату»). Берёт ~target реплик
+    равномерно по таймлайну, ЧЕРЕДУЯ типы (banner/lower3/compare/callout) —
+    иначе весь ролик получает один и тот же баннер сверху раз за разом.
+    Грубее, чем LLM (просто режет фразу по словам), зато работает всегда."""
+    total = srt_to_seconds(rows[-1][1]) if rows else 0
+    if not rows or not total:
+        return "# По субтитрам ничего не найдено — добавь оверлеи вручную."
+    n = max(3, min(target, round(total / max(min_gap, 8))))
+    step = max(len(rows) // n, 1)
+    kinds = ["banner", "lower3", "compare", "callout"]
+    POS = {"banner": "top", "lower3": "bottom", "compare": "center",
+          "callout": "point:70,40"}
+    out_lines, last_t, ki = [], -1e9, 0
+    for i in range(0, len(rows), step):
+        start_s, _end, text = rows[i]
+        t = srt_to_seconds(start_s)
+        if t - last_t < min_gap:
+            continue
+        words = text.split()
+        if not words:
+            continue
+        otype = kinds[ki % len(kinds)]
+        if otype == "lower3":
+            content = " ".join(words[:4])
+        elif otype == "compare":
+            half = max(len(words) // 2, 1)
+            left, right = " ".join(words[:half]), " ".join(words[half:half + 9])
+            if not right:
+                otype, content = "banner", " ".join(words[:9])
+            else:
+                content = f"{left} | {right}"
+        elif otype == "callout":
+            content = " ".join(words[:7])
+        else:
+            content = " ".join(words[:9])
+        last_t = t
+        ki += 1
+        tc = f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
+        out_lines.append(f"{tc} | {otype} | {content} | {POS[otype]} | 4s")
+    if not out_lines:
+        return "# По субтитрам ничего не найдено — добавь оверлеи вручную."
+    return "\n".join(out_lines)

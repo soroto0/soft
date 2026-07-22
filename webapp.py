@@ -570,7 +570,7 @@ def main():
     win = webview.create_window(
         APP_TITLE, url=str(BASE / "ui" / "index.html"), js_api=api,
         width=1280, height=840, min_size=(1080, 700),
-        background_color="#130a0a")
+        background_color="#f5f5f7")
     api._win = win
     webview.start()
 

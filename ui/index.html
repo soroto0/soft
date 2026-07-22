@@ -9,17 +9,12 @@
 <div class="layout">
 
   <aside class="sidebar">
-    <div class="brand"><div class="logo">🎬</div><b>Контент-фабрика</b></div>
+    <div class="brand"><div class="logo"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-4h14L20 9"/><rect x="3" y="9" width="18" height="10" rx="1.5"/><path d="M3 9l3-4M9 9l3-4M15 9l3-4"/></svg></div><b>Контент-фабрика</b></div>
     <nav class="nav" id="nav">
-      <div class="nav-item active" data-page="dash"><span class="ico">🏠</span>Dashboard</div>
-      <div class="nav-item" data-page="script"><span class="ico">📝</span>Сценарий</div>
-      <div class="nav-item" data-page="tts"><span class="ico">🎙</span>Озвучка</div>
-      <div class="nav-item" data-page="subs"><span class="ico">💬</span>Транскрибация</div>
-      <div class="nav-item" data-page="media"><span class="ico">🎞</span>Раскадровка</div>
-      <div class="nav-item" data-page="overlays"><span class="ico">✨</span>Оверлеи</div>
-      <div class="nav-item" data-page="render"><span class="ico">🎬</span>Рендер</div>
-      <div class="nav-item" data-page="build"><span class="ico">📦</span>Сборка + Premiere</div>
-      <div class="nav-item" data-page="log"><span class="ico">🖥</span>Журнал</div>
+      <div class="nav-item active" data-page="dash"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg></span>Dashboard</div>
+      <div class="nav-item" data-page="materials"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l5 5v13H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg></span>Материалы</div>
+      <div class="nav-item" data-page="video"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="7" height="7" rx="1"/><rect x="14" y="5" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>Видео</div>
+      <div class="nav-item" data-page="build"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5L12 12l8-4.5M12 12v9"/></svg></span>Экспорт</div>
     </nav>
     <div class="version" id="version">v3.0</div>
   </aside>
@@ -67,183 +62,191 @@
         <div id="projList"></div>
       </section>
 
-      <!-- ================= СЦЕНАРИЙ ================= -->
-      <section class="page" id="page-script">
-        <h1 class="pagetitle">📝 Сценарий</h1>
-        <div class="row">
-          <label>Тема:</label>
-          <input type="text" id="topic" style="flex:1" placeholder="любая тема: история, наука, крайм, топ-10, мотивация…">
-          <label>Хронометраж:</label>
-          <select id="minutes"><option>15 мин</option><option>30 мин</option><option selected>45 мин</option><option>60 мин</option><option>90 мин</option></select>
+      <!-- ================= МАТЕРИАЛЫ (сценарий + озвучка + транскрибация) ================= -->
+      <section class="page" id="page-materials">
+        <h1 class="pagetitle">Материалы</h1>
+        <div class="subnav">
+          <button class="pill active" data-sub="script">Сценарий</button>
+          <button class="pill" data-sub="tts">Озвучка</button>
+          <button class="pill" data-sub="subs">Транскрибация</button>
         </div>
-        <div class="row">
-          <label>Жанр:</label>
-          <select id="tone"><option selected>документальный</option><option>истории/крайм</option><option>образовательный</option><option>топ-лист</option><option>мотивация</option><option>мистика/хоррор</option></select>
-          <label>Язык:</label>
-          <select id="lang"><option selected>английский</option><option>русский</option><option>испанский</option><option>немецкий</option><option>французский</option><option>португальский</option></select>
-          <button class="btn gold" onclick="app.genScript()">🤖 Сгенерировать черновик</button>
+
+        <div class="subpage active" id="sub-script">
+          <div class="row">
+            <label>Тема:</label>
+            <input type="text" id="topic" style="flex:1" placeholder="любая тема: история, наука, крайм, топ-10, мотивация…">
+            <label>Хронометраж:</label>
+            <select id="minutes"><option>15 мин</option><option>30 мин</option><option selected>45 мин</option><option>60 мин</option><option>90 мин</option></select>
+          </div>
+          <div class="row">
+            <label>Жанр:</label>
+            <select id="tone"><option selected>документальный</option><option>истории/крайм</option><option>образовательный</option><option>топ-лист</option><option>мотивация</option><option>мистика/хоррор</option></select>
+            <label>Язык:</label>
+            <select id="lang"><option selected>английский</option><option>русский</option><option>испанский</option><option>немецкий</option><option>французский</option><option>португальский</option></select>
+            <button class="btn gold" onclick="app.genScript()">🤖 Сгенерировать черновик</button>
+          </div>
+          <div class="row">
+            <button class="btn" onclick="app.saveScript()">Сохранить в проект</button>
+            <button class="btn" onclick="app.autoScenes()">Сцены по абзацам</button>
+            <div class="spacer"></div>
+            <span class="hint" id="scriptStats">0 слов</span>
+          </div>
+          <div class="hint">Сгенерированный текст — черновик: вычитай и переработай перед озвучкой,
+            иначе это «inauthentic content».</div>
+          <textarea id="scriptText" class="prose" rows="18" spellcheck="false"></textarea>
         </div>
-        <div class="row">
-          <button class="btn" onclick="app.saveScript()">Сохранить в проект</button>
-          <button class="btn" onclick="app.autoScenes()">Сцены по абзацам</button>
-          <div class="spacer"></div>
-          <span class="hint" id="scriptStats">0 слов</span>
+
+        <div class="subpage" id="sub-tts">
+          <div class="row">
+            <label>Движок:</label>
+            <select id="ttsEngine" onchange="app.fillVoices()">
+              <option>Edge TTS (бесплатно)</option><option>Amazon Polly</option>
+            </select>
+            <label>Голос:</label><select id="ttsVoice"></select>
+            <label>Темп:</label>
+            <select id="ttsRate"><option>-10%</option><option>-5%</option><option selected>0%</option><option>+5%</option><option>+10%</option></select>
+            <label class="switch" id="pausesWrap"><input type="checkbox" id="ttsPauses" checked><span class="tr"></span>Паузы между абзацами</label>
+            <label class="switch"><input type="checkbox" id="ttsEnhance" checked><span class="tr"></span>🎚 Глубокий голос (дикторская компрессия)</label>
+          </div>
+          <div class="row">
+            <button class="btn gold" onclick="app.runTts()">🎙 Озвучить сценарий</button>
+          </div>
+          <div class="hint">«Глубокий голос» — компрессия + нижние частоты + нормализация,
+            как у диктора документального фильма (звучит плотно и убедительно).</div>
+          <div class="divider"></div>
+          <div class="sect">Фоновая музыка (можно несколько треков — чередуются)</div>
+          <div class="row">
+            <input type="text" id="musicPath" style="flex:1" placeholder="папка, файл или несколько файлов через |">
+            <button class="btn ghost" onclick="app.pickMusic()">Файлы…</button>
+            <label>Громкость:</label>
+            <select id="musicGain"><option>-10 dB</option><option selected>-14 dB</option><option>-18 dB</option><option>-22 dB</option></select>
+            <button class="btn" onclick="app.mixMusic()">🎵 Подмешать</button>
+          </div>
+          <div class="hint">Несколько треков склеиваются в плейлист и зацикливаются под всю длину видео.
+            Музыка должна быть лицензионной (YouTube Audio Library и т.п.).</div>
+          <div class="sect" style="font-size:13px; margin-top:12px">ASMR-звуки быта (эффект присутствия)</div>
+          <div class="row">
+            <input type="text" id="asmrPath" style="flex:1" placeholder="папка со звуками: шорох, звон, вода…">
+            <button class="btn ghost" onclick="app.pickAsmr()">Папка…</button>
+            <label>Каждые:</label>
+            <select id="asmrEvery"><option value="15">15 сек</option><option value="22" selected>22 сек</option><option value="35">35 сек</option></select>
+            <button class="btn" onclick="app.addAsmr()">🔊 Вплести звуки</button>
+          </div>
+          <div class="hint">Софт сам раскидывает короткие звуки быта по таймлайну тихо под голосом —
+            создаёт «честное» ощущение присутствия. Звуки скачай бесплатно на pixabay.com/sound-effects.</div>
         </div>
-        <div class="hint">Сгенерированный текст — черновик: вычитай и переработай перед озвучкой,
-          иначе это «inauthentic content».</div>
-        <textarea id="scriptText" class="prose" rows="18" spellcheck="false"></textarea>
+
+        <div class="subpage" id="sub-subs">
+          <div class="row">
+            <label>Модель Whisper:</label>
+            <select id="whisperModel"><option>tiny.en</option><option selected>base.en</option><option>small.en</option><option>medium.en</option></select>
+            <label>Длина строки:</label>
+            <select id="subLineWidth"><option value="32">короткие (32)</option><option value="42" selected>средние (42)</option><option value="52">длинные (52)</option></select>
+            <button class="btn gold" onclick="app.runSubs()">💬 Транскрибировать</button>
+          </div>
+          <div class="hint">Таймкоды фраз — основа монтажа: по ним ставятся смены кадров и оверлеи.</div>
+          <div class="subslist" id="subsList"></div>
+        </div>
       </section>
 
-      <!-- ================= ОЗВУЧКА ================= -->
-      <section class="page" id="page-tts">
-        <h1 class="pagetitle">🎙 Озвучка</h1>
-        <div class="row">
-          <label>Движок:</label>
-          <select id="ttsEngine" onchange="app.fillVoices()">
-            <option>Edge TTS (бесплатно)</option><option>Amazon Polly</option>
-          </select>
-          <label>Голос:</label><select id="ttsVoice"></select>
-          <label>Темп:</label>
-          <select id="ttsRate"><option>-10%</option><option>-5%</option><option selected>0%</option><option>+5%</option><option>+10%</option></select>
-          <label class="switch" id="pausesWrap"><input type="checkbox" id="ttsPauses" checked><span class="tr"></span>Паузы между абзацами</label>
-          <label class="switch"><input type="checkbox" id="ttsEnhance" checked><span class="tr"></span>🎚 Глубокий голос (дикторская компрессия)</label>
+      <!-- ================= ВИДЕО (раскадровка + оверлеи + рендер) ================= -->
+      <section class="page" id="page-video">
+        <h1 class="pagetitle">Видео</h1>
+        <div class="subnav">
+          <button class="pill active" data-sub="media">Раскадровка</button>
+          <button class="pill" data-sub="overlays">Оверлеи</button>
+          <button class="pill" data-sub="render">Рендер</button>
         </div>
-        <div class="row">
-          <button class="btn gold" onclick="app.runTts()">🎙 Озвучить сценарий</button>
+
+        <div class="subpage active" id="sub-media">
+          <div class="row">
+            <button class="btn" onclick="app.fetchStocks()">Скачать стоки по сценам</button>
+            <button class="btn" onclick="app.addMedia()">➕ Добавить свои фото/видео</button>
+            <label class="switch"><input type="checkbox" id="kenburns" checked><span class="tr"></span>Ken Burns для картинок</label>
+          </div>
+          <div class="hint">«Свои фото/видео» копируются в проект и идут в рендер
+            вперемешку со стоками (фото автоматически оживают зумом Ken Burns).</div>
+          <textarea id="scenesText" rows="7" spellcheck="false" placeholder="keywords | type: video | count: 2"></textarea>
+          <div class="divider"></div>
+          <div class="row">
+            <button class="btn gold" onclick="app.storyboard()">🪄 Собрать по субтитрам</button>
+            <label>Длина плана:</label>
+            <select id="beat"><option>4 c</option><option selected>6 c</option><option>8 c</option><option>10 c</option></select>
+            <label class="switch"><input type="checkbox" id="genvideo"><span class="tr"></span>ИИ-видео для ненайденных (кредиты!)</label>
+          </div>
+          <div class="row">
+            <label>Источник кадров:</label>
+            <select id="visualMode"><option value="stock">только стоки (мало ИИ-кадров)</option><option value="mixed" selected>🎨 микс: часть кадров — ИИ</option><option value="ai">🎨 ИИ в едином стиле (уровень канала)</option></select>
+            <label id="aiRatioLabel">Доля ИИ-кадров:</label>
+            <select id="aiRatio"><option value="0.2">~20%</option><option value="0.35" selected>~35%</option><option value="0.5">~50%</option><option value="0.7">~70%</option></select>
+            <label>Визуальный стиль:</label>
+            <select id="visualStyle"><option>кинематографичный</option><option selected>винтаж/документ.</option><option>тёплый уют</option><option>тёмный кино</option><option>архив ч/б</option><option>яркий научпоп</option></select>
+          </div>
+          <div class="hint">«Только стоки» почти не генерирует ИИ-кадры (ИИ подключается лишь если сток
+            совсем ничего не нашёл — редкий случай). «Микс» намеренно генерирует заданную долю
+            планов через ИИ равномерно по ролику — так видео не выглядит сплошным стоком, но и не
+            тратит кредиты на каждый кадр. «ИИ в едином стиле» генерирует ВСЁ — медленно, зато
+            максимально цельно.</div>
         </div>
-        <div class="hint">«Глубокий голос» — компрессия + нижние частоты + нормализация,
-          как у диктора документального фильма (звучит плотно и убедительно).</div>
-        <div class="divider"></div>
-        <div class="sect">Фоновая музыка (можно несколько треков — чередуются)</div>
-        <div class="row">
-          <input type="text" id="musicPath" style="flex:1" placeholder="папка, файл или несколько файлов через |">
-          <button class="btn ghost" onclick="app.pickMusic()">Файлы…</button>
-          <label>Громкость:</label>
-          <select id="musicGain"><option>-10 dB</option><option selected>-14 dB</option><option>-18 dB</option><option>-22 dB</option></select>
-          <button class="btn" onclick="app.mixMusic()">🎵 Подмешать</button>
+
+        <div class="subpage" id="sub-overlays">
+          <div class="row">
+            <button class="btn gold" onclick="app.suggestOverlays()">🧠 Автопредложить по субтитрам</button>
+            <button class="btn" onclick="app.saveOverlays()">Сохранить в проект</button>
+            <label>Длительность оверлея:</label>
+            <select id="ovDur"><option value="0" selected>как есть</option><option value="3">3 сек</option><option value="4">4 сек</option><option value="5">5 сек</option><option value="6">6 сек</option></select>
+          </div>
+          <div class="hint">Формат: timecode | тип | контент | позиция | длительность.
+            Типы: popup, lower3, callout, counter, bars, timeline, compare, banner. Автопредложение — черновик:
+            обязательно вычитай перед рендером.</div>
+          <textarea id="overlaysText" rows="14" spellcheck="false"></textarea>
         </div>
-        <div class="hint">Несколько треков склеиваются в плейлист и зацикливаются под всю длину видео.
-          Музыка должна быть лицензионной (YouTube Audio Library и т.п.).</div>
-        <div class="sect" style="font-size:13px; margin-top:12px">ASMR-звуки быта (эффект присутствия)</div>
-        <div class="row">
-          <input type="text" id="asmrPath" style="flex:1" placeholder="папка со звуками: шорох, звон, вода…">
-          <button class="btn ghost" onclick="app.pickAsmr()">Папка…</button>
-          <label>Каждые:</label>
-          <select id="asmrEvery"><option value="15">15 сек</option><option value="22" selected>22 сек</option><option value="35">35 сек</option></select>
-          <button class="btn" onclick="app.addAsmr()">🔊 Вплести звуки</button>
+
+        <div class="subpage" id="sub-render">
+          <div class="row">
+            <label>Разрешение:</label><select id="rRes"><option selected>1080p</option><option>4K</option></select>
+            <label>FPS:</label><select id="rFps"><option>24</option><option selected>30</option><option>60</option></select>
+            <label>Стиль:</label><select id="rPreset" onchange="app.applyPreset()"><option value="custom" selected>как настроено</option><option value="documentary">📜 документальный (минимал)</option><option value="dynamic">⚡ динамичный</option></select>
+            <label>Интенсивность:</label><select id="rInt"><option>слабая</option><option selected>средняя</option><option>сильная</option></select>
+            <label>Качество:</label><select id="rQuality"><option selected>обычное</option><option>высокое</option><option>максимум</option></select>
+            <label>Субтитры:</label><select id="rSubSize"><option>мелкие</option><option selected>средние</option><option>крупные</option><option>огромные</option></select>
+            <label>Стиль:</label><select id="rSubStyle"><option value="bold_box" selected>жирный (контур+тень)</option><option value="karaoke">караоке (цветное слово в такт речи)</option><option value="pill">плашка</option><option value="yellow_pop">жёлтый viral</option><option value="cyan_pop">голубой неон</option><option value="red_alert">красный акцент</option><option value="thin_clean">тонкий минимал</option><option value="top">сверху кадра</option></select>
+          </div>
+          <div class="subrow" id="renderSwitches">
+            <label class="switch"><input type="checkbox" id="rSubs" checked><span class="tr"></span>Вшить субтитры</label>
+            <label class="switch"><input type="checkbox" id="rGrain"><span class="tr"></span>Зерно</label>
+            <label class="switch"><input type="checkbox" id="rVignette"><span class="tr"></span>Виньетка</label>
+            <label class="switch"><input type="checkbox" id="rLetterbox"><span class="tr"></span>Letterbox 2.35:1</label>
+            <label class="switch"><input type="checkbox" id="rVhs"><span class="tr"></span>VHS</label>
+            <label class="switch"><input type="checkbox" id="rChromab"><span class="tr"></span>Аберрация на переходах</label>
+            <label class="switch"><input type="checkbox" id="rChapters"><span class="tr"></span>Цветокор по главам</label>
+            <label class="switch"><input type="checkbox" id="rDraft"><span class="tr"></span>Черновик 720p (быстро)</label>
+          </div>
+          <div class="sect" style="font-size:13px">Эффекты поверх кадра</div>
+          <div class="subrow">
+            <label class="switch"><input type="checkbox" id="rBloom"><span class="tr"></span>Свечение (bloom)</label>
+            <label class="switch"><input type="checkbox" id="rLeak"><span class="tr"></span>Световая засветка</label>
+            <label class="switch"><input type="checkbox" id="rDust"><span class="tr"></span>Плёночная пыль</label>
+            <label class="switch"><input type="checkbox" id="rFlicker"><span class="tr"></span>Мерцание</label>
+          </div>
+          <div class="row">
+            <label>Имя файла:</label>
+            <input type="text" id="outName" placeholder="output_final" style="width:220px">
+            <span class="hint" style="margin:0">.mp4 добавится сам</span>
+          </div>
+          <div class="row">
+            <button class="btn gold big" onclick="app.render()">🎬 СОБРАТЬ ВИДЕО</button>
+            <button class="btn danger" onclick="app.stopRender()">⛔ Стоп</button>
+            <button class="btn" onclick="app.openResult()">▶ Открыть результат</button>
+          </div>
+          <div class="hint">Смены кадров — по границам фраз; ритм и переходы — от seed проекта.
+            Выход: output_final.mp4. Живой прогресс ffmpeg — в консоли внизу.</div>
         </div>
-        <div class="hint">Софт сам раскидывает короткие звуки быта по таймлайну тихо под голосом —
-          создаёт «честное» ощущение присутствия. Звуки скачай бесплатно на pixabay.com/sound-effects.</div>
       </section>
 
-      <!-- ================= ТРАНСКРИБАЦИЯ ================= -->
-      <section class="page" id="page-subs">
-        <h1 class="pagetitle">💬 Транскрибация</h1>
-        <div class="row">
-          <label>Модель Whisper:</label>
-          <select id="whisperModel"><option>tiny.en</option><option selected>base.en</option><option>small.en</option><option>medium.en</option></select>
-          <label>Длина строки:</label>
-          <select id="subLineWidth"><option value="32">короткие (32)</option><option value="42" selected>средние (42)</option><option value="52">длинные (52)</option></select>
-          <button class="btn gold" onclick="app.runSubs()">💬 Транскрибировать</button>
-        </div>
-        <div class="hint">Таймкоды фраз — основа монтажа: по ним ставятся смены кадров и оверлеи.</div>
-        <div class="subslist" id="subsList"></div>
-      </section>
-
-      <!-- ================= РАСКАДРОВКА ================= -->
-      <section class="page" id="page-media">
-        <h1 class="pagetitle">🎞 Раскадровка и стоки</h1>
-        <div class="row">
-          <button class="btn" onclick="app.fetchStocks()">Скачать стоки по сценам</button>
-          <button class="btn" onclick="app.addMedia()">➕ Добавить свои фото/видео</button>
-          <label class="switch"><input type="checkbox" id="kenburns" checked><span class="tr"></span>Ken Burns для картинок</label>
-        </div>
-        <div class="hint">«Свои фото/видео» копируются в проект и идут в рендер
-          вперемешку со стоками (фото автоматически оживают зумом Ken Burns).</div>
-        <textarea id="scenesText" rows="7" spellcheck="false" placeholder="keywords | type: video | count: 2"></textarea>
-        <div class="divider"></div>
-        <div class="row">
-          <button class="btn gold" onclick="app.storyboard()">🪄 Собрать по субтитрам</button>
-          <label>Длина плана:</label>
-          <select id="beat"><option>4 c</option><option selected>6 c</option><option>8 c</option><option>10 c</option></select>
-          <label class="switch"><input type="checkbox" id="genvideo"><span class="tr"></span>ИИ-видео для ненайденных (кредиты!)</label>
-        </div>
-        <div class="row">
-          <label>Источник кадров:</label>
-          <select id="visualMode"><option value="stock">только стоки (мало ИИ-кадров)</option><option value="mixed" selected>🎨 микс: часть кадров — ИИ</option><option value="ai">🎨 ИИ в едином стиле (уровень канала)</option></select>
-          <label id="aiRatioLabel">Доля ИИ-кадров:</label>
-          <select id="aiRatio"><option value="0.2">~20%</option><option value="0.35" selected>~35%</option><option value="0.5">~50%</option><option value="0.7">~70%</option></select>
-          <label>Визуальный стиль:</label>
-          <select id="visualStyle"><option>кинематографичный</option><option selected>винтаж/документ.</option><option>тёплый уют</option><option>тёмный кино</option><option>архив ч/б</option><option>яркий научпоп</option></select>
-        </div>
-        <div class="hint">«Только стоки» почти не генерирует ИИ-кадры (ИИ подключается лишь если сток
-          совсем ничего не нашёл — редкий случай). «Микс» намеренно генерирует заданную долю
-          планов через ИИ равномерно по ролику — так видео не выглядит сплошным стоком, но и не
-          тратит кредиты на каждый кадр. «ИИ в едином стиле» генерирует ВСЁ — медленно, зато
-          максимально цельно.</div>
-      </section>
-
-      <!-- ================= ОВЕРЛЕИ ================= -->
-      <section class="page" id="page-overlays">
-        <h1 class="pagetitle">✨ Оверлеи (моушн-графика)</h1>
-        <div class="row">
-          <button class="btn gold" onclick="app.suggestOverlays()">🧠 Автопредложить по субтитрам</button>
-          <button class="btn" onclick="app.saveOverlays()">Сохранить в проект</button>
-          <label>Длительность оверлея:</label>
-          <select id="ovDur"><option value="0" selected>как есть</option><option value="3">3 сек</option><option value="4">4 сек</option><option value="5">5 сек</option><option value="6">6 сек</option></select>
-        </div>
-        <div class="hint">Формат: timecode | тип | контент | позиция | длительность.
-          Типы: popup, lower3, callout, counter, bars, timeline. Автопредложение — черновик:
-          обязательно вычитай перед рендером.</div>
-        <textarea id="overlaysText" rows="14" spellcheck="false"></textarea>
-      </section>
-
-      <!-- ================= РЕНДЕР ================= -->
-      <section class="page" id="page-render">
-        <h1 class="pagetitle">🎬 Авторендер</h1>
-        <div class="row">
-          <label>Разрешение:</label><select id="rRes"><option selected>1080p</option><option>4K</option></select>
-          <label>FPS:</label><select id="rFps"><option>24</option><option selected>30</option><option>60</option></select>
-          <label>Стиль:</label><select id="rPreset" onchange="app.applyPreset()"><option value="custom" selected>как настроено</option><option value="documentary">📜 документальный (минимал)</option><option value="dynamic">⚡ динамичный</option></select>
-          <label>Интенсивность:</label><select id="rInt"><option>слабая</option><option selected>средняя</option><option>сильная</option></select>
-          <label>Качество:</label><select id="rQuality"><option selected>обычное</option><option>высокое</option><option>максимум</option></select>
-          <label>Субтитры:</label><select id="rSubSize"><option>мелкие</option><option selected>средние</option><option>крупные</option></select>
-          <label>Стиль:</label><select id="rSubStyle"><option value="bold_box" selected>жирный (контур+тень)</option><option value="karaoke">караоке (цветное слово в такт речи)</option><option value="pill">плашка</option><option value="yellow_pop">жёлтый viral</option><option value="cyan_pop">голубой неон</option><option value="red_alert">красный акцент</option><option value="thin_clean">тонкий минимал</option><option value="top">сверху кадра</option></select>
-        </div>
-        <div class="subrow" id="renderSwitches">
-          <label class="switch"><input type="checkbox" id="rSubs" checked><span class="tr"></span>Вшить субтитры</label>
-          <label class="switch"><input type="checkbox" id="rGrain"><span class="tr"></span>Зерно</label>
-          <label class="switch"><input type="checkbox" id="rVignette"><span class="tr"></span>Виньетка</label>
-          <label class="switch"><input type="checkbox" id="rLetterbox"><span class="tr"></span>Letterbox 2.35:1</label>
-          <label class="switch"><input type="checkbox" id="rVhs"><span class="tr"></span>VHS</label>
-          <label class="switch"><input type="checkbox" id="rChromab"><span class="tr"></span>Аберрация на переходах</label>
-          <label class="switch"><input type="checkbox" id="rChapters"><span class="tr"></span>Цветокор по главам</label>
-          <label class="switch"><input type="checkbox" id="rDraft"><span class="tr"></span>Черновик 720p (быстро)</label>
-        </div>
-        <div class="sect" style="font-size:13px">Эффекты поверх кадра</div>
-        <div class="subrow">
-          <label class="switch"><input type="checkbox" id="rBloom"><span class="tr"></span>Свечение (bloom)</label>
-          <label class="switch"><input type="checkbox" id="rLeak"><span class="tr"></span>Световая засветка</label>
-          <label class="switch"><input type="checkbox" id="rDust"><span class="tr"></span>Плёночная пыль</label>
-          <label class="switch"><input type="checkbox" id="rFlicker"><span class="tr"></span>Мерцание</label>
-        </div>
-        <div class="row">
-          <label>Имя файла:</label>
-          <input type="text" id="outName" placeholder="output_final" style="width:220px">
-          <span class="hint" style="margin:0">.mp4 добавится сам</span>
-        </div>
-        <div class="row">
-          <button class="btn gold big" onclick="app.render()">🎬 СОБРАТЬ ВИДЕО</button>
-          <button class="btn danger" onclick="app.stopRender()">⛔ Стоп</button>
-          <button class="btn" onclick="app.openResult()">▶ Открыть результат</button>
-        </div>
-        <div class="hint">Смены кадров — по границам фраз; ритм и переходы — от seed проекта.
-          Выход: output_final.mp4. Живой прогресс ffmpeg — в Журнале и в статус-баре.</div>
-      </section>
-
-      <!-- ================= СБОРКА ================= -->
+      <!-- ================= ЭКСПОРТ ================= -->
       <section class="page" id="page-build">
-        <h1 class="pagetitle">📦 Сборка + Premiere</h1>
+        <h1 class="pagetitle">📦 Экспорт + Premiere</h1>
         <div class="row">
           <button class="btn gold" onclick="app.openFolder()">📂 Открыть папку проекта</button>
           <button class="btn" onclick="app.runSeo()">📝 SEO: названия и описание</button>
@@ -254,14 +257,10 @@
         <div class="console" id="seoOut" style="height:300px"></div>
       </section>
 
-      <!-- ================= ЖУРНАЛ ================= -->
-      <section class="page" id="page-log">
-        <h1 class="pagetitle">🖥 Журнал</h1>
-        <div class="row">
-          <button class="btn" onclick="app.clearLog()">Очистить</button>
-          <button class="btn" onclick="app.copyLog()">Скопировать</button>
-          <label class="switch"><input type="checkbox" id="autoscroll" checked><span class="tr"></span>Автопрокрутка</label>
-        </div>
+      <!-- Журнал больше не отдельная вкладка — та же консоль всегда доступна
+           внизу (выезжающая панель). Секция остаётся в DOM (addLog пишет
+           сюда тоже), просто не в навигации. -->
+      <section class="page" id="page-log" style="display:none">
         <div class="console" id="console"></div>
       </section>
 
