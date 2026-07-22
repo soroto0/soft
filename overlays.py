@@ -859,17 +859,21 @@ def _phrase_candidate(t: float, text: str, manifest: list):
 def suggest_overlays_auto(rows: list, manifest: list, out_dir,
                           log=print, min_gap: float = 13.0) -> str:
     """Полный автомат: авторасстановка + автоподбор картинок для popup.
-    Имена без картинки в manifest ищутся в Wikimedia Commons (реальные
-    люди/места, свободные лицензии). ИИ-генерация лиц реальных людей
-    сознательно НЕ используется — фейковое лицо в документалке вводит
-    зрителя в заблуждение; если фото не нашлось, остаётся пометка
-    NEEDS_IMAGE для ручного добавления."""
+    Реальных людей (два слова с заглавных — похоже на имя) ищем ТОЛЬКО в
+    Wikimedia Commons: ИИ-генерация лиц реальных людей сознательно не
+    используется — фейковое лицо в документалке вводит зрителя в
+    заблуждение; если фото не нашлось, остаётся пометка NEEDS_IMAGE для
+    ручного добавления. Для остального (места, понятия, абстрактные темы) —
+    VeoNonStop (Banana) как ОСНОВНОЙ генератор иллюстрации, Wikimedia —
+    фолбэк, если Veo недоступен/упал."""
     from pathlib import Path as _P
-    from core import fetch_wiki_images, _load_used, _save_used
+    from core import fetch_wiki_images, _load_used, _save_used, veo_image
     draft = suggest_overlays(rows, manifest, min_gap)
     idir = _P(out_dir) / "images"
     idir.mkdir(parents=True, exist_ok=True)
     used = _load_used()
+    veo_key = os.getenv("VEO_API_KEY", "").strip()
+    person_like = re.compile(r"^[A-ZА-Я][\w'\-]+\s+[A-ZА-Я][\w'\-]+$")
     out_lines = []
     for line in draft.splitlines():
         m = re.match(r"# NEEDS_IMAGE: (.+?) — .*?(\d{2}:\d{2}:\d{2}) \| popup",
@@ -879,16 +883,28 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
             continue
         name, tc = m.group(1), m.group(2)
         safe = re.sub(r"[^\w\-]+", "_", name)[:30]
-        img_rel = None
-        try:
-            got = fetch_wiki_images(name, 1, idir, f"ovl_{safe}", used, log)
-            if got:
-                img_rel = f"images/{got[0].name}"
-        except Exception as e:
-            log(f"[Оверлеи] Wikimedia для «{name}»: не вышло ({e})")
+        is_person = bool(person_like.match(name.strip()))
+        img_rel, via_ai = None, False
+        if not is_person and veo_key:
+            try:
+                jpg = idir / f"ovl_{safe}_ai.jpg"
+                veo_image(f"{name}, editorial illustration", jpg, veo_key, log)
+                img_rel, via_ai = f"images/{jpg.name}", True
+            except Exception as e:
+                log(f"[Оверлеи] VeoNonStop для «{name}»: не вышло ({e}) — "
+                    "пробую Wikimedia")
+        if img_rel is None:
+            try:
+                got = fetch_wiki_images(name, 1, idir, f"ovl_{safe}", used, log)
+                if got:
+                    img_rel = f"images/{got[0].name}"
+            except Exception as e:
+                log(f"[Оверлеи] Wikimedia для «{name}»: не вышло ({e})")
         if img_rel:
             out_lines.append(f"{tc} | popup | {img_rel} | top-right | 5s")
-            log(f"[Оверлеи] {tc} popup «{name}»: фото найдено в Wikimedia")
+            log(f"[Оверлеи] {tc} popup «{name}»: "
+                + ("ИИ-иллюстрация (VeoNonStop)" if via_ai
+                   else "фото найдено в Wikimedia"))
         else:
             out_lines.append(line)
     _save_used(used)

@@ -22,10 +22,10 @@ export type OverlayProps = {
   img?: string; // имя файла в public/ (для popup)
 };
 
-const ACCENT = '#7c5cff';
-const ACCENT_LIGHT = '#9d85ff';
-const PLATE = 'rgba(12,12,18,0.82)';
-const FONT = "'Segoe UI', 'Arial', sans-serif";
+const ACCENT = '#e8a33d';
+const ACCENT_LIGHT = '#ffd27a';
+const PLATE = 'rgba(10,10,14,0.86)';
+const FONT = "'Segoe UI Black', 'Segoe UI', 'Arial', sans-serif";
 
 // Затухание в конце: 1 -> 0 за последние 0.3 c
 const useExit = (dur: number) => {
@@ -57,8 +57,26 @@ const Lower3: React.FC<OverlayProps> = (p) => {
     durationInFrames: fps * 0.35,
   });
   const fontSize = H * 0.042;
+  const kicker = spring({
+    frame: frame - fps * 0.42,
+    fps,
+    config: {damping: 15},
+    durationInFrames: fps * 0.3,
+  });
   return (
     <AbsoluteFill>
+      {/* мягкое свечение под плашкой — доп. слой глубины */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 20,
+          bottom: H * 0.1,
+          width: 420,
+          height: 200,
+          background: `radial-gradient(ellipse, ${ACCENT}33 0%, rgba(0,0,0,0) 70%)`,
+          opacity: exit * plate,
+        }}
+      />
       <div
         style={{
           position: 'absolute',
@@ -69,7 +87,7 @@ const Lower3: React.FC<OverlayProps> = (p) => {
           alignItems: 'stretch',
           borderRadius: 12,
           overflow: 'hidden',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
+          boxShadow: `0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px ${ACCENT}22`,
         }}
       >
         <div
@@ -82,18 +100,51 @@ const Lower3: React.FC<OverlayProps> = (p) => {
         />
         <div
           style={{
-            background: `linear-gradient(180deg, rgba(22,22,30,0.88), ${PLATE})`,
-            padding: `${fontSize * 0.45}px ${fontSize * 0.8}px`,
+            position: 'relative',
+            background: `linear-gradient(180deg, rgba(20,20,26,0.92), ${PLATE})`,
+            padding: `${fontSize * 0.4}px ${fontSize * 0.8}px`,
             maxWidth: '58vw',
             transform: `scaleX(${Math.max(plate, 0.001)})`,
             transformOrigin: 'left',
             overflow: 'hidden',
           }}
         >
+          {/* тонкая световая линия сверху плашки */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 1,
+              background: `linear-gradient(90deg, ${ACCENT_LIGHT}aa, transparent)`,
+            }}
+          />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              opacity: kicker,
+              transform: `translateY(${(1 - kicker) * 6}px)`,
+              marginBottom: fontSize * 0.16,
+            }}
+          >
+            <div
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: '50%',
+                background: ACCENT_LIGHT,
+                boxShadow: `0 0 6px ${ACCENT_LIGHT}`,
+              }}
+            />
+            <div style={{width: fontSize * 0.7, height: 1.5, background: `${ACCENT_LIGHT}99`}} />
+          </div>
           <div
             style={{
               fontFamily: FONT,
-              fontWeight: 700,
+              fontWeight: 800,
               fontSize,
               color: '#fff',
               whiteSpace: 'nowrap',

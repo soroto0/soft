@@ -635,49 +635,89 @@ def _parse_query_list(out: str, expect: int) -> list[str]:
     return lines
 
 
-def smart_queries(beats: list[dict], api_key: str = "", log=print) -> list[str] | None:
-    """Поисковые запросы для стока по смыслу текста каждого плана (LLM).
-    Идёт батчами по 20: один общий запрос на десятки планов обрезается по
-    лимиту токенов, JSON рвётся посередине. Возвращает список длиной
-    len(beats), где пустая строка = откат на ключевые слова для этого плана;
-    None только если ни один план не удался."""
+def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
+                       system: str, instruction: str, temperature: float,
+                       max_tokens: int, label: str) -> list[str] | None:
+    """Общий батчинг LLM-промптов «один план -> одна строка». Идёт порциями
+    по batch_size (один запрос на все планы разом рвёт JSON посередине по
+    лимиту токенов). Возвращает список длиной len(beats), где пустая строка
+    = откат на ключевые слова для этого плана; None, только если ни один
+    план не удался."""
     n = len(beats)
     if not n:
         return None
     result = [""] * n
     got = 0
-    BATCH = 20
-    for start in range(0, n, BATCH):
-        chunk = beats[start:start + BATCH]
+    for start in range(0, n, batch_size):
+        chunk = beats[start:start + batch_size]
         numbered = "\n".join(f"{i}. {b['text'][:280]}"
                              for i, b in enumerate(chunk, 1))
         try:
             out = llm_chat(
-                [{"role": "system", "content":
-                  "You convert narration fragments into stock-footage search queries."},
+                [{"role": "system", "content": system},
                  {"role": "user", "content":
-                  "For each numbered narration fragment output ONE stock video "
-                  "search query: 2-4 English words, concrete and visual — what "
-                  "should literally be on screen while these words are spoken. "
-                  f"Reply with a JSON array of exactly {len(chunk)} strings, "
-                  "no markdown, nothing else.\n\n" + numbered}],
-                api_key, 0.4, 1200)
+                  instruction.format(n=len(chunk)) + "\n\n" + numbered}],
+                api_key, temperature, max_tokens)
             qs = _parse_query_list(out, len(chunk))
             for j in range(len(chunk)):
                 if j < len(qs) and qs[j]:
                     result[start + j] = qs[j]
                     got += 1
         except Exception as e:
-            log(f"[Агент] Умные запросы, планы {start + 1}-{start + len(chunk)}: "
+            log(f"[Агент] {label}, планы {start + 1}-{start + len(chunk)}: "
                 f"{e.__class__.__name__} — эти уйдут на ключевые слова.")
     if got == 0:
         return None
     if got < n:
-        log(f"[Агент] Умные запросы: {got}/{n} по смыслу, остальные — "
-            "по ключевым словам.")
+        log(f"[Агент] {label}: {got}/{n} по смыслу, остальные — по ключевым словам.")
     else:
-        log(f"[Агент] Умные запросы: все {n} по смыслу текста.")
+        log(f"[Агент] {label}: все {n} по смыслу текста.")
     return result
+
+
+def smart_queries(beats: list[dict], api_key: str = "", log=print) -> list[str] | None:
+    """Поисковые запросы для стока по смыслу текста каждого плана (LLM),
+    батчами по 20 — короткая фраза под сток-поиск (2-4 слова)."""
+    return _llm_batch_prompts(
+        beats, api_key, log, batch_size=20,
+        system="You convert narration fragments into stock-footage search queries.",
+        instruction=(
+            "For each numbered narration fragment output ONE stock video "
+            "search query: 2-4 English words, concrete and visual — what "
+            "should literally be on screen while these words are spoken. "
+            "Reply with a JSON array of exactly {n} strings, no markdown, "
+            "nothing else."),
+        temperature=0.4, max_tokens=1200, label="Умные запросы")
+
+
+def ai_scene_prompts(beats: list[dict], api_key: str = "", log=print
+                     ) -> list[str] | None:
+    """Промпты для ИИ-генерации кадра (Veo/Banana и т.п.) по смыслу текста
+    каждого плана — В ОТЛИЧИЕ от smart_queries() это не короткий поисковый
+    запрос (2-4 слова под сток), а полноценное описание сцены (10-20 слов):
+    конкретное место действие, субъект, настроение. Явно просим избегать
+    штампов-символов (лампочка = «идея», шестерёнки = «система», весы =
+    «правосудие», цепи = «контроль») — картинка должна быть привязана к
+    реальному контексту повествования, а не к абстрактной иконографии."""
+    return _llm_batch_prompts(
+        beats, api_key, log, batch_size=15,
+        system=("You write vivid, concrete visual scene descriptions for "
+               "an AI video/image generator, illustrating documentary "
+               "narration."),
+        instruction=(
+            "For each numbered narration fragment, write ONE concrete "
+            "visual scene description (10-20 English words): specific "
+            "setting, subject, action, camera framing and mood — "
+            "exactly what should be seen on screen while these words "
+            "are spoken. Ground it in the ACTUAL narrative/subject "
+            "matter of the text (real places, people, objects, "
+            "actions tied to the story) — never fall back on generic "
+            "symbolic clichés (no lightbulb for 'idea', no gears for "
+            "'system', no scales for 'justice', no chains/locks for "
+            "'control', no glowing brain for 'mind'). "
+            "Reply with a JSON array of exactly {n} strings, no markdown, "
+            "nothing else."),
+        temperature=0.7, max_tokens=2400, label="ИИ-промпты")
 
 
 def gen_scenes_ai(script_text: str, api_key: str = "", log=print,
@@ -823,16 +863,37 @@ def gemini_image(prompt: str, dest: Path, api_key: str, style: str = "") -> Path
     raise RuntimeError(f"Gemini не сгенерировал изображение: {last_err}")
 
 
+def veo_image(prompt: str, dest: Path, api_key: str, log=print,
+              style: str = "") -> Path:
+    """Картинка через VeoNonStop (Banana Pro), синхронно."""
+    import veo_client
+    data = veo_client.banana_generate(_image_prompt(prompt, style), api_key=api_key)
+    media = data.get("media") or []
+    if not media:
+        raise RuntimeError("VeoNonStop Banana: ответ без картинки")
+    download_file(media[0]["fifeUrl"], dest)
+    return dest
+
+
 def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
               style: str = "") -> Path:
-    """Картинка: Agnes (с ротацией всех ключей), потом Gemini. style — единый
-    визуальный стиль проекта (VISUAL_STYLES), добавляется к промпту."""
+    """Картинка: VeoNonStop (Banana, ОСНОВНОЙ) -> Agnes -> Gemini (фолбэки,
+    если Veo недоступен/ключ истёк/упал). style — единый визуальный стиль
+    проекта (VISUAL_STYLES), добавляется к промпту."""
+    veo_key = os.getenv("VEO_API_KEY", "").strip()
     agn_keys = _agnes_keys()
     gem = (api_key or os.getenv("GEMINI_API_KEY", "")).strip()
-    if not agn_keys and not gem:
-        raise RuntimeError("Нет ключей для картинок: задай AGNES_API_KEY или "
-                           "GEMINI_API_KEY (.env или «Настройки API»).")
+    if not veo_key and not agn_keys and not gem:
+        raise RuntimeError("Нет ключей для картинок: задай VEO_API_KEY, "
+                           "AGNES_API_KEY или GEMINI_API_KEY (.env или «Настройки API»).")
     last = None
+    if veo_key:
+        try:
+            return veo_image(prompt, dest, veo_key, log, style)
+        except Exception as e:
+            last = e
+            if agn_keys or gem:
+                log(f"[Картинка] VeoNonStop не справился ({e}) — пробую Agnes/Gemini...")
     for i, key in enumerate(agn_keys, 1):
         try:
             return agnes_image(prompt, dest, key, log, style)
@@ -841,9 +902,11 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
             if i < len(agn_keys):
                 log(f"[Картинка] Ключ Agnes #{i} не сработал ({e}) — следующий...")
     if gem:
-        if last:
-            log(f"[Картинка] Agnes не справился ({last}) — пробую Gemini...")
-        return gemini_image(prompt, dest, gem, style)
+        try:
+            return gemini_image(prompt, dest, gem, style)
+        except Exception as e:
+            last = e
+            log(f"[Картинка] Gemini не справился ({e})")
     raise last
 
 
@@ -932,15 +995,37 @@ def agnes_video(prompt: str, dest: Path, api_key: str, log=print,
     raise RuntimeError(f"Agnes video: не дождался за {timeout_s // 60} мин")
 
 
+def veo_video(prompt: str, dest: Path, api_key: str, log=print) -> Path:
+    """Клип через VeoNonStop (Veo 3.1). Длительность фиксирована API (~8 c) —
+    не совпадает с заказанными seconds; при монтаже клип обрезается/тянется
+    как обычный сток."""
+    import veo_client
+    log(f"[Видео-ИИ] VeoNonStop: «{prompt[:60]}» (1-3 мин)...")
+    veo_client.generate_video_and_wait(prompt, dest, api_key=api_key, log=log)
+    log(f"[Видео-ИИ] Готово: {dest.name}")
+    return dest
+
+
 def gen_video(prompt: str, dest: Path, log=print,
               seconds: float = 5.0) -> Path:
-    """Генерация видеоклипа ИИ с ротацией ключей Agnes при занятости."""
+    """Генерация видеоклипа ИИ: VeoNonStop (ОСНОВНОЙ) -> Agnes (ротация
+    ключей, фолбэк если Veo недоступен/ключ истёк/упал)."""
+    veo_key = os.getenv("VEO_API_KEY", "").strip()
     keys = _agnes_keys()
-    if not keys:
-        raise RuntimeError("Нет ключа Agnes (AGNES_API_KEY) — видеогенерация "
-                           "работает только через Agnes.")
-    log(f"[Видео-ИИ] Клип ~{seconds:.0f} c: «{prompt[:60]}» (1-3 мин)")
+    if not veo_key and not keys:
+        raise RuntimeError("Нет ключа для видеогенерации: задай VEO_API_KEY "
+                           "или AGNES_API_KEY (.env или «Настройки API»).")
     last = None
+    if veo_key:
+        try:
+            return veo_video(prompt, dest, veo_key, log)
+        except Exception as e:
+            last = e
+            if keys:
+                log(f"[Видео-ИИ] VeoNonStop не справился ({e}) — пробую Agnes...")
+    if not keys:
+        raise last
+    log(f"[Видео-ИИ] Клип ~{seconds:.0f} c: «{prompt[:60]}» (1-3 мин)")
     for attempt in (1, 2):
         for i, key in enumerate(keys, 1):
             try:
@@ -948,15 +1033,16 @@ def gen_video(prompt: str, dest: Path, log=print,
                 log(f"[Видео-ИИ] Готово: {dest.name}")
                 return dest
             except RuntimeError as e:
-                last = e
                 s = str(e)
                 if not any(x in s for x in ("429", "503", "饱和", "saturat")):
                     raise      # настоящая ошибка — не маскируем ротацией
+                last = e
                 log(f"[Видео-ИИ] Занято (ключ {i}/{len(keys)}, "
                     f"попытка {attempt}/2)")
-        if attempt == 1:
-            log("[Видео-ИИ] Все ключи заняты — пауза 45 c и повтор...")
-            time.sleep(45)
+        if attempt == 2:
+            break
+        log("[Видео-ИИ] Все ключи заняты — пауза 45 c и повтор...")
+        time.sleep(45)
     raise last
 
 
@@ -1089,8 +1175,26 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
                 target.unlink()
             src.rename(target)
     srt = subs_dir / "voiceover.srt"
+    strip_srt_punctuation(srt)
     log(f"[Субтитры] Готово: {srt}")
     return srt
+
+
+def strip_srt_punctuation(srt_path: Path):
+    """Убирает запятые/точки/двоеточия/тире из текста субтитров (номера и
+    таймкоды не трогает) — по просьбе: чистые строки без пунктуации,
+    только слова. Знаки вопроса/восклицания и апострофы внутри слов
+    оставляем — они несут интонацию/орфографию, а не «шум»."""
+    lines = srt_path.read_text(encoding="utf-8").splitlines()
+    out = []
+    for line in lines:
+        if re.match(r"^\d+$", line) or "-->" in line or not line.strip():
+            out.append(line)
+        else:
+            cleaned = re.sub(r"[,.;:—–]+", "", line)
+            cleaned = re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+            out.append(cleaned)
+    srt_path.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
 def load_whisper_words(json_path: Path) -> list[dict]:
@@ -1656,7 +1760,7 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     gemini_key: str = "", agnes_key: str = "",
                     genvideo: bool = False, max_unique: int = 200,
                     visual_mode: str = "stock", visual_style: str = "",
-                    ai_ratio: float = 0.35):
+                    ai_ratio: float = 0.35, queries: list[str] | None = None):
     """Подбирает материал по таймлайну озвучки: субтитры -> планы по min_beat
     секунд -> ключевые слова из текста каждого плана -> сток под план
     (видео нужной длины; если нет — фото + Ken Burns ровно на длину плана;
@@ -1670,6 +1774,12 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                  ИИ, ровными интервалами по всему ролику, а не только когда
                  сток провалился — так видео не выглядит «сплошным стоком».
       "ai"     — каждый кадр генерируется ИИ в едином визуальном стиле.
+
+    queries — готовый список умных запросов (по одному на план, см.
+    smart_queries()); если передан, внутренний вызов smart_queries()
+    пропускается (полезно, если нужно посчитать запросы одним провайдером,
+    а генерацию кадров — другим, например Gemini для текста + VeoNonStop
+    для картинок/видео).
 
     Результат: storyboard/ с клипами, timeline.json и sequence.xml
     (Premiere Pro: File > Import). Требует voiceover.mp3 и voiceover.srt."""
@@ -1696,8 +1806,7 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     pexels_get, pixabay_get = _stock_getters(pexels, pixabay, log)
     used = _load_used()
 
-    queries = None
-    if (agnes_key or os.getenv("AGNES_API_KEY", "")
+    if queries is None and (agnes_key or os.getenv("AGNES_API_KEY", "")
             or os.getenv("GEMINI_API_KEY", "")):
         log("[Раскадровка] Составляю умные запросы по смыслу текста (LLM)...")
         queries = smart_queries(beats, agnes_key, log)
@@ -1807,16 +1916,25 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             reused += 1
         elif ((visual_mode == "ai" or (i - 1) in ai_indices)
               and (agnes_key or os.getenv("AGNES_API_KEY", "")
-                   or gemini_key or os.getenv("GEMINI_API_KEY", ""))):
+                   or gemini_key or os.getenv("GEMINI_API_KEY", "")
+                   or os.getenv("VEO_API_KEY", ""))):
             # ЕДИНЫЙ СТИЛЬ (ai) или намеренная ИИ-вставка (mixed по плану
-            # ai_indices) — картинка генерируется без попытки искать сток,
-            # это и отличает «фильм» от разношёрстной нарезки стоков.
+            # ai_indices) — кадр генерируется без попытки искать сток, это и
+            # отличает «фильм» от разношёрстной нарезки стоков. want_photo
+            # (тот же plan_kinds, что и в стоковой ветке) решает видео это
+            # или фото — иначе ИИ-видео (Agnes/Veo) никогда бы не звучало.
             try:
-                jpg = sdir / f"beat_{i:03d}_{safe}_ai.jpg"
-                gen_image(query, jpg, gemini_key, log, visual_style)
-                clip = sdir / f"beat_{i:03d}_{safe}_ai_kb.mp4"
-                ken_burns(jpg, clip, duration=need)
-                src_dur = need
+                if want_photo:
+                    jpg = sdir / f"beat_{i:03d}_{safe}_ai.jpg"
+                    gen_image(query, jpg, gemini_key, log, visual_style)
+                    clip = sdir / f"beat_{i:03d}_{safe}_ai_kb.mp4"
+                    ken_burns(jpg, clip, duration=need)
+                    src_dur = need
+                else:
+                    clip = sdir / f"beat_{i:03d}_{safe}_ai.mp4"
+                    gen_video(_image_prompt(query, visual_style), clip, log,
+                             seconds=need)
+                    src_dur = audio_duration(clip) or need
                 pool.append(clip)
                 use_count[clip] = 1
                 downloaded += 1

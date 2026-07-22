@@ -604,7 +604,7 @@ def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box") -
       yellow_pop — жёлтый жирный с чёрной обводкой (viral/MrBeast-стиль)
     Позиция — нижняя треть, с воздухом от края."""
     p = str(srt.resolve()).replace("\\", "/").replace(":", "\\:")
-    common = (f"FontName=Segoe UI Semibold,FontSize={size},Bold=1,"
+    common = (f"FontName=Segoe UI Black,FontSize={size},Bold=1,"
               "Alignment=2,MarginV=60,MarginL=90,MarginR=90,Spacing=0.3")
     if style_name == "pill":            # текст на полупрозрачной плашке
         style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
@@ -639,7 +639,7 @@ def _ass_escape(text: str) -> str:
 
 def build_karaoke_ass(srt_path: Path, words_path: Path, dest: Path,
                       W: int, H: int, size: int = 19,
-                      accent: str = "d9b36c") -> Path | None:
+                      accent: str = "29d9ff") -> Path | None:
     """Цветные субтитры с пословной подсветкой (караоке-заливка) точно в
     такт озвучке: слово подсвечивается акцентным цветом в момент, когда его
     произносят. Границы и текст фраз — как в voiceover.srt (уже ровно
@@ -677,7 +677,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, \
 OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, \
 ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, \
 MarginR, MarginV, Encoding
-Style: Karaoke,Segoe UI Semibold,{size},{primary},{secondary},{outline},\
+Style: Karaoke,Segoe UI Black,{size},{primary},{secondary},{outline},\
 &H64000000,1,0,0,0,100,100,0.3,0,1,3.4,1.4,2,90,90,60,1
 
 [Events]
