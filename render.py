@@ -27,7 +27,7 @@ import subprocess
 from collections import deque
 from pathlib import Path
 
-from core import srt_to_seconds, parse_srt, audio_duration
+from core import srt_to_seconds, parse_srt, load_whisper_words, audio_duration
 
 CONSOLE = None  # хук GUI: сюда льётся живой вывод ffmpeg (кадр/время/скорость)
 CANCEL = threading.Event()  # кнопка «Стоп»: убивает текущий ffmpeg и рендер
@@ -633,6 +633,100 @@ def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box") -
     return f"subtitles='{p}':force_style='{style}'"
 
 
+def _ass_escape(text: str) -> str:
+    return text.replace("{", "(").replace("}", ")").replace("\n", " ")
+
+
+def build_karaoke_ass(srt_path: Path, words_path: Path, dest: Path,
+                      W: int, H: int, size: int = 19,
+                      accent: str = "d9b36c") -> Path | None:
+    """Цветные субтитры с пословной подсветкой (караоке-заливка) точно в
+    такт озвучке: слово подсвечивается акцентным цветом в момент, когда его
+    произносят. Границы и текст фраз — как в voiceover.srt (уже ровно
+    разбиты Whisper'ом на строки <=42 симв.); таймкоды каждого слова —
+    из voiceover.json (--word_timestamps). Если слов меньше, чем в тексте
+    фразы (несовпадение токенизации), остаток распределяется поровну —
+    видимый текст никогда не обрезается.
+    None, если voiceover.json нет или в нём пусто (старый Whisper без
+    --output_format all) — вызывающий откатывается на обычные субтитры."""
+    words = load_whisper_words(words_path)
+    if not words:
+        return None
+    phrases = parse_srt(srt_path)
+    if not phrases:
+        return None
+
+    # BGR-hex для ASS (не RGB!)
+    def bgr(hexrgb: str) -> str:
+        r, g, b = hexrgb[0:2], hexrgb[2:4], hexrgb[4:6]
+        return f"&H00{b}{g}{r}".upper()
+
+    primary = bgr(accent)      # уже произнесённое слово — акцент
+    secondary = "&H00E6E6E6"   # ещё не произнесённое — светло-серый
+    outline = "&H00151515"
+
+    header = f"""[Script Info]
+ScriptType: v4.00+
+WrapStyle: 0
+PlayResX: {W}
+PlayResY: {H}
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, \
+OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, \
+ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, \
+MarginR, MarginV, Encoding
+Style: Karaoke,Segoe UI Semibold,{size},{primary},{secondary},{outline},\
+&H64000000,1,0,0,0,100,100,0.3,0,1,3.4,1.4,2,90,90,60,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+    def fmt(t: float) -> str:
+        cs = round(t * 100)
+        h, rem = divmod(cs, 360000)
+        m, rem = divmod(rem, 6000)
+        s, cs = divmod(rem, 100)
+        return f"{h:d}:{m:02d}:{s:02d}.{cs:02d}"
+
+    wi = 0  # указатель в общем списке слов — фразы идут по порядку
+    lines = []
+    for start_s, end_s, text in phrases:
+        p_start, p_end = srt_to_seconds(start_s), srt_to_seconds(end_s)
+        toks = text.split()
+        if not toks:
+            continue
+        # берём следующие len(toks) слов из общего списка — тот же прогон
+        # Whisper, порядок гарантированно совпадает даже при иной пунктуации
+        chunk = words[wi:wi + len(toks)]
+        wi += len(chunk)
+        if len(chunk) < len(toks):  # запасной путь: не хватило слов
+            even = (p_end - p_start) / len(toks)
+            chunk = [{"start": p_start + i * even,
+                     "end": p_start + (i + 1) * even}
+                     for i in range(len(toks))]
+        k_tags = []
+        for i, (tok, w) in enumerate(zip(toks, chunk)):
+            nxt = chunk[i + 1]["start"] if i + 1 < len(chunk) else p_end
+            dur_cs = max(round((nxt - w["start"]) * 100), 1)
+            k_tags.append(f"{{\\k{dur_cs}}}{_ass_escape(tok)}")
+        # лёгкий «влёт» строки: 85% -> 100% за 180мс
+        body = ("{\\fscx85\\fscy85\\t(0,180,\\fscx100\\fscy100)}"
+                + " ".join(k_tags))
+        lines.append(f"Dialogue: 0,{fmt(p_start)},{fmt(p_end)},Karaoke,,"
+                     f"0,0,0,,{body}")
+
+    dest.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
+    return dest
+
+
+def _ass_filter(ass_path: Path) -> str:
+    p = str(ass_path.resolve()).replace("\\", "/").replace(":", "\\:")
+    return f"ass='{p}'"
+
+
 # Цветокор-пресеты (выбор на вкладке «Авторендер»; «случайный» решает
 # seed проекта). Применяются до субтитров, чтобы текст оставался чистым.
 LOOKS = {
@@ -708,7 +802,8 @@ def _style_chain(opts: dict) -> list[str]:
 
 def assemble(group_files: list[Path], audio: Path, srt: Path | None,
              dest: Path, fps: int, total: float, opts: dict, tmp: Path,
-             look_chain: str = "", ovls: list[dict] | None = None):
+             look_chain: str = "", ovls: list[dict] | None = None,
+             wh: tuple[int, int] = (1920, 1080)):
     """Финал: конкат групп + оверлеи + звук + субтитры + цветокор + стиль.
     Порядок слоёв: сцена -> цветокор -> оверлеи -> субтитры -> стиль."""
     concat_list = tmp / "groups.txt"
@@ -721,8 +816,20 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
     post = []                             # после оверлеев: субтитры и стиль
     if srt and srt.exists() and opts.get("subs", True):
         size = SUB_SIZES.get(opts.get("sub_size", "средние"), 19)
-        post.append(_subtitles_filter(
-            srt, size, opts.get("sub_style", "bold_box")))
+        style_name = opts.get("sub_style", "bold_box")
+        sub_filter = None
+        if style_name == "karaoke":
+            words_json = srt.parent / "voiceover.json"
+            ass = build_karaoke_ass(srt, words_json, tmp / "karaoke.ass",
+                                    wh[0], wh[1], size,
+                                    opts.get("accent_color", "d9b36c"))
+            if ass:
+                sub_filter = _ass_filter(ass)
+            else:
+                style_name = "bold_box"   # нет voiceover.json — откат
+        if sub_filter is None:
+            sub_filter = _subtitles_filter(srt, size, style_name)
+        post.append(sub_filter)
     post += _style_chain(opts)
     post.append("format=yuv420p")
 
@@ -896,7 +1003,7 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
                     break
     log("[Рендер] Финальный проход: звук + оверлеи + субтитры + цветокор...")
     assemble(group_files, audio, srt, final, fps, total, opts, tmp,
-             look_chain, ovls)
+             look_chain, ovls, (w, h))
     tick()
     size_mb = final.stat().st_size / 1e6
     shutil.rmtree(tmp, ignore_errors=True)   # временные сегменты больше не нужны

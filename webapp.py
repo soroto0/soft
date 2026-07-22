@@ -377,13 +377,18 @@ class Api:
         self._bg("Стоки", job)
 
     def storyboard(self, beat: float, genvideo: bool,
-                   visual_mode: str = "stock", visual_style: str = ""):
+                   visual_mode: str = "stock", visual_style: str = "",
+                   ai_ratio: float = 0.35):
         def job():
             if visual_mode == "ai":
                 self.log("[Раскадровка] Режим ЕДИНЫЙ СТИЛЬ: каждый кадр "
                          f"генерируется ИИ («{visual_style}»). Это даёт вид "
                          "как у канала, но идёт МЕДЛЕННО (сотни картинок) — "
                          "оставь работать.")
+            elif visual_mode == "mixed":
+                self.log(f"[Раскадровка] Режим MIXED: ~{ai_ratio:.0%} планов "
+                         "будут намеренно ИИ-кадрами (не только когда сток "
+                         "не найден) — меньше «сплошного стока» в ролике.")
             core.auto_storyboard(
                 self._project, self.log,
                 self._settings.get("pexels_keys", ""),
@@ -393,7 +398,7 @@ class Api:
                 self._settings.get("agnes_key", ""),
                 bool(genvideo),
                 int(self._settings.get("max_unique", 200)),
-                visual_mode, visual_style)
+                visual_mode, visual_style, float(ai_ratio))
         self._bg("Раскадровка", job)
 
     # ---------- оверлеи ----------
@@ -528,7 +533,8 @@ class Api:
                 self._settings.get("gemini_key", ""),
                 self._settings.get("agnes_key", ""), False,
                 int(self._settings.get("max_unique", 200)),
-                p.get("visual_mode", "stock"), p.get("visual_style", ""))
+                p.get("visual_mode", "mixed"), p.get("visual_style", ""),
+                float(p.get("ai_ratio", 0.35)))
             if not (p.get("overlays") or "").strip():
                 self._auto_overlays()   # моушн-графика сама, если не задана
             self.log("[Цепочка] Шаг 4/4 — рендер…")

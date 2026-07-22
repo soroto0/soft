@@ -170,13 +170,17 @@
         </div>
         <div class="row">
           <label>Источник кадров:</label>
-          <select id="visualMode"><option value="stock" selected>стоки (быстро)</option><option value="ai">🎨 ИИ в едином стиле (уровень канала)</option></select>
+          <select id="visualMode"><option value="stock">только стоки (мало ИИ-кадров)</option><option value="mixed" selected>🎨 микс: часть кадров — ИИ</option><option value="ai">🎨 ИИ в едином стиле (уровень канала)</option></select>
+          <label id="aiRatioLabel">Доля ИИ-кадров:</label>
+          <select id="aiRatio"><option value="0.2">~20%</option><option value="0.35" selected>~35%</option><option value="0.5">~50%</option><option value="0.7">~70%</option></select>
           <label>Визуальный стиль:</label>
           <select id="visualStyle"><option>кинематографичный</option><option selected>винтаж/документ.</option><option>тёплый уют</option><option>тёмный кино</option><option>архив ч/б</option><option>яркий научпоп</option></select>
         </div>
-        <div class="hint">«ИИ в едином стиле» генерирует КАЖДЫЙ кадр в одной эстетике — это главное,
-          что делает видео похожим на настоящий канал (а не нарезку разношёрстных стоков).
-          Идёт медленно (сотни картинок) и тратит кредиты Agnes, зато выглядит цельно.</div>
+        <div class="hint">«Только стоки» почти не генерирует ИИ-кадры (ИИ подключается лишь если сток
+          совсем ничего не нашёл — редкий случай). «Микс» намеренно генерирует заданную долю
+          планов через ИИ равномерно по ролику — так видео не выглядит сплошным стоком, но и не
+          тратит кредиты на каждый кадр. «ИИ в едином стиле» генерирует ВСЁ — медленно, зато
+          максимально цельно.</div>
       </section>
 
       <!-- ================= ОВЕРЛЕИ ================= -->
@@ -204,7 +208,7 @@
           <label>Интенсивность:</label><select id="rInt"><option>слабая</option><option selected>средняя</option><option>сильная</option></select>
           <label>Качество:</label><select id="rQuality"><option selected>обычное</option><option>высокое</option><option>максимум</option></select>
           <label>Субтитры:</label><select id="rSubSize"><option>мелкие</option><option selected>средние</option><option>крупные</option></select>
-          <label>Стиль:</label><select id="rSubStyle"><option value="bold_box" selected>жирный (контур+тень)</option><option value="pill">плашка</option><option value="yellow_pop">жёлтый viral</option><option value="cyan_pop">голубой неон</option><option value="red_alert">красный акцент</option><option value="thin_clean">тонкий минимал</option><option value="top">сверху кадра</option></select>
+          <label>Стиль:</label><select id="rSubStyle"><option value="bold_box" selected>жирный (контур+тень)</option><option value="karaoke">караоке (цветное слово в такт речи)</option><option value="pill">плашка</option><option value="yellow_pop">жёлтый viral</option><option value="cyan_pop">голубой неон</option><option value="red_alert">красный акцент</option><option value="thin_clean">тонкий минимал</option><option value="top">сверху кадра</option></select>
         </div>
         <div class="subrow" id="renderSwitches">
           <label class="switch"><input type="checkbox" id="rSubs" checked><span class="tr"></span>Вшить субтитры</label>

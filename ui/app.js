@@ -260,11 +260,15 @@ const app = {
         "Это даёт вид как у канала, но идёт долго (сотни картинок) и\n" +
         "тратит кредиты Agnes.\n\nПродолжить?"))
       return;
+    if (mode === "mixed" && !confirm(
+        `Режим «микс»: ~${Math.round(parseFloat($("aiRatio").value) * 100)}% ` +
+        "планов будут намеренно ИИ-кадрами (тратит кредиты Agnes).\n\nПродолжить?"))
+      return;
     if ($("genvideo").checked && mode !== "ai" && !confirm(
         "ИИ-генерация клипов для ненайденных планов тратит кредиты Agnes.\n\nПродолжить?"))
       return;
     rpc("storyboard", parseFloat($("beat").value), $("genvideo").checked,
-        mode, $("visualStyle").value);
+        mode, $("visualStyle").value, parseFloat($("aiRatio").value));
   },
   suggestOverlays: () => rpc("suggest_overlays", parseFloat($("ovDur").value))
       .then(r => { if (r) $("overlaysText").value = r; }),
@@ -290,6 +294,7 @@ const app = {
     rpc("generate_all", {
       lang: $("lang").value, tone: $("tone").value,
       visual_mode: $("visualMode").value, visual_style: $("visualStyle").value,
+      ai_ratio: parseFloat($("aiRatio").value),
       script: $("scriptText").value,
       engine: $("ttsEngine").value, voice: $("ttsVoice").value,
       rate: $("ttsRate").value, pauses: $("ttsPauses").checked,

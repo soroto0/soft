@@ -20,6 +20,11 @@ __pycache__/
 .venv/
 venv/
 
+# Remotion: сборка и временные картинки для popup
+remotion/build/
+remotion/public/ovl_*
+remotion/node_modules/
+
 # Случайные папки-проекты в корне
 /2/
 

@@ -532,6 +532,34 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
         chapters = [ln.strip() for ln in outline.splitlines() if ln.strip()][:n_sections]
     log(f"[Агент] План готов: {len(chapters)} глав")
 
+    def _strip_echo(part: str, tail: str) -> str:
+        """Модель иногда дословно повторяет переданный «хвост» предыдущей
+        главы в начале ответа, несмотря на инструкцию не делать этого —
+        обрезаем совпадающий префикс, чтобы текст не дублировался.
+        Наблюдаемый брак — короткие (2-4 слова) буквальные эхо-повторы
+        конца предыдущей главы, а не длинные куски, поэтому порог низкий."""
+        if not tail:
+            return part
+        norm = lambda s: re.sub(r"[^\w\s]", "", s.lower()).split()
+        tail_words, part_words = norm(tail), part.split()
+        part_norm = norm(part)
+        for k in range(min(len(tail_words), len(part_norm)), 1, -1):
+            if part_norm[:k] == tail_words[-k:]:
+                return " ".join(part_words[k:]).strip()
+        return part
+
+    def _gen_chapter(i, ch, flow, sec_words):
+        return llm_chat(
+            [{"role": "system", "content": system},
+             {"role": "user", "content":
+              f"Video about: {topic}.\n"
+              f"Chapter {i} of {len(chapters)}: {ch}.\n"
+              f"Write AT LEAST {sec_words} words of narration in {lang_name} "
+              f"for this chapter — {sec_words} is a hard minimum, do not "
+              "stop early, expand with concrete detail if needed. "
+              + flow}],
+            api_key, 0.75, min(max(sec_words * 4, 1500), 8000))
+
     parts, prev_tail = [], ""
     for i, ch in enumerate(chapters, 1):
         log(f"[Агент] Глава {i}/{len(chapters)}: {ch}")
@@ -540,19 +568,27 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                     "two sentences. ")
         else:
             flow = (f"Continue seamlessly from the previous chapter, which "
-                    f"ended with: \"...{prev_tail}\". Do not repeat it. ")
+                    f"ended with: \"...{prev_tail}\". Do not repeat any of "
+                    "that text — start with genuinely new content. ")
         if i == len(chapters):
             flow += "End with a satisfying payoff that rewards watching to the end. "
         else:
             flow += "End on a note that pulls the viewer into the next chapter. "
-        part = llm_chat(
-            [{"role": "system", "content": system},
-             {"role": "user", "content":
-              f"Video about: {topic}.\n"
-              f"Chapter {i} of {len(chapters)}: {ch}.\n"
-              f"Write about {sec_words} words of narration in {lang_name} for "
-              "this chapter. " + flow}],
-            api_key, 0.75, min(max(sec_words * 3, 1200), 8000))
+        flow += ("Always end the chapter on a grammatically complete sentence "
+                "— never cut off mid-clause, since the next chapter is a "
+                "separate paragraph and cannot finish your sentence for you. ")
+        part = _strip_echo(_gen_chapter(i, ch, flow, sec_words), prev_tail)
+        if len(part.split()) < sec_words * 0.6:   # заметно короче заказа — один повтор
+            log(f"[Агент] Глава {i}: {len(part.split())} слов вместо "
+                f"~{sec_words} — прошу расширить...")
+            part2 = _strip_echo(_gen_chapter(i, ch, flow, sec_words), prev_tail)
+            if len(part2.split()) > len(part.split()):
+                part = part2
+            if not part.strip():
+                log(f"[Агент] ⚠ Глава {i} «{ch}» не сгенерировалась даже "
+                    "со второй попытки — в сценарии не будет этой главы, "
+                    "допиши её вручную.")
+                continue
         parts.append(part)
         prev_tail = " ".join(part.split()[-25:])
 
@@ -998,10 +1034,13 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
             "ошибки «[WinError 2] Не удается найти указанный файл».)")
     # word_timestamps + max_line_width/count: Whisper режет длинные фразы
     # (по 6-10 с целыми предложениями) на короткие ровные строки <=42 симв.,
-    # максимум 2 строки — иначе субтитры «расползаются» по всему кадру
+    # максимум 2 строки — иначе субтитры «расползаются» по всему кадру.
+    # output_format=all — вместе с .srt получаем .json с таймкодом КАЖДОГО
+    # слова (words: [{word, start, end}, ...]) — на нём строятся цветные
+    # караоке-субтитры со сменой цвета в такт речи (build_karaoke_ass).
     cmd = [exe, str(audio_path), "--model", model,
            "--language", WHISPER_LANGS.get(lang, lang or "en"),
-           "--output_format", "srt", "--word_timestamps", "True",
+           "--output_format", "all", "--word_timestamps", "True",
            "--max_line_width", str(max_line_width), "--max_line_count", "2",
            "--output_dir", str(subs_dir)]
     _console("[whisper] $ " + " ".join(cmd))
@@ -1020,21 +1059,47 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
     if p.returncode != 0:
         raise RuntimeError(f"whisper упал (код {p.returncode}) — подробности "
                            "на странице «Консоль»")
-    # Whisper может назвать файл по-своему — ищем самый свежий .srt в папке
-    srt_files = sorted(subs_dir.glob("*.srt"),
+    # Whisper может назвать файлы по-своему — приводим к стандартным именам,
+    # чтобы остальные шаги их находили. .json (слова с таймкодами) —
+    # опционально: старые версии whisper без --output_format all его не дадут.
+    for ext, name in ((".srt", "voiceover.srt"), (".json", "voiceover.json")):
+        files = sorted(subs_dir.glob(f"*{ext}"),
                        key=lambda p: p.stat().st_mtime, reverse=True)
-    if not srt_files:
-        raise FileNotFoundError(f"Whisper отработал, но .srt не найден в {subs_dir}")
-    srt = srt_files[0]
-    # приводим к стандартному имени, чтобы остальные шаги его находили
-    target = subs_dir / "voiceover.srt"
-    if srt != target:
-        if target.exists():
-            target.unlink()
-        srt.rename(target)
-        srt = target
+        if not files:
+            if ext == ".srt":
+                raise FileNotFoundError(
+                    f"Whisper отработал, но .srt не найден в {subs_dir}")
+            continue
+        src, target = files[0], subs_dir / name
+        if src != target:
+            if target.exists():
+                target.unlink()
+            src.rename(target)
+    srt = subs_dir / "voiceover.srt"
     log(f"[Субтитры] Готово: {srt}")
     return srt
+
+
+def load_whisper_words(json_path: Path) -> list[dict]:
+    """Разбирает voiceover.json (whisper --word_timestamps) в плоский список
+    [{word, start, end}, ...] по всей озвучке. Пустой список, если файла нет
+    или в нём почему-то нет пословных таймкодов (старый whisper) —
+    вызывающий код должен откатиться на обычные (нецветные) субтитры."""
+    json_path = Path(json_path)
+    if not json_path.exists():
+        return []
+    try:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    words = []
+    for seg in data.get("segments", []):
+        for w in seg.get("words", []):
+            word = str(w.get("word", "")).strip()
+            if word and "start" in w and "end" in w:
+                words.append({"word": word, "start": float(w["start"]),
+                             "end": float(w["end"])})
+    return words
 
 
 def parse_srt(srt_path: Path) -> list[tuple[str, str, str]]:
@@ -1398,7 +1463,8 @@ def project_style(project_dir) -> dict:
         "voice": r.choice(RANDOM_VOICES),
         "rate": r.choice([-8, -5, -3, 0, 0, 3, 5]),
         "sub_style": r.choice(["bold_box", "bold_box", "pill", "yellow_pop",
-                               "cyan_pop", "red_alert", "thin_clean"]),
+                               "cyan_pop", "red_alert", "thin_clean",
+                               "karaoke", "karaoke"]),
         "sub_size": r.choice(["средние", "средние", "крупные"]),
         "intensity": r.choice(["слабая", "средняя", "средняя", "сильная"]),
         "look": "случайный",
@@ -1576,11 +1642,22 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     pixabay_keys: str = "", min_beat: float = 6.0,
                     gemini_key: str = "", agnes_key: str = "",
                     genvideo: bool = False, max_unique: int = 200,
-                    visual_mode: str = "stock", visual_style: str = ""):
+                    visual_mode: str = "stock", visual_style: str = "",
+                    ai_ratio: float = 0.35):
     """Подбирает материал по таймлайну озвучки: субтитры -> планы по min_beat
     секунд -> ключевые слова из текста каждого плана -> сток под план
     (видео нужной длины; если нет — фото + Ken Burns ровно на длину плана;
     если и фото нет, а ключ Gemini задан — картинка генерируется).
+
+    visual_mode:
+      "stock"  — только стоки; ИИ-картинка лишь как аварийный fallback,
+                 если сток совсем ничего не нашёл (редко — почти всегда
+                 что-то находится, поэтому ИИ-кадров в ролике мало).
+      "mixed"  — намеренно ai_ratio (по умолчанию 35%) планов генерируются
+                 ИИ, ровными интервалами по всему ролику, а не только когда
+                 сток провалился — так видео не выглядит «сплошным стоком».
+      "ai"     — каждый кадр генерируется ИИ в едином визуальном стиле.
+
     Результат: storyboard/ с клипами, timeline.json и sequence.xml
     (Premiere Pro: File > Import). Требует voiceover.mp3 и voiceover.srt."""
     srt = out_dir / "subs" / "voiceover.srt"
@@ -1666,6 +1743,20 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     plan_kinds = ["video" if i < 2 or i % 2 == 0 else "photo"
                   for i in range(len(beats))]
 
+    # mixed: заранее фиксируем, какие планы будут ИИ-кадрами — РАВНОМЕРНО
+    # по всему ролику (не случайным разбросом, чтобы не было ни скоплений,
+    # ни пустых участков), первые два плана не трогаем (живой хук).
+    ai_indices = set()
+    if visual_mode == "mixed" and ai_ratio > 0:
+        eligible = list(range(2, len(beats)))
+        n_ai = round(len(eligible) * ai_ratio)
+        if n_ai and eligible:
+            step = len(eligible) / n_ai
+            ai_indices = {eligible[min(int(j * step), len(eligible) - 1)]
+                         for j in range(n_ai)}
+        log(f"[Раскадровка] Режим MIXED: {len(ai_indices)}/{len(beats)} "
+            f"планов ({ai_ratio:.0%}) будут ИИ-кадрами, равномерно по ролику")
+
     # Пул скачанных клипов для переиспользования: часовое видео = сотни
     # планов, а у стоков лимиты. Качаем до max_unique уникальных клипов,
     # дальше переиспользуем уже скачанные — рендер даёт им РАЗНОЕ движение
@@ -1701,10 +1792,12 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             clip = reuse_from_pool()
             src_dur = audio_duration(clip) or need
             reused += 1
-        elif visual_mode == "ai" and (agnes_key or os.getenv("AGNES_API_KEY", "")
-                                      or gemini_key or os.getenv("GEMINI_API_KEY", "")):
-            # ЕДИНЫЙ СТИЛЬ: каждый кадр генерируется ИИ в одной эстетике —
-            # это и отличает «фильм» канала от разношёрстной нарезки стоков.
+        elif ((visual_mode == "ai" or (i - 1) in ai_indices)
+              and (agnes_key or os.getenv("AGNES_API_KEY", "")
+                   or gemini_key or os.getenv("GEMINI_API_KEY", ""))):
+            # ЕДИНЫЙ СТИЛЬ (ai) или намеренная ИИ-вставка (mixed по плану
+            # ai_indices) — картинка генерируется без попытки искать сток,
+            # это и отличает «фильм» от разношёрстной нарезки стоков.
             try:
                 jpg = sdir / f"beat_{i:03d}_{safe}_ai.jpg"
                 gen_image(query, jpg, gemini_key, log, visual_style)

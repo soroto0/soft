@@ -23,6 +23,22 @@
    - Pexels: pexels.com/api
    - Pixabay: pixabay.com/api/docs
 
+## Оверлеи: движок Remotion (опционально, кинокачество)
+
+Моушн-графику (плашки, счётчики, выноски, popup, бары, таймлайн) может
+рендерить Remotion — React-анимации через браузерный движок, качество
+уровня After Effects. Нужен Node.js 18+:
+
+```
+cd remotion && npm i
+```
+
+Дальше всё автоматически: если Node и `remotion/node_modules` на месте,
+оверлеи рендерит Remotion; иначе — встроенный Pillow (быстрее, проще).
+Принудительный выбор — в settings.json: `"overlay_engine": "auto" |
+"remotion" | "pillow"`. Упавший оверлей всегда откатывается на Pillow,
+рендер не падает.
+
 ## Использование (каждое видео)
 
 1. Положи английский текст сценария в `script.txt`
