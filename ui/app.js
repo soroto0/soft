@@ -22,9 +22,22 @@ const STAGES = [
   [ICO.build, "Premiere", "build", null],
 ];
 
-const EDGE_VOICES = ["en-US-GuyNeural", "en-US-ChristopherNeural",
-  "en-US-EricNeural", "en-US-AndrewNeural", "en-US-BrianNeural",
-  "en-US-JennyNeural", "en-US-AriaNeural", "en-US-MichelleNeural"];
+// Edge TTS — голос должен звучать на языке сценария, иначе английская
+// модель либо коверкает произношение, либо вообще отказывается читать.
+const EDGE_VOICES_BY_LANG = {
+  "английский": ["en-US-GuyNeural", "en-US-ChristopherNeural",
+    "en-US-EricNeural", "en-US-AndrewNeural", "en-US-BrianNeural",
+    "en-US-JennyNeural", "en-US-AriaNeural", "en-US-MichelleNeural"],
+  "русский": ["ru-RU-DmitryNeural", "ru-RU-SvetlanaNeural"],
+  "испанский": ["es-ES-AlvaroNeural", "es-ES-ElviraNeural",
+    "es-MX-JorgeNeural", "es-MX-DaliaNeural"],
+  "немецкий": ["de-DE-ConradNeural", "de-DE-KatjaNeural", "de-DE-AmalaNeural"],
+  "французский": ["fr-FR-HenriNeural", "fr-FR-DeniseNeural", "fr-FR-EloiseNeural"],
+  "португальский": ["pt-BR-AntonioNeural", "pt-BR-FranciscaNeural",
+    "pt-PT-DuarteNeural", "pt-PT-RaquelNeural"],
+};
+// Polly не умеет во все эти языки, но Matthew хотя бы не падает молча —
+// список голосов на движке "Amazon Polly" остаётся английским как был.
 const POLLY_VOICES = ["Matthew", "Joanna", "Stephen", "Ruth", "Gregory", "Danielle"];
 
 /* ---------- API-мост ---------- */
@@ -231,7 +244,9 @@ const app = {
   },
   fillVoices() {
     const edge = $("ttsEngine").value.includes("Edge");
-    const list = edge ? EDGE_VOICES : POLLY_VOICES;
+    const list = edge
+      ? (EDGE_VOICES_BY_LANG[$("lang").value] || EDGE_VOICES_BY_LANG["английский"])
+      : POLLY_VOICES;
     $("ttsVoice").innerHTML = list.map(v => `<option>${v}</option>`).join("");
     $("pausesWrap").style.display = edge ? "none" : "";
   },
@@ -353,6 +368,7 @@ const app = {
       $("sAwsKey").value = s.aws_access_key || "";
       $("sAwsSecret").value = s.aws_secret_key || "";
       $("sAwsRegion").value = s.aws_region || "";
+      $("sVeo").value = s.veo_key || "";
       $("sGemini").value = s.gemini_key || "";
       $("sAgnes").value = s.agnes_key || "";
       $("sPexels").value = s.pexels_keys || "";
@@ -366,6 +382,7 @@ const app = {
       aws_access_key: $("sAwsKey").value.trim(),
       aws_secret_key: $("sAwsSecret").value.trim(),
       aws_region: $("sAwsRegion").value.trim(),
+      veo_key: $("sVeo").value.trim(),
       gemini_key: $("sGemini").value.trim(),
       agnes_key: $("sAgnes").value.trim(),
       pexels_keys: $("sPexels").value.trim(),
@@ -376,6 +393,7 @@ const app = {
 
 $("projPath").addEventListener("change",
   () => rpc("set_project", $("projPath").value).then(refresh));
+$("lang").addEventListener("change", app.fillVoices);
 
 /* ---------- Старт ---------- */
 try {

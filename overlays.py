@@ -126,7 +126,7 @@ def parse_overlays(text: str) -> list[dict]:
         otype = parts[1].lower()
         if otype not in ("popup", "lower3", "callout", "counter",
                          "bars", "timeline", "infographic",
-                         "compare", "banner"):
+                         "compare", "banner", "collage", "titlecard"):
             continue
         pos = parts[3] if len(parts) > 3 and parts[3] else ""
         dur = 4.0
@@ -563,22 +563,37 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
     props = {"type": item["type"], "content": item["content"],
              "pos": item["pos"], "dur": item["dur"], "fps": fps,
              "width": W, "height": H, "img": ""}
-    if item["type"] == "popup":
-        img = Path(out_dir) / item["content"]
-        if not img.exists():
-            img = Path(item["content"])
-        if not img.exists():
-            raise FileNotFoundError(f"нет картинки {item['content']}")
+
+    def _data_uri(rel: str) -> str:
         # data URI, а не staticFile(): remotion bundle снимает "снимок" папки
         # public/ ОДИН РАЗ при сборке — картинки, добавленные позже (а они
         # всегда позже, генерируются/качаются во время самого рендера),
         # в собранном бандле не видны и дают 404. Base64 обходит это
         # полностью — картинка просто лежит прямо в props.
         import base64
+        img = Path(out_dir) / rel
+        if not img.exists():
+            img = Path(rel)
+        if not img.exists():
+            raise FileNotFoundError(f"нет картинки {rel}")
         mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png",
                 "webp": "webp"}.get(img.suffix.lower().lstrip("."), "jpeg")
-        b64 = base64.b64encode(img.read_bytes()).decode("ascii")
-        props["img"] = f"data:image/{mime};base64,{b64}"
+        return f"data:image/{mime};base64," + \
+            base64.b64encode(img.read_bytes()).decode("ascii")
+
+    if item["type"] == "popup":
+        props["img"] = _data_uri(item["content"])
+    elif item["type"] == "collage":
+        # content: "label1::путь1;;label2::путь2;;label3::путь3" (до 3 фото)
+        entries = []
+        for chunk in item["content"].split(";;"):
+            label, _, rel = chunk.partition("::")
+            if rel.strip():
+                entries.append((label.strip(), rel.strip()))
+        if not entries:
+            raise ValueError("collage: нет пар label::путь в content")
+        props["items"] = [{"label": lab, "img": _data_uri(rel)}
+                          for lab, rel in entries[:3]]
     dest_dir = Path(dest_dir)
     props_file = dest_dir.parent / (dest_dir.name + "_props.json")
     props_file.write_text(json.dumps(props, ensure_ascii=False),
@@ -735,6 +750,12 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                 point = (float(m.group(1)), float(m.group(2)))
             return render_callout(it["content"], point, it["dur"],
                                   fps, W, H, dest)
+        if it["type"] not in renderers:
+            # compare/banner/collage/titlecard — только Remotion, у Pillow
+            # для них нет аналога; явная причина вместо голого KeyError
+            raise RuntimeError(
+                f"тип «{it['type']}» доступен только через Remotion — "
+                "нет питоновского запасного рендерера")
         return renderers[it["type"]](it["content"], it["dur"], fps, W, H, dest)
 
     out = []
@@ -869,22 +890,26 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     заблуждение; если фото не нашлось, остаётся пометка NEEDS_IMAGE для
     ручного добавления. Для остального (места, понятия, абстрактные темы) —
     VeoNonStop (Banana) как ОСНОВНОЙ генератор иллюстрации, Wikimedia —
-    фолбэк, если Veo недоступен/упал. Если жёсткие правила (деньги/даты/
-    имена/вопросы) вообще ничего не нашли в тексте — просим Gemini выбрать
-    моменты для баннеров по смыслу (suggest_overlays_llm), а не оставляем
-    ролик совсем без оверлеев."""
+    фолбэк, если Veo недоступен/упал.
+
+    Плотность и разнообразие типов — через Gemini (suggest_overlays_llm),
+    ОСНОВНОЙ путь: он видит смысл текста целиком и расставляет оверлеи по
+    всему ролику (включая titlecard на хуки/смену темы), а не только там,
+    где regex находит явные деньги/даты/имена/вопросы. Regex-путь
+    (suggest_overlays) — запасной, если ключа нет или LLM не ответил."""
     from pathlib import Path as _P
     from core import fetch_wiki_images, _load_used, _save_used, veo_image
-    draft = suggest_overlays(rows, manifest, min_gap)
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if draft.startswith("#") and gemini_key:
-        llm_draft = suggest_overlays_llm(rows, gemini_key, log, min_gap)
-        if llm_draft:
-            draft = llm_draft
-        else:
+    draft = None
+    if gemini_key:
+        draft = suggest_overlays_llm(rows, gemini_key, log, min_gap)
+    if not draft:
+        if gemini_key:
             log("[Оверлеи] LLM недоступен для этого текста (возможно, "
                 "фильтр безопасности на тяжёлой теме) — беру моменты "
-                "локально, без LLM")
+                "по правилам (regex)")
+        draft = suggest_overlays(rows, manifest, min_gap)
+        if draft.startswith("#"):
             draft = suggest_overlays_local(rows, min_gap)
     idir = _P(out_dir) / "images"
     idir.mkdir(parents=True, exist_ok=True)
@@ -955,16 +980,18 @@ def suggest_overlays(rows: list, manifest: list, min_gap: float = 13.0,
 
 
 def suggest_overlays_llm(rows: list, api_key: str, log=print,
-                         min_gap: float = 13.0, target: int = 6,
+                         min_gap: float = 13.0, target: int | None = None,
                          attempts: int = 3) -> str | None:
-    """Фолбэк, когда suggest_overlays() по жёстким правилам (деньги/даты/
-    имена/вопросы) ничего не нашла — многие сценарии просто не содержат
-    таких формальных фактов. Вместо пустого ролика без единого оверлея
-    просим LLM самому выбрать ~target моментов по смыслу текста И тип
-    оверлея для каждого (микс banner/lower3/compare/callout — не всё
-    подряд баннерами). До attempts попыток — модель не всегда с первого
-    раза отдаёт валидный JSON. None, если так и не получилось — тогда
-    ролик остаётся без оверлеев, как раньше."""
+    """ОСНОВНОЙ путь расстановки оверлеев (не только фолбэк): LLM понимает
+    смысл текста целиком, поэтому расставляет оверлеи ПЛОТНЕЕ и умнее, чем
+    голый regex (который зависит от явных денег/дат/имён/вопросов в тексте
+    — во многих сценариях таких формальных зацепок почти нет). Просим LLM
+    самому выбрать ~n моментов по всему ролику И тип оверлея для каждого
+    (микс titlecard/banner/lower3/compare/callout — не всё подряд одним
+    типом). target=None — количество считается от длительности видео и
+    min_gap (без искусственного потолка), явное число — жёсткий лимит.
+    До attempts попыток — модель не всегда с первого раза отдаёт валидный
+    JSON. None, если так и не получилось — тогда используется regex-путь."""
     from core import llm_chat
     total = srt_to_seconds(rows[-1][1]) if rows else 0
     if not total:
@@ -973,47 +1000,53 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
         f"{i}. [{int(srt_to_seconds(r[0]) // 60):02d}:"
         f"{int(srt_to_seconds(r[0]) % 60):02d}] {r[2]}"
         for i, r in enumerate(rows, 1))
-    n = max(3, min(target, round(total / max(min_gap, 8))))
+    n_auto = round(total / max(min_gap, 8))
+    n = max(3, min(target, n_auto) if target else n_auto)
     picks = None
     for attempt in range(1, attempts + 1):
         try:
             out = llm_chat(
                 [{"role": "system", "content":
-                  "You are a motion-graphics editor choosing on-screen text "
-                  "overlays for a documentary — varied types, not the same "
-                  "one repeated."},
+                  "You are a motion-graphics editor choosing on-screen "
+                  "overlays for a documentary — varied types throughout the "
+                  "ENTIRE video, not the same one repeated, and not "
+                  "clustered only at the start."},
                  {"role": "user", "content":
-                  f"Pick exactly {n} moments from this timestamped narration "
-                  "worth an on-screen text overlay, and choose the best TYPE "
-                  "for each — use a MIX, don't pick the same type every time:\n"
+                  f"Pick exactly {n} moments SPREAD ACROSS THE FULL LENGTH "
+                  "of this timestamped narration (from near the start to "
+                  "near the end, roughly evenly) worth an on-screen overlay, "
+                  "and choose the best TYPE for each — use a MIX:\n"
+                  "  'titlecard' — a big kinetic-type headline for a major "
+                  "hook/topic shift, format text as \"HEADLINE::subtitle\" "
+                  "(subtitle optional), under 6 words for the headline\n"
                   "  'banner' — a punchy quoted phrase or claim, under 9 words\n"
                   "  'lower3' — a short 2-5 word label (a place, term, or "
                   "short title mentioned right there)\n"
                   "  'compare' — two short CONTRASTING phrases from that "
                   "moment, as text formatted exactly as \"first | second\"\n"
                   "  'callout' — a short pointed remark or aside, under 8 words\n"
-                  "Roughly aim for 2 banners, 2 lower3, 1 compare, 1 callout "
-                  "(adjust to fit naturally). Reply with a JSON array of "
-                  '{"line": <line number>, "type": "banner|lower3|compare|'
-                  'callout", "text": "..."}, nothing else.\n\n' + numbered}],
-                api_key, 0.6, 1500)
+                  "Use at most 2 titlecards total (only for real turning "
+                  "points), and roughly even amounts of the rest. Reply "
+                  f'with a JSON array of {{"line": <line number>, "type": '
+                  '"titlecard|banner|lower3|compare|callout", "text": "..."}, '
+                  "nothing else.\n\n" + numbered}],
+                api_key, 0.6, 2200)
             m = re.search(r"\[.*\]", out, re.S)
             if not m:
-                log(f"[Оверлеи] LLM-фолбэк (попытка {attempt}/{attempts}): "
+                log(f"[Оверлеи] LLM (попытка {attempt}/{attempts}): "
                     f"ответ без JSON-массива: {out[:200]!r}")
                 continue
             picks = json.loads(m.group(0))
             break
         except Exception as e:
-            log(f"[Оверлеи] LLM-фолбэк (попытка {attempt}/{attempts}) "
-                f"не сработал: {e}")
+            log(f"[Оверлеи] LLM (попытка {attempt}/{attempts}) не сработал: {e}")
     if not picks:
-        log("[Оверлеи] LLM-фолбэк: пустой список — вернулся ролик без оверлеев")
+        log("[Оверлеи] LLM: не удалось получить план оверлеев")
         return None
     # LLM отдаёт моменты НЕ по хронологии — без сортировки min_gap-фильтр
     # (сравнивает с последним ПРИНЯТЫМ t) отбраковывает случайные пункты
-    POS = {"banner": "top", "lower3": "bottom", "compare": "center",
-          "callout": "point:70,40"}
+    POS = {"titlecard": "center", "banner": "top", "lower3": "bottom",
+          "compare": "center", "callout": "point:70,40"}
     dated = []
     for p in picks:
         idx = int(p.get("line", 0)) - 1
@@ -1032,14 +1065,14 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
             continue
         last_t = t
         tc = f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
-        out_lines.append(f"{tc} | {otype} | {text} | {POS[otype]} | 4s")
+        dur = "5s" if otype == "titlecard" else "4s"
+        out_lines.append(f"{tc} | {otype} | {text} | {POS[otype]} | {dur}")
     if not out_lines:
-        log(f"[Оверлеи] LLM-фолбэк: {len(picks)} пунктов от LLM, но все "
+        log(f"[Оверлеи] LLM: {len(picks)} пунктов от LLM, но все "
             "отфильтрованы min_gap")
         return None
     kinds = ", ".join(sorted({o for _, o, _ in dated}))
-    log(f"[Оверлеи] LLM-фолбэк: {len(out_lines)} оверлеев по смыслу текста "
-        f"({kinds}) — в тексте не нашлось явных денег/дат/имён/вопросов")
+    log(f"[Оверлеи] LLM: {len(out_lines)} оверлеев по смыслу текста ({kinds})")
     return "\n".join(out_lines)
 
 

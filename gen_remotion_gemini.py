@@ -43,7 +43,7 @@ STRICT REQUIREMENTS (this is a fixed contract, do not deviate):
   };
   ```
   Multiply this `exit` value into every layer's opacity (and optionally scale) in every component. Never invent your own fixed-duration timer.
-- Counter content parsing: `p.content` may be ANY of "$200,000", "30,000 people", "8 billion", "42%" — extract the leading non-digit prefix and trailing non-digit suffix with a regex like `/([^\d]*)([\d][\d,.\s]*)(.*)/`, animate-count only the numeric part, and re-attach the ORIGINAL prefix/suffix text exactly as given — do NOT assume currency, do NOT invent a "Total Value" caption, do NOT reformat non-monetary numbers with a currency symbol.
+- Counter content parsing: `p.content` may be ANY of "$200,000", "30,000 people", "8 billion", "42%" — extract the leading non-digit prefix and trailing non-digit suffix with a regex like `/([^\\d]*)([\\d][\\d,.\\s]*)(.*)/`, animate-count only the numeric part, and re-attach the ORIGINAL prefix/suffix text exactly as given — do NOT assume currency, do NOT invent a "Total Value" caption, do NOT reformat non-monetary numbers with a currency symbol.
 - Positions: honor `p.pos` where relevant: "top-right","top-left","top","bottom","center","point:X,Y".
 - Visual quality bar: premium broadcast/Netflix-documentary title-card quality — layered depth (background glow + plate + accent line/border + icon/kicker + main text, at least 3 visual layers per element), gradients, soft shadows, smooth spring physics (not linear/robotic motion), tasteful glow accents. Must NOT look flat, cheap, or like a plain HTML form.
 

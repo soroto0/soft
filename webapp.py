@@ -55,6 +55,16 @@ class Api:
         self._win = None
         core.CONSOLE = lambda m: self.log(m, "dim")
         render.CONSOLE = lambda m: self.log(m, "dim")
+        self._apply_env()   # ключи из settings.json -> os.environ (не только
+                            # при явном сохранении в диалоге, но и при старте)
+
+    def _apply_env(self):
+        for k, env in (("aws_access_key", "AWS_ACCESS_KEY_ID"),
+                       ("aws_secret_key", "AWS_SECRET_ACCESS_KEY"),
+                       ("aws_region", "AWS_REGION"),
+                       ("veo_key", "VEO_API_KEY")):
+            if self._settings.get(k):
+                os.environ[env] = self._settings[k]
 
     # ---------- связь с JS ----------
     def _js(self, code: str):
@@ -545,7 +555,8 @@ class Api:
     # ---------- настройки ----------
     def settings_get(self):
         keys = ("aws_access_key", "aws_secret_key", "aws_region",
-                "gemini_key", "agnes_key", "pexels_keys", "pixabay_keys")
+                "gemini_key", "agnes_key", "veo_key",
+                "pexels_keys", "pixabay_keys")
         return {k: self._settings.get(k, "") for k in keys}
 
     def _save_settings_file(self):
@@ -556,11 +567,7 @@ class Api:
     def settings_save(self, data: dict):
         self._settings.update({k: str(v) for k, v in (data or {}).items()})
         self._save_settings_file()
-        for k, env in (("aws_access_key", "AWS_ACCESS_KEY_ID"),
-                       ("aws_secret_key", "AWS_SECRET_ACCESS_KEY"),
-                       ("aws_region", "AWS_REGION")):
-            if self._settings.get(k):
-                os.environ[env] = self._settings[k]
+        self._apply_env()
         self.log("[Настройки] Сохранено в settings.json")
         return True
 

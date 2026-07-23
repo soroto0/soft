@@ -1,7 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 
-export type OverlayProps = { type: string; content: string; pos: string; dur: number; fps?: number; width?: number; height?: number; img?: string; };
+export type OverlayProps = { type: string; content: string; pos: string; dur: number; fps?: number; width?: number; height?: number; img?: string; items?: { label: string; img: string }[]; };
 
 const useExit = (dur: number) => {
   const frame = useCurrentFrame();
@@ -404,6 +404,109 @@ const Banner = ({ content, exit, enter }: { content: string; exit: number; enter
   );
 };
 
+const Collage = ({ items, exit, enter }: { items: { label: string; img: string }[]; exit: number; enter: number }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const n = Math.max(items.length, 1);
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+      {/* архивная "миллиметровка" — фон в духе документальных архивов */}
+      <AbsoluteFill style={{
+        opacity: 0.5 * enter,
+        backgroundImage:
+          'linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),' +
+          'linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)',
+        backgroundSize: '38px 38px',
+        background: 'rgba(8,8,11,0.55)',
+      }} />
+      <div style={{ display: 'flex', gap: 36, opacity: exit, zIndex: 1 }}>
+        {items.slice(0, 3).map((it, idx) => {
+          const start = idx * 8;
+          const pop = interpolate(frame, [start, start + 22], [0, 1], {
+            easing: Easing.out(Easing.back(1.6)),
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+          });
+          const settle = Math.sin(Math.max(frame - start - 22, 0) / fps * 1.1 + idx) * 1.2;
+          return (
+            <div key={idx} style={{
+              opacity: interpolate(frame, [start, start + 14], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }),
+              transform: `scale(${Math.max(pop, 0.001)}) rotate(${(idx % 2 ? 1 : -1) * 2 + settle}deg)`,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+            }}>
+              <div style={{
+                background: '#fff', padding: 10, borderRadius: 3,
+                boxShadow: '0 24px 50px rgba(0,0,0,0.6)',
+              }}>
+                <Img src={it.img} style={{ width: 300, height: 200, objectFit: 'cover', display: 'block' }} />
+              </div>
+              <div style={{
+                background: 'linear-gradient(180deg,#3a2a12,#211508)',
+                border: '1px solid rgba(232,163,61,0.5)',
+                color: '#ffd27a', fontFamily: "'Segoe UI Semibold', sans-serif",
+                fontSize: 18, padding: '8px 18px', borderRadius: 6,
+                letterSpacing: 0.5, boxShadow: '0 8px 20px rgba(0,0,0,0.5)',
+              }}>{it.label}</div>
+            </div>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+const TitleCard = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const [head, sub] = content.split('::');
+  const words = head.trim().split(/\s+/);
+
+  const barWidth = interpolate(frame, [0, 18], [0, 1], {
+    easing: Easing.out(Easing.cubic), extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const subOp = interpolate(frame, [words.length * 4 + 14, words.length * 4 + 30], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  }) * enter;
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', background: `rgba(0,0,0,${0.35 * enter})` }}>
+      <div style={{ opacity: exit, textAlign: 'center', maxWidth: '84%' }}>
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0 20px',
+          fontFamily: "'Segoe UI Black', sans-serif", fontSize: 78, lineHeight: 1.05,
+          textTransform: 'uppercase', color: '#fff',
+        }}>
+          {words.map((w, i) => {
+            const start = i * 4;
+            const k = interpolate(frame, [start, start + 14], [0, 1], {
+              easing: Easing.out(Easing.back(1.8)),
+              extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+            });
+            return (
+              <span key={i} style={{
+                display: 'inline-block',
+                opacity: interpolate(frame, [start, start + 8], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }),
+                transform: `scale(${Math.max(0.001, interpolate(k, [0, 1], [1.6, 1]))}) translateY(${(1 - k) * 30}px)`,
+                textShadow: '0 8px 30px rgba(0,0,0,0.7)',
+              }}>{w}</span>
+            );
+          })}
+        </div>
+        <div style={{
+          width: 140 * barWidth, height: 5, background: 'linear-gradient(90deg,#e8a33d,#ffd27a)',
+          margin: '22px auto 0', borderRadius: 3, boxShadow: '0 0 16px rgba(232,163,61,0.6)',
+        }} />
+        {sub && (
+          <div style={{
+            opacity: subOp, marginTop: 18, fontFamily: "'Segoe UI', sans-serif",
+            fontSize: 26, color: '#e6e6ee', letterSpacing: 1,
+          }}>{sub.trim()}</div>
+        )}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 export const Overlay: React.FC<OverlayProps> = (p) => {
   const exit = useExit(p.dur);
   const enter = useEnter(p.dur);
@@ -426,6 +529,10 @@ export const Overlay: React.FC<OverlayProps> = (p) => {
       return <Compare content={p.content} exit={exit} enter={enter} />;
     case 'banner':
       return <Banner content={p.content} exit={exit} enter={enter} />;
+    case 'collage':
+      return <Collage items={p.items ?? []} exit={exit} enter={enter} />;
+    case 'titlecard':
+      return <TitleCard content={p.content} exit={exit} enter={enter} />;
     default:
       return <AbsoluteFill />;
   }

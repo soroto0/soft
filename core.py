@@ -1624,7 +1624,8 @@ def project_style(project_dir) -> dict:
                                "cyan_pop", "red_alert", "thin_clean",
                                "karaoke", "karaoke"]),
         "sub_size": r.choice(["средние", "средние", "крупные"]),
-        "intensity": r.choice(["слабая", "средняя", "средняя", "сильная"]),
+        "intensity": r.choice(["документальная 5с", "документальная 5с",
+                               "сильная", "средняя"]),
         "look": "случайный",
         # 1-2 случайных эффекта поверх кадра — добавляют «плёночности»
         "bloom": r.random() < 0.5,
@@ -1798,15 +1799,17 @@ def export_premiere_xml(timeline: list[dict], audio_path: Path, dest: Path,
 
 def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
                        plan_kinds: list[str], sdir: Path, gemini_key: str,
-                       visual_style: str, log):
-    """Параллельно (до 4 задач одновременно — лимит тарифа VeoNonStop)
-    генерирует ВСЕ кадры для visual_mode="ai" заранее, до основного цикла
-    auto_storyboard. Раньше раскадровка шла строго по одной задаче —
+                       visual_style: str, log, target_indices=None,
+                       workers: int = 4):
+    """Параллельно (по умолчанию 4 задачи одновременно — под лимит
+    большинства тарифов Veo/Agnes) генерирует кадры заранее, до основного
+    цикла auto_storyboard. Раньше раскадровка шла строго по одной задаче —
     для ролика из ~20 планов это давало ~20x1-3 мин последовательно.
-    Имена файлов вычисляются 1-в-1 как в основном цикле — он их просто
-    находит на диске (см. os.path.exists проверки там) и пропускает
-    повторную генерацию; план, который префетч не осилил (ошибка сети и
-    т.п.), основной цикл досоздаст сам, как и раньше."""
+    target_indices — set 1-based индексов планов для префетча (None = все,
+    т.е. полный visual_mode="ai"; конкретный набор — для mixed, где только
+    часть планов идёт через ИИ). Имена файлов вычисляются 1-в-1 как в
+    основном цикле — он их просто находит на диске и пропускает повторную
+    генерацию; план, который префетч не осилил, основной цикл досоздаст сам."""
     from concurrent.futures import ThreadPoolExecutor
     jobs = []
     prev_query = "cinematic background"
@@ -1814,12 +1817,16 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
         query = ((queries[i - 1] if queries else "")
                  or extract_keywords(b["text"]) or prev_query)
         prev_query = query
+        if target_indices is not None and (i - 1) not in target_indices:
+            continue
         safe = re.sub(r"[^\w\-]+", "_", query)[:40]
         want_photo = plan_kinds[i - 1] == "photo"
         if want_photo:
             jobs.append((i, "photo", query, sdir / f"beat_{i:03d}_{safe}_ai.jpg"))
         else:
             jobs.append((i, "video", query, sdir / f"beat_{i:03d}_{safe}_ai.mp4"))
+    if not jobs:
+        return
 
     def run_job(job):
         i, kind, query, dest = job
@@ -1833,9 +1840,9 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
             return (i, False, e)
 
     log(f"[Раскадровка] Параллельная генерация: {len(jobs)} кадров, "
-        "до 4 одновременно (лимит VeoNonStop)...")
+        f"до {workers} одновременно...")
     ok = 0
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=workers) as ex:
         for i, success, err in ex.map(run_job, jobs):
             if success:
                 ok += 1
@@ -1988,9 +1995,16 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         use_count[c] = use_count.get(c, 0) + 1
         return c
 
-    if visual_mode == "ai" and os.getenv("VEO_API_KEY", "").strip():
+    _has_ai_key = bool(os.getenv("VEO_API_KEY", "").strip() or _agnes_keys()
+                      or gemini_key or os.getenv("GEMINI_API_KEY", ""))
+    if _has_ai_key and visual_mode == "ai":
         _prefetch_ai_beats(beats, queries, plan_kinds, sdir, gemini_key,
                            visual_style, log)
+    elif _has_ai_key and visual_mode == "mixed" and ai_indices:
+        # то же самое, но только для beat'ов, которым mixed-режим и так
+        # назначил ИИ (ai_indices) — остальные всё равно идут через сток
+        _prefetch_ai_beats(beats, queries, plan_kinds, sdir, gemini_key,
+                           visual_style, log, target_indices=ai_indices)
 
     timeline, prev_query = [], "cinematic background"
     for i, b in enumerate(beats, 1):
