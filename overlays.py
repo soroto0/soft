@@ -126,14 +126,17 @@ def parse_overlays(text: str) -> list[dict]:
         otype = parts[1].lower()
         if otype not in ("popup", "lower3", "callout", "counter",
                          "bars", "timeline", "infographic",
-                         "compare", "banner"):
+                         "compare", "banner", "watermark"):
             continue
         pos = parts[3] if len(parts) > 3 and parts[3] else ""
         dur = 4.0
         if len(parts) > 4:
             m = re.search(r"([\d.]+)", parts[4])
             if m:
-                dur = max(1.0, min(float(m.group(1)), 15.0))
+                # watermark держится весь ролик — без потолка в 15с,
+                # остальные типы — короткие всплески, капаем на 15с
+                dur = max(1.0, float(m.group(1)) if otype == "watermark"
+                         else min(float(m.group(1)), 15.0))
         items.append({"t": t, "type": otype, "content": parts[2],
                       "pos": pos, "dur": dur, "line": ln})
     return items
@@ -861,7 +864,8 @@ def _phrase_candidate(t: float, text: str, manifest: list):
 
 
 def suggest_overlays_auto(rows: list, manifest: list, out_dir,
-                          log=print, min_gap: float = 13.0) -> str:
+                          log=print, min_gap: float = 13.0,
+                          watermark: str = "") -> str:
     """Полный автомат: авторасстановка + автоподбор картинок для popup.
     Реальных людей (два слова с заглавных — похоже на имя) ищем ТОЛЬКО в
     Wikimedia Commons: ИИ-генерация лиц реальных людей сознательно не
@@ -872,7 +876,10 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     фолбэк, если Veo недоступен/упал. Если жёсткие правила (деньги/даты/
     имена/вопросы) вообще ничего не нашли в тексте — просим Gemini выбрать
     моменты для баннеров по смыслу (suggest_overlays_llm), а не оставляем
-    ролик совсем без оверлеев."""
+    ролик совсем без оверлеев. watermark — если задано, на весь ролик
+    добавляется постоянный неисчезающий бейдж (не мигает как остальные
+    оверлеи) — против флага «inauthentic content» нужен постоянный,
+    не эпизодический признак присутствия автора."""
     from pathlib import Path as _P
     from core import fetch_wiki_images, _load_used, _save_used, veo_image
     draft = suggest_overlays(rows, manifest, min_gap)
@@ -894,7 +901,6 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
                     for ln in draft.splitlines())
                 log("[Оверлеи] Слоёная раскладка + текст от LLM там, где "
                     "совпали моменты")
-            draft = suggest_overlays_local(rows, min_gap)
     idir = _P(out_dir) / "images"
     idir.mkdir(parents=True, exist_ok=True)
     used = _load_used()
@@ -934,6 +940,12 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
         else:
             out_lines.append(line)
     _save_used(used)
+    if watermark.strip() and rows:
+        total = srt_to_seconds(rows[-1][1])
+        if total > 0:
+            out_lines.insert(0, f"00:00:00 | watermark | {watermark.strip()} "
+                                f"| bottom-right | {total:.1f}s")
+            log(f"[Оверлеи] Постоянный бейдж на весь ролик: {watermark!r}")
     return "\n".join(out_lines)
 
 

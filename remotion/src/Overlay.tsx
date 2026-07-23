@@ -404,9 +404,49 @@ const Banner = ({ content, exit, enter }: { content: string; exit: number; enter
   );
 };
 
+const Watermark = ({ content, pos, enter }: { content: string; pos: string; enter: number }) => {
+  // Постоянный бейдж на весь ролик (p.dur = вся длина видео, не 4с как у
+  // остальных типов) — не мигает, не появляется/исчезает по ходу видео,
+  // один раз плавно въезжает в начале и держится. Едва заметный, чтобы не
+  // отвлекать от контента, но постоянно присутствует на кадре.
+  const right = !pos.includes('left');
+  const top = pos.includes('top');
+  return (
+    <AbsoluteFill>
+      <div style={{
+        position: 'absolute',
+        [top ? 'top' : 'bottom']: '4%',
+        [right ? 'right' : 'left']: '4%',
+        opacity: enter * 0.68,
+        transform: `translateX(${(1 - enter) * (right ? 40 : -40)}px)`,
+        display: 'flex', alignItems: 'center', gap: '8px',
+        background: 'rgba(15,15,18,0.55)',
+        border: '1px solid rgba(255,255,255,0.14)',
+        borderRadius: '999px',
+        padding: '8px 16px',
+        backdropFilter: 'blur(2px)',
+      } as React.CSSProperties}>
+        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#e8a33d' }} />
+        <span style={{
+          color: '#fff', fontFamily: "'Segoe UI', sans-serif", fontWeight: 600,
+          fontSize: '15px', letterSpacing: '0.5px', whiteSpace: 'nowrap',
+        }}>
+          {content}
+        </span>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 export const Overlay: React.FC<OverlayProps> = (p) => {
   const exit = useExit(p.dur);
   const enter = useEnter(p.dur);
+
+  if (p.type === 'watermark') {
+    // своя, более медленная кривая появления — рассчитана на весь ролик,
+    // а не на 0.4с как у обычных transient-оверлеев
+    return <Watermark content={p.content} pos={p.pos} enter={Math.min(enter * 3, 1)} />;
+  }
 
   switch (p.type) {
     case 'lower3':
