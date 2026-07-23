@@ -15,7 +15,7 @@ bars (растущие бары), timeline (полоска с датами), com
     00:05:00 | counter | $200,000 | center | 3s
     00:06:00 | bars | Found:30,Missing:70 | center | 4s
     00:07:00 | timeline | 1971:Hijacking,1980:Money found | bottom | 5s
-    00:08:00 | compare | Hidden foundation gaps|Dry bait reaches deep crevices | center | 4s
+    00:08:00 | compare | Hidden foundation gaps::Dry bait reaches deep crevices | center | 4s
     00:09:00 | banner | Dates matter: note the year and context | top | 4s
 
 Кадры анимации считаются в Pillow (пружина/ease-out), пишутся
@@ -882,7 +882,7 @@ def _phrase_candidate(t: float, text: str, manifest: list):
 
 
 def suggest_overlays_auto(rows: list, manifest: list, out_dir,
-                          log=print, min_gap: float = 13.0) -> str:
+                          log=print, min_gap: float = 8.0) -> str:
     """Полный автомат: авторасстановка + автоподбор картинок для popup.
     Реальных людей (два слова с заглавных — похоже на имя) ищем ТОЛЬКО в
     Wikimedia Commons: ИИ-генерация лиц реальных людей сознательно не
@@ -953,7 +953,7 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     return "\n".join(out_lines)
 
 
-def suggest_overlays(rows: list, manifest: list, min_gap: float = 13.0,
+def suggest_overlays(rows: list, manifest: list, min_gap: float = 8.0,
                      dur: float = 0) -> str:
     """Анализ srt по правилам (не рандом): деньги -> counter,
     имена -> popup, даты/места -> lower3, вопросы -> callout.
@@ -980,7 +980,7 @@ def suggest_overlays(rows: list, manifest: list, min_gap: float = 13.0,
 
 
 def suggest_overlays_llm(rows: list, api_key: str, log=print,
-                         min_gap: float = 13.0, target: int | None = None,
+                         min_gap: float = 8.0, target: int | None = None,
                          attempts: int = 3) -> str | None:
     """ОСНОВНОЙ путь расстановки оверлеев (не только фолбэк): LLM понимает
     смысл текста целиком, поэтому расставляет оверлеи ПЛОТНЕЕ и умнее, чем
@@ -1023,7 +1023,10 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "  'lower3' — a short 2-5 word label (a place, term, or "
                   "short title mentioned right there)\n"
                   "  'compare' — two short CONTRASTING phrases from that "
-                  "moment, as text formatted exactly as \"first | second\"\n"
+                  "moment, as text formatted exactly as \"first::second\" "
+                  "(double colon, no spaces around it — this exact text "
+                  "goes into a pipe-delimited file, a literal | would "
+                  "corrupt the line)\n"
                   "  'callout' — a short pointed remark or aside, under 8 words\n"
                   "Use at most 2 titlecards total (only for real turning "
                   "points), and roughly even amounts of the rest. Reply "
@@ -1054,7 +1057,7 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
         otype = str(p.get("type", "banner")).strip().lower()
         if otype not in POS:
             otype = "banner"
-        if otype == "compare" and "|" not in text:
+        if otype == "compare" and "::" not in text:
             otype = "banner"          # без парного текста compare не соберётся
         if text and 0 <= idx < len(rows):
             dated.append((srt_to_seconds(rows[idx][0]), otype, text))
@@ -1076,7 +1079,7 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
     return "\n".join(out_lines)
 
 
-def suggest_overlays_local(rows: list, min_gap: float = 13.0,
+def suggest_overlays_local(rows: list, min_gap: float = 8.0,
                            target: int = 6) -> str:
     """Последний фолбэк без единого обращения к LLM — на случай, если
     Gemini недоступен ИЛИ заблокировал тяжёлую тему фильтром безопасности
@@ -1111,7 +1114,7 @@ def suggest_overlays_local(rows: list, min_gap: float = 13.0,
             if not right:
                 otype, content = "banner", " ".join(words[:9])
             else:
-                content = f"{left} | {right}"
+                content = f"{left}::{right}"
         elif otype == "callout":
             content = " ".join(words[:7])
         else:

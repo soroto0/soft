@@ -321,7 +321,7 @@ const Popup = ({ img, exit, enter }: { img: string; exit: number; enter: number 
 
 const Compare = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
 
-  const [left, right] = content.split('|').map(s => s.trim());
+  const [left, right] = content.split('::').map(s => s.trim());
   
   const opacity = enter * exit;
   const scale = interpolate(enter, [0, 1], [0.9, 1]);

@@ -278,8 +278,17 @@ def assign_materials(scenes: list[dict], out_dir: Path,
         raise RuntimeError("Нет материала: пусто в video/, images/, storyboard/ "
                            "и нет timeline.json — сначала скачай стоки.")
 
+    # Интенсивность режет сцены чаще, чем раскадровка качает материал (напр.
+    # «документальная 5с» = смена каждые ~5с, а на один пункт раскадровки
+    # обычно 6-10с) — несколько сцен подряд попадают в окно ОДНОГО файла
+    # timeline.json. Раньше защита была только «не то же самое, что сразу
+    # перед этим» — тот же файл всё равно повторялся по всему ролику
+    # (не подряд, но заметно зрителю). MAX_ONSCREEN — сколько раз файл
+    # вообще может мелькнуть за весь ролик, прежде чем уступит пулу.
+    MAX_ONSCREEN = 2
     pi, last = 0, None
     reused = 0
+    use_count = {}
     for sc in scenes:
         f = None
         for item in timeline:                # привязка по смыслу (раскадровка)
@@ -288,13 +297,14 @@ def assign_materials(scenes: list[dict], out_dir: Path,
                 if p.exists():
                     f = p
                 break
-        # не показывать один и тот же кадр два раза подряд — берём из пула
-        # следующий файл, отличный от предыдущего (смена каждые <=5 сек)
-        if (f is None or f == last) and pool:
+        # не показывать один и тот же кадр два раза подряд, и не чаще
+        # MAX_ONSCREEN раз за весь ролик — берём из пула следующий файл,
+        # отличный от предыдущего и ещё не примелькавшийся
+        if (f is None or f == last or use_count.get(f, 0) >= MAX_ONSCREEN) and pool:
             for _ in range(len(pool)):
                 cand = pool[pi % len(pool)]
                 pi += 1
-                if cand != last:
+                if cand != last and use_count.get(cand, 0) < MAX_ONSCREEN:
                     f = cand
                     break
         if f is None and pool:
@@ -303,8 +313,9 @@ def assign_materials(scenes: list[dict], out_dir: Path,
         if f is None:
             raise RuntimeError("Не хватило материала для сцены "
                                f"{sc['start']:.0f}s.")
-        if f == last:
+        if f == last or use_count.get(f, 0) >= MAX_ONSCREEN:
             reused += 1
+        use_count[f] = use_count.get(f, 0) + 1
         sc["file"] = f
         sc["kind"] = "image" if f.suffix.lower() in IMAGE_EXTS else "video"
         last = f
