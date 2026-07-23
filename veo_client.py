@@ -130,7 +130,18 @@ def download_video(task_id: str, dest: Path, video_index: int = 0, api_key: str 
 
 def wait_for_completion(task_id: str, api_key: str = "", poll_s: int = 10,
                          timeout_s: int = 1800, log=lambda *_: None) -> dict:
-    """Опрашивает статус задачи до completed/failed. Возвращает data со списком videos."""
+    """Опрашивает статус задачи до completed/failed. Возвращает data со списком videos.
+    Быстрый путь: сперва пробуем get_result (может оказаться уже готов без
+    единого опроса статуса). На таймауте отменяем задачу на сервере
+    (cancel_task) перед тем, как сдаться — иначе слот из лимита конкурентных
+    задач висит занятым до серверного таймаута (30 мин)."""
+    try:
+        fast = get_result(task_id, api_key)
+        if fast.get("videos"):
+            log(f"[VeoNonStop] {task_id}: completed (уже был готов)")
+            return fast
+    except Exception:
+        pass
     t0 = time.time()
     while time.time() - t0 < timeout_s:
         data = get_status(task_id, api_key)
@@ -141,15 +152,36 @@ def wait_for_completion(task_id: str, api_key: str = "", poll_s: int = 10,
         if status in FAILED_STATES:
             raise VeoError(f"VeoNonStop задача {task_id} failed: {data.get('error')}")
         time.sleep(poll_s)
+    try:
+        cancel_task(task_id, api_key)
+    except Exception:
+        pass
     raise VeoError(f"VeoNonStop задача {task_id}: таймаут ожидания ({timeout_s}s)")
 
 
 def generate_video_and_wait(prompt: str, dest: Path, aspect_ratio: str = "16:9",
                              api_key: str = "", poll_s: int = 10,
-                             timeout_s: int = 1800, log=lambda *_: None) -> Path:
-    """Text-to-video: создаёт задачу, ждёт готовности, скачивает первый ролик в dest."""
+                             timeout_s: int = 1800, upscale: bool = True,
+                             log=lambda *_: None) -> Path:
+    """Text-to-video: создаёт задачу, ждёт готовности, скачивает ролик в dest.
+    upscale=True (по умолчанию) — после готовности 720p-ролика запускает
+    upsample_video (с video_url — быстрый FFmpeg-путь на стороне сервера,
+    ~4-8 c) до 1080p и скачивает уже апскейленную версию; если апскейл не
+    удался (лимит/ошибка), тихо скачивает исходный 720p, а не проваливает
+    всю генерацию."""
     task_id = text_to_video(prompt, aspect_ratio=aspect_ratio, api_key=api_key)
-    wait_for_completion(task_id, api_key, poll_s, timeout_s, log)
+    data = wait_for_completion(task_id, api_key, poll_s, timeout_s, log)
+    videos = data.get("videos") or []
+    if upscale and videos and videos[0].get("mediaGenerationId"):
+        try:
+            up_task = upsample_video(
+                videos[0]["mediaGenerationId"],
+                video_url=videos[0].get("fifeUrl") or videos[0].get("servingBaseUri") or "",
+                aspect_ratio=aspect_ratio, api_key=api_key)
+            wait_for_completion(up_task, api_key, poll_s=3, timeout_s=180, log=log)
+            return download_video(up_task, dest, api_key=api_key)
+        except Exception as e:
+            log(f"[VeoNonStop] Апскейл до 1080p не удался ({e}) — беру оригинал 720p")
     return download_video(task_id, dest, api_key=api_key)
 
 

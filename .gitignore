@@ -25,6 +25,9 @@ remotion/build/
 remotion/public/ovl_*
 remotion/node_modules/
 
+# Синтезированные SFX — генерируются кодом при первом обращении (render.py)
+assets/sfx/*.wav
+
 # Случайные папки-проекты в корне
 /2/
 

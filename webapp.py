@@ -535,6 +535,7 @@ class Api:
                 "sub_style": p.get("sub_style", "bold_box"),
                 "look": p.get("look", "нет"),
                 "subs": bool(p.get("subs", True)),
+                "sfx": bool(p.get("sfx", True)),
                 "grain": bool(p.get("grain")),
                 "vignette": bool(p.get("vignette")),
                 "letterbox": bool(p.get("letterbox")),
@@ -631,6 +632,17 @@ class Api:
     def stop_render(self):
         render.CANCEL.set()
         self.log("[Рендер] ⛔ Остановка — текущий ffmpeg будет убит", "warn")
+        veo_key = os.getenv("VEO_API_KEY", "").strip()
+        if veo_key:
+            try:
+                import veo_client
+                cancelled = veo_client.cancel_all(api_key=veo_key)
+                n = (cancelled or {}).get("cancelled_count", 0)
+                if n:
+                    self.log(f"[Рендер] VeoNonStop: отменено {n} "
+                            "незавершённых задач (освобождены слоты)", "warn")
+            except Exception:
+                pass   # нет активных задач/недоступен — не критично при Стопе
 
     def seo(self):
         text = self._read("script.txt")
@@ -668,6 +680,16 @@ class Api:
                                             opts.get("intensity", "средняя"))
 
         def job():
+            veo_key = os.getenv("VEO_API_KEY", "").strip()
+            if veo_key:
+                try:
+                    import veo_client
+                    info = veo_client.account_info(api_key=veo_key)
+                    self.log(f"[VeoNonStop] План: {info.get('plan', '?')}, "
+                            f"лимит {info.get('concurrent_tasks', '?')} "
+                            "задач одновременно")
+                except Exception:
+                    pass   # чисто информационно — не блокирует цепочку
             self.log("[Цепочка] Шаг 1/4 — озвучка…")
             self._tts_step(p)
             self.log("[Цепочка] Шаг 2/4 — субтитры…")

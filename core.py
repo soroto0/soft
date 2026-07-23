@@ -23,6 +23,11 @@ from xml.sax.saxutils import escape
 if shutil.which("ffmpeg") is None and Path(r"C:\ffmpeg\bin\ffmpeg.exe").exists():
     os.environ["PATH"] += os.pathsep + r"C:\ffmpeg\bin"
 
+# Приложение — окно pywebview без своей консоли (запуск через pythonw.exe);
+# без этого флага каждый вызов ffmpeg/ffprobe/whisper/npx мигает отдельным
+# окном консоли поверх интерфейса.
+CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
 POLLY_CHUNK_LIMIT = 2600  # запас под SSML-теги (лимит Polly — 3000 символов)
 USED_MEDIA_FILE = Path(__file__).parent / "used_media.json"  # история клипов
 MUSIC_EXTS = {".mp3", ".wav", ".m4a", ".ogg", ".flac",
@@ -119,7 +124,8 @@ def audio_duration(path: Path) -> float | None:
         r = subprocess.run(
             ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
              "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True, check=True)
+            capture_output=True, text=True, check=True,
+            creationflags=CREATE_NO_WINDOW)
         return float(r.stdout.strip())
     except Exception:
         return None
@@ -147,7 +153,7 @@ def enhance_voice(mp3: Path, log=print) -> Path:
         subprocess.run(["ffmpeg", "-y", "-i", str(mp3), "-af", chain,
                         "-c:a", "libmp3lame", "-q:a", "2", str(tmp)],
                        check=True, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL)
+                       stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
         tmp.replace(mp3)
         log("[Озвучка] Голос обработан: компрессия + глубина + нормализация "
             "(документальный «дикторский» звук)")
@@ -223,7 +229,7 @@ def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
     final = audio_dir / "voiceover.mp3"
     subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
                     "-i", str(concat), "-c", "copy", str(final)],
-                   check=True, cwd=audio_dir,
+                   check=True, cwd=audio_dir, creationflags=CREATE_NO_WINDOW,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if enhance:
         enhance_voice(final, log)
@@ -336,7 +342,8 @@ def add_music(voice_mp3: Path, music_path, log, gain_db: int = -14) -> Path:
     subprocess.run(["ffmpeg", "-y", "-i", str(voice_mp3)] + inputs
                    + ["-filter_complex", fc, "-map", "[mix]",
                       "-c:a", "libmp3lame", "-q:a", "2", str(dest)],
-                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                   creationflags=CREATE_NO_WINDOW)
     log(f"[Музыка] Готово: {dest} (чистый голос остался в {voice_mp3.name})")
     return dest
 
@@ -380,7 +387,7 @@ def add_ambience(base_mp3: Path, sfx_path, log, gain_db: int = -19,
                        + ["-filter_complex", fc, "-map", "[mix]",
                           "-c:a", "libmp3lame", "-q:a", "2", str(dest)],
                        check=True, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL)
+                       stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
     except Exception as e:
         log(f"[ASMR] Пропустил ({e.__class__.__name__})")
         return base_mp3
@@ -907,13 +914,25 @@ def gemini_image(prompt: str, dest: Path, api_key: str, style: str = "") -> Path
 
 
 def veo_image(prompt: str, dest: Path, api_key: str, log=print,
-              style: str = "") -> Path:
-    """Картинка через VeoNonStop (Banana Pro), синхронно."""
+              style: str = "", upscale: bool = True) -> Path:
+    """Картинка через VeoNonStop (Banana Pro), синхронно. upscale=True —
+    дополнительно апскейлит результат до 2K через banana_upscale; апскейл
+    не критичен для результата, поэтому любая его ошибка тихо падает
+    обратно на исходную (не апскейленную) картинку, а не проваливает вызов."""
     import veo_client
     data = veo_client.banana_generate(_image_prompt(prompt, style), api_key=api_key)
     media = data.get("media") or []
     if not media:
         raise RuntimeError("VeoNonStop Banana: ответ без картинки")
+    if upscale:
+        try:
+            jpg_bytes = veo_client.banana_upscale(
+                media[0]["mediaGenerationId"], data.get("project_id", ""),
+                api_key=api_key)
+            dest.write_bytes(jpg_bytes)
+            return dest
+        except Exception as e:
+            log(f"[Картинка] Апскейл до 2K не удался ({e}) — беру оригинал")
     download_file(media[0]["fifeUrl"], dest)
     return dest
 
@@ -1159,6 +1178,72 @@ def veo_video(prompt: str, dest: Path, api_key: str, log=print) -> Path:
     return dest
 
 
+def gen_video_from_image(image_path: Path, prompt: str, dest: Path,
+                         api_key: str = "", log=print, style: str = "") -> Path:
+    """Оживляет готовую картинку в клип через VeoNonStop image-to-video —
+    более «живая» альтернатива Ken Burns (панорама/зум в Pillow). ТОЛЬКО для
+    ИИ-сгенерированных картинок: анимировать настоящее фото реального
+    человека через ИИ — та же этическая проблема, что и генерация лиц
+    (см. докстринг suggest_overlays_auto в overlays.py), поэтому вызывающий
+    код обязан передавать сюда лишь свои же сгенерированные изображения."""
+    import veo_client
+    veo_key = (api_key or os.getenv("VEO_API_KEY", "")).strip()
+    if not veo_key:
+        raise RuntimeError("Нет VEO_API_KEY для image-to-video")
+    mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+           "webp": "image/webp"}.get(Path(image_path).suffix.lower().lstrip("."),
+                                     "image/jpeg")
+    full_prompt = _image_prompt(prompt, style) + " Subtle cinematic motion."
+    log(f"[Видео-ИИ] VeoNonStop image-to-video: «{prompt[:60]}» (1-3 мин)...")
+    task_id = veo_client.image_to_video(full_prompt, Path(image_path),
+                                        mime_type=mime, aspect_ratio="16:9",
+                                        api_key=veo_key)
+    veo_client.wait_for_completion(task_id, veo_key, log=log)
+    veo_client.download_video(task_id, dest, api_key=veo_key)
+    log(f"[Видео-ИИ] Готово: {dest.name}")
+    return dest
+
+
+def gen_video_multi(prompt: str, images: list[dict], dest: Path,
+                    api_key: str = "", log=print) -> Path:
+    """Клип из НЕСКОЛЬКИХ именованных референсных картинок через VeoNonStop
+    multi-image-to-video (совмещает 2+ персонажа/объекта в одной сцене).
+    images: [{"name": "Alex", "path": Path(...), "mime_type": "image/jpeg"}, ...]
+    — name должно встречаться в prompt словом (латиница, см. доку API), иначе
+    API не сматчит картинку и использует все референсы разом."""
+    import veo_client
+    veo_key = (api_key or os.getenv("VEO_API_KEY", "")).strip()
+    if not veo_key:
+        raise RuntimeError("Нет VEO_API_KEY для multi-image-to-video")
+    log(f"[Видео-ИИ] VeoNonStop multi-image: «{prompt[:60]}» "
+        f"({len(images)} референса, 1-3 мин)...")
+    task_id = veo_client.multi_image_to_video(prompt, images, aspect_ratio="16:9",
+                                              api_key=veo_key)
+    veo_client.wait_for_completion(task_id, veo_key, log=log)
+    veo_client.download_video(task_id, dest, api_key=veo_key)
+    log(f"[Видео-ИИ] Готово: {dest.name}")
+    return dest
+
+
+def gen_video_transition(prompt: str, start_image: Path, end_image: Path,
+                         dest: Path, api_key: str = "", log=print) -> Path:
+    """Клип-переход между двумя картинками через VeoNonStop batch-frame
+    (start_image -> end_image). Тоже только для ИИ-сгенерированных кадров —
+    не для реальных фото (см. gen_video_from_image)."""
+    import veo_client
+    veo_key = (api_key or os.getenv("VEO_API_KEY", "")).strip()
+    if not veo_key:
+        raise RuntimeError("Нет VEO_API_KEY для batch-frame")
+    log(f"[Видео-ИИ] VeoNonStop batch-frame: «{prompt[:60]}» (1-3 мин)...")
+    task_id = veo_client.batch_frame_to_video(prompt, Path(start_image),
+                                              Path(end_image), aspect_ratio="16:9",
+                                              api_key=veo_key)
+    veo_client.wait_for_completion(task_id, veo_key, log=log)
+    veo_client.download_video(task_id, dest, api_key=veo_key)
+    log(f"[Видео-ИИ] Готово: {dest.name}")
+    return dest
+
+
 def gen_video(prompt: str, dest: Path, log=print,
               seconds: float = 5.0) -> Path:
     """Генерация видеоклипа ИИ: VeoNonStop (ОСНОВНОЙ) -> Agnes (ротация
@@ -1242,7 +1327,8 @@ def ken_burns(image: Path, dest: Path, duration: float = 8.0, fps: int = 25):
           f"format=yuv420p")
     subprocess.run(["ffmpeg", "-y", "-i", str(image), "-vf", vf,
                     "-c:v", "libx264", "-preset", "fast", "-an", str(dest)],
-                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                   creationflags=CREATE_NO_WINDOW)
 
 
 # ---------- Субтитры ----------
@@ -1302,7 +1388,7 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
     env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          text=True, encoding="utf-8", errors="replace",
-                         env=env)
+                         env=env, creationflags=CREATE_NO_WINDOW)
     for line in p.stdout:
         line = line.strip()
         if line:
@@ -1976,17 +2062,38 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
     if not jobs:
         return
 
+    veo_key = os.getenv("VEO_API_KEY", "").strip()
+
     def run_job(job):
         i, kind, query, dest = job
         try:
             if kind == "photo":
                 gen_image(query, dest, gemini_key, log, visual_style)
+                if veo_key:   # оживляем кадр (image-to-video) прямо в префетче,
+                    clip = dest.with_name(dest.stem + "_kb.mp4")   # параллельно с остальными —
+                    try:                                            # иначе это ~1-3 мин НА КАЖДЫЙ
+                        gen_video_from_image(dest, query, clip, veo_key, log,
+                                             visual_style)
+                    except Exception:
+                        pass   # не страшно — основной цикл сделает Ken Burns
             else:
                 gen_video(_image_prompt(query, visual_style), dest, log)
             return (i, True, None)
         except Exception as e:
             return (i, False, e)
 
+    if veo_key:
+        try:
+            import veo_client
+            usage = veo_client.account_usage(api_key=veo_key)
+            free = usage.get("max_concurrent_tasks", workers) - usage.get("active_tasks", 0)
+            if free > 0:
+                workers = max(1, min(workers, free))
+            log(f"[Раскадровка] VeoNonStop: план допускает "
+                f"{usage.get('max_concurrent_tasks', '?')} задач одновременно, "
+                f"сейчас занято {usage.get('active_tasks', 0)}")
+        except Exception:
+            pass   # нет ключа/недоступен — остаёмся на переданном workers
     log(f"[Раскадровка] Параллельная генерация: {len(jobs)} кадров, "
         f"до {workers} одновременно...")
     ok = 0
@@ -2185,8 +2292,20 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     if not jpg.exists():   # уже мог подготовить префетч
                         gen_image(query, jpg, gemini_key, log, visual_style)
                     clip = sdir / f"beat_{i:03d}_{safe}_ai_kb.mp4"
-                    ken_burns(jpg, clip, duration=need)
-                    src_dur = need
+                    animated = clip.exists()   # уже мог подготовить префетч
+                    if not animated and os.getenv("VEO_API_KEY", "").strip():
+                        try:
+                            gen_video_from_image(jpg, query, clip, log=log,
+                                                 style=visual_style)
+                            animated = True
+                        except Exception as e:
+                            log(f"[Раскадровка] План {i}: image-to-video не "
+                                f"вышел ({e}) — Ken Burns")
+                    if animated:
+                        src_dur = audio_duration(clip) or need
+                    else:
+                        ken_burns(jpg, clip, duration=need)
+                        src_dur = need
                 else:
                     clip = sdir / f"beat_{i:03d}_{safe}_ai.mp4"
                     if not clip.exists():   # уже мог подготовить префетч

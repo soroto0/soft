@@ -31,7 +31,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from core import srt_to_seconds
+from core import srt_to_seconds, CREATE_NO_WINDOW
 
 ACCENT = (124, 92, 255, 255)        # фиолетовый бренд-акцент
 PLATE = (12, 12, 18, 200)           # полупрозрачная тёмная подложка
@@ -554,7 +554,8 @@ def _remotion_bundle(log=print) -> Path:
     log("[Оверлеи] Remotion: собираю бандл (~30-60 c, один раз)...")
     r = subprocess.run([_npx(), "remotion", "bundle", "--log=error"],
                        cwd=REMOTION_DIR, env=_node_env(),
-                       capture_output=True, text=True, timeout=600)
+                       capture_output=True, text=True, timeout=600,
+                       creationflags=CREATE_NO_WINDOW)
     if r.returncode != 0 or not marker.exists():
         raise RuntimeError(f"remotion bundle: {r.stderr[-300:]}")
     return build
@@ -608,7 +609,8 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
          "--sequence", "--image-format=png", f"--props={props_file}",
          "--log=error"],
         cwd=REMOTION_DIR, env=_node_env(),
-        capture_output=True, text=True, timeout=900)
+        capture_output=True, text=True, timeout=900,
+        creationflags=CREATE_NO_WINDOW)
     if r.returncode != 0:
         raise RuntimeError(f"remotion render: {r.stderr[-300:]}")
     frames = sorted(dest_dir.glob("*.png"),
@@ -783,7 +785,7 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                 x, y = _position(it["pos"], it["type"], cw, ch, W, H)
             out.append({"pattern": str(dest / "%04d.png"),
                         "t0": it["t"], "t1": it["t"] + it["dur"],
-                        "x": x, "y": y})
+                        "x": x, "y": y, "type": it["type"]})
             mm, ss = divmod(int(it["t"]), 60)
             log(f"[Оверлеи] {mm:02d}:{ss:02d} {it['type']}: "
                 f"{it['content'][:50]} -> OK ({used_engine})")

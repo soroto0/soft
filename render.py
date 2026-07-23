@@ -22,12 +22,16 @@ import time
 import random
 import shutil
 import zlib
+import wave
+import struct
+import math
 import threading
 import subprocess
 from collections import deque
 from pathlib import Path
 
-from core import srt_to_seconds, parse_srt, load_whisper_words, audio_duration
+from core import (srt_to_seconds, parse_srt, load_whisper_words, audio_duration,
+                  CREATE_NO_WINDOW)
 
 CONSOLE = None  # хук GUI: сюда льётся живой вывод ffmpeg (кадр/время/скорость)
 CANCEL = threading.Event()  # кнопка «Стоп»: убивает текущий ffmpeg и рендер
@@ -46,6 +50,86 @@ CRF_SEGMENT = "18"      # качество/пресеты подменяются
 CRF_FINAL = "19"
 PRESET_SEG = "fast"
 PRESET_FINAL = "medium"
+
+
+# ---------- Синтезированные SFX (whoosh/pop/ding на появление оверлеев) ----------
+
+SFX_DIR = Path(__file__).parent / "assets" / "sfx"
+SFX_SR = 44100
+
+# Какой звук на какой тип оверлея. watermark — без звука: это фоновый
+# неисчезающий бейдж, а не эпизодическое появление (см. overlays.py).
+SFX_FOR_TYPE = {
+    "popup": "pop", "counter": "ding", "callout": "pop",
+    "banner": "whoosh", "titlecard": "whoosh", "lower3": "whoosh",
+    "compare": "whoosh", "collage": "whoosh",
+    "bars": "ding", "timeline": "ding", "infographic": "whoosh",
+}
+
+
+def _sfx_write_wav(samples: list[float], path: Path, sr: int = SFX_SR):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frames = b"".join(struct.pack("<h", max(-32768, min(32767, int(s * 32767))))
+                      for s in samples)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(frames)
+
+
+def _sfx_whoosh(dur: float = 0.30, sr: int = SFX_SR) -> list[float]:
+    """Шум с растущей яркостью (однополюсный ФНЧ со срезом, растущим во
+    времени) под огибающую быстрая атака/плавный спад — «свист» появления."""
+    n = int(dur * sr)
+    rng = random.Random(1)
+    out, prev = [], 0.0
+    for i in range(n):
+        t = i / n
+        env = math.sin(math.pi / 2 * min(t / 0.12, 1.0)) if t < 0.12 \
+            else math.exp(-(t - 0.12) * 6.5)
+        cutoff = 0.04 + 0.55 * t
+        prev += cutoff * (rng.uniform(-1, 1) - prev)
+        out.append(prev * env * 0.5)
+    return out
+
+
+def _sfx_pop(dur: float = 0.09, sr: int = SFX_SR) -> list[float]:
+    """Короткий щелчок — синус с очень быстрым экспоненциальным спадом."""
+    n = int(dur * sr)
+    freq = 900.0
+    return [math.sin(2 * math.pi * freq * (i / sr)) * math.exp(-(i / sr) * 45) * 0.7
+            for i in range(n)]
+
+
+def _sfx_ding(dur: float = 0.8, sr: int = SFX_SR) -> list[float]:
+    """Колокольчик — основной тон + 2 негармоничных обертона (соотношения
+    как у настоящего колокола), экспоненциальный спад."""
+    n = int(dur * sr)
+    freq = 1100.0
+    out = []
+    for i in range(n):
+        t = i / sr
+        env = math.exp(-t * 4.2)
+        s = (math.sin(2 * math.pi * freq * t)
+             + 0.5 * math.sin(2 * math.pi * freq * 2.41 * t)
+             + 0.25 * math.sin(2 * math.pi * freq * 3.76 * t))
+        out.append(s * env * 0.28)
+    return out
+
+
+def get_sfx(name: str) -> Path:
+    """Путь к WAV файлу SFX; синтезирует и кэширует в assets/sfx/ при первом
+    обращении (дальше просто отдаёт готовый файл)."""
+    path = SFX_DIR / f"{name}.wav"
+    if path.exists():
+        return path
+    gens = {"whoosh": _sfx_whoosh, "pop": _sfx_pop, "ding": _sfx_ding}
+    fn = gens.get(name)
+    if not fn:
+        raise ValueError(f"неизвестный sfx: {name}")
+    _sfx_write_wav(fn(), path)
+    return path
 
 # (xfade transition, длительность, вес). "cut" — жёсткая склейка.
 # КИНОМОНТАЖ, а не телевизор 2010-х. В реальном монтаже большинство склеек
@@ -105,7 +189,8 @@ def _run(cmd: list[str], label: str = "ffmpeg"):
                      "-nostats", "-progress", "pipe:1"]
     _console(f"[{label}] $ " + " ".join(str(a) for a in full))
     p = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True, encoding="utf-8", errors="replace")
+                         text=True, encoding="utf-8", errors="replace",
+                         creationflags=CREATE_NO_WINDOW)
     err_tail = deque(maxlen=40)
 
     def read_err():
@@ -150,7 +235,7 @@ def _has_video(path: Path) -> bool:
         r = subprocess.run(
             ["ffprobe", "-v", "quiet", "-select_streams", "v:0",
              "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True)
+            capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
         return Path(path).exists() and "video" in r.stdout
     except OSError:
         return False
@@ -163,7 +248,7 @@ def _video_dur(path: Path) -> float | None:
         r = subprocess.run(
             ["ffprobe", "-v", "quiet", "-select_streams", "v:0",
              "-show_entries", "stream=duration", "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True)
+            capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
         return float(r.stdout.strip().splitlines()[0])
     except (OSError, ValueError, IndexError):
         return None
@@ -846,7 +931,7 @@ def _style_chain(opts: dict) -> list[str]:
 def assemble(group_files: list[Path], audio: Path, srt: Path | None,
              dest: Path, fps: int, total: float, opts: dict, tmp: Path,
              look_chain: str = "", ovls: list[dict] | None = None,
-             wh: tuple[int, int] = (1920, 1080)):
+             wh: tuple[int, int] = (1920, 1080), log=print):
     """Финал: конкат групп + оверлеи + звук + субтитры + цветокор + стиль.
     Порядок слоёв: сцена -> цветокор -> оверлеи -> субтитры -> стиль."""
     concat_list = tmp / "groups.txt"
@@ -892,7 +977,38 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                    f"[vo{i}];")
             prev = f"[vo{i}]"
         fc += prev + ",".join(post) + "[vout]"
-        cmd += ["-filter_complex", fc, "-map", "[vout]", "-map", "1:a"]
+
+        # SFX (whoosh/pop/ding) синхронно с появлением оверлеев: каждый
+        # найденный тип -> отдельный вход-WAV, adelay сдвигает его на t0
+        # оверлея, amix сводит с основной дорожкой. watermark и незнакомые
+        # типы — без звука (см. SFX_FOR_TYPE). Любая ошибка синтеза/сведения
+        # тихо откатывается на обычную дорожку — SFX не критичны для рендера.
+        audio_map = "1:a"
+        if opts.get("sfx", True):
+            try:
+                sfx_idx0 = 2 + len(ovls)
+                sfx_parts, sfx_labels = [], []
+                for ov in ovls:
+                    name = SFX_FOR_TYPE.get(ov.get("type", ""))
+                    if not name:
+                        continue
+                    cmd += ["-i", str(get_sfx(name))]
+                    delay_ms = max(0, round(ov["t0"] * 1000))
+                    lbl = f"sfx{len(sfx_labels)}"
+                    sfx_parts.append(f"[{sfx_idx0 + len(sfx_labels)}:a]"
+                                     f"adelay={delay_ms}:all=1,volume=0.3[{lbl}]")
+                    sfx_labels.append(lbl)
+                if sfx_labels:
+                    sfx_parts.append(
+                        "[1:a]" + "".join(f"[{l}]" for l in sfx_labels)
+                        + f"amix=inputs={1 + len(sfx_labels)}:"
+                          "duration=first:normalize=0[aout]")
+                    fc += ";" + ";".join(sfx_parts)
+                    audio_map = "[aout]"
+            except Exception as e:
+                log(f"[Рендер] SFX пропущены ({e.__class__.__name__}: {e})")
+                audio_map = "1:a"
+        cmd += ["-filter_complex", fc, "-map", "[vout]", "-map", audio_map]
     else:
         cmd += ["-map", "0:v", "-map", "1:a",
                 "-vf", ",".join(filters + post)]
@@ -1046,7 +1162,7 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
                     break
     log("[Рендер] Финальный проход: звук + оверлеи + субтитры + цветокор...")
     assemble(group_files, audio, srt, final, fps, total, opts, tmp,
-             look_chain, ovls, (w, h))
+             look_chain, ovls, (w, h), log)
     tick()
     size_mb = final.stat().st_size / 1e6
     shutil.rmtree(tmp, ignore_errors=True)   # временные сегменты больше не нужны

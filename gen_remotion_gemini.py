@@ -256,7 +256,8 @@ def typecheck(code_path: Path, log=print) -> str:
         ["npx", "tsc", "--noEmit", str(code_path), "--jsx", "react-jsx",
          "--esModuleInterop", "--skipLibCheck", "--moduleResolution",
          "bundler", "--module", "esnext", "--target", "es2020"],
-        cwd=REMOTION_DIR, capture_output=True, text=True, shell=True, timeout=60)
+        cwd=REMOTION_DIR, capture_output=True, text=True, shell=True, timeout=60,
+        creationflags=core.CREATE_NO_WINDOW)
     return (r.stdout + r.stderr).strip()
 
 
