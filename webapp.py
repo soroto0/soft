@@ -587,31 +587,36 @@ class Api:
                      "в ролик")
 
     def _regen_overlay_theme(self):
-        """Каждое видео получает свой, написанный Gemini заново дизайн
-        Overlay.tsx под тему/жанр — иначе одни и те же 5 шаблонов кочуют из
-        видео в видео. Необязательный шаг: нет ключа или Gemini/tsc/дым-тест
-        не осилили за несколько попыток — тихо остаёмся на текущем дизайне,
-        цепочка не должна падать из-за декоративного улучшения."""
-        gemini_key = self._settings.get("gemini_key", "") or os.getenv("GEMINI_API_KEY", "")
-        if not gemini_key:
+        """Каждое видео получает свою палитру оверлеев (акцент/баннер/плашка)
+        под тему/жанр — иначе один и тот же янтарный шаблон кочует из видео
+        в видео. Через Agnes, не Gemini: Gemini уже занят сценарием и первым
+        упирается в 429 (дневная бесплатная квота), а это не должно от неё
+        зависеть. Полная генерация КОДА компонентов (не только цвета) через
+        LLM пробовалась отдельно и оказалась ненадёжной (типы игнорировались
+        / пустые кадры) — оставлена выключенной (apply_theme, для ручного
+        экспериментирования). Здесь — только палитра, сломать ей логику
+        компонентов невозможно. Необязательный шаг: нет ключа/темы, или
+        Agnes не осилил за несколько попыток — тихо остаёмся на текущей
+        палитре, цепочка не должна падать из-за декоративного улучшения."""
+        agnes_key = self._settings.get("agnes_key", "") or os.getenv("AGNES_API_KEY", "")
+        if not agnes_key:
             return
         meta = self._read_meta()
         topic, tone = meta.get("topic", ""), meta.get("tone", "документальный")
         if not topic:
             return
         theme = (f"Documentary video about: {topic}. Tone/genre: {tone}. "
-                "Invent a distinctive color palette, accent hues and overall "
-                "mood that fit THIS specific topic — a video about something "
-                "cold/scientific should not look like one about crime or "
-                "myth, etc. Avoid reusing a generic dark-charcoal-plus-amber "
-                "template by default; pick colors that make sense here.")
-        self.log("[Цепочка] Дизайн оверлеев — прошу Gemini написать свой "
-                 "под эту тему...")
+                "Invent a distinctive color palette that fits THIS specific "
+                "topic — a video about something cold/scientific should not "
+                "look like one about crime or myth, etc. Avoid a generic "
+                "dark-charcoal-plus-amber default; pick colors that make "
+                "sense here.")
+        self.log("[Цепочка] Палитра оверлеев — прошу Agnes подобрать под эту тему...")
         try:
-            gen_remotion_gemini.apply_theme(theme, gemini_key, self.log)
+            gen_remotion_gemini.apply_theme_palette(theme, agnes_key, self.log)
         except Exception as e:
-            self.log(f"[Remotion/Gemini] Не удалось: {e} — остаюсь на "
-                     "текущем дизайне", "warn")
+            self.log(f"[Remotion/Тема] Не удалось: {e} — остаюсь на "
+                     "текущей палитре", "warn")
 
     def render(self, p: dict):
         opts = self._render_opts(p)
@@ -683,13 +688,7 @@ class Api:
                 float(p.get("ai_ratio", 0.35)))
             if not (p.get("overlays") or "").strip():
                 self._auto_overlays()   # моушн-графика сама, если не задана
-            # Полная генерация дизайна оверлеев Gemini (_regen_overlay_theme)
-            # пока НЕ включена в авто-цепочку: Gemini нестабильно пишет
-            # рабочий TSX (часто откатывается на дефолт), а каждая попытка —
-            # это +1-2 мин к рендеру впустую. Код есть и безопасен (откат на
-            # рабочую версию), но включается только вручную, когда доведём
-            # надёжность. Разнообразие между видео пока даёт «Разнообразие»
-            # (project_style: свои субтитры/монтаж/цветокор на проект).
+            self._regen_overlay_theme()   # своя палитра оверлеев под это видео
             if self._settings.get("music_library", "").strip():
                 self.log("[Цепочка] Музыка — подбираю под жанр...")
                 try:

@@ -454,21 +454,33 @@ def agnes_chat(messages: list[dict], api_key: str,
     return r.json()["choices"][0]["message"]["content"].strip()
 
 
+def _gemini_keys() -> list[str]:
+    """Все ключи Gemini для ротации при 429 — GEMINI_API_KEY, GEMINI_API_KEY2..."""
+    keys = []
+    for k in (os.getenv("GEMINI_API_KEY", ""), os.getenv("GEMINI_API_KEY2", ""),
+              os.getenv("GEMINI_API_KEY3", "")):
+        k = (k or "").strip()
+        if k and k not in keys:
+            keys.append(k)
+    return keys
+
+
 def llm_chat(messages: list[dict], api_key: str = "",
              temperature: float = 0.7, max_tokens: int = 4096) -> str:
-    """Тексты: сначала Gemini (GEMINI_API_KEY), потом Agnes (api_key или
-    AGNES_API_KEY). api_key — ключ Agnes из «Настроек API» (для совместимости)."""
-    gem = os.getenv("GEMINI_API_KEY", "").strip()
+    """Тексты: сначала Gemini (GEMINI_API_KEY, потом GEMINI_API_KEY2... при
+    429/ошибке), потом Agnes (api_key или AGNES_API_KEY). api_key — ключ
+    Agnes из «Настроек API» (для совместимости)."""
+    gem_keys = _gemini_keys()
     agn_keys = _agnes_keys(api_key)
-    if not gem and not agn_keys:
+    if not gem_keys and not agn_keys:
         raise RuntimeError("Нет ключей для текстов: задай GEMINI_API_KEY или "
                            "AGNES_API_KEY (.env или «Настройки API»).")
     errors = []
-    if gem:
+    for i, key in enumerate(gem_keys, 1):
         try:
-            return gemini_chat(messages, gem, temperature, max_tokens)
+            return gemini_chat(messages, key, temperature, max_tokens)
         except Exception as e:
-            errors.append(str(e))
+            errors.append(f"Gemini #{i}: {e}")
     for key in agn_keys:
         try:
             return agnes_chat(messages, key, temperature, max_tokens)
