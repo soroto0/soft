@@ -55,31 +55,27 @@ PRESET_FINAL = "medium"
 # именно они выдавали «старьё».
 # МНОГО видов, но веса держат киномонтаж: cut/fade доминируют, кричащие
 # (wipe/slide/circle/…) — редкие акценты, а не каждый стык.
+# ВАЖНО: только переходы, которые смешивают ДВА кадра по всей площади
+# (crossfade / dip / blur / dissolve). Геометрические свайпы xfade
+# (circleopen/circleclose/radial/rectcrop/diagtl/squeeze/cover/wipe/slide)
+# УБРАНЫ намеренно и навсегда: во-первых, они выдают «старьё» 2010-х;
+# во-вторых — и это главное — при малейшем рассинхроне длительностей
+# сегментов незакрытая область такого перехода заливается ЗЕЛЁНЫМ (нулевой
+# YUV), что пользователь и видел как зелёный полукруг поверх кадра.
 TRANSITIONS = [
     # ---- основа (частые) ----
-    ("cut",        0.00, 30),   # жёсткая склейка — основа монтажа
-    ("fade",       0.45, 18),   # crossfade
-    ("fadefast",   0.28, 9),    # быстрый crossfade
-    ("dissolve",   0.40, 7),    # растворение
+    ("cut",        0.00, 34),   # жёсткая склейка — основа монтажа
+    ("fade",       0.45, 20),   # crossfade
+    ("fadefast",   0.28, 10),   # быстрый crossfade
+    ("dissolve",   0.40, 8),    # растворение
     ("fadeblack",  0.55, 7),    # dip to black — смена главы
     ("hblur",      0.40, 5),    # blur-dissolve
-    ("zoomin",     0.38, 5),    # zoom-переход
+    ("zoomin",     0.38, 4),    # zoom-переход (полнокадровый, не свайп)
     # ---- акценты (реже) ----
     ("fadewhite",  0.18, 3),    # white flash
-    ("pixelize",   0.30, 3),    # пикселизация
-    ("distance",   0.42, 3),    # разлёт
+    ("pixelize",   0.30, 2),    # пикселизация (полнокадровая)
+    ("distance",   0.42, 2),    # разлёт (смешивает оба кадра, не свайп)
     ("fadegrays",  0.45, 2),    # обесцвечивание
-    ("radial",     0.45, 2),    # круговой свайп
-    ("smoothleft", 0.35, 2),
-    ("smoothright",0.35, 2),
-    ("smoothup",   0.35, 1),
-    ("smoothdown", 0.35, 1),
-    # ---- экзотика (совсем редко, для разнообразия канала) ----
-    ("wipeleft",   0.40, 1), ("wiperight", 0.40, 1),
-    ("slideup",    0.40, 1), ("slidedown", 0.40, 1),
-    ("circleopen", 0.50, 1), ("circleclose", 0.50, 1),
-    ("rectcrop",   0.45, 1), ("diagtl", 0.45, 1),
-    ("squeezev",   0.45, 1), ("coverleft", 0.40, 1),
 ]
 
 INTENSITY = {
@@ -89,6 +85,11 @@ INTENSITY = {
                     short_prob=0.25),
     "сильная": dict(short=(2.0, 3.5), long=(6.0, 9.0),  burst_every=(60, 85),
                     short_prob=0.35),
+    # ~5с/план в среднем (short 0.4*4.25 + long 0.6*5.75 ≈ 5.15с) — темп
+    # референсного канала: смена кадра каждые пять секунд, но не метроном —
+    # узкий разброс 3.5-6.5с сохраняет живую вариацию без скачков "сильной".
+    "документальная 5с": dict(short=(3.5, 5.0), long=(5.0, 6.5),
+                              burst_every=(45, 65), short_prob=0.4),
 }
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -273,8 +274,27 @@ def assign_materials(scenes: list[dict], out_dir: Path,
         raise RuntimeError("Нет материала: пусто в video/, images/, storyboard/ "
                            "и нет timeline.json — сначала скачай стоки.")
 
-    pi, last = 0, None
+    def _content_key(p: Path) -> str:
+        """Фото и его же Ken Burns-видео (beat_004_x_kb.jpg / _kb.mp4, или
+        beat_004_x_ai.jpg / _ai_kb.mp4) — одна и та же картинка, просто с
+        разным движением камеры. Без этого их считало ДВУМЯ разными кадрами
+        с отдельным лимитом MAX_ONSCREEN каждому — итог: один и тот же снимок
+        мелькал до 4 раз (2х как .jpg, 2х как .mp4)."""
+        stem = p.stem
+        return stem[:-3] if stem.endswith("_kb") else stem
+
+    # Интенсивность режет сцены чаще, чем раскадровка качает материал (напр.
+    # «документальная 5с» = смена каждые ~5с, а на один пункт раскадровки
+    # обычно 6-10с) — несколько сцен подряд попадают в окно ОДНОГО файла
+    # timeline.json. Раньше защита была только «не то же самое, что сразу
+    # перед этим» — тот же кадр всё равно повторялся по всему ролику
+    # (не подряд, но заметно зрителю). MAX_ONSCREEN — сколько раз одно и то
+    # же содержимое вообще может мелькнуть за весь ролик, прежде чем
+    # уступит пулу.
+    MAX_ONSCREEN = 2
+    pi, last_key = 0, None
     reused = 0
+    use_count = {}
     for sc in scenes:
         f = None
         for item in timeline:                # привязка по смыслу (раскадровка)
@@ -283,26 +303,31 @@ def assign_materials(scenes: list[dict], out_dir: Path,
                 if p.exists():
                     f = p
                 break
-        # не показывать один и тот же кадр два раза подряд — берём из пула
-        # следующий файл, отличный от предыдущего (смена каждые <=5 сек)
-        if (f is None or f == last) and pool:
+        key = _content_key(f) if f else None
+        # не показывать одно и то же содержимое два раза подряд, и не чаще
+        # MAX_ONSCREEN раз за весь ролик — берём из пула следующий файл,
+        # отличный от предыдущего и ещё не примелькавшийся
+        if (f is None or key == last_key or use_count.get(key, 0) >= MAX_ONSCREEN) and pool:
             for _ in range(len(pool)):
                 cand = pool[pi % len(pool)]
                 pi += 1
-                if cand != last:
-                    f = cand
+                cand_key = _content_key(cand)
+                if cand_key != last_key and use_count.get(cand_key, 0) < MAX_ONSCREEN:
+                    f, key = cand, cand_key
                     break
         if f is None and pool:
             f = pool[pi % len(pool)]
+            key = _content_key(f)
             pi += 1
         if f is None:
             raise RuntimeError("Не хватило материала для сцены "
                                f"{sc['start']:.0f}s.")
-        if f == last:
+        if key == last_key or use_count.get(key, 0) >= MAX_ONSCREEN:
             reused += 1
+        use_count[key] = use_count.get(key, 0) + 1
         sc["file"] = f
         sc["kind"] = "image" if f.suffix.lower() in IMAGE_EXTS else "video"
-        last = f
+        last_key = key
     log(f"[Рендер] Материал: {len(scenes)} сцен, кадр меняется каждые <=5 c "
         f"({'таймлайн + ' if timeline else ''}пул {len(pool)} файлов"
         + (f", повторов подряд: {reused}" if reused else "") + ")")
@@ -587,8 +612,16 @@ def _group_concat_fallback(seg_files: list[Path], durs: list[float],
     lst = dest.parent / f"{dest.stem}_list.txt"
     lst.write_text("\n".join(f"file '{p.resolve().as_posix()}'" for p in parts),
                    encoding="utf-8")
+    # ВАЖНО: НЕ "-c copy". Куски кодировались отдельными вызовами ffmpeg —
+    # у них независимые внутренние временные метки, и потоковая склейка
+    # без перекодирования копирует эти метки как есть. На стыке это дало
+    # рассинхрон PTS: реальный ролик (11) 23 секунды кадра "застывали"
+    # (счётчик кадров почти не рос, а таймкод разом скакнул на 23с вперёд —
+    # видно по логу finalного прохода). Перекодирование пересчитывает PTS
+    # с нуля по кадрам — дороже по CPU, но без разрыва.
     _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-          "-c", "copy", str(dest)], label=dest.stem)
+          "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
+          "-r", str(fps), "-fflags", "+genpts", str(dest)], label=dest.stem)
 
 
 # ---------- 4. Финальная сборка ----------
@@ -604,32 +637,35 @@ def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box") -
       yellow_pop — жёлтый жирный с чёрной обводкой (viral/MrBeast-стиль)
     Позиция — нижняя треть, с воздухом от края."""
     p = str(srt.resolve()).replace("\\", "/").replace(":", "\\:")
-    common = (f"FontName=Segoe UI Black,FontSize={size},Bold=1,"
+    # Bold=0: шрифт "Segoe UI Black" сам по себе уже самого жирного начертания
+    # — Bold=1 поверх него раньше давал "фальшивый" сверх-жир (жалоба: "слишком
+    # жирный"). Обводка/тень тоже почти вдвое тоньше — раньше 3.0-3.4/1.2-1.4
+    # выглядело как тяжёлый ободок-ореол вокруг каждой буквы.
+    common = (f"FontName=Segoe UI Black,FontSize={size},Bold=0,"
               "Alignment=2,MarginV=60,MarginL=90,MarginR=90,Spacing=0.3")
     if style_name == "pill":            # текст на полупрозрачной плашке
         style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
                  "BackColour=&HA0000000,BorderStyle=4,Outline=14,Shadow=0")
     elif style_name == "yellow_pop":    # жёлтый viral (MrBeast-стиль)
         style = (common + ",PrimaryColour=&H0000F0FF,OutlineColour=&H00101010,"
-                 "BorderStyle=1,Outline=3.2,Shadow=1.2")
+                 "BorderStyle=1,Outline=1.8,Shadow=0.6")
     elif style_name == "cyan_pop":      # голубой неон
         style = (common + ",PrimaryColour=&H00F0FF00,OutlineColour=&H00201000,"
-                 "BorderStyle=1,Outline=3.0,Shadow=1.4")
+                 "BorderStyle=1,Outline=1.8,Shadow=0.7")
     elif style_name == "red_alert":     # красный акцент (под красную тему)
         style = (common + ",PrimaryColour=&H004040FF,OutlineColour=&H00101010,"
-                 "BorderStyle=1,Outline=3.2,Shadow=1.2")
+                 "BorderStyle=1,Outline=1.8,Shadow=0.6")
     elif style_name == "thin_clean":    # тонкий контур, минимализм
-        style = (common.replace("Bold=1", "Bold=0")
-                 + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-                 "BorderStyle=1,Outline=1.6,Shadow=0.8")
+        style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+                 "BorderStyle=1,Outline=1.2,Shadow=0.5")
     elif style_name == "top":           # субтитры сверху (не мешают кадру)
         style = (common.replace("Alignment=2", "Alignment=8")
                  .replace("MarginV=60", "MarginV=50")
                  + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00151515,"
-                 "BorderStyle=1,Outline=3.2,Shadow=1.2")
-    else:  # bold_box — по умолчанию: жирный белый, толстая обводка + тень
+                 "BorderStyle=1,Outline=1.8,Shadow=0.6")
+    else:  # bold_box — по умолчанию: белый, аккуратная обводка + мягкая тень
         style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00151515,"
-                 "BorderStyle=1,Outline=3.4,Shadow=1.4,BackColour=&H40000000")
+                 "BorderStyle=1,Outline=2.0,Shadow=0.7,BackColour=&H40000000")
     return f"subtitles='{p}':force_style='{style}'"
 
 
@@ -678,7 +714,7 @@ OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, \
 ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, \
 MarginR, MarginV, Encoding
 Style: Karaoke,Segoe UI Black,{size},{primary},{secondary},{outline},\
-&H64000000,1,0,0,0,100,100,0.3,0,1,3.4,1.4,2,90,90,60,1
+&H64000000,0,0,0,0,100,100,0.3,0,1,2.0,0.6,2,90,90,60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -783,9 +819,16 @@ def _style_chain(opts: dict) -> list[str]:
         chain.append("vignette=angle=PI/5:x0=w*0.85:y0=h*0.2:mode=backward,"
                      "eq=brightness=0.015")
     if opts.get("bloom"):
-        # свечение светлых участков — кинематографичный «glow»
-        chain.append("split[a][b];[b]gblur=sigma=18[bl];"
-                     "[a][bl]blend=all_mode=screen:all_opacity=0.28")
+        # Свечение светлых участков — деликатный кинематографичный «glow».
+        # Стиль-цепочка идёт ПОСЛЕДНИМ слоем (поверх титров/субтитров), а
+        # белый текст титра — самый яркий объект в кадре, поэтому сильный
+        # bloom раздувал его в уродливый белый ореол. Ключевое: сначала
+        # curves отсекает всё, кроме почти-белого (0.72 порог), и только
+        # это малое ярко-светлое размывается — текст не бьёт в глаза
+        # гало, а реально светлые пятна (небо, огни) мягко светятся.
+        chain.append("split[a][b];"
+                     "[b]curves=all='0/0 0.72/0 1/1',gblur=sigma=9[bl];"
+                     "[a][bl]blend=all_mode=screen:all_opacity=0.16")
     if opts.get("dust"):
         # редкие крапинки-пылинки, как на старой плёнке
         chain.append("noise=alls=3:allf=t+u,eq=contrast=1.02")

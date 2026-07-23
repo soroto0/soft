@@ -121,9 +121,11 @@
             <label>Громкость:</label>
             <select id="musicGain"><option>-10 dB</option><option selected>-14 dB</option><option>-18 dB</option><option>-22 dB</option></select>
             <button class="btn" onclick="app.mixMusic()">🎵 Подмешать</button>
+            <button class="btn gold" onclick="app.autoMusic()">🤖 Подобрать под жанр</button>
           </div>
           <div class="hint">Несколько треков склеиваются в плейлист и зацикливаются под всю длину видео.
-            Музыка должна быть лицензионной (YouTube Audio Library и т.п.).</div>
+            Музыка должна быть лицензионной (YouTube Audio Library и т.п.).
+            «Подобрать под жанр» берёт трек сам из библиотеки в Настройках — без выбора папки.</div>
           <div class="sect" style="font-size:13px; margin-top:12px">ASMR-звуки быта (эффект присутствия)</div>
           <div class="row">
             <input type="text" id="asmrPath" style="flex:1" placeholder="папка со звуками: шорох, звон, вода…">
@@ -139,7 +141,7 @@
         <div class="subpage" id="sub-subs">
           <div class="row">
             <label>Модель Whisper:</label>
-            <select id="whisperModel"><option>tiny.en</option><option selected>base.en</option><option>small.en</option><option>medium.en</option></select>
+            <select id="whisperModel"><option selected>tiny.en</option><option>base.en</option><option>small.en</option><option>medium.en</option></select>
             <label>Длина строки:</label>
             <select id="subLineWidth"><option value="32">короткие (32)</option><option value="42" selected>средние (42)</option><option value="52">длинные (52)</option></select>
             <button class="btn gold" onclick="app.runSubs()">💬 Транскрибировать</button>
@@ -207,7 +209,7 @@
             <label>Разрешение:</label><select id="rRes"><option selected>1080p</option><option>4K</option></select>
             <label>FPS:</label><select id="rFps"><option>24</option><option selected>30</option><option>60</option></select>
             <label>Стиль:</label><select id="rPreset" onchange="app.applyPreset()"><option value="custom" selected>как настроено</option><option value="documentary">📜 документальный (минимал)</option><option value="dynamic">⚡ динамичный</option></select>
-            <label>Интенсивность:</label><select id="rInt"><option>слабая</option><option selected>средняя</option><option>сильная</option></select>
+            <label>Интенсивность:</label><select id="rInt"><option>слабая</option><option>средняя</option><option>сильная</option><option value="документальная 5с" selected>документальная 5с (смена каждые ~5с)</option></select>
             <label>Качество:</label><select id="rQuality"><option selected>обычное</option><option>высокое</option><option>максимум</option></select>
             <label>Субтитры:</label><select id="rSubSize"><option>мелкие</option><option selected>средние</option><option>крупные</option><option>огромные</option></select>
             <label>Стиль:</label><select id="rSubStyle"><option value="bold_box" selected>жирный (контур+тень)</option><option value="karaoke">караоке (цветное слово в такт речи)</option><option value="pill">плашка</option><option value="yellow_pop">жёлтый viral</option><option value="cyan_pop">голубой неон</option><option value="red_alert">красный акцент</option><option value="thin_clean">тонкий минимал</option><option value="top">сверху кадра</option></select>
@@ -271,6 +273,7 @@
         <span class="dh-title">🖥 Консоль</span>
         <span class="hint" style="margin:0">живой ход текущей операции</span>
         <div class="spacer"></div>
+        <label class="switch" onclick="event.stopPropagation()"><input type="checkbox" id="autoscroll" checked><span class="tr"></span>Автопрокрутка</label>
         <button class="btn ghost" onclick="event.stopPropagation(); app.clearLog()">Очистить</button>
         <button class="btn ghost" onclick="event.stopPropagation(); app.copyLog()">Скопировать</button>
         <span id="drawerChevron">▾</span>
@@ -311,8 +314,20 @@
     <div class="row"><label style="width:170px">AWS Region</label><input type="text" id="sAwsRegion" placeholder="us-east-1"></div>
     <div class="warnnote">⚠ Ключи хранятся в settings.json открытым текстом — не передавай файл никому.</div>
     <div class="divider"></div>
-    <div class="row"><label style="width:170px">Gemini API Key</label><input type="text" id="sGemini"></div>
-    <div class="row"><label style="width:170px">Agnes API Key</label><input type="text" id="sAgnes"></div>
+    <div class="row"><label style="width:170px">VeoNonStop API Key <b>(основной)</b></label><input type="text" id="sVeo" placeholder="veo_..."></div>
+    <div class="row"><label style="width:170px">Gemini API Key</label><input type="text" id="sGemini" placeholder="запасной для текста"></div>
+    <div class="row"><label style="width:170px">Agnes API Key</label><input type="text" id="sAgnes" placeholder="запасной, если Veo недоступен"></div>
+    <div class="divider"></div>
+    <div class="row"><label style="width:170px">Библиотека музыки</label><input type="text" id="sMusicLib" style="flex:1" placeholder="папка с подпапками calm/dark/upbeat/epic/horror"><button class="btn ghost" onclick="app.pickMusicLib()">Папка…</button></div>
+    <div class="row"><label style="width:170px">Jamendo API Key</label><input type="text" id="sJamendo" style="flex:1" placeholder="бесплатно на jamendo.com/developer"><label>треков на настроение:</label><select id="jamendoCount"><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option></select><button class="btn ghost" onclick="app.fillMusicLib()">🌐 Наполнить библиотеку</button></div>
+    <div class="hint">Софт сам подбирает трек под жанр сценария (документальный→calm,
+      истории/крайм→dark, топ-лист→upbeat, мотивация→epic, мистика/хоррор→horror).
+      Без ключа Jamendo — наполняй эти 5 подпапок своими треками сам. С ключом —
+      «Наполнить библиотеку» один раз скачает пачку лицензионных (коммерческое
+      использование разрешено) треков с Jamendo сразу под все настроения; если
+      потом чего-то не хватит — «Подобрать под жанр» на вкладке «Озвучка» сам
+      докачает недостающее. Рядом с каждым треком кладётся .license.txt — на
+      случай, если понадобится указать автора в описании ролика.</div>
     <div class="divider"></div>
     <label class="hint">Pexels — несколько ключей, по одному на строку (ротация при лимите):</label>
     <textarea id="sPexels" spellcheck="false"></textarea>

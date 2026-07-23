@@ -26,6 +26,7 @@ import webview
 import core
 import render
 import overlays
+import gen_remotion_gemini
 
 APP_TITLE = "Контент-фабрика"
 APP_VERSION = "3.0"
@@ -35,6 +36,18 @@ LOG_FILE = BASE / "app.log"
 
 STAGE_NAMES = ["Сценарий", "Озвучка", "Субтитры", "Раскадровка",
                "Оверлеи", "Рендер", "Premiere"]
+
+# Жанр сценария -> подпапка в библиотеке музыки (см. auto_music). Без всякого
+# музыкального API — просто раскладываешь свои лицензионные треки по этим
+# пяти папкам один раз, дальше софт сам берёт подходящий под жанр трек.
+TONE_TO_MOOD = {
+    "документальный": "calm",
+    "истории/крайм": "dark",
+    "образовательный": "calm",
+    "топ-лист": "upbeat",
+    "мотивация": "epic",
+    "мистика/хоррор": "horror",
+}
 
 
 def load_settings() -> dict:
@@ -55,6 +68,16 @@ class Api:
         self._win = None
         core.CONSOLE = lambda m: self.log(m, "dim")
         render.CONSOLE = lambda m: self.log(m, "dim")
+        self._apply_env()   # ключи из settings.json -> os.environ (не только
+                            # при явном сохранении в диалоге, но и при старте)
+
+    def _apply_env(self):
+        for k, env in (("aws_access_key", "AWS_ACCESS_KEY_ID"),
+                       ("aws_secret_key", "AWS_SECRET_ACCESS_KEY"),
+                       ("aws_region", "AWS_REGION"),
+                       ("veo_key", "VEO_API_KEY")):
+            if self._settings.get(k):
+                os.environ[env] = self._settings[k]
 
     # ---------- связь с JS ----------
     def _js(self, code: str):
@@ -118,6 +141,20 @@ class Api:
             return p.read_text(encoding="utf-8") if p.exists() else ""
         except OSError:
             return ""
+
+    def _read_meta(self) -> dict:
+        p = self._project / "meta.json"
+        try:
+            return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _write_meta(self, **kv):
+        meta = self._read_meta()
+        meta.update(kv)
+        self._project.mkdir(parents=True, exist_ok=True)
+        (self._project / "meta.json").write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _checks(self, d: Path) -> dict:
         def nonempty(p):
@@ -290,6 +327,7 @@ class Api:
             text = core.gen_script(topic, int(minutes), key, self.log,
                                    tone=tone, lang=lang)
             self.save_script(text)
+            self._write_meta(tone=tone, topic=topic)
             self._js(f"$('scriptText').value = {json.dumps(text)}; updateStats()")
         self._bg("Генерация сценария", job)
 
@@ -340,6 +378,67 @@ class Api:
             self._save_settings_file()
             core.add_music(voice, src, self.log, int(gain))
         self._bg("Музыка", job)
+
+    def _do_auto_music(self, gain: int) -> bool:
+        """Сам выбирает трек под жанр сценария и подмешивает. Сначала смотрит
+        в локальной библиотеке (settings.music_library); если для этого
+        настроения там пусто, а указан ключ Jamendo — сам качает один
+        подходящий трек (коммерческая лицензия) и кладёт в библиотеку
+        насовсем. Возвращает False (без исключения), если библиотека вообще
+        не настроена — используется и кнопкой, и общей цепочкой рендера,
+        где отсутствие музыки не должно рушить весь пайплайн."""
+        voice = self._project / "audio" / "voiceover.mp3"
+        if not voice.exists():
+            raise RuntimeError("Сначала озвучка.")
+        lib = self._settings.get("music_library", "").strip()
+        if not lib:
+            return False
+        tone = self._read_meta().get("tone", "документальный")
+        mood = TONE_TO_MOOD.get(tone, "calm")
+        try:
+            track = core.pick_music_by_mood(Path(lib), mood)
+        except FileNotFoundError:
+            jkey = self._settings.get("jamendo_key", "").strip()
+            if not jkey:
+                raise RuntimeError(
+                    f"Нет треков настроения «{mood}» в библиотеке, и не "
+                    "указан Jamendo API Key в Настройках, чтобы скачать "
+                    "автоматически. Либо положи mp3 в "
+                    f"{Path(lib) / mood} сам, либо укажи ключ.")
+            self.log(f"[Музыка] Локально нет «{mood}» — качаю с Jamendo...")
+            found = core.jamendo_search(mood, jkey, count=1)
+            if not found:
+                raise RuntimeError(
+                    f"Jamendo не нашёл трек под «{mood}» с коммерческой "
+                    "лицензией — попробуй позже или положи трек вручную.")
+            track = core.jamendo_download(found[0], Path(lib) / mood, self.log)
+        self.log(f"[Музыка] Жанр «{tone}» -> настроение «{mood}» -> "
+                 f"{track.name}")
+        core.add_music(voice, track, self.log, int(gain))
+        return True
+
+    def auto_music(self, gain: int):
+        def job():
+            if not self._do_auto_music(int(gain)):
+                raise RuntimeError(
+                    "Сначала укажи «Библиотека музыки» в Настройках — папку, "
+                    "куда будут ложиться треки (свои или с Jamendo).")
+        self._bg("Музыка (авто)", job)
+
+    def fill_music_library(self, per_mood: int):
+        """Разово наполняет все 5 папок настроения треками с Jamendo — после
+        этого auto_music работает вообще без интернета."""
+        def job():
+            lib = self._settings.get("music_library", "").strip()
+            if not lib:
+                raise RuntimeError("Сначала укажи «Библиотека музыки» в Настройках.")
+            jkey = self._settings.get("jamendo_key", "").strip()
+            if not jkey:
+                raise RuntimeError("Сначала укажи Jamendo API Key в Настройках "
+                                   "(бесплатно на jamendo.com/developer).")
+            core.fill_music_library_jamendo(Path(lib), jkey, self.log,
+                                            int(per_mood))
+        self._bg("Наполнение библиотеки музыки", job)
 
     def add_asmr(self, path: str, every: float):
         def job():
@@ -477,13 +576,47 @@ class Api:
                 manifest = json.loads(mf.read_text(encoding="utf-8"))
             except Exception:
                 pass
-        text = overlays.suggest_overlays(core.parse_srt(srt), manifest)
+        text = overlays.suggest_overlays_auto(core.parse_srt(srt), manifest,
+                                              self._project, self.log)
         if text.strip():
             ov.write_text(text.strip() + "\n", encoding="utf-8")
             n = len([l for l in text.splitlines()
                      if l.strip() and not l.startswith("#")])
-            self.log(f"[Оверлеи] Авто-расстановка: {n} моушн-элементов "
-                     "(popup/счётчики/плашки) добавлены в ролик")
+            self.log(f"[Оверлеи] Авто-расстановка (ИИ): {n} элементов "
+                     "(popup/titlecard/collage/счётчики/плашки) добавлены "
+                     "в ролик")
+
+    def _regen_overlay_theme(self):
+        """Каждое видео получает свою палитру оверлеев (акцент/баннер/плашка)
+        под тему/жанр — иначе один и тот же янтарный шаблон кочует из видео
+        в видео. Через Agnes, не Gemini: Gemini уже занят сценарием и первым
+        упирается в 429 (дневная бесплатная квота), а это не должно от неё
+        зависеть. Полная генерация КОДА компонентов (не только цвета) через
+        LLM пробовалась отдельно и оказалась ненадёжной (типы игнорировались
+        / пустые кадры) — оставлена выключенной (apply_theme, для ручного
+        экспериментирования). Здесь — только палитра, сломать ей логику
+        компонентов невозможно. Необязательный шаг: нет ключа/темы, или
+        Agnes не осилил за несколько попыток — тихо остаёмся на текущей
+        палитре, цепочка не должна падать из-за декоративного улучшения."""
+        agnes_key = self._settings.get("agnes_key", "") or os.getenv("AGNES_API_KEY", "")
+        if not agnes_key:
+            return
+        meta = self._read_meta()
+        topic, tone = meta.get("topic", ""), meta.get("tone", "документальный")
+        if not topic:
+            return
+        theme = (f"Documentary video about: {topic}. Tone/genre: {tone}. "
+                "Invent a distinctive color palette that fits THIS specific "
+                "topic — a video about something cold/scientific should not "
+                "look like one about crime or myth, etc. Avoid a generic "
+                "dark-charcoal-plus-amber default; pick colors that make "
+                "sense here.")
+        self.log("[Цепочка] Палитра оверлеев — прошу Agnes подобрать под эту тему...")
+        try:
+            gen_remotion_gemini.apply_theme_palette(theme, agnes_key, self.log)
+        except Exception as e:
+            self.log(f"[Remotion/Тема] Не удалось: {e} — остаюсь на "
+                     "текущей палитре", "warn")
 
     def render(self, p: dict):
         opts = self._render_opts(p)
@@ -511,17 +644,35 @@ class Api:
         return out
 
     # ---------- одна кнопка ----------
+    def _sync_beat_to_intensity(self, beat: float, intensity: str) -> float:
+        """Раскадровка качает по одному материалу на `beat` секунд, а рендер
+        режет кадры по своей интенсивности (напр. «документальная 5с» —
+        смена каждые ~5с) — если интенсивность режет чаще, чем раскадровка
+        качает, несколько сцен подряд достаются одному и тому же файлу, и он
+        неизбежно повторяется по всему ролику (в 5-минутном тесте: 127 смен
+        кадра на 51 уникальный кадр из-за такого рассинхрона). Подгоняем
+        beat под среднюю длительность плана интенсивности, если он крупнее —
+        собственный (меньший) выбор пользователя не трогаем."""
+        cfg = render.INTENSITY.get(intensity)
+        if not cfg:
+            return beat
+        avg = (cfg["short_prob"] * sum(cfg["short"]) / 2
+              + (1 - cfg["short_prob"]) * sum(cfg["long"]) / 2)
+        return min(beat, avg)
+
     def generate_all(self, p: dict):
         opts = self._render_opts(p)
         if (p.get("overlays") or "").strip():
             self.save_overlays(p["overlays"])
+        beat = self._sync_beat_to_intensity(float(p.get("beat", 6)),
+                                            opts.get("intensity", "средняя"))
 
         def job():
             self.log("[Цепочка] Шаг 1/4 — озвучка…")
             self._tts_step(p)
             self.log("[Цепочка] Шаг 2/4 — субтитры…")
             core.transcribe_whisper(self._project / "audio" / "voiceover.mp3",
-                                    p.get("whisper", "base.en"),
+                                    p.get("whisper", "tiny.en"),
                                     self._project, self.log, 42,
                                     p.get("lang", "английский"))
             self.log("[Цепочка] Шаг 3/4 — стоки по таймлайну…")
@@ -529,7 +680,7 @@ class Api:
                 self._project, self.log,
                 self._settings.get("pexels_keys", ""),
                 self._settings.get("pixabay_keys", ""),
-                float(p.get("beat", 6)),
+                beat,
                 self._settings.get("gemini_key", ""),
                 self._settings.get("agnes_key", ""), False,
                 int(self._settings.get("max_unique", 200)),
@@ -537,6 +688,13 @@ class Api:
                 float(p.get("ai_ratio", 0.35)))
             if not (p.get("overlays") or "").strip():
                 self._auto_overlays()   # моушн-графика сама, если не задана
+            self._regen_overlay_theme()   # своя палитра оверлеев под это видео
+            if self._settings.get("music_library", "").strip():
+                self.log("[Цепочка] Музыка — подбираю под жанр...")
+                try:
+                    self._do_auto_music(-14)
+                except Exception as e:
+                    self.log(f"[Цепочка] Музыка пропущена: {e}", "warn")
             self.log("[Цепочка] Шаг 4/4 — рендер…")
             render.render_project(self._project, self.log,
                                   self._progress, opts)
@@ -545,7 +703,8 @@ class Api:
     # ---------- настройки ----------
     def settings_get(self):
         keys = ("aws_access_key", "aws_secret_key", "aws_region",
-                "gemini_key", "agnes_key", "pexels_keys", "pixabay_keys")
+                "gemini_key", "agnes_key", "veo_key",
+                "pexels_keys", "pixabay_keys", "music_library", "jamendo_key")
         return {k: self._settings.get(k, "") for k in keys}
 
     def _save_settings_file(self):
@@ -556,11 +715,7 @@ class Api:
     def settings_save(self, data: dict):
         self._settings.update({k: str(v) for k, v in (data or {}).items()})
         self._save_settings_file()
-        for k, env in (("aws_access_key", "AWS_ACCESS_KEY_ID"),
-                       ("aws_secret_key", "AWS_SECRET_ACCESS_KEY"),
-                       ("aws_region", "AWS_REGION")):
-            if self._settings.get(k):
-                os.environ[env] = self._settings[k]
+        self._apply_env()
         self.log("[Настройки] Сохранено в settings.json")
         return True
 

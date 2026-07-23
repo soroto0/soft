@@ -454,21 +454,33 @@ def agnes_chat(messages: list[dict], api_key: str,
     return r.json()["choices"][0]["message"]["content"].strip()
 
 
+def _gemini_keys() -> list[str]:
+    """Все ключи Gemini для ротации при 429 — GEMINI_API_KEY, GEMINI_API_KEY2..."""
+    keys = []
+    for k in (os.getenv("GEMINI_API_KEY", ""), os.getenv("GEMINI_API_KEY2", ""),
+              os.getenv("GEMINI_API_KEY3", "")):
+        k = (k or "").strip()
+        if k and k not in keys:
+            keys.append(k)
+    return keys
+
+
 def llm_chat(messages: list[dict], api_key: str = "",
              temperature: float = 0.7, max_tokens: int = 4096) -> str:
-    """Тексты: сначала Gemini (GEMINI_API_KEY), потом Agnes (api_key или
-    AGNES_API_KEY). api_key — ключ Agnes из «Настроек API» (для совместимости)."""
-    gem = os.getenv("GEMINI_API_KEY", "").strip()
+    """Тексты: сначала Gemini (GEMINI_API_KEY, потом GEMINI_API_KEY2... при
+    429/ошибке), потом Agnes (api_key или AGNES_API_KEY). api_key — ключ
+    Agnes из «Настроек API» (для совместимости)."""
+    gem_keys = _gemini_keys()
     agn_keys = _agnes_keys(api_key)
-    if not gem and not agn_keys:
+    if not gem_keys and not agn_keys:
         raise RuntimeError("Нет ключей для текстов: задай GEMINI_API_KEY или "
                            "AGNES_API_KEY (.env или «Настройки API»).")
     errors = []
-    if gem:
+    for i, key in enumerate(gem_keys, 1):
         try:
-            return gemini_chat(messages, gem, temperature, max_tokens)
+            return gemini_chat(messages, key, temperature, max_tokens)
         except Exception as e:
-            errors.append(str(e))
+            errors.append(f"Gemini #{i}: {e}")
     for key in agn_keys:
         try:
             return agnes_chat(messages, key, temperature, max_tokens)
@@ -484,7 +496,31 @@ SCRIPT_BASE = (
     "image, or tension. Banned phrases: 'in this video', 'let's dive in', "
     "'stay tuned', 'as we mentioned', 'in conclusion', 'without further ado'. "
     "No headings, no lists, no stage directions — pure spoken narration. "
-    "Separate paragraphs with a blank line. ")
+    "Separate paragraphs with a blank line. "
+    "\n\nCRITICAL — this must not read as AI-generated (platforms flag "
+    "formulaic AI narration as inauthentic/reused content and demonetize "
+    "it, so avoid every tell below):\n"
+    "- No stock AI transitions/hedges: 'moreover', 'furthermore', "
+    "'it's worth noting', 'interestingly', 'not only... but also', "
+    "'this begs the question', 'the truth is', 'at the end of the day'.\n"
+    "- No AI-cliche vocabulary: 'delve', 'unravel', 'tapestry', "
+    "'testament to', 'boundless', 'in the realm of', 'stands as a symbol', "
+    "'plays a crucial/pivotal role', 'a rich history of'.\n"
+    "- Vary sentence length and rhythm hard — mix short punches with long "
+    "winding ones; never let three sentences in a row share the same "
+    "structure or the same opening word.\n"
+    "- Don't make every paragraph the same shape or every section the same "
+    "length — real writers ramble on what excites them and rush the boring "
+    "parts.\n"
+    "- Take a specific point of view, not a neutral encyclopedia summary — "
+    "let the narrator sound mildly opinionated, surprised, or skeptical "
+    "where it fits.\n"
+    "- Prefer one vivid concrete detail (a number, a name, a smell, a "
+    "specific place) over a general abstract claim.\n"
+    "- Don't wrap every section in a tidy 'setup — three examples — neat "
+    "conclusion' bow; let some threads trail off into the next section "
+    "instead of resolving cleanly.\n"
+    "- Use em dashes sparingly, at most once or twice total. ")
 
 TONES = {
     "документальный": "Tone: authoritative documentary — calm, factual, "
@@ -530,6 +566,13 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                 for ln in outline.splitlines() if re.match(r"\s*\d+[.)]", ln)]
     if not chapters:
         chapters = [ln.strip() for ln in outline.splitlines() if ln.strip()][:n_sections]
+    if not chapters:
+        # без этого падало тихо: пустой сценарий -> пустая озвучка -> Whisper
+        # не находит речи -> невнятная ошибка на третьем шаге вместо явной
+        # здесь же, в настоящем месте сбоя
+        raise RuntimeError(
+            "ИИ не вернул план глав (пустой/непарсящийся ответ на outline) "
+            f"— попробуй ещё раз. Сырой ответ: {outline[:300]!r}")
     log(f"[Агент] План готов: {len(chapters)} глав")
 
     def _strip_echo(part: str, tail: str) -> str:
@@ -928,6 +971,116 @@ def pick_music_by_mood(music_dir: Path, mood: str) -> Path:
             f"Нет треков настроения «{mood}»: создай папку {sub} и положи "
             f"туда mp3, либо добавь «{mood}» в имя файла.")
     return random.choice(cands)
+
+
+# ---------- Jamendo: авто-загрузка лицензионной музыки (свободный API) ----------
+
+# YouTube Audio Library и Pixabay Music публичного API не имеют (см. выше) —
+# Jamendo единственный из бесплатных источников музыки с открытым API и
+# понятными Creative Commons лицензиями. Тег под каждое настроение — набор
+# самых ходовых тегов в их каталоге, не идеальный, но рабочий.
+JAMENDO_MOOD_TAGS = {
+    "calm": "calm", "dark": "dark", "upbeat": "energetic",
+    "epic": "epic", "horror": "horror",
+}
+
+
+def _jamendo_license_ok(ccurl: str) -> bool:
+    """Отсекает NC (некоммерческая) и ND (без производных) лицензии — на
+    монетизированном канале нужен именно "-by" / "-by-sa" / cc0, иначе есть
+    риск жалобы по лицензии, даже если трек формально бесплатный."""
+    u = (ccurl or "").lower()
+    if "publicdomain" in u or "/zero/" in u:
+        return True
+    return "-nc" not in u and "/nc" not in u and "-nd" not in u and "/nd" not in u
+
+
+def jamendo_search(mood: str, client_id: str, count: int = 5) -> list[dict]:
+    """Ищет до count треков под настроение mood с разрешённой коммерческой
+    лицензией. Возвращает [{id, name, artist, url, ccurl}, ...]."""
+    import requests
+    tag = JAMENDO_MOOD_TAGS.get(mood, mood)
+    r = requests.get(
+        "https://api.jamendo.com/v3.0/tracks/",
+        params={"client_id": client_id, "format": "json", "limit": 30,
+                "tags": tag, "audioformat": "mp32", "include": "licenses",
+                "order": "popularity_total", "boost": "popularity_total"},
+        timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(f"Jamendo API {r.status_code}: {r.text[:200]}")
+    data = r.json()
+    if (data.get("headers") or {}).get("status") == "failed":
+        raise RuntimeError("Jamendo API: " + (data["headers"].get("error_message")
+                                              or "запрос не выполнен")
+                           + " — проверь client_id в Настройках.")
+    out = []
+    for t in data.get("results", []):
+        if not t.get("audio"):
+            continue
+        if not _jamendo_license_ok(t.get("license_ccurl", "")):
+            continue
+        out.append({"id": t["id"], "name": t.get("name", "untitled"),
+                    "artist": t.get("artist_name", "unknown"),
+                    "url": t["audio"], "ccurl": t.get("license_ccurl", "")})
+        if len(out) >= count:
+            break
+    return out
+
+
+def jamendo_download(track: dict, dest_dir: Path, log=print) -> Path:
+    """Качает трек + кладёт рядом .license.txt с автором/лицензией — чтобы
+    при необходимости атрибуции в описании ролика было что скопировать."""
+    import requests
+    import re as _re
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    safe = _re.sub(r"[^\w\- ]+", "_", track["name"]).strip()[:60] or track["id"]
+    dest = dest_dir / f"{safe}_{track['id']}.mp3"
+    r = requests.get(track["url"], timeout=60)
+    if r.status_code != 200:
+        raise RuntimeError(f"Jamendo скачивание {r.status_code}: {track['url']}")
+    dest.write_bytes(r.content)
+    dest.with_suffix(".license.txt").write_text(
+        f"{track['name']} — {track['artist']}\nJamendo, license: {track['ccurl']}\n",
+        encoding="utf-8")
+    log(f"[Jamendo] Скачан: {track['name']} — {track['artist']} "
+        f"({track['ccurl']})")
+    return dest
+
+
+def fill_music_library_jamendo(music_dir: Path, client_id: str, log=print,
+                               per_mood: int = 3) -> int:
+    """Разово наполняет все 5 папок настроения треками с Jamendo. Уже
+    скачанные (по id в имени файла) не повторяет. Возвращает число новых
+    файлов."""
+    music_dir = Path(music_dir)
+    added = 0
+    for mood in JAMENDO_MOOD_TAGS:
+        sub = music_dir / mood
+        have_ids = set()
+        if sub.is_dir():
+            have_ids = {p.stem.rsplit("_", 1)[-1] for p in sub.iterdir()
+                       if p.suffix.lower() in MUSIC_EXTS}
+        need = per_mood - len(have_ids)
+        if need <= 0:
+            log(f"[Jamendo] «{mood}»: уже {len(have_ids)} треков, пропускаю")
+            continue
+        try:
+            found = jamendo_search(mood, client_id, count=need + len(have_ids) + 5)
+        except Exception as e:
+            log(f"[Jamendo] «{mood}»: поиск не удался ({e})")
+            continue
+        fresh = [t for t in found if t["id"] not in have_ids][:need]
+        if not fresh:
+            log(f"[Jamendo] «{mood}»: подходящих (коммерческая лицензия) "
+                "треков не нашлось")
+        for t in fresh:
+            try:
+                jamendo_download(t, sub, log)
+                added += 1
+            except Exception as e:
+                log(f"[Jamendo] «{t['name']}»: скачивание не удалось ({e})")
+    log(f"[Jamendo] Готово: добавлено {added} треков в {music_dir}")
+    return added
 
 
 # ---------- Генерация видео (Agnes Video V2.0, асинхронный API) ----------
@@ -1613,11 +1766,14 @@ def project_style(project_dir) -> dict:
     return {
         "voice": r.choice(RANDOM_VOICES),
         "rate": r.choice([-8, -5, -3, 0, 0, 3, 5]),
-        "sub_style": r.choice(["bold_box", "bold_box", "pill", "yellow_pop",
-                               "cyan_pop", "red_alert", "thin_clean",
-                               "karaoke", "karaoke"]),
-        "sub_size": r.choice(["средние", "средние", "крупные"]),
-        "intensity": r.choice(["слабая", "средняя", "средняя", "сильная"]),
+        # Субтитры больше НЕ рандомные — жёлтый/голубой/красный "viral"-вид
+        # слишком жирный и кричащий (жалоба: "слишком жирный, внешнее
+        # свечение жирное"). Один стабильный стиль на все проекты — караоке
+        # (подсветка слова в такт голосу), потолще яркого попа не давит.
+        "sub_style": "karaoke",
+        "sub_size": "средние",
+        "intensity": r.choice(["документальная 5с", "документальная 5с",
+                               "сильная", "средняя"]),
         "look": "случайный",
         # 1-2 случайных эффекта поверх кадра — добавляют «плёночности»
         "bloom": r.random() < 0.5,
@@ -1791,15 +1947,17 @@ def export_premiere_xml(timeline: list[dict], audio_path: Path, dest: Path,
 
 def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
                        plan_kinds: list[str], sdir: Path, gemini_key: str,
-                       visual_style: str, log):
-    """Параллельно (до 4 задач одновременно — лимит тарифа VeoNonStop)
-    генерирует ВСЕ кадры для visual_mode="ai" заранее, до основного цикла
-    auto_storyboard. Раньше раскадровка шла строго по одной задаче —
+                       visual_style: str, log, target_indices=None,
+                       workers: int = 4):
+    """Параллельно (по умолчанию 4 задачи одновременно — под лимит
+    большинства тарифов Veo/Agnes) генерирует кадры заранее, до основного
+    цикла auto_storyboard. Раньше раскадровка шла строго по одной задаче —
     для ролика из ~20 планов это давало ~20x1-3 мин последовательно.
-    Имена файлов вычисляются 1-в-1 как в основном цикле — он их просто
-    находит на диске (см. os.path.exists проверки там) и пропускает
-    повторную генерацию; план, который префетч не осилил (ошибка сети и
-    т.п.), основной цикл досоздаст сам, как и раньше."""
+    target_indices — set 1-based индексов планов для префетча (None = все,
+    т.е. полный visual_mode="ai"; конкретный набор — для mixed, где только
+    часть планов идёт через ИИ). Имена файлов вычисляются 1-в-1 как в
+    основном цикле — он их просто находит на диске и пропускает повторную
+    генерацию; план, который префетч не осилил, основной цикл досоздаст сам."""
     from concurrent.futures import ThreadPoolExecutor
     jobs = []
     prev_query = "cinematic background"
@@ -1807,12 +1965,16 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
         query = ((queries[i - 1] if queries else "")
                  or extract_keywords(b["text"]) or prev_query)
         prev_query = query
+        if target_indices is not None and (i - 1) not in target_indices:
+            continue
         safe = re.sub(r"[^\w\-]+", "_", query)[:40]
         want_photo = plan_kinds[i - 1] == "photo"
         if want_photo:
             jobs.append((i, "photo", query, sdir / f"beat_{i:03d}_{safe}_ai.jpg"))
         else:
             jobs.append((i, "video", query, sdir / f"beat_{i:03d}_{safe}_ai.mp4"))
+    if not jobs:
+        return
 
     def run_job(job):
         i, kind, query, dest = job
@@ -1826,9 +1988,9 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
             return (i, False, e)
 
     log(f"[Раскадровка] Параллельная генерация: {len(jobs)} кадров, "
-        "до 4 одновременно (лимит VeoNonStop)...")
+        f"до {workers} одновременно...")
     ok = 0
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=workers) as ex:
         for i, success, err in ex.map(run_job, jobs):
             if success:
                 ok += 1
@@ -1981,9 +2143,16 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         use_count[c] = use_count.get(c, 0) + 1
         return c
 
-    if visual_mode == "ai" and os.getenv("VEO_API_KEY", "").strip():
+    _has_ai_key = bool(os.getenv("VEO_API_KEY", "").strip() or _agnes_keys()
+                      or gemini_key or os.getenv("GEMINI_API_KEY", ""))
+    if _has_ai_key and visual_mode == "ai":
         _prefetch_ai_beats(beats, queries, plan_kinds, sdir, gemini_key,
                            visual_style, log)
+    elif _has_ai_key and visual_mode == "mixed" and ai_indices:
+        # то же самое, но только для beat'ов, которым mixed-режим и так
+        # назначил ИИ (ai_indices) — остальные всё равно идут через сток
+        _prefetch_ai_beats(beats, queries, plan_kinds, sdir, gemini_key,
+                           visual_style, log, target_indices=ai_indices)
 
     timeline, prev_query = [], "cinematic background"
     for i, b in enumerate(beats, 1):

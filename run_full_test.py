@@ -59,7 +59,7 @@ print(f"Оверлеев: {n_ov}")
 print("\n=== 6. Рендер (караоке-субтитры, mixed-эффекты) ===")
 opts = {
     "resolution": "1080p", "fps": 30, "quality": "обычное",
-    "intensity": "средняя", "sub_size": "средние", "sub_style": "karaoke",
+    "intensity": "документальная 5с", "sub_size": "средние", "sub_style": "karaoke",
     "look": "cinematic", "subs": True,
     "grain": True, "vignette": True, "letterbox": False, "vhs": False,
     "chromab": True, "chapters_grade": True, "no_music": True,
