@@ -121,9 +121,11 @@
             <label>Громкость:</label>
             <select id="musicGain"><option>-10 dB</option><option selected>-14 dB</option><option>-18 dB</option><option>-22 dB</option></select>
             <button class="btn" onclick="app.mixMusic()">🎵 Подмешать</button>
+            <button class="btn gold" onclick="app.autoMusic()">🤖 Подобрать под жанр</button>
           </div>
           <div class="hint">Несколько треков склеиваются в плейлист и зацикливаются под всю длину видео.
-            Музыка должна быть лицензионной (YouTube Audio Library и т.п.).</div>
+            Музыка должна быть лицензионной (YouTube Audio Library и т.п.).
+            «Подобрать под жанр» берёт трек сам из библиотеки в Настройках — без выбора папки.</div>
           <div class="sect" style="font-size:13px; margin-top:12px">ASMR-звуки быта (эффект присутствия)</div>
           <div class="row">
             <input type="text" id="asmrPath" style="flex:1" placeholder="папка со звуками: шорох, звон, вода…">
@@ -315,6 +317,17 @@
     <div class="row"><label style="width:170px">VeoNonStop API Key <b>(основной)</b></label><input type="text" id="sVeo" placeholder="veo_..."></div>
     <div class="row"><label style="width:170px">Gemini API Key</label><input type="text" id="sGemini" placeholder="запасной для текста"></div>
     <div class="row"><label style="width:170px">Agnes API Key</label><input type="text" id="sAgnes" placeholder="запасной, если Veo недоступен"></div>
+    <div class="divider"></div>
+    <div class="row"><label style="width:170px">Библиотека музыки</label><input type="text" id="sMusicLib" style="flex:1" placeholder="папка с подпапками calm/dark/upbeat/epic/horror"><button class="btn ghost" onclick="app.pickMusicLib()">Папка…</button></div>
+    <div class="row"><label style="width:170px">Jamendo API Key</label><input type="text" id="sJamendo" style="flex:1" placeholder="бесплатно на jamendo.com/developer"><label>треков на настроение:</label><select id="jamendoCount"><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option></select><button class="btn ghost" onclick="app.fillMusicLib()">🌐 Наполнить библиотеку</button></div>
+    <div class="hint">Софт сам подбирает трек под жанр сценария (документальный→calm,
+      истории/крайм→dark, топ-лист→upbeat, мотивация→epic, мистика/хоррор→horror).
+      Без ключа Jamendo — наполняй эти 5 подпапок своими треками сам. С ключом —
+      «Наполнить библиотеку» один раз скачает пачку лицензионных (коммерческое
+      использование разрешено) треков с Jamendo сразу под все настроения; если
+      потом чего-то не хватит — «Подобрать под жанр» на вкладке «Озвучка» сам
+      докачает недостающее. Рядом с каждым треком кладётся .license.txt — на
+      случай, если понадобится указать автора в описании ролика.</div>
     <div class="divider"></div>
     <label class="hint">Pexels — несколько ключей, по одному на строку (ротация при лимите):</label>
     <textarea id="sPexels" spellcheck="false"></textarea>

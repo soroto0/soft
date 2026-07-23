@@ -285,6 +285,10 @@ const app = {
   pickMusic: () => rpc("pick_music").then(p => { if (p) $("musicPath").value = p; }),
   mixMusic: () => rpc("mix_music", $("musicPath").value,
                       parseInt($("musicGain").value)),
+  autoMusic: () => rpc("auto_music", parseInt($("musicGain").value)),
+  pickMusicLib: () => rpc("pick_folder").then(p => { if (p) $("sMusicLib").value = p; }),
+  fillMusicLib: () => rpc("settings_save", app._settingsPayload())
+      .then(() => rpc("fill_music_library", parseInt($("jamendoCount").value))),
   pickAsmr: () => rpc("pick_folder").then(p => { if (p) $("asmrPath").value = p; }),
   addAsmr: () => rpc("add_asmr", $("asmrPath").value, parseFloat($("asmrEvery").value)),
   runSubs: () => rpc("subs", $("whisperModel").value,
@@ -373,21 +377,27 @@ const app = {
       $("sAgnes").value = s.agnes_key || "";
       $("sPexels").value = s.pexels_keys || "";
       $("sPixabay").value = s.pixabay_keys || "";
+      $("sMusicLib").value = s.music_library || "";
+      $("sJamendo").value = s.jamendo_key || "";
       $("settingsModal").classList.add("open");
     });
   },
   closeSettings() { $("settingsModal").classList.remove("open"); },
+  _settingsPayload: () => ({
+    aws_access_key: $("sAwsKey").value.trim(),
+    aws_secret_key: $("sAwsSecret").value.trim(),
+    aws_region: $("sAwsRegion").value.trim(),
+    veo_key: $("sVeo").value.trim(),
+    gemini_key: $("sGemini").value.trim(),
+    agnes_key: $("sAgnes").value.trim(),
+    pexels_keys: $("sPexels").value.trim(),
+    pixabay_keys: $("sPixabay").value.trim(),
+    music_library: $("sMusicLib").value.trim(),
+    jamendo_key: $("sJamendo").value.trim(),
+  }),
   saveSettings() {
-    rpc("settings_save", {
-      aws_access_key: $("sAwsKey").value.trim(),
-      aws_secret_key: $("sAwsSecret").value.trim(),
-      aws_region: $("sAwsRegion").value.trim(),
-      veo_key: $("sVeo").value.trim(),
-      gemini_key: $("sGemini").value.trim(),
-      agnes_key: $("sAgnes").value.trim(),
-      pexels_keys: $("sPexels").value.trim(),
-      pixabay_keys: $("sPixabay").value.trim(),
-    }).then(() => { app.closeSettings(); addLog("Настройки сохранены", "ok"); });
+    rpc("settings_save", app._settingsPayload())
+      .then(() => { app.closeSettings(); addLog("Настройки сохранены", "ok"); });
   },
 };
 

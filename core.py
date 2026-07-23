@@ -484,7 +484,31 @@ SCRIPT_BASE = (
     "image, or tension. Banned phrases: 'in this video', 'let's dive in', "
     "'stay tuned', 'as we mentioned', 'in conclusion', 'without further ado'. "
     "No headings, no lists, no stage directions — pure spoken narration. "
-    "Separate paragraphs with a blank line. ")
+    "Separate paragraphs with a blank line. "
+    "\n\nCRITICAL — this must not read as AI-generated (platforms flag "
+    "formulaic AI narration as inauthentic/reused content and demonetize "
+    "it, so avoid every tell below):\n"
+    "- No stock AI transitions/hedges: 'moreover', 'furthermore', "
+    "'it's worth noting', 'interestingly', 'not only... but also', "
+    "'this begs the question', 'the truth is', 'at the end of the day'.\n"
+    "- No AI-cliche vocabulary: 'delve', 'unravel', 'tapestry', "
+    "'testament to', 'boundless', 'in the realm of', 'stands as a symbol', "
+    "'plays a crucial/pivotal role', 'a rich history of'.\n"
+    "- Vary sentence length and rhythm hard — mix short punches with long "
+    "winding ones; never let three sentences in a row share the same "
+    "structure or the same opening word.\n"
+    "- Don't make every paragraph the same shape or every section the same "
+    "length — real writers ramble on what excites them and rush the boring "
+    "parts.\n"
+    "- Take a specific point of view, not a neutral encyclopedia summary — "
+    "let the narrator sound mildly opinionated, surprised, or skeptical "
+    "where it fits.\n"
+    "- Prefer one vivid concrete detail (a number, a name, a smell, a "
+    "specific place) over a general abstract claim.\n"
+    "- Don't wrap every section in a tidy 'setup — three examples — neat "
+    "conclusion' bow; let some threads trail off into the next section "
+    "instead of resolving cleanly.\n"
+    "- Use em dashes sparingly, at most once or twice total. ")
 
 TONES = {
     "документальный": "Tone: authoritative documentary — calm, factual, "
@@ -935,6 +959,116 @@ def pick_music_by_mood(music_dir: Path, mood: str) -> Path:
             f"Нет треков настроения «{mood}»: создай папку {sub} и положи "
             f"туда mp3, либо добавь «{mood}» в имя файла.")
     return random.choice(cands)
+
+
+# ---------- Jamendo: авто-загрузка лицензионной музыки (свободный API) ----------
+
+# YouTube Audio Library и Pixabay Music публичного API не имеют (см. выше) —
+# Jamendo единственный из бесплатных источников музыки с открытым API и
+# понятными Creative Commons лицензиями. Тег под каждое настроение — набор
+# самых ходовых тегов в их каталоге, не идеальный, но рабочий.
+JAMENDO_MOOD_TAGS = {
+    "calm": "calm", "dark": "dark", "upbeat": "energetic",
+    "epic": "epic", "horror": "horror",
+}
+
+
+def _jamendo_license_ok(ccurl: str) -> bool:
+    """Отсекает NC (некоммерческая) и ND (без производных) лицензии — на
+    монетизированном канале нужен именно "-by" / "-by-sa" / cc0, иначе есть
+    риск жалобы по лицензии, даже если трек формально бесплатный."""
+    u = (ccurl or "").lower()
+    if "publicdomain" in u or "/zero/" in u:
+        return True
+    return "-nc" not in u and "/nc" not in u and "-nd" not in u and "/nd" not in u
+
+
+def jamendo_search(mood: str, client_id: str, count: int = 5) -> list[dict]:
+    """Ищет до count треков под настроение mood с разрешённой коммерческой
+    лицензией. Возвращает [{id, name, artist, url, ccurl}, ...]."""
+    import requests
+    tag = JAMENDO_MOOD_TAGS.get(mood, mood)
+    r = requests.get(
+        "https://api.jamendo.com/v3.0/tracks/",
+        params={"client_id": client_id, "format": "json", "limit": 30,
+                "tags": tag, "audioformat": "mp32", "include": "licenses",
+                "order": "popularity_total", "boost": "popularity_total"},
+        timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(f"Jamendo API {r.status_code}: {r.text[:200]}")
+    data = r.json()
+    if (data.get("headers") or {}).get("status") == "failed":
+        raise RuntimeError("Jamendo API: " + (data["headers"].get("error_message")
+                                              or "запрос не выполнен")
+                           + " — проверь client_id в Настройках.")
+    out = []
+    for t in data.get("results", []):
+        if not t.get("audio"):
+            continue
+        if not _jamendo_license_ok(t.get("license_ccurl", "")):
+            continue
+        out.append({"id": t["id"], "name": t.get("name", "untitled"),
+                    "artist": t.get("artist_name", "unknown"),
+                    "url": t["audio"], "ccurl": t.get("license_ccurl", "")})
+        if len(out) >= count:
+            break
+    return out
+
+
+def jamendo_download(track: dict, dest_dir: Path, log=print) -> Path:
+    """Качает трек + кладёт рядом .license.txt с автором/лицензией — чтобы
+    при необходимости атрибуции в описании ролика было что скопировать."""
+    import requests
+    import re as _re
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    safe = _re.sub(r"[^\w\- ]+", "_", track["name"]).strip()[:60] or track["id"]
+    dest = dest_dir / f"{safe}_{track['id']}.mp3"
+    r = requests.get(track["url"], timeout=60)
+    if r.status_code != 200:
+        raise RuntimeError(f"Jamendo скачивание {r.status_code}: {track['url']}")
+    dest.write_bytes(r.content)
+    dest.with_suffix(".license.txt").write_text(
+        f"{track['name']} — {track['artist']}\nJamendo, license: {track['ccurl']}\n",
+        encoding="utf-8")
+    log(f"[Jamendo] Скачан: {track['name']} — {track['artist']} "
+        f"({track['ccurl']})")
+    return dest
+
+
+def fill_music_library_jamendo(music_dir: Path, client_id: str, log=print,
+                               per_mood: int = 3) -> int:
+    """Разово наполняет все 5 папок настроения треками с Jamendo. Уже
+    скачанные (по id в имени файла) не повторяет. Возвращает число новых
+    файлов."""
+    music_dir = Path(music_dir)
+    added = 0
+    for mood in JAMENDO_MOOD_TAGS:
+        sub = music_dir / mood
+        have_ids = set()
+        if sub.is_dir():
+            have_ids = {p.stem.rsplit("_", 1)[-1] for p in sub.iterdir()
+                       if p.suffix.lower() in MUSIC_EXTS}
+        need = per_mood - len(have_ids)
+        if need <= 0:
+            log(f"[Jamendo] «{mood}»: уже {len(have_ids)} треков, пропускаю")
+            continue
+        try:
+            found = jamendo_search(mood, client_id, count=need + len(have_ids) + 5)
+        except Exception as e:
+            log(f"[Jamendo] «{mood}»: поиск не удался ({e})")
+            continue
+        fresh = [t for t in found if t["id"] not in have_ids][:need]
+        if not fresh:
+            log(f"[Jamendo] «{mood}»: подходящих (коммерческая лицензия) "
+                "треков не нашлось")
+        for t in fresh:
+            try:
+                jamendo_download(t, sub, log)
+                added += 1
+            except Exception as e:
+                log(f"[Jamendo] «{t['name']}»: скачивание не удалось ({e})")
+    log(f"[Jamendo] Готово: добавлено {added} треков в {music_dir}")
+    return added
 
 
 # ---------- Генерация видео (Agnes Video V2.0, асинхронный API) ----------

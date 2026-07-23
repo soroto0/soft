@@ -36,6 +36,18 @@ LOG_FILE = BASE / "app.log"
 STAGE_NAMES = ["Сценарий", "Озвучка", "Субтитры", "Раскадровка",
                "Оверлеи", "Рендер", "Premiere"]
 
+# Жанр сценария -> подпапка в библиотеке музыки (см. auto_music). Без всякого
+# музыкального API — просто раскладываешь свои лицензионные треки по этим
+# пяти папкам один раз, дальше софт сам берёт подходящий под жанр трек.
+TONE_TO_MOOD = {
+    "документальный": "calm",
+    "истории/крайм": "dark",
+    "образовательный": "calm",
+    "топ-лист": "upbeat",
+    "мотивация": "epic",
+    "мистика/хоррор": "horror",
+}
+
 
 def load_settings() -> dict:
     if SETTINGS_FILE.exists():
@@ -128,6 +140,20 @@ class Api:
             return p.read_text(encoding="utf-8") if p.exists() else ""
         except OSError:
             return ""
+
+    def _read_meta(self) -> dict:
+        p = self._project / "meta.json"
+        try:
+            return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _write_meta(self, **kv):
+        meta = self._read_meta()
+        meta.update(kv)
+        self._project.mkdir(parents=True, exist_ok=True)
+        (self._project / "meta.json").write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _checks(self, d: Path) -> dict:
         def nonempty(p):
@@ -300,6 +326,7 @@ class Api:
             text = core.gen_script(topic, int(minutes), key, self.log,
                                    tone=tone, lang=lang)
             self.save_script(text)
+            self._write_meta(tone=tone)
             self._js(f"$('scriptText').value = {json.dumps(text)}; updateStats()")
         self._bg("Генерация сценария", job)
 
@@ -350,6 +377,67 @@ class Api:
             self._save_settings_file()
             core.add_music(voice, src, self.log, int(gain))
         self._bg("Музыка", job)
+
+    def _do_auto_music(self, gain: int) -> bool:
+        """Сам выбирает трек под жанр сценария и подмешивает. Сначала смотрит
+        в локальной библиотеке (settings.music_library); если для этого
+        настроения там пусто, а указан ключ Jamendo — сам качает один
+        подходящий трек (коммерческая лицензия) и кладёт в библиотеку
+        насовсем. Возвращает False (без исключения), если библиотека вообще
+        не настроена — используется и кнопкой, и общей цепочкой рендера,
+        где отсутствие музыки не должно рушить весь пайплайн."""
+        voice = self._project / "audio" / "voiceover.mp3"
+        if not voice.exists():
+            raise RuntimeError("Сначала озвучка.")
+        lib = self._settings.get("music_library", "").strip()
+        if not lib:
+            return False
+        tone = self._read_meta().get("tone", "документальный")
+        mood = TONE_TO_MOOD.get(tone, "calm")
+        try:
+            track = core.pick_music_by_mood(Path(lib), mood)
+        except FileNotFoundError:
+            jkey = self._settings.get("jamendo_key", "").strip()
+            if not jkey:
+                raise RuntimeError(
+                    f"Нет треков настроения «{mood}» в библиотеке, и не "
+                    "указан Jamendo API Key в Настройках, чтобы скачать "
+                    "автоматически. Либо положи mp3 в "
+                    f"{Path(lib) / mood} сам, либо укажи ключ.")
+            self.log(f"[Музыка] Локально нет «{mood}» — качаю с Jamendo...")
+            found = core.jamendo_search(mood, jkey, count=1)
+            if not found:
+                raise RuntimeError(
+                    f"Jamendo не нашёл трек под «{mood}» с коммерческой "
+                    "лицензией — попробуй позже или положи трек вручную.")
+            track = core.jamendo_download(found[0], Path(lib) / mood, self.log)
+        self.log(f"[Музыка] Жанр «{tone}» -> настроение «{mood}» -> "
+                 f"{track.name}")
+        core.add_music(voice, track, self.log, int(gain))
+        return True
+
+    def auto_music(self, gain: int):
+        def job():
+            if not self._do_auto_music(int(gain)):
+                raise RuntimeError(
+                    "Сначала укажи «Библиотека музыки» в Настройках — папку, "
+                    "куда будут ложиться треки (свои или с Jamendo).")
+        self._bg("Музыка (авто)", job)
+
+    def fill_music_library(self, per_mood: int):
+        """Разово наполняет все 5 папок настроения треками с Jamendo — после
+        этого auto_music работает вообще без интернета."""
+        def job():
+            lib = self._settings.get("music_library", "").strip()
+            if not lib:
+                raise RuntimeError("Сначала укажи «Библиотека музыки» в Настройках.")
+            jkey = self._settings.get("jamendo_key", "").strip()
+            if not jkey:
+                raise RuntimeError("Сначала укажи Jamendo API Key в Настройках "
+                                   "(бесплатно на jamendo.com/developer).")
+            core.fill_music_library_jamendo(Path(lib), jkey, self.log,
+                                            int(per_mood))
+        self._bg("Наполнение библиотеки музыки", job)
 
     def add_asmr(self, path: str, every: float):
         def job():
@@ -487,13 +575,15 @@ class Api:
                 manifest = json.loads(mf.read_text(encoding="utf-8"))
             except Exception:
                 pass
-        text = overlays.suggest_overlays(core.parse_srt(srt), manifest)
+        text = overlays.suggest_overlays_auto(core.parse_srt(srt), manifest,
+                                              self._project, self.log)
         if text.strip():
             ov.write_text(text.strip() + "\n", encoding="utf-8")
             n = len([l for l in text.splitlines()
                      if l.strip() and not l.startswith("#")])
-            self.log(f"[Оверлеи] Авто-расстановка: {n} моушн-элементов "
-                     "(popup/счётчики/плашки) добавлены в ролик")
+            self.log(f"[Оверлеи] Авто-расстановка (ИИ): {n} элементов "
+                     "(popup/titlecard/collage/счётчики/плашки) добавлены "
+                     "в ролик")
 
     def render(self, p: dict):
         opts = self._render_opts(p)
@@ -547,6 +637,12 @@ class Api:
                 float(p.get("ai_ratio", 0.35)))
             if not (p.get("overlays") or "").strip():
                 self._auto_overlays()   # моушн-графика сама, если не задана
+            if self._settings.get("music_library", "").strip():
+                self.log("[Цепочка] Музыка — подбираю под жанр...")
+                try:
+                    self._do_auto_music(-14)
+                except Exception as e:
+                    self.log(f"[Цепочка] Музыка пропущена: {e}", "warn")
             self.log("[Цепочка] Шаг 4/4 — рендер…")
             render.render_project(self._project, self.log,
                                   self._progress, opts)
@@ -556,7 +652,7 @@ class Api:
     def settings_get(self):
         keys = ("aws_access_key", "aws_secret_key", "aws_region",
                 "gemini_key", "agnes_key", "veo_key",
-                "pexels_keys", "pixabay_keys")
+                "pexels_keys", "pixabay_keys", "music_library", "jamendo_key")
         return {k: self._settings.get(k, "") for k in keys}
 
     def _save_settings_file(self):
