@@ -166,22 +166,29 @@ def generate_video_and_wait(prompt: str, dest: Path, aspect_ratio: str = "16:9",
     """Text-to-video: создаёт задачу, ждёт готовности, скачивает ролик в dest.
     upscale=True (по умолчанию) — после готовности 720p-ролика запускает
     upsample_video (с video_url — быстрый FFmpeg-путь на стороне сервера,
-    ~4-8 c) до 1080p и скачивает уже апскейленную версию; если апскейл не
-    удался (лимит/ошибка), тихо скачивает исходный 720p, а не проваливает
-    всю генерацию."""
+    ~4-8 c в документации, но под параллельной нагрузкой на практике
+    наблюдался апскейл дольше 180с — поэтому таймаут 420с и один повтор)
+    до 1080p и скачивает уже апскейленную версию; если обе попытки не
+    удались, тихо скачивает исходный 720p, а не проваливает всю генерацию."""
     task_id = text_to_video(prompt, aspect_ratio=aspect_ratio, api_key=api_key)
     data = wait_for_completion(task_id, api_key, poll_s, timeout_s, log)
     videos = data.get("videos") or []
     if upscale and videos and videos[0].get("mediaGenerationId"):
-        try:
-            up_task = upsample_video(
-                videos[0]["mediaGenerationId"],
-                video_url=videos[0].get("fifeUrl") or videos[0].get("servingBaseUri") or "",
-                aspect_ratio=aspect_ratio, api_key=api_key)
-            wait_for_completion(up_task, api_key, poll_s=3, timeout_s=180, log=log)
-            return download_video(up_task, dest, api_key=api_key)
-        except Exception as e:
-            log(f"[VeoNonStop] Апскейл до 1080p не удался ({e}) — беру оригинал 720p")
+        last_err = None
+        for attempt in range(2):
+            try:
+                up_task = upsample_video(
+                    videos[0]["mediaGenerationId"],
+                    video_url=videos[0].get("fifeUrl") or videos[0].get("servingBaseUri") or "",
+                    aspect_ratio=aspect_ratio, api_key=api_key)
+                wait_for_completion(up_task, api_key, poll_s=5, timeout_s=420, log=log)
+                return download_video(up_task, dest, api_key=api_key)
+            except Exception as e:
+                last_err = e
+                if attempt == 0:
+                    log(f"[VeoNonStop] Апскейл до 1080p не вышел с первой попытки "
+                        f"({e}) — пробую ещё раз")
+        log(f"[VeoNonStop] Апскейл до 1080p не удался ({last_err}) — беру оригинал 720p")
     return download_video(task_id, dest, api_key=api_key)
 
 

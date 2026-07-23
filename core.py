@@ -916,23 +916,29 @@ def gemini_image(prompt: str, dest: Path, api_key: str, style: str = "") -> Path
 def veo_image(prompt: str, dest: Path, api_key: str, log=print,
               style: str = "", upscale: bool = True) -> Path:
     """Картинка через VeoNonStop (Banana Pro), синхронно. upscale=True —
-    дополнительно апскейлит результат до 2K через banana_upscale; апскейл
-    не критичен для результата, поэтому любая его ошибка тихо падает
-    обратно на исходную (не апскейленную) картинку, а не проваливает вызов."""
+    дополнительно апскейлит результат до 2K через banana_upscale (1 повтор
+    при транзиентной ошибке); апскейл не критичен для результата, поэтому
+    провал обеих попыток тихо падает обратно на исходную (не апскейленную)
+    картинку, а не проваливает вызов."""
     import veo_client
     data = veo_client.banana_generate(_image_prompt(prompt, style), api_key=api_key)
     media = data.get("media") or []
     if not media:
         raise RuntimeError("VeoNonStop Banana: ответ без картинки")
     if upscale:
-        try:
-            jpg_bytes = veo_client.banana_upscale(
-                media[0]["mediaGenerationId"], data.get("project_id", ""),
-                api_key=api_key)
-            dest.write_bytes(jpg_bytes)
-            return dest
-        except Exception as e:
-            log(f"[Картинка] Апскейл до 2K не удался ({e}) — беру оригинал")
+        last_err = None
+        for attempt in range(2):
+            try:
+                jpg_bytes = veo_client.banana_upscale(
+                    media[0]["mediaGenerationId"], data.get("project_id", ""),
+                    api_key=api_key)
+                dest.write_bytes(jpg_bytes)
+                return dest
+            except Exception as e:
+                last_err = e
+                if attempt == 0:
+                    time.sleep(2)
+        log(f"[Картинка] Апскейл до 2K не удался ({last_err}) — беру оригинал")
     download_file(media[0]["fifeUrl"], dest)
     return dest
 
