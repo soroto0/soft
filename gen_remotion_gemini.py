@@ -102,6 +102,17 @@ STRICT REQUIREMENTS (this is a fixed contract, do not deviate):
   - "titlecard": p.content is "HEADLINE::subtitle" (subtitle may be empty) — a big kinetic-type full-screen headline for a major hook/topic shift, words animate in with impact (not just a fade), subtitle smaller beneath.
   - "collage": p.items is an array of up to 3 {{label, img}} — archival-photo-style polaroid/card grid, each with its label caption, staggered entrance.
 - Only import from 'react' and 'remotion' (AbsoluteFill, Img, interpolate, spring, useCurrentFrame, useVideoConfig, Easing, random — whichever you need). NO other packages, NO external fonts/URLs/network calls, NO <video>/<audio> tags — this is a transparent alpha-channel PNG-sequence overlay composited on top of existing footage via ffmpeg, nothing else.
+- If you use `spring()`, its REAL signature (do not invent other fields — no `duration`, no `offset`, these do not exist and will fail to compile) is exactly:
+  ```
+  function spring(opts: {{
+    frame: number; fps: number;
+    config?: Partial<{{damping: number; mass: number; stiffness: number; overshootClamping: boolean}}>;
+    from?: number; to?: number; durationInFrames?: number;
+    durationRestThreshold?: number; delay?: number; reverse?: boolean;
+  }}): number
+  ```
+  Prefer plain `interpolate()` with `Easing.out(Easing.back(...))`/`Easing.elastic(...)` over `spring()` if unsure — it is simpler and cannot hallucinate a bad config shape.
+- CSS-in-JS typing: this is TSX, not plain CSS — properties like `textAlign`, `position`, `flexDirection`, `textTransform`, `whiteSpace` etc. need a value TypeScript accepts as that literal union, not a bare `string`. Either inline the style object literally in JSX (`style={{{{ textAlign: 'center' }}}}`) so TS infers the literal type, or if building a style object as a separate `const`, type it as `React.CSSProperties` explicitly — never declare it as `{{ [key: string]: string }}` or let it widen to `string`.
 - Fonts: use only "Segoe UI Black", "Segoe UI", "Arial", sans-serif (system fonts only).
 - Every element must fully animate in using useCurrentFrame()/useVideoConfig() (fps = p.fps ?? 30) and fade/scale out during the last ~0.3s of `p.dur` seconds — never appear as a static, unanimated element.
 - CRITICAL — a common mistake to avoid: animation timing MUST be driven by the actual `p.dur` prop (seconds), NOT a hardcoded constant. `p.dur` can be as short as 2-3 seconds or as long as 15 — the fade-out must trigger near the END of THAT specific overlay's `p.dur`, every time, for every type. Use exactly this pattern (copy it verbatim as a shared hook, called with `p.dur`):
@@ -182,7 +193,7 @@ def _ask_fix(code: str, problem: str, api_key: str) -> str:
 
 
 def apply_theme(theme: str, api_key: str, log=print,
-                max_attempts: int = 4) -> bool:
+                max_attempts: int = 6) -> bool:
     """Генерирует Overlay.tsx под тему проекта, проверяет tsc, затем реально
     рендерит образцы (_smoke_test) — типы компилируются, но код может рисовать
     пустой/битый кадр, а tsc такое не ловит. При проблеме на любом из двух

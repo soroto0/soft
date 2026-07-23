@@ -1754,10 +1754,12 @@ def project_style(project_dir) -> dict:
     return {
         "voice": r.choice(RANDOM_VOICES),
         "rate": r.choice([-8, -5, -3, 0, 0, 3, 5]),
-        "sub_style": r.choice(["bold_box", "bold_box", "pill", "yellow_pop",
-                               "cyan_pop", "red_alert", "thin_clean",
-                               "karaoke", "karaoke"]),
-        "sub_size": r.choice(["средние", "средние", "крупные"]),
+        # Субтитры больше НЕ рандомные — жёлтый/голубой/красный "viral"-вид
+        # слишком жирный и кричащий (жалоба: "слишком жирный, внешнее
+        # свечение жирное"). Один стабильный стиль на все проекты — караоке
+        # (подсветка слова в такт голосу), потолще яркого попа не давит.
+        "sub_style": "karaoke",
+        "sub_size": "средние",
         "intensity": r.choice(["документальная 5с", "документальная 5с",
                                "сильная", "средняя"]),
         "look": "случайный",

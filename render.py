@@ -612,8 +612,16 @@ def _group_concat_fallback(seg_files: list[Path], durs: list[float],
     lst = dest.parent / f"{dest.stem}_list.txt"
     lst.write_text("\n".join(f"file '{p.resolve().as_posix()}'" for p in parts),
                    encoding="utf-8")
+    # ВАЖНО: НЕ "-c copy". Куски кодировались отдельными вызовами ffmpeg —
+    # у них независимые внутренние временные метки, и потоковая склейка
+    # без перекодирования копирует эти метки как есть. На стыке это дало
+    # рассинхрон PTS: реальный ролик (11) 23 секунды кадра "застывали"
+    # (счётчик кадров почти не рос, а таймкод разом скакнул на 23с вперёд —
+    # видно по логу finalного прохода). Перекодирование пересчитывает PTS
+    # с нуля по кадрам — дороже по CPU, но без разрыва.
     _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-          "-c", "copy", str(dest)], label=dest.stem)
+          "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
+          "-r", str(fps), "-fflags", "+genpts", str(dest)], label=dest.stem)
 
 
 # ---------- 4. Финальная сборка ----------
@@ -629,32 +637,35 @@ def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box") -
       yellow_pop — жёлтый жирный с чёрной обводкой (viral/MrBeast-стиль)
     Позиция — нижняя треть, с воздухом от края."""
     p = str(srt.resolve()).replace("\\", "/").replace(":", "\\:")
-    common = (f"FontName=Segoe UI Black,FontSize={size},Bold=1,"
+    # Bold=0: шрифт "Segoe UI Black" сам по себе уже самого жирного начертания
+    # — Bold=1 поверх него раньше давал "фальшивый" сверх-жир (жалоба: "слишком
+    # жирный"). Обводка/тень тоже почти вдвое тоньше — раньше 3.0-3.4/1.2-1.4
+    # выглядело как тяжёлый ободок-ореол вокруг каждой буквы.
+    common = (f"FontName=Segoe UI Black,FontSize={size},Bold=0,"
               "Alignment=2,MarginV=60,MarginL=90,MarginR=90,Spacing=0.3")
     if style_name == "pill":            # текст на полупрозрачной плашке
         style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
                  "BackColour=&HA0000000,BorderStyle=4,Outline=14,Shadow=0")
     elif style_name == "yellow_pop":    # жёлтый viral (MrBeast-стиль)
         style = (common + ",PrimaryColour=&H0000F0FF,OutlineColour=&H00101010,"
-                 "BorderStyle=1,Outline=3.2,Shadow=1.2")
+                 "BorderStyle=1,Outline=1.8,Shadow=0.6")
     elif style_name == "cyan_pop":      # голубой неон
         style = (common + ",PrimaryColour=&H00F0FF00,OutlineColour=&H00201000,"
-                 "BorderStyle=1,Outline=3.0,Shadow=1.4")
+                 "BorderStyle=1,Outline=1.8,Shadow=0.7")
     elif style_name == "red_alert":     # красный акцент (под красную тему)
         style = (common + ",PrimaryColour=&H004040FF,OutlineColour=&H00101010,"
-                 "BorderStyle=1,Outline=3.2,Shadow=1.2")
+                 "BorderStyle=1,Outline=1.8,Shadow=0.6")
     elif style_name == "thin_clean":    # тонкий контур, минимализм
-        style = (common.replace("Bold=1", "Bold=0")
-                 + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-                 "BorderStyle=1,Outline=1.6,Shadow=0.8")
+        style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+                 "BorderStyle=1,Outline=1.2,Shadow=0.5")
     elif style_name == "top":           # субтитры сверху (не мешают кадру)
         style = (common.replace("Alignment=2", "Alignment=8")
                  .replace("MarginV=60", "MarginV=50")
                  + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00151515,"
-                 "BorderStyle=1,Outline=3.2,Shadow=1.2")
-    else:  # bold_box — по умолчанию: жирный белый, толстая обводка + тень
+                 "BorderStyle=1,Outline=1.8,Shadow=0.6")
+    else:  # bold_box — по умолчанию: белый, аккуратная обводка + мягкая тень
         style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00151515,"
-                 "BorderStyle=1,Outline=3.4,Shadow=1.4,BackColour=&H40000000")
+                 "BorderStyle=1,Outline=2.0,Shadow=0.7,BackColour=&H40000000")
     return f"subtitles='{p}':force_style='{style}'"
 
 
@@ -703,7 +714,7 @@ OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, \
 ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, \
 MarginR, MarginV, Encoding
 Style: Karaoke,Segoe UI Black,{size},{primary},{secondary},{outline},\
-&H64000000,1,0,0,0,100,100,0.3,0,1,3.4,1.4,2,90,90,60,1
+&H64000000,0,0,0,0,100,100,0.3,0,1,2.0,0.6,2,90,90,60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
