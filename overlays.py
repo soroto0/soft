@@ -877,14 +877,23 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     from core import fetch_wiki_images, _load_used, _save_used, veo_image
     draft = suggest_overlays(rows, manifest, min_gap)
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if draft.startswith("#") and gemini_key:
-        llm_draft = suggest_overlays_llm(rows, gemini_key, log, min_gap)
-        if llm_draft:
-            draft = llm_draft
-        else:
-            log("[Оверлеи] LLM недоступен для этого текста (возможно, "
-                "фильтр безопасности на тяжёлой теме) — беру моменты "
-                "локально, без LLM")
+    if draft.startswith("#"):
+        # Локальный вариант — основной здесь: гарантированно кладёт
+        # НЕСКОЛЬКО типов оверлеев ОДНОВРЕМЕННО (слоями), детерминированно.
+        # LLM пишет текст чуть живее, но всегда по одному оверлею за раз и
+        # не всегда отвечает (safety-фильтр на тяжёлых темах) — поэтому он
+        # только ДОБАВКА: подменяет текст первых N локальных, где сумел.
+        draft = suggest_overlays_local(rows, min_gap)
+        if gemini_key:
+            llm_draft = suggest_overlays_llm(rows, gemini_key, log, min_gap)
+            if llm_draft:
+                llm_lines = {ln.split("|")[0].strip(): ln
+                             for ln in llm_draft.splitlines()}
+                draft = "\n".join(
+                    llm_lines.get(ln.split("|")[0].strip(), ln)
+                    for ln in draft.splitlines())
+                log("[Оверлеи] Слоёная раскладка + текст от LLM там, где "
+                    "совпали моменты")
             draft = suggest_overlays_local(rows, min_gap)
     idir = _P(out_dir) / "images"
     idir.mkdir(parents=True, exist_ok=True)
@@ -1048,19 +1057,22 @@ def suggest_overlays_local(rows: list, min_gap: float = 13.0,
     """Последний фолбэк без единого обращения к LLM — на случай, если
     Gemini недоступен ИЛИ заблокировал тяжёлую тему фильтром безопасности
     (true crime, хоррор и т.п. иногда попадают под safety-фильтр даже на
-    безобидный запрос вроде «выбери цитату»). Берёт ~target реплик
-    равномерно по таймлайну, ЧЕРЕДУЯ типы (banner/lower3/compare/callout) —
-    иначе весь ролик получает один и тот же баннер сверху раз за разом.
-    Грубее, чем LLM (просто режет фразу по словам), зато работает всегда."""
+    безобидный запрос вроде «выбери цитату»). Берёт ~target моментов
+    равномерно по таймлайну; на КАЖДЫЙ момент — до 3 оверлеев РАЗНЫХ типов
+    ОДНОВРЕМЕННО (разные зоны экрана: верх/низ/точка-выноска — физически не
+    перекрываются), а не один и тот же баннер по кругу. Грубее, чем LLM
+    (просто режет фразу по словам), зато работает всегда."""
     total = srt_to_seconds(rows[-1][1]) if rows else 0
     if not rows or not total:
         return "# По субтитрам ничего не найдено — добавь оверлеи вручную."
     n = max(3, min(target, round(total / max(min_gap, 8))))
     step = max(len(rows) // n, 1)
-    kinds = ["banner", "lower3", "compare", "callout"]
     POS = {"banner": "top", "lower3": "bottom", "compare": "center",
-          "callout": "point:70,40"}
-    out_lines, last_t, ki = [], -1e9, 0
+          "callout": "point:75,32"}
+    # Комбинации на один момент — до 3 несовпадающих по месту типов сразу
+    combos = [["banner"], ["lower3", "callout"], ["banner", "lower3"],
+             ["compare"], ["banner", "lower3", "callout"]]
+    out_lines, last_t, ci = [], -1e9, 0
     for i in range(0, len(rows), step):
         start_s, _end, text = rows[i]
         t = srt_to_seconds(start_s)
@@ -1069,24 +1081,24 @@ def suggest_overlays_local(rows: list, min_gap: float = 13.0,
         words = text.split()
         if not words:
             continue
-        otype = kinds[ki % len(kinds)]
-        if otype == "lower3":
-            content = " ".join(words[:4])
-        elif otype == "compare":
-            half = max(len(words) // 2, 1)
-            left, right = " ".join(words[:half]), " ".join(words[half:half + 9])
-            if not right:
-                otype, content = "banner", " ".join(words[:9])
-            else:
-                content = f"{left} | {right}"
-        elif otype == "callout":
-            content = " ".join(words[:7])
-        else:
-            content = " ".join(words[:9])
+        types = combos[ci % len(combos)]
+        ci += 1
         last_t = t
-        ki += 1
         tc = f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
-        out_lines.append(f"{tc} | {otype} | {content} | {POS[otype]} | 4s")
+        for otype in types:
+            if otype == "lower3":
+                content = " ".join(words[:4])
+            elif otype == "compare":
+                half = max(len(words) // 2, 1)
+                left, right = " ".join(words[:half]), " ".join(words[half:half + 9])
+                if not right:
+                    continue
+                content = f"{left} | {right}"
+            elif otype == "callout":
+                content = " ".join(words[-6:])   # хвост фразы — отличается от banner
+            else:
+                content = " ".join(words[:9])
+            out_lines.append(f"{tc} | {otype} | {content} | {POS[otype]} | 4s")
     if not out_lines:
         return "# По субтитрам ничего не найдено — добавь оверлеи вручную."
     return "\n".join(out_lines)
