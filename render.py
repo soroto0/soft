@@ -55,31 +55,27 @@ PRESET_FINAL = "medium"
 # именно они выдавали «старьё».
 # МНОГО видов, но веса держат киномонтаж: cut/fade доминируют, кричащие
 # (wipe/slide/circle/…) — редкие акценты, а не каждый стык.
+# ВАЖНО: только переходы, которые смешивают ДВА кадра по всей площади
+# (crossfade / dip / blur / dissolve). Геометрические свайпы xfade
+# (circleopen/circleclose/radial/rectcrop/diagtl/squeeze/cover/wipe/slide)
+# УБРАНЫ намеренно и навсегда: во-первых, они выдают «старьё» 2010-х;
+# во-вторых — и это главное — при малейшем рассинхроне длительностей
+# сегментов незакрытая область такого перехода заливается ЗЕЛЁНЫМ (нулевой
+# YUV), что пользователь и видел как зелёный полукруг поверх кадра.
 TRANSITIONS = [
     # ---- основа (частые) ----
-    ("cut",        0.00, 30),   # жёсткая склейка — основа монтажа
-    ("fade",       0.45, 18),   # crossfade
-    ("fadefast",   0.28, 9),    # быстрый crossfade
-    ("dissolve",   0.40, 7),    # растворение
+    ("cut",        0.00, 34),   # жёсткая склейка — основа монтажа
+    ("fade",       0.45, 20),   # crossfade
+    ("fadefast",   0.28, 10),   # быстрый crossfade
+    ("dissolve",   0.40, 8),    # растворение
     ("fadeblack",  0.55, 7),    # dip to black — смена главы
     ("hblur",      0.40, 5),    # blur-dissolve
-    ("zoomin",     0.38, 5),    # zoom-переход
+    ("zoomin",     0.38, 4),    # zoom-переход (полнокадровый, не свайп)
     # ---- акценты (реже) ----
     ("fadewhite",  0.18, 3),    # white flash
-    ("pixelize",   0.30, 3),    # пикселизация
-    ("distance",   0.42, 3),    # разлёт
+    ("pixelize",   0.30, 2),    # пикселизация (полнокадровая)
+    ("distance",   0.42, 2),    # разлёт (смешивает оба кадра, не свайп)
     ("fadegrays",  0.45, 2),    # обесцвечивание
-    ("radial",     0.45, 2),    # круговой свайп
-    ("smoothleft", 0.35, 2),
-    ("smoothright",0.35, 2),
-    ("smoothup",   0.35, 1),
-    ("smoothdown", 0.35, 1),
-    # ---- экзотика (совсем редко, для разнообразия канала) ----
-    ("wipeleft",   0.40, 1), ("wiperight", 0.40, 1),
-    ("slideup",    0.40, 1), ("slidedown", 0.40, 1),
-    ("circleopen", 0.50, 1), ("circleclose", 0.50, 1),
-    ("rectcrop",   0.45, 1), ("diagtl", 0.45, 1),
-    ("squeezev",   0.45, 1), ("coverleft", 0.40, 1),
 ]
 
 INTENSITY = {
@@ -278,15 +274,25 @@ def assign_materials(scenes: list[dict], out_dir: Path,
         raise RuntimeError("Нет материала: пусто в video/, images/, storyboard/ "
                            "и нет timeline.json — сначала скачай стоки.")
 
+    def _content_key(p: Path) -> str:
+        """Фото и его же Ken Burns-видео (beat_004_x_kb.jpg / _kb.mp4, или
+        beat_004_x_ai.jpg / _ai_kb.mp4) — одна и та же картинка, просто с
+        разным движением камеры. Без этого их считало ДВУМЯ разными кадрами
+        с отдельным лимитом MAX_ONSCREEN каждому — итог: один и тот же снимок
+        мелькал до 4 раз (2х как .jpg, 2х как .mp4)."""
+        stem = p.stem
+        return stem[:-3] if stem.endswith("_kb") else stem
+
     # Интенсивность режет сцены чаще, чем раскадровка качает материал (напр.
     # «документальная 5с» = смена каждые ~5с, а на один пункт раскадровки
     # обычно 6-10с) — несколько сцен подряд попадают в окно ОДНОГО файла
     # timeline.json. Раньше защита была только «не то же самое, что сразу
-    # перед этим» — тот же файл всё равно повторялся по всему ролику
-    # (не подряд, но заметно зрителю). MAX_ONSCREEN — сколько раз файл
-    # вообще может мелькнуть за весь ролик, прежде чем уступит пулу.
+    # перед этим» — тот же кадр всё равно повторялся по всему ролику
+    # (не подряд, но заметно зрителю). MAX_ONSCREEN — сколько раз одно и то
+    # же содержимое вообще может мелькнуть за весь ролик, прежде чем
+    # уступит пулу.
     MAX_ONSCREEN = 2
-    pi, last = 0, None
+    pi, last_key = 0, None
     reused = 0
     use_count = {}
     for sc in scenes:
@@ -297,28 +303,31 @@ def assign_materials(scenes: list[dict], out_dir: Path,
                 if p.exists():
                     f = p
                 break
-        # не показывать один и тот же кадр два раза подряд, и не чаще
+        key = _content_key(f) if f else None
+        # не показывать одно и то же содержимое два раза подряд, и не чаще
         # MAX_ONSCREEN раз за весь ролик — берём из пула следующий файл,
         # отличный от предыдущего и ещё не примелькавшийся
-        if (f is None or f == last or use_count.get(f, 0) >= MAX_ONSCREEN) and pool:
+        if (f is None or key == last_key or use_count.get(key, 0) >= MAX_ONSCREEN) and pool:
             for _ in range(len(pool)):
                 cand = pool[pi % len(pool)]
                 pi += 1
-                if cand != last and use_count.get(cand, 0) < MAX_ONSCREEN:
-                    f = cand
+                cand_key = _content_key(cand)
+                if cand_key != last_key and use_count.get(cand_key, 0) < MAX_ONSCREEN:
+                    f, key = cand, cand_key
                     break
         if f is None and pool:
             f = pool[pi % len(pool)]
+            key = _content_key(f)
             pi += 1
         if f is None:
             raise RuntimeError("Не хватило материала для сцены "
                                f"{sc['start']:.0f}s.")
-        if f == last or use_count.get(f, 0) >= MAX_ONSCREEN:
+        if key == last_key or use_count.get(key, 0) >= MAX_ONSCREEN:
             reused += 1
-        use_count[f] = use_count.get(f, 0) + 1
+        use_count[key] = use_count.get(key, 0) + 1
         sc["file"] = f
         sc["kind"] = "image" if f.suffix.lower() in IMAGE_EXTS else "video"
-        last = f
+        last_key = key
     log(f"[Рендер] Материал: {len(scenes)} сцен, кадр меняется каждые <=5 c "
         f"({'таймлайн + ' if timeline else ''}пул {len(pool)} файлов"
         + (f", повторов подряд: {reused}" if reused else "") + ")")
@@ -799,9 +808,16 @@ def _style_chain(opts: dict) -> list[str]:
         chain.append("vignette=angle=PI/5:x0=w*0.85:y0=h*0.2:mode=backward,"
                      "eq=brightness=0.015")
     if opts.get("bloom"):
-        # свечение светлых участков — кинематографичный «glow»
-        chain.append("split[a][b];[b]gblur=sigma=18[bl];"
-                     "[a][bl]blend=all_mode=screen:all_opacity=0.28")
+        # Свечение светлых участков — деликатный кинематографичный «glow».
+        # Стиль-цепочка идёт ПОСЛЕДНИМ слоем (поверх титров/субтитров), а
+        # белый текст титра — самый яркий объект в кадре, поэтому сильный
+        # bloom раздувал его в уродливый белый ореол. Ключевое: сначала
+        # curves отсекает всё, кроме почти-белого (0.72 порог), и только
+        # это малое ярко-светлое размывается — текст не бьёт в глаза
+        # гало, а реально светлые пятна (небо, огни) мягко светятся.
+        chain.append("split[a][b];"
+                     "[b]curves=all='0/0 0.72/0 1/1',gblur=sigma=9[bl];"
+                     "[a][bl]blend=all_mode=screen:all_opacity=0.16")
     if opts.get("dust"):
         # редкие крапинки-пылинки, как на старой плёнке
         chain.append("noise=alls=3:allf=t+u,eq=contrast=1.02")

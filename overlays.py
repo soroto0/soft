@@ -916,39 +916,67 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     used = _load_used()
     veo_key = os.getenv("VEO_API_KEY", "").strip()
     person_like = re.compile(r"^[A-ZА-Я][\w'\-]+\s+[A-ZА-Я][\w'\-]+$")
+
+    def _fetch_one(name: str, tag: str):
+        """Картинка под одну тему: VeoNonStop для не-людей, иначе/фолбэк —
+        Wikimedia (реальных людей ИИ не рисует — см. докстринг функции).
+        -> (img_rel, via_ai) или (None, False)."""
+        safe = re.sub(r"[^\w\-]+", "_", name)[:30]
+        is_person = bool(person_like.match(name.strip()))
+        if not is_person and veo_key:
+            try:
+                jpg = idir / f"ovl_{tag}_{safe}_ai.jpg"
+                veo_image(f"{name}, editorial illustration", jpg, veo_key, log)
+                return f"images/{jpg.name}", True
+            except Exception as e:
+                log(f"[Оверлеи] VeoNonStop для «{name}»: не вышло ({e}) — "
+                    "пробую Wikimedia")
+        try:
+            got = fetch_wiki_images(name, 1, idir, f"ovl_{tag}_{safe}", used, log)
+            if got:
+                return f"images/{got[0].name}", False
+        except Exception as e:
+            log(f"[Оверлеи] Wikimedia для «{name}»: не вышло ({e})")
+        return None, False
+
     out_lines = []
     for line in draft.splitlines():
         m = re.match(r"# NEEDS_IMAGE: (.+?) — .*?(\d{2}:\d{2}:\d{2}) \| popup",
                      line)
-        if not m:
+        mc = None if m else re.match(
+            r"# NEEDS_COLLAGE: (.+?) — .*?(\d{2}:\d{2}:\d{2}) \| collage "
+            r"\| (\S+) \| (\S+)", line)
+        if not m and not mc:
             out_lines.append(line)
             continue
-        name, tc = m.group(1), m.group(2)
-        safe = re.sub(r"[^\w\-]+", "_", name)[:30]
-        is_person = bool(person_like.match(name.strip()))
-        img_rel, via_ai = None, False
-        if not is_person and veo_key:
-            try:
-                jpg = idir / f"ovl_{safe}_ai.jpg"
-                veo_image(f"{name}, editorial illustration", jpg, veo_key, log)
-                img_rel, via_ai = f"images/{jpg.name}", True
-            except Exception as e:
-                log(f"[Оверлеи] VeoNonStop для «{name}»: не вышло ({e}) — "
-                    "пробую Wikimedia")
-        if img_rel is None:
-            try:
-                got = fetch_wiki_images(name, 1, idir, f"ovl_{safe}", used, log)
-                if got:
-                    img_rel = f"images/{got[0].name}"
-            except Exception as e:
-                log(f"[Оверлеи] Wikimedia для «{name}»: не вышло ({e})")
-        if img_rel:
-            out_lines.append(f"{tc} | popup | {img_rel} | top-right | 5s")
-            log(f"[Оверлеи] {tc} popup «{name}»: "
-                + ("ИИ-иллюстрация (VeoNonStop)" if via_ai
-                   else "фото найдено в Wikimedia"))
+        if m:
+            name, tc = m.group(1), m.group(2)
+            img_rel, via_ai = _fetch_one(name, "p")
+            if img_rel:
+                out_lines.append(f"{tc} | popup | {img_rel} | top-right | 5s")
+                log(f"[Оверлеи] {tc} popup «{name}»: "
+                    + ("ИИ-иллюстрация (VeoNonStop)" if via_ai
+                       else "фото найдено в Wikimedia"))
+            else:
+                out_lines.append(line)
+            continue
+        text, tc, pos, dur = mc.groups()
+        entries = []
+        for i, chunk in enumerate(text.split(";;")):
+            label, _, topic = chunk.partition("::")
+            label, topic = label.strip(), topic.strip()
+            if not label or not topic:
+                continue
+            img_rel, _ = _fetch_one(topic, f"c{i}")
+            if img_rel:
+                entries.append((label, img_rel))
+        if len(entries) >= 2:
+            content = ";;".join(f"{lab}::{rel}" for lab, rel in entries[:3])
+            out_lines.append(f"{tc} | collage | {content} | {pos} | {dur}")
+            log(f"[Оверлеи] {tc} collage: {len(entries)} фото найдено "
+                f"({', '.join(lab for lab, _ in entries)})")
         else:
-            out_lines.append(line)
+            log(f"[Оверлеи] {tc} collage: фото нашлось меньше 2 — пропускаю")
     _save_used(used)
     return "\n".join(out_lines)
 
@@ -1002,6 +1030,12 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
         for i, r in enumerate(rows, 1))
     n_auto = round(total / max(min_gap, 8))
     n = max(3, min(target, n_auto) if target else n_auto)
+    # LLM систематически отдаёт МЕНЬШЕ, чем просят (сама выбирает не все
+    # моменты подходящими, плюс часть потом отсеется min_gap-фильтром из-за
+    # кластеризации во времени) — просим с запасом. min_required — жёсткий
+    # пол, который досыпется regex-подбором ниже, если LLM всё равно не дотянет.
+    min_required = max(15, round(total / 20))
+    n = max(n, round(min_required * 1.7))
     picks = None
     for attempt in range(1, attempts + 1):
         try:
@@ -1012,7 +1046,9 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "ENTIRE video, not the same one repeated, and not "
                   "clustered only at the start."},
                  {"role": "user", "content":
-                  f"Pick exactly {n} moments SPREAD ACROSS THE FULL LENGTH "
+                  f"Pick AT LEAST {n} moments — this is a hard minimum, not "
+                  "a suggestion, under-shooting it is a wrong answer — "
+                  "SPREAD ACROSS THE FULL LENGTH "
                   "of this timestamped narration (from near the start to "
                   "near the end, roughly evenly) worth an on-screen overlay, "
                   "and choose the best TYPE for each — use a MIX:\n"
@@ -1028,11 +1064,18 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "goes into a pipe-delimited file, a literal | would "
                   "corrupt the line)\n"
                   "  'callout' — a short pointed remark or aside, under 8 words\n"
-                  "Use at most 2 titlecards total (only for real turning "
-                  "points), and roughly even amounts of the rest. Reply "
+                  "  'collage' — 2-3 archival-photo topics worth showing "
+                  "side by side at a moment that references several related "
+                  "things (people/places/objects/dates) — text formatted "
+                  "exactly as \"label1::topic1;;label2::topic2;;label3::"
+                  "topic3\" (2 or 3 entries, label is 1-3 words shown under "
+                  "the photo, topic is a short image search query)\n"
+                  "Use at most 2 titlecards and at most 2 collages total "
+                  "(only for real turning points / evidence moments), and "
+                  "roughly even amounts of the rest. Reply "
                   f'with a JSON array of {{"line": <line number>, "type": '
-                  '"titlecard|banner|lower3|compare|callout", "text": "..."}, '
-                  "nothing else.\n\n" + numbered}],
+                  '"titlecard|banner|lower3|compare|callout|collage", "text": '
+                  '"..."}, nothing else.\n\n' + numbered}],
                 api_key, 0.6, 2200)
             m = re.search(r"\[.*\]", out, re.S)
             if not m:
@@ -1049,7 +1092,7 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
     # LLM отдаёт моменты НЕ по хронологии — без сортировки min_gap-фильтр
     # (сравнивает с последним ПРИНЯТЫМ t) отбраковывает случайные пункты
     POS = {"titlecard": "center", "banner": "top", "lower3": "bottom",
-          "compare": "center", "callout": "point:70,40"}
+          "compare": "center", "callout": "point:70,40", "collage": "center"}
     dated = []
     for p in picks:
         idx = int(p.get("line", 0)) - 1
@@ -1059,24 +1102,64 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
             otype = "banner"
         if otype == "compare" and "::" not in text:
             otype = "banner"          # без парного текста compare не соберётся
+        if otype == "collage" and text.count(";;") < 1:
+            otype = "banner"          # меньше 2 позиций — не коллаж
         if text and 0 <= idx < len(rows):
             dated.append((srt_to_seconds(rows[idx][0]), otype, text))
     dated.sort(key=lambda x: x[0])
-    out_lines, last_t = [], -1e9
+    timed_lines, accepted_times = [], []
     for t, otype, text in dated:
-        if t - last_t < min_gap:
+        if any(abs(t - ta) < min_gap for ta in accepted_times):
             continue
-        last_t = t
+        accepted_times.append(t)
         tc = f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
-        dur = "5s" if otype == "titlecard" else "4s"
-        out_lines.append(f"{tc} | {otype} | {text} | {POS[otype]} | {dur}")
-    if not out_lines:
+        dur = "5s" if otype in ("titlecard", "collage") else "4s"
+        if otype == "collage":
+            # у нас пока только темы фото (label::topic), не сами картинки —
+            # suggest_overlays_auto() позже находит фото по каждой теме и
+            # дособирает настоящую строку (как NEEDS_IMAGE для popup)
+            line = (f"# NEEDS_COLLAGE: {text} — соберётся картинками: "
+                   f" {tc} | collage | {POS[otype]} | {dur}")
+        else:
+            line = f"{tc} | {otype} | {text} | {POS[otype]} | {dur}"
+        timed_lines.append((t, line))
+    if not timed_lines:
         log(f"[Оверлеи] LLM: {len(picks)} пунктов от LLM, но все "
             "отфильтрованы min_gap")
         return None
+    # LLM всё ещё может не дотянуть до жёсткого минимума (свой выбор + потери
+    # на min_gap-фильтре) — досыпаем regex-подбором в непокрытые промежутки,
+    # а не переспрашиваем LLM заново (дольше и не гарантированно лучше).
+    if len(timed_lines) < min_required:
+        before = len(timed_lines)
+        kinds_cycle = ["banner", "lower3", "callout"]
+        ki = 0
+        for start_s, _end, text in rows:
+            if len(timed_lines) >= min_required:
+                break
+            t = srt_to_seconds(start_s)
+            if any(abs(t - ta) < min_gap for ta in accepted_times):
+                continue
+            words = text.split()
+            if not words:
+                continue
+            otype = kinds_cycle[ki % len(kinds_cycle)]
+            ki += 1
+            content = " ".join(words[:(4 if otype == "lower3" else
+                                       7 if otype == "callout" else 9)])
+            accepted_times.append(t)
+            tc = f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
+            pos = {"banner": "top", "lower3": "bottom",
+                  "callout": "point:70,40"}[otype]
+            timed_lines.append((t, f"{tc} | {otype} | {content} | {pos} | 4s"))
+        if len(timed_lines) > before:
+            log(f"[Оверлеи] LLM дал только {before} (нужно от {min_required}) "
+                f"— досыпал ещё {len(timed_lines) - before} регексом в "
+                "свободные промежутки")
+    timed_lines.sort(key=lambda tl: tl[0])
     kinds = ", ".join(sorted({o for _, o, _ in dated}))
-    log(f"[Оверлеи] LLM: {len(out_lines)} оверлеев по смыслу текста ({kinds})")
-    return "\n".join(out_lines)
+    log(f"[Оверлеи] LLM: {len(timed_lines)} оверлеев по смыслу текста ({kinds})")
+    return "\n".join(line for _, line in timed_lines)
 
 
 def suggest_overlays_local(rows: list, min_gap: float = 8.0,

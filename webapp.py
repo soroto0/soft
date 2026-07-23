@@ -26,6 +26,7 @@ import webview
 import core
 import render
 import overlays
+import gen_remotion_gemini
 
 APP_TITLE = "Контент-фабрика"
 APP_VERSION = "3.0"
@@ -326,7 +327,7 @@ class Api:
             text = core.gen_script(topic, int(minutes), key, self.log,
                                    tone=tone, lang=lang)
             self.save_script(text)
-            self._write_meta(tone=tone)
+            self._write_meta(tone=tone, topic=topic)
             self._js(f"$('scriptText').value = {json.dumps(text)}; updateStats()")
         self._bg("Генерация сценария", job)
 
@@ -585,6 +586,33 @@ class Api:
                      "(popup/titlecard/collage/счётчики/плашки) добавлены "
                      "в ролик")
 
+    def _regen_overlay_theme(self):
+        """Каждое видео получает свой, написанный Gemini заново дизайн
+        Overlay.tsx под тему/жанр — иначе одни и те же 5 шаблонов кочуют из
+        видео в видео. Необязательный шаг: нет ключа или Gemini/tsc/дым-тест
+        не осилили за несколько попыток — тихо остаёмся на текущем дизайне,
+        цепочка не должна падать из-за декоративного улучшения."""
+        gemini_key = self._settings.get("gemini_key", "") or os.getenv("GEMINI_API_KEY", "")
+        if not gemini_key:
+            return
+        meta = self._read_meta()
+        topic, tone = meta.get("topic", ""), meta.get("tone", "документальный")
+        if not topic:
+            return
+        theme = (f"Documentary video about: {topic}. Tone/genre: {tone}. "
+                "Invent a distinctive color palette, accent hues and overall "
+                "mood that fit THIS specific topic — a video about something "
+                "cold/scientific should not look like one about crime or "
+                "myth, etc. Avoid reusing a generic dark-charcoal-plus-amber "
+                "template by default; pick colors that make sense here.")
+        self.log("[Цепочка] Дизайн оверлеев — прошу Gemini написать свой "
+                 "под эту тему...")
+        try:
+            gen_remotion_gemini.apply_theme(theme, gemini_key, self.log)
+        except Exception as e:
+            self.log(f"[Remotion/Gemini] Не удалось: {e} — остаюсь на "
+                     "текущем дизайне", "warn")
+
     def render(self, p: dict):
         opts = self._render_opts(p)
         opts["out_name"] = p.get("out_name", "")
@@ -611,17 +639,35 @@ class Api:
         return out
 
     # ---------- одна кнопка ----------
+    def _sync_beat_to_intensity(self, beat: float, intensity: str) -> float:
+        """Раскадровка качает по одному материалу на `beat` секунд, а рендер
+        режет кадры по своей интенсивности (напр. «документальная 5с» —
+        смена каждые ~5с) — если интенсивность режет чаще, чем раскадровка
+        качает, несколько сцен подряд достаются одному и тому же файлу, и он
+        неизбежно повторяется по всему ролику (в 5-минутном тесте: 127 смен
+        кадра на 51 уникальный кадр из-за такого рассинхрона). Подгоняем
+        beat под среднюю длительность плана интенсивности, если он крупнее —
+        собственный (меньший) выбор пользователя не трогаем."""
+        cfg = render.INTENSITY.get(intensity)
+        if not cfg:
+            return beat
+        avg = (cfg["short_prob"] * sum(cfg["short"]) / 2
+              + (1 - cfg["short_prob"]) * sum(cfg["long"]) / 2)
+        return min(beat, avg)
+
     def generate_all(self, p: dict):
         opts = self._render_opts(p)
         if (p.get("overlays") or "").strip():
             self.save_overlays(p["overlays"])
+        beat = self._sync_beat_to_intensity(float(p.get("beat", 6)),
+                                            opts.get("intensity", "средняя"))
 
         def job():
             self.log("[Цепочка] Шаг 1/4 — озвучка…")
             self._tts_step(p)
             self.log("[Цепочка] Шаг 2/4 — субтитры…")
             core.transcribe_whisper(self._project / "audio" / "voiceover.mp3",
-                                    p.get("whisper", "base.en"),
+                                    p.get("whisper", "tiny.en"),
                                     self._project, self.log, 42,
                                     p.get("lang", "английский"))
             self.log("[Цепочка] Шаг 3/4 — стоки по таймлайну…")
@@ -629,7 +675,7 @@ class Api:
                 self._project, self.log,
                 self._settings.get("pexels_keys", ""),
                 self._settings.get("pixabay_keys", ""),
-                float(p.get("beat", 6)),
+                beat,
                 self._settings.get("gemini_key", ""),
                 self._settings.get("agnes_key", ""), False,
                 int(self._settings.get("max_unique", 200)),
@@ -637,6 +683,13 @@ class Api:
                 float(p.get("ai_ratio", 0.35)))
             if not (p.get("overlays") or "").strip():
                 self._auto_overlays()   # моушн-графика сама, если не задана
+            # Полная генерация дизайна оверлеев Gemini (_regen_overlay_theme)
+            # пока НЕ включена в авто-цепочку: Gemini нестабильно пишет
+            # рабочий TSX (часто откатывается на дефолт), а каждая попытка —
+            # это +1-2 мин к рендеру впустую. Код есть и безопасен (откат на
+            # рабочую версию), но включается только вручную, когда доведём
+            # надёжность. Разнообразие между видео пока даёт «Разнообразие»
+            # (project_style: свои субтитры/монтаж/цветокор на проект).
             if self._settings.get("music_library", "").strip():
                 self.log("[Цепочка] Музыка — подбираю под жанр...")
                 try:

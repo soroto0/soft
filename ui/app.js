@@ -128,6 +128,8 @@ function taskDone() { setStatus("Готов"); setProgress(0, 0); refresh(); }
 
 /* ---------- Состояние ---------- */
 let state = null;
+let lastProject = null;
+
 async function refresh() {
   const s = await rpc("get_state");
   if (!s) { if (!state) state = await mockApi.get_state(); else return; }
@@ -137,13 +139,24 @@ async function refresh() {
   renderCards();
   renderProjects();
   renderChecklist();
-  if (state.script !== undefined && document.activeElement !== $("scriptText") && state.script)
-    $("scriptText").value = state.script;
-  if (state.scenes && document.activeElement !== $("scenesText"))
-    $("scenesText").value = state.scenes;
-  if (state.overlays && document.activeElement !== $("overlaysText"))
-    $("overlaysText").value = state.overlays;
+  // При СМЕНЕ проекта поля обязаны принять значение нового проекта, даже
+  // если оно пустое — иначе старый текст (сценарий/сцены/оверлеи) утекает
+  // в новый проект и при «Генерировать видео» записывается в него (так
+  // английское видео получало русские оверлеи от прошлого проекта). При
+  // обычном refresh (тот же проект) — не трогаем непустое поле, чтобы не
+  // затирать несохранённый ввод пользователя.
+  const projectChanged = state.project !== lastProject;
+  lastProject = state.project;
+  const setField = (id, val) => {
+    if (document.activeElement === $(id)) return;
+    if (projectChanged) $(id).value = val || "";
+    else if (val) $(id).value = val;
+  };
+  setField("scriptText", state.script);
+  setField("scenesText", state.scenes);
+  setField("overlaysText", state.overlays);
   if (state.subs) renderSubs(state.subs);
+  else if (projectChanged) renderSubs([]);
   updateStats();
 }
 
@@ -300,14 +313,16 @@ const app = {
     if (mode === "ai" && !confirm(
         "Режим «ИИ в едином стиле»: каждый кадр генерируется ИИ.\n" +
         "Это даёт вид как у канала, но идёт долго (сотни картинок) и\n" +
-        "тратит кредиты Agnes.\n\nПродолжить?"))
+        "тратит кредиты ИИ-провайдера (VeoNonStop, запасной — Agnes).\n\nПродолжить?"))
       return;
     if (mode === "mixed" && !confirm(
         `Режим «микс»: ~${Math.round(parseFloat($("aiRatio").value) * 100)}% ` +
-        "планов будут намеренно ИИ-кадрами (тратит кредиты Agnes).\n\nПродолжить?"))
+        "планов будут намеренно ИИ-кадрами (тратит кредиты ИИ-провайдера: " +
+        "VeoNonStop, запасной — Agnes).\n\nПродолжить?"))
       return;
     if ($("genvideo").checked && mode !== "ai" && !confirm(
-        "ИИ-генерация клипов для ненайденных планов тратит кредиты Agnes.\n\nПродолжить?"))
+        "ИИ-генерация клипов для ненайденных планов тратит кредиты " +
+        "ИИ-провайдера (VeoNonStop, запасной — Agnes).\n\nПродолжить?"))
       return;
     rpc("storyboard", parseFloat($("beat").value), $("genvideo").checked,
         mode, $("visualStyle").value, parseFloat($("aiRatio").value));
