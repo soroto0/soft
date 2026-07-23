@@ -890,7 +890,7 @@ LOOKS = {
 }
 
 
-def _style_chain(opts: dict) -> list[str]:
+def _style_chain(opts: dict, wh: tuple[int, int] = (1920, 1080)) -> list[str]:
     chain = []
     if opts.get("vhs"):
         chain.append("noise=alls=10:allf=t,rgbashift=rh=2:bv=2,"
@@ -900,9 +900,21 @@ def _style_chain(opts: dict) -> list[str]:
             chain.append("noise=alls=6:allf=t")
     # --- эффекты поверх кадра (световые блики, засветка, пыль, мерцание) ---
     if opts.get("light_leak"):
-        # мягкое движущееся световое пятно у края — «плёночная» засветка
-        chain.append("vignette=angle=PI/5:x0=w*0.85:y0=h*0.2:mode=backward,"
-                     "eq=brightness=0.015")
+        # мягкое световое пятно у края — «плёночная» засветка. ВАЖНО:
+        # vignette в mode=backward, применённый прямо к кадру, даёт не
+        # мягкую засветку, а огромное пятно с жёсткой геометрической
+        # границей (эффект «зелёный полукруг поверх кадра», который видел
+        # пользователь на реальном рендере) — angle=PI/5 даёт слишком
+        # тесный конус, а backward-режим переворачивает его в резкий
+        # highlight вместо плавного градиента. Вместо этого строим
+        # отдельный белый слой с ОБЫЧНЫМ (forward) vignette (широкий
+        # угол — гладкий, без видимой границы) и сводим screen-блендом на
+        # низкой прозрачности — тот же приём, что и bloom ниже.
+        w, h = wh
+        chain.append(
+            f"null[llbase];color=c=white:s={w}x{h}[llwhite];"
+            f"[llwhite]vignette=angle=PI/2.15:x0=w*0.85:y0=h*0.2:aspect=1[llv];"
+            f"[llbase][llv]blend=all_mode=screen:all_opacity=0.12")
     if opts.get("bloom"):
         # Свечение светлых участков — деликатный кинематографичный «glow».
         # Стиль-цепочка идёт ПОСЛЕДНИМ слоем (поверх титров/субтитров), а
@@ -958,7 +970,7 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
         if sub_filter is None:
             sub_filter = _subtitles_filter(srt, size, style_name)
         post.append(sub_filter)
-    post += _style_chain(opts)
+    post += _style_chain(opts, wh)
     post.append("format=yuv420p")
 
     cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
