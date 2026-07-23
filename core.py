@@ -530,6 +530,13 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                 for ln in outline.splitlines() if re.match(r"\s*\d+[.)]", ln)]
     if not chapters:
         chapters = [ln.strip() for ln in outline.splitlines() if ln.strip()][:n_sections]
+    if not chapters:
+        # без этого падало тихо: пустой сценарий -> пустая озвучка -> Whisper
+        # не находит речи -> невнятная ошибка на третьем шаге вместо явной
+        # здесь же, в настоящем месте сбоя
+        raise RuntimeError(
+            "ИИ не вернул план глав (пустой/непарсящийся ответ на outline) "
+            f"— попробуй ещё раз. Сырой ответ: {outline[:300]!r}")
     log(f"[Агент] План готов: {len(chapters)} глав")
 
     def _strip_echo(part: str, tail: str) -> str:
