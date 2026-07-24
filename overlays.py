@@ -580,12 +580,16 @@ def _remotion_bundle(log=print) -> Path:
 
 
 def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
-                     out_dir: Path, log=print):
+                     out_dir: Path, log=print, variant: str | None = None):
     """Один оверлей через Remotion -> PNG-секвенция %04d.png с альфой.
-    Кадр всегда полноэкранный (позиция задаётся внутри React)."""
+    Кадр всегда полноэкранный (позиция задаётся внутри React). variant —
+    для типов с несколькими непохожими дизайнами (пока только banner:
+    None/"classic" -> Banner, "ribbon" -> BannerRibbon, см. Overlay.tsx)."""
     props = {"type": item["type"], "content": item["content"],
              "pos": item["pos"], "dur": item["dur"], "fps": fps,
              "width": W, "height": H, "img": ""}
+    if variant:
+        props["variant"] = variant
 
     def _data_uri(rel: str) -> str:
         # data URI, а не staticFile(): remotion bundle снимает "снимок" папки
@@ -800,6 +804,26 @@ def render_infographic(content: str, dur: float, fps: int, W: int, H: int,
     return Wp, Hp
 
 
+# 3 визуально непохожих дизайна banner (форма/позиция/анимация, не только
+# цвет) — жалоба была именно на то, что один и тот же шаблон кочует между
+# видео перекрашенным. remotion_classic: Banner (плашка сверху, слайд
+# вниз). remotion_ribbon: BannerRibbon (угловая лента слева, въезд со
+# скосом). hyperframes_wipe: hyperframes/index.html (бар снизу, wipe
+# слева направо). См. remotion/src/Overlay.tsx.
+BANNER_VARIANTS = ("remotion_classic", "remotion_ribbon", "hyperframes_wipe")
+
+
+def _banner_variant(out_dir) -> str:
+    """Какой из 3 дизайнов banner достанется этому проекту — детерминированно
+    от его пути (тот же приём, что и в core.project_style() для голоса/
+    темпа/цветокора): один проект — один стабильный вид на всё видео,
+    разные проекты — разные, не рандом на каждый отдельный оверлей."""
+    import zlib
+    import random as _random
+    r = _random.Random(zlib.crc32(str(Path(out_dir).resolve()).encode()))
+    return r.choice(BANNER_VARIANTS)
+
+
 def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                    log=print) -> list[dict]:
     """Читает overlays.txt проекта, рендерит секвенции.
@@ -811,10 +835,12 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
     if not items:
         return []
     engine = overlay_engine()
+    banner_variant = _banner_variant(out_dir)
     hf_note = " + HyperFrames для banner" if hyperframes_available() else ""
     log(f"[Оверлеи] {len(items)} шт. — движок: "
         + ("Remotion (кинокачество)" if engine == "remotion"
            else "Pillow (быстрый)") + hf_note)
+    log(f"[Оверлеи] Вариант banner на это видео: {banner_variant}")
     renderers = {"popup": None, "lower3": render_lower3,
                  "callout": None, "counter": render_counter,
                  "bars": render_bars, "timeline": render_timeline,
@@ -849,17 +875,33 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
         try:
             dest = Path(tmp) / f"ovl_{k:02d}"
             used_engine = engine
-            if it["type"] == "banner" and hyperframes_available():
-                try:
-                    cw, ch = _render_hyperframes(it, W, H, fps, dest, log)
-                    x = y = 0          # HyperFrames тоже рендерит полный кадр
-                    used_engine = "hyperframes"
-                except Exception as e:
-                    log(f"[Оверлеи] HyperFrames не справился ({e}) — "
-                        f"откат на {engine}.")
-                    for old in Path(dest).glob("*.png"):
-                        old.unlink()
-            if used_engine == engine and engine == "remotion":
+            variant_done = False
+            if it["type"] == "banner":
+                if banner_variant == "hyperframes_wipe" and hyperframes_available():
+                    try:
+                        cw, ch = _render_hyperframes(it, W, H, fps, dest, log)
+                        x = y = 0      # HyperFrames тоже рендерит полный кадр
+                        used_engine = "hyperframes"
+                        variant_done = True
+                    except Exception as e:
+                        log(f"[Оверлеи] HyperFrames не справился ({e}) — "
+                            "откат на классический banner.")
+                        for old in Path(dest).glob("*.png"):
+                            old.unlink()
+                elif banner_variant == "remotion_ribbon" and engine == "remotion":
+                    try:
+                        cw, ch = _render_remotion(it, W, H, fps, dest,
+                                                  Path(out_dir), log,
+                                                  variant="ribbon")
+                        x = y = 0
+                        used_engine = "remotion"
+                        variant_done = True
+                    except Exception as e:
+                        log(f"[Оверлеи] Remotion (ribbon) не справился ({e}) — "
+                            "откат на классический banner.")
+                        for old in Path(dest).glob("*.png"):
+                            old.unlink()
+            if not variant_done and engine == "remotion":
                 try:
                     cw, ch = _render_remotion(it, W, H, fps, dest,
                                               Path(out_dir), log)

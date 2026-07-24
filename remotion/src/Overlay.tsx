@@ -1,7 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 
-export type OverlayProps = { type: string; content: string; pos: string; dur: number; fps?: number; width?: number; height?: number; img?: string; items?: { label: string; img: string }[]; };
+export type OverlayProps = { type: string; content: string; pos: string; dur: number; fps?: number; width?: number; height?: number; img?: string; items?: { label: string; img: string }[]; variant?: string; };
 
 // Единственное место с "брендовыми" цветами — Gemini подбирает под тему
 // видео и переписывает ТОЛЬКО этот объект (тонкая, низкорисковая правка),
@@ -408,10 +408,52 @@ const Banner = ({ content, exit, enter }: { content: string; exit: number; enter
       }}>
         <div style={{
           color: THEME.bannerText,
-          fontFamily: "'Segoe UI Black', sans-serif", 
+          fontFamily: "'Segoe UI Black', sans-serif",
           fontSize: '42px',
           textTransform: 'uppercase',
           letterSpacing: '1px'
+        }}>
+          {content}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// Второй вариант banner — угловая лента слева (не перекрашенный Banner,
+// другая форма/позиция/анимация): въезжает слева со скосом и пружинным
+// перелётом, а не падает сверху плашкой на весь кадр. Даёт видимую
+// вариативность монтажа между проектами (см. selectBannerVariant в
+// overlays.py — какой вариант достанется, решает детерминированный
+// «почерк» проекта, не рандом на глаз).
+const BannerRibbon = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
+  const frame = useCurrentFrame();
+  const opacity = enter * exit;
+  const slideX = interpolate(frame, [0, 24], [-700, 0], {
+    easing: Easing.out(Easing.back(1.3)),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp'
+  });
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'flex-start', alignItems: 'flex-start', paddingTop: '70px' }}>
+      <div style={{
+        transform: `translateX(${slideX}px) skewX(-8deg)`,
+        opacity: opacity,
+        background: THEME.accent,
+        maxWidth: '78%',
+        padding: '22px 60px 22px 48px',
+        boxShadow: '0 12px 26px rgba(0,0,0,0.55)',
+        borderLeft: `6px solid ${THEME.accentLight}`
+      }}>
+        <div style={{
+          transform: 'skewX(8deg)',
+          color: '#ffffff',
+          fontFamily: "'Segoe UI Black', sans-serif",
+          fontSize: '38px',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          textShadow: '0 3px 10px rgba(0,0,0,0.5)'
         }}>
           {content}
         </div>
@@ -582,7 +624,9 @@ export const Overlay: React.FC<OverlayProps> = (p) => {
     case 'compare':
       return <Compare content={p.content} exit={exit} enter={enter} />;
     case 'banner':
-      return <Banner content={p.content} exit={exit} enter={enter} />;
+      return p.variant === 'ribbon'
+        ? <BannerRibbon content={p.content} exit={exit} enter={enter} />
+        : <Banner content={p.content} exit={exit} enter={enter} />;
     case 'collage':
       return <Collage items={p.items ?? []} exit={exit} enter={enter} />;
     case 'titlecard':

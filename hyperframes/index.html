@@ -12,25 +12,42 @@
       @font-face { font-family: 'Segoe UI Black'; src: local('Segoe UI Black'); }
       html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
       #banner-wrap {
-        position: absolute; inset: 0; display: flex;
-        justify-content: center; align-items: flex-start; padding-top: 40px;
+        position: absolute; left: 0; right: 0; bottom: 90px;
+        display: flex; justify-content: flex-start; align-items: center;
+        padding: 0 90px;
       }
-      #banner-plate {
-        width: 90%; padding: 20px 40px; border-radius: 8px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        display: flex; align-items: center; justify-content: center;
-        background: linear-gradient(180deg, #f0f0f0 0%, #dcdcdc 100%);
+      #banner-bar {
+        position: relative;
+        width: 100%; max-width: 1400px;
+        background: rgba(15,15,18,0.88);
+        padding: 26px 48px 26px 40px;
+        transform-origin: left center;
+        display: flex; align-items: center; gap: 24px;
+        box-shadow: 0 14px 34px rgba(0,0,0,0.5);
+      }
+      #banner-stripe {
+        position: absolute; left: 0; top: 0; bottom: 0; width: 10px;
+        background: #5e7c8d;
+        transform-origin: top;
       }
       #banner-text {
-        color: #111111; font-family: 'Segoe UI Black', 'Arial', sans-serif;
-        font-size: 42px; text-transform: uppercase; letter-spacing: 1px; text-align: center;
+        color: #ffffff; font-family: 'Segoe UI Black', 'Arial', sans-serif;
+        font-size: 38px; text-transform: uppercase; letter-spacing: 0.5px;
+        text-align: left;
       }
     </style>
   </head>
   <body>
+    <!--
+      Третий вариант banner (см. remotion/src/Overlay.tsx: Banner,
+      BannerRibbon) — нижний бар с wipe-раскрытием слева, а не плашка
+      сверху. Форма/позиция/анимация намеренно другие — визуальная
+      вариативность монтажа между проектами, не перекраска одного шаблона.
+    -->
     <div id="root" data-composition-id="banner" data-start="0" data-width="1920" data-height="1080">
       <div id="banner-wrap" class="clip" data-start="0" data-duration="4" data-track-index="1">
-        <div id="banner-plate">
+        <div id="banner-bar">
+          <div id="banner-stripe"></div>
           <div id="banner-text" data-var-text="content">Sample banner text</div>
         </div>
       </div>
@@ -42,10 +59,16 @@
       document.getElementById('banner-wrap').setAttribute('data-duration', String(dur));
 
       const tl = gsap.timeline({ paused: true });
-      tl.fromTo('#banner-plate',
-        { y: -1080, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.5, ease: 'power2.out' }, 0);
-      tl.to('#banner-plate', { opacity: 0, duration: 0.3 }, Math.max(dur - 0.3, 0));
+      // wipe: бар растёт по ширине слева направо (scaleX — allowlisted
+      // transform, не clip-path), полоска-акцент — сверху вниз (scaleY),
+      // текст проявляется следом, когда бар уже почти раскрыт.
+      tl.fromTo('#banner-bar', { scaleX: 0 },
+        { scaleX: 1, duration: 0.45, ease: 'power3.out' }, 0);
+      tl.fromTo('#banner-stripe', { scaleY: 0 },
+        { scaleY: 1, duration: 0.3, ease: 'power2.out' }, 0.1);
+      tl.fromTo('#banner-text', { opacity: 0 },
+        { opacity: 1, duration: 0.25 }, 0.35);
+      tl.to('#banner-bar', { opacity: 0, duration: 0.3 }, Math.max(dur - 0.3, 0));
       window.__timelines['banner'] = tl;
     </script>
   </body>
