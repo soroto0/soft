@@ -836,6 +836,12 @@ BANNER_VARIANTS = ("remotion_classic", "remotion_ribbon", "hyperframes_wipe")
 # hyperframes/compositions/lower3_chyron.html.
 LOWER3_VARIANTS = ("remotion_classic", "remotion_underline", "hyperframes_chyron")
 
+# 2 варианта counter: remotion_classic (Counter — крупное число по центру),
+# remotion_tag (CounterTag — бирка «состаренная бумага» с рваными/
+# скошенными краями, угол экрана и наклон детерминированы от текста —
+# референс: документальные каналы с бумажными вставками-фактами).
+COUNTER_VARIANTS = ("remotion_classic", "remotion_tag")
+
 
 def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                    log=print) -> list[dict]:
@@ -850,12 +856,13 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
     engine = overlay_engine()
     banner_variant = _project_variant(out_dir, "banner", BANNER_VARIANTS)
     lower3_variant = _project_variant(out_dir, "lower3", LOWER3_VARIANTS)
+    counter_variant = _project_variant(out_dir, "counter", COUNTER_VARIANTS)
     hf_note = " + HyperFrames для banner/lower3" if hyperframes_available() else ""
     log(f"[Оверлеи] {len(items)} шт. — движок: "
         + ("Remotion (кинокачество)" if engine == "remotion"
            else "Pillow (быстрый)") + hf_note)
     log(f"[Оверлеи] Варианты на это видео: banner={banner_variant}, "
-        f"lower3={lower3_variant}")
+        f"lower3={lower3_variant}, counter={counter_variant}")
     renderers = {"popup": None, "lower3": render_lower3,
                  "callout": None, "counter": render_counter,
                  "bars": render_bars, "timeline": render_timeline,
@@ -943,6 +950,19 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                             f"({e}) — откат на классический lower3.")
                         for old in Path(dest).glob("*.png"):
                             old.unlink()
+            elif it["type"] == "counter" and counter_variant == "remotion_tag" \
+                    and engine == "remotion":
+                try:
+                    cw, ch = _render_remotion(it, W, H, fps, dest,
+                                              Path(out_dir), log, variant="tag")
+                    x = y = 0
+                    used_engine = "remotion"
+                    variant_done = True
+                except Exception as e:
+                    log(f"[Оверлеи] Remotion (tag) не справился ({e}) — "
+                        "откат на классический counter.")
+                    for old in Path(dest).glob("*.png"):
+                        old.unlink()
             if not variant_done and engine == "remotion":
                 try:
                     cw, ch = _render_remotion(it, W, H, fps, dest,

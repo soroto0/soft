@@ -186,6 +186,74 @@ const Counter = ({ content, exit, enter }: { content: string; exit: number; ente
   );
 };
 
+// Хеш строки -> целое число. НЕ Math.random(): рендер должен быть
+// воспроизводим по времени (детерминизм) — тот же content всегда даёт тот
+// же угол наклона и тот же угол экрана, но РАЗНЫЙ content (разные счётчики
+// в одном видео, разные видео) даёт разные значения без единой лишней
+// переменной в пропсах.
+const _hashStr = (s: string): number => {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+};
+
+// Бирка «рваная бумага/лента» — референс из документалок с бумажными
+// вставками (пожелтевшая бумага, скошенные края как у закладки, лёгкий
+// наклон как приклеенная заметка). Помимо цвета (через THEME) добавляет
+// ЕЩЁ параметрическую вариативность: угол наклона и угол экрана берутся
+// детерминированно из текста, а не жёстко зашиты — на одном видео разные
+// цифры оказываются в разных углах с разным наклоном, не одним и тем же
+// местом каждый раз.
+const CounterTag = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
+  const frame = useCurrentFrame();
+  const match = content.match(/([^\d]*)([\d][\d,.\s]*)(.*)/);
+  const prefix = match ? match[1] : '';
+  const suffix = match ? match[3] : '';
+  const rawNumStr = match ? match[2].replace(/[,\s]/g, '') : '0';
+  const targetNum = parseFloat(rawNumStr) || 0;
+  const currentVal = interpolate(frame, [0, 40], [0, targetNum], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp'
+  });
+
+  const opacity = enter * exit;
+  const pop = interpolate(enter, [0, 1], [0.6, 1]);
+  const h = _hashStr(content);
+  const tilt = ((h % 700) / 100) - 3.5;               // -3.5..+3.5°
+  const corner = h % 4;                               // 4 угла экрана
+  const cornerStyle = ([
+    { top: '80px', left: '80px' },
+    { top: '80px', right: '80px' },
+    { bottom: '130px', left: '80px' },
+    { bottom: '130px', right: '80px' },
+  ] as const)[corner];
+
+  return (
+    <AbsoluteFill>
+      <div style={{
+        position: 'absolute', ...cornerStyle,
+        transform: `rotate(${tilt}deg) scale(${Math.max(pop, 0.001)})`,
+        opacity,
+        background: '#f2e9d8',
+        boxShadow: '0 10px 24px rgba(0,0,0,0.5)',
+        clipPath: 'polygon(4% 0%, 96% 0%, 100% 50%, 96% 100%, 4% 100%, 0% 50%)',
+        padding: '20px 46px'
+      }}>
+        <div style={{
+          fontFamily: "Georgia, 'Times New Roman', serif",
+          fontWeight: 700,
+          fontSize: '46px',
+          color: '#1a1410',
+          whiteSpace: 'nowrap'
+        }}>
+          {prefix}{formatCounter(currentVal)}{suffix}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 const BarChart = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
   const frame = useCurrentFrame();
 
@@ -659,7 +727,9 @@ export const Overlay: React.FC<OverlayProps> = (p) => {
         ? <LowerThirdUnderline content={p.content} exit={exit} enter={enter} />
         : <LowerThird content={p.content} exit={exit} enter={enter} />;
     case 'counter':
-      return <Counter content={p.content} exit={exit} enter={enter} />;
+      return p.variant === 'tag'
+        ? <CounterTag content={p.content} exit={exit} enter={enter} />
+        : <Counter content={p.content} exit={exit} enter={enter} />;
     case 'bars':
     case 'infographic':
       return <BarChart content={p.content} exit={exit} enter={enter} />;
