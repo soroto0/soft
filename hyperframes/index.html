@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[
+    {"id":"content","type":"string","label":"Banner text","default":"Sample banner text"},
+    {"id":"dur","type":"number","label":"Duration (seconds)","default":4}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      @font-face { font-family: 'Segoe UI Black'; src: local('Segoe UI Black'); }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #banner-wrap {
+        position: absolute; inset: 0; display: flex;
+        justify-content: center; align-items: flex-start; padding-top: 40px;
+      }
+      #banner-plate {
+        width: 90%; padding: 20px 40px; border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        display: flex; align-items: center; justify-content: center;
+        background: linear-gradient(180deg, #f0f0f0 0%, #dcdcdc 100%);
+      }
+      #banner-text {
+        color: #111111; font-family: 'Segoe UI Black', 'Arial', sans-serif;
+        font-size: 42px; text-transform: uppercase; letter-spacing: 1px; text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="banner" data-start="0" data-width="1920" data-height="1080">
+      <div id="banner-wrap" class="clip" data-start="0" data-duration="4" data-track-index="1">
+        <div id="banner-plate">
+          <div id="banner-text" data-var-text="content">Sample banner text</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const vars = window.__hyperframes.getVariables();
+      const dur = Number(vars.dur) || 4;
+      document.getElementById('banner-wrap').setAttribute('data-duration', String(dur));
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('#banner-plate',
+        { y: -1080, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.5, ease: 'power2.out' }, 0);
+      tl.to('#banner-plate', { opacity: 0, duration: 0.3 }, Math.max(dur - 0.3, 0));
+      window.__timelines['banner'] = tl;
+    </script>
+  </body>
+</html>

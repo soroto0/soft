@@ -28,6 +28,11 @@ remotion/node_modules/
 # Синтезированные SFX — генерируются кодом при первом обращении (render.py)
 assets/sfx/*.wav
 
+# HyperFrames: рендер/кэш (нет локального node_modules — всё через npx --yes)
+hyperframes/renders/
+hyperframes/.hyperframes/
+hyperframes/hf_*
+
 # Случайные папки-проекты в корне
 /2/
 

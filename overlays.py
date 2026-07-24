@@ -503,6 +503,7 @@ def render_timeline(content: str, dur: float, fps: int, W: int, H: int,
 # ---------- Движок Remotion (кинокачество, если установлен Node) ----------
 
 REMOTION_DIR = Path(__file__).parent / "remotion"
+HYPERFRAMES_DIR = Path(__file__).parent / "hyperframes"
 
 
 def _node_env() -> dict:
@@ -521,8 +522,25 @@ def _npx() -> str | None:
     return str(p) if p.exists() else None
 
 
+def _npm() -> str | None:
+    for cand in ("npm.cmd", "npm"):
+        p = shutil.which(cand)
+        if p:
+            return p
+    p = Path(r"C:\nodejs\npm.cmd")
+    return str(p) if p.exists() else None
+
+
 def remotion_available() -> bool:
     return _npx() is not None and (REMOTION_DIR / "node_modules").is_dir()
+
+
+def hyperframes_available() -> bool:
+    """В отличие от Remotion, у HyperFrames нет локального node_modules —
+    package.json дёргает npx --yes hyperframes@<pin> напрямую (кэш npx),
+    поэтому проверяем сам проект (index.html), а не node_modules."""
+    return (_npm() is not None and _npx() is not None
+            and (HYPERFRAMES_DIR / "index.html").exists())
 
 
 def overlay_engine() -> str:
@@ -619,6 +637,66 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
         raise RuntimeError("remotion render: нет кадров на выходе")
     for i, f in enumerate(frames):   # element-N.png -> %04d.png для ffmpeg
         f.rename(dest_dir / f"{i:04d}.png")
+    return W, H
+
+
+def _render_hyperframes(item: dict, W: int, H: int, fps: int, dest_dir: Path,
+                        log=print):
+    """Один оверлей через HyperFrames -> PNG-секвенция %04d.png с альфой.
+    Пока подключён только для типа banner (доказательство совместимости
+    двух движков в одном пайплайне) — остальные типы обслуживает Remotion.
+    Кадр всегда полноэкранный, как и у Remotion (позиция — внутри HTML).
+
+    Вызов идёт через `npm run render --` (скрипт из package.json), а не
+    голый `npx hyperframes` — у HyperFrames нет локального node_modules,
+    и «сырой» npx без --yes/пина версии молча отказывается ставить пакет
+    в неинтерактивном режиме (subprocess, без TTY): падает с «could not
+    determine executable to run». package.json уже пинит нужную версию
+    с --yes — npm run переиспользует именно её."""
+    variables = json.dumps({"content": item["content"], "dur": item["dur"]},
+                           ensure_ascii=False)
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    # Композиция design-размера 1920x1080 (data-width/height фиксированы —
+    # нельзя переопределить переменными, это не как dur). --resolution тут
+    # не годится: сам CLI отказывает его сочетать с альфа-форматами
+    # (png-sequence/webm/mov) — «alpha screenshot path does not yet apply
+    # deviceScaleFactor». Поэтому рендерим на нативном 1920x1080 и, если
+    # нужен другой размер, отдельно апскейлим кадры через ffmpeg с
+    # сохранением альфы — без этого на 4K оверлей окажется мелким в углу,
+    # а на меньшем холсте центрированный текст уедет за кадр (обрезка).
+    r = subprocess.run(
+        [_npm(), "run", "render", "--",
+         "--format", "png-sequence", "-o", str(dest_dir),
+         "--variables", variables, "--quiet"],
+        cwd=HYPERFRAMES_DIR, env=_node_env(),
+        capture_output=True, text=True, timeout=300,
+        creationflags=CREATE_NO_WINDOW)
+    if r.returncode != 0:
+        raise RuntimeError(f"hyperframes render: {r.stderr[-300:]}")
+    frames = sorted(dest_dir.glob("*.png"),
+                    key=lambda p: int(re.sub(r"[^\d]", "", p.stem) or 0))
+    if not frames:
+        raise RuntimeError("hyperframes render: нет кадров на выходе")
+    for i, f in enumerate(frames):   # frame_NNNNNN.png -> %04d.png для ffmpeg
+        f.rename(dest_dir / f"{i:04d}.png")
+    if (W, H) != (1920, 1080):
+        scaled = dest_dir / "_scaled"
+        scaled.mkdir(exist_ok=True)
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-framerate", str(fps), "-start_number", "0",
+             "-i", str(dest_dir / "%04d.png"),
+             "-vf", f"scale={W}:{H}:flags=lanczos",
+             "-pix_fmt", "rgba", str(scaled / "%04d.png")],
+            capture_output=True, text=True, timeout=300,
+            creationflags=CREATE_NO_WINDOW)
+        if r.returncode != 0:
+            raise RuntimeError(f"hyperframes upscale: {r.stderr[-300:]}")
+        for f in dest_dir.glob("*.png"):
+            f.unlink()
+        for f in scaled.glob("*.png"):
+            f.rename(dest_dir / f.name)
+        scaled.rmdir()
     return W, H
 
 
@@ -733,9 +811,10 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
     if not items:
         return []
     engine = overlay_engine()
+    hf_note = " + HyperFrames для banner" if hyperframes_available() else ""
     log(f"[Оверлеи] {len(items)} шт. — движок: "
         + ("Remotion (кинокачество)" if engine == "remotion"
-           else "Pillow (быстрый)"))
+           else "Pillow (быстрый)") + hf_note)
     renderers = {"popup": None, "lower3": render_lower3,
                  "callout": None, "counter": render_counter,
                  "bars": render_bars, "timeline": render_timeline,
@@ -757,11 +836,12 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
             return render_callout(it["content"], point, it["dur"],
                                   fps, W, H, dest)
         if it["type"] not in renderers:
-            # compare/banner/collage/titlecard — только Remotion, у Pillow
-            # для них нет аналога; явная причина вместо голого KeyError
+            # compare/banner/collage/titlecard — только Remotion (banner
+            # ещё и HyperFrames, см. build_overlays), у Pillow для них нет
+            # аналога; явная причина вместо голого KeyError
             raise RuntimeError(
-                f"тип «{it['type']}» доступен только через Remotion — "
-                "нет питоновского запасного рендерера")
+                f"тип «{it['type']}» недоступен ни через один установленный "
+                "движок — нет питоновского запасного рендерера")
         return renderers[it["type"]](it["content"], it["dur"], fps, W, H, dest)
 
     out = []
@@ -769,7 +849,17 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
         try:
             dest = Path(tmp) / f"ovl_{k:02d}"
             used_engine = engine
-            if engine == "remotion":
+            if it["type"] == "banner" and hyperframes_available():
+                try:
+                    cw, ch = _render_hyperframes(it, W, H, fps, dest, log)
+                    x = y = 0          # HyperFrames тоже рендерит полный кадр
+                    used_engine = "hyperframes"
+                except Exception as e:
+                    log(f"[Оверлеи] HyperFrames не справился ({e}) — "
+                        f"откат на {engine}.")
+                    for old in Path(dest).glob("*.png"):
+                        old.unlink()
+            if used_engine == engine and engine == "remotion":
                 try:
                     cw, ch = _render_remotion(it, W, H, fps, dest,
                                               Path(out_dir), log)
