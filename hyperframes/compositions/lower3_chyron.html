@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[
+    {"id":"content","type":"string","label":"Lower third text","default":"Sample lower third"},
+    {"id":"dur","type":"number","label":"Duration (seconds)","default":4}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      @font-face { font-family: 'Segoe UI Black'; src: local('Segoe UI Black'); }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #chyron-wrap {
+        position: absolute; left: 0; bottom: 130px;
+        display: flex; align-items: center; padding-left: 70px;
+      }
+      #chyron-block {
+        background: #3a5a78;
+        padding: 22px 52px;
+        transform-origin: left center;
+        box-shadow: 0 10px 26px rgba(0,0,0,0.5);
+      }
+      #chyron-text {
+        color: #ffffff; font-family: 'Segoe UI Black', 'Arial', sans-serif;
+        font-size: 40px; text-transform: uppercase; letter-spacing: 0.5px;
+        text-align: left; white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Третий вариант lower3 (см. remotion/src/Overlay.tsx: LowerThird,
+      LowerThirdUnderline) — сплошной "broadcast chyron" блок без
+      прозрачности/свечения, wipe слева направо (scaleX). Другой силуэт,
+      другая техника входа — видимая вариативность между проектами.
+    -->
+    <div id="root" data-composition-id="lower3_chyron" data-start="0" data-width="1920" data-height="1080">
+      <div id="chyron-wrap" class="clip" data-start="0" data-duration="4" data-track-index="1">
+        <div id="chyron-block">
+          <div id="chyron-text" data-var-text="content">Sample lower third</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const vars = window.__hyperframes.getVariables();
+      const dur = Number(vars.dur) || 4;
+      document.getElementById('chyron-wrap').setAttribute('data-duration', String(dur));
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('#chyron-block', { scaleX: 0 },
+        { scaleX: 1, duration: 0.4, ease: 'power3.out' }, 0);
+      tl.fromTo('#chyron-text', { opacity: 0 },
+        { opacity: 1, duration: 0.2 }, 0.3);
+      tl.to('#chyron-block', { opacity: 0, duration: 0.25 }, Math.max(dur - 0.25, 0));
+      window.__timelines['lower3_chyron'] = tl;
+    </script>
+  </body>
+</html>

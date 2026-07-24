@@ -645,11 +645,12 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
 
 
 def _render_hyperframes(item: dict, W: int, H: int, fps: int, dest_dir: Path,
-                        log=print):
+                        log=print, composition: str | None = None):
     """Один оверлей через HyperFrames -> PNG-секвенция %04d.png с альфой.
-    Пока подключён только для типа banner (доказательство совместимости
-    двух движков в одном пайплайне) — остальные типы обслуживает Remotion.
-    Кадр всегда полноэкранный, как и у Remotion (позиция — внутри HTML).
+    composition — путь относительно hyperframes/ (например
+    "compositions/lower3_chyron.html"); None рендерит index.html по
+    умолчанию (banner). Кадр всегда полноэкранный, как и у Remotion
+    (позиция — внутри HTML).
 
     Вызов идёт через `npm run render --` (скрипт из package.json), а не
     голый `npx hyperframes` — у HyperFrames нет локального node_modules,
@@ -669,11 +670,13 @@ def _render_hyperframes(item: dict, W: int, H: int, fps: int, dest_dir: Path,
     # нужен другой размер, отдельно апскейлим кадры через ffmpeg с
     # сохранением альфы — без этого на 4K оверлей окажется мелким в углу,
     # а на меньшем холсте центрированный текст уедет за кадр (обрезка).
+    cmd = [_npm(), "run", "render", "--"]
+    if composition:
+        cmd += ["-c", composition]
+    cmd += ["--format", "png-sequence", "-o", str(dest_dir),
+           "--variables", variables, "--quiet"]
     r = subprocess.run(
-        [_npm(), "run", "render", "--",
-         "--format", "png-sequence", "-o", str(dest_dir),
-         "--variables", variables, "--quiet"],
-        cwd=HYPERFRAMES_DIR, env=_node_env(),
+        cmd, cwd=HYPERFRAMES_DIR, env=_node_env(),
         capture_output=True, text=True, timeout=300,
         creationflags=CREATE_NO_WINDOW)
     if r.returncode != 0:
@@ -804,6 +807,20 @@ def render_infographic(content: str, dur: float, fps: int, W: int, H: int,
     return Wp, Hp
 
 
+def _project_variant(out_dir, kind: str, options: tuple[str, ...]) -> str:
+    """Какой из нескольких непохожих дизайнов типа `kind` достанется этому
+    проекту — детерминированно от его пути (тот же приём, что и в
+    core.project_style() для голоса/темпа/цветокора): один проект — один
+    стабильный вид на всё видео, разные проекты — разные, не рандом на
+    каждый отдельный оверлей. `kind` солится в seed отдельно от пути,
+    чтобы выбор для banner и для lower3 в одном и том же проекте не
+    коррелировал (не оба всегда попадали на один и тот же индекс)."""
+    import zlib
+    import random as _random
+    seed = zlib.crc32(f"{Path(out_dir).resolve()}|{kind}".encode())
+    return _random.Random(seed).choice(options)
+
+
 # 3 визуально непохожих дизайна banner (форма/позиция/анимация, не только
 # цвет) — жалоба была именно на то, что один и тот же шаблон кочует между
 # видео перекрашенным. remotion_classic: Banner (плашка сверху, слайд
@@ -812,16 +829,12 @@ def render_infographic(content: str, dur: float, fps: int, W: int, H: int,
 # слева направо). См. remotion/src/Overlay.tsx.
 BANNER_VARIANTS = ("remotion_classic", "remotion_ribbon", "hyperframes_wipe")
 
-
-def _banner_variant(out_dir) -> str:
-    """Какой из 3 дизайнов banner достанется этому проекту — детерминированно
-    от его пути (тот же приём, что и в core.project_style() для голоса/
-    темпа/цветокора): один проект — один стабильный вид на всё видео,
-    разные проекты — разные, не рандом на каждый отдельный оверлей."""
-    import zlib
-    import random as _random
-    r = _random.Random(zlib.crc32(str(Path(out_dir).resolve()).encode()))
-    return r.choice(BANNER_VARIANTS)
+# 3 варианта lower3: remotion_classic (LowerThird — светящаяся плашка,
+# слайд слева), remotion_underline (LowerThirdUnderline — без фона,
+# дорисовывается акцентная черта), hyperframes_chyron (сплошной
+# broadcast-блок, wipe). См. remotion/src/Overlay.tsx и
+# hyperframes/compositions/lower3_chyron.html.
+LOWER3_VARIANTS = ("remotion_classic", "remotion_underline", "hyperframes_chyron")
 
 
 def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
@@ -835,12 +848,14 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
     if not items:
         return []
     engine = overlay_engine()
-    banner_variant = _banner_variant(out_dir)
-    hf_note = " + HyperFrames для banner" if hyperframes_available() else ""
+    banner_variant = _project_variant(out_dir, "banner", BANNER_VARIANTS)
+    lower3_variant = _project_variant(out_dir, "lower3", LOWER3_VARIANTS)
+    hf_note = " + HyperFrames для banner/lower3" if hyperframes_available() else ""
     log(f"[Оверлеи] {len(items)} шт. — движок: "
         + ("Remotion (кинокачество)" if engine == "remotion"
            else "Pillow (быстрый)") + hf_note)
-    log(f"[Оверлеи] Вариант banner на это видео: {banner_variant}")
+    log(f"[Оверлеи] Варианты на это видео: banner={banner_variant}, "
+        f"lower3={lower3_variant}")
     renderers = {"popup": None, "lower3": render_lower3,
                  "callout": None, "counter": render_counter,
                  "bars": render_bars, "timeline": render_timeline,
@@ -899,6 +914,33 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                     except Exception as e:
                         log(f"[Оверлеи] Remotion (ribbon) не справился ({e}) — "
                             "откат на классический banner.")
+                        for old in Path(dest).glob("*.png"):
+                            old.unlink()
+            elif it["type"] == "lower3":
+                if lower3_variant == "hyperframes_chyron" and hyperframes_available():
+                    try:
+                        cw, ch = _render_hyperframes(
+                            it, W, H, fps, dest, log,
+                            composition="compositions/lower3_chyron.html")
+                        x = y = 0
+                        used_engine = "hyperframes"
+                        variant_done = True
+                    except Exception as e:
+                        log(f"[Оверлеи] HyperFrames не справился ({e}) — "
+                            "откат на классический lower3.")
+                        for old in Path(dest).glob("*.png"):
+                            old.unlink()
+                elif lower3_variant == "remotion_underline" and engine == "remotion":
+                    try:
+                        cw, ch = _render_remotion(it, W, H, fps, dest,
+                                                  Path(out_dir), log,
+                                                  variant="underline")
+                        x = y = 0
+                        used_engine = "remotion"
+                        variant_done = True
+                    except Exception as e:
+                        log(f"[Оверлеи] Remotion (underline) не справился "
+                            f"({e}) — откат на классический lower3.")
                         for old in Path(dest).glob("*.png"):
                             old.unlink()
             if not variant_done and engine == "remotion":

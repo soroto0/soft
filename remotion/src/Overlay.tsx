@@ -9,14 +9,14 @@ export type OverlayProps = { type: string; content: string; pos: string; dur: nu
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#5e7c8d',
-  accentLight: '#a4b3bc',
-  accentRgb: '94,124,141',
-  bannerFrom: '#d9e2ec',
-  bannerTo: '#ffffff',
-  bannerText: '#1a242d',
-  kickerFrom: '#0f161c',
-  kickerTo: '#2c3842',
+  accent: '#3A5A78',
+  accentLight: '#6B8E9F',
+  accentRgb: '58,90,120',
+  bannerFrom: '#C2D4E0',
+  bannerTo: '#E8F1F5',
+  bannerText: '#1A242D',
+  kickerFrom: '#24303D',
+  kickerTo: '#161E26',
 };
 
 const useExit = (dur: number) => {
@@ -87,6 +87,52 @@ const LowerThird = ({ content, exit, enter }: { content: string; exit: number; e
             {content}
           </div>
         </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// Второй вариант lower3 — минималистичный: без светящейся плашки-фона,
+// текст стоит на месте и слегка приподнимается, а под ним САМОСТОЯТЕЛЬНО
+// «дорисовывается» акцентная линия (scaleX 0->1, transform-origin left —
+// allowlisted-safe трансформ, не clip-path). Другая техника входа
+// (растёт черта, а не едет плашка), другой силуэт (нет фона совсем).
+const LowerThirdUnderline = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
+  const frame = useCurrentFrame();
+  const opacity = enter * exit;
+  const rise = interpolate(frame, [0, 18], [16, 0], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp'
+  });
+  const lineScale = interpolate(frame, [6, 26], [0, 1], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp'
+  });
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'flex-start', padding: '90px 70px' }}>
+      <div style={{ transform: `translateY(${rise}px)`, opacity, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{
+          fontFamily: "'Segoe UI Black', 'Arial', sans-serif",
+          fontSize: '52px',
+          lineHeight: 1,
+          color: '#ffffff',
+          textShadow: '0 3px 14px rgba(0,0,0,0.85)',
+          letterSpacing: '-0.5px'
+        }}>
+          {content}
+        </div>
+        <div style={{
+          width: '140px',
+          height: '5px',
+          background: THEME.accent,
+          borderRadius: '2px',
+          transform: `scaleX(${lineScale})`,
+          transformOrigin: 'left center',
+          boxShadow: `0 0 10px ${THEME.accent}`
+        }} />
       </div>
     </AbsoluteFill>
   );
@@ -609,7 +655,9 @@ export const Overlay: React.FC<OverlayProps> = (p) => {
 
   switch (p.type) {
     case 'lower3':
-      return <LowerThird content={p.content} exit={exit} enter={enter} />;
+      return p.variant === 'underline'
+        ? <LowerThirdUnderline content={p.content} exit={exit} enter={enter} />
+        : <LowerThird content={p.content} exit={exit} enter={enter} />;
     case 'counter':
       return <Counter content={p.content} exit={exit} enter={enter} />;
     case 'bars':
