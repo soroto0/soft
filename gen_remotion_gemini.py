@@ -327,6 +327,11 @@ STRICT REQUIREMENTS (fixed contract, do not deviate):
 - Do not import anything you do not use — unused imports fail the build
   (noUnusedLocals). If you import `interpolate`/`Easing`/`spring`, actually
   animate with them.
+- EVERY `interpolate()` MUST carry `extrapolateLeft: 'clamp'` and
+  `extrapolateRight: 'clamp'`. Outside its input range interpolate() keeps
+  extrapolating: a scale written as [0,30] -> [0.8,1] grows past 1 forever,
+  the overlay swallows the whole screen and never leaves. This is the single
+  most common way a variant looks fine in review and is broken in the video.
 - Only import from 'react' and 'remotion' and '../types'. NO other packages, NO
   external fonts/URLs/network calls, NO <video>/<audio> tags.
 - Deterministic only: NO Math.random(), NO Date.now(). Frames render in
@@ -616,6 +621,20 @@ def _contract_check_variant(code: str, component: str) -> str:
     if re.search(r"placeholder|your content here|TODO|FIXME", code, re.I):
         return ("the file contains a placeholder/TODO instead of a finished "
                 "design — write the COMPLETE visual, every element drawn out")
+    # Незажатый interpolate ПРОДОЛЖАЕТ экстраполировать за краем диапазона:
+    # scale, заданный как [0,30] -> [0.8,1], после 30-го кадра растёт без
+    # предела. Оверлей раздувается на весь экран и не уходит. Компилируется,
+    # рисуется, анимировано, не пусто — все прочие проверки проходит.
+    # Поймано на живом ролике: так ошиблись ВСЕ ЧЕТЫРЕ первых варианта.
+    n_interp = len(re.findall(r"\binterpolate\s*\(", code))
+    n_clamp = len(re.findall(r"extrapolateRight", code))
+    if n_interp > n_clamp:
+        return (f"{n_interp - n_clamp} of your {n_interp} interpolate() calls "
+                "have no extrapolateRight. Outside its input range "
+                "interpolate() KEEPS EXTRAPOLATING — a scale animation grows "
+                "without limit and the overlay swallows the screen and never "
+                "leaves. EVERY interpolate() must carry "
+                "`extrapolateLeft: 'clamp', extrapolateRight: 'clamp'`.")
     # <AbsoluteFill> с непрозрачным фоном закрасил бы ВСЁ видео целиком
     if re.search(r"<AbsoluteFill[^>]*backgroundColor:\s*['\"]#[0-9a-fA-F]{3,8}['\"]",
                  code):

@@ -19,14 +19,20 @@ export const TitlecardAi11B9: React.FC<VariantProps> = (p) => {
   // Animation Timings
   const headlineEntrance = interpolate(frame, [0, 40], [0, 1], {
     easing: Easing.out(Easing.back(1.5)),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
   });
   
   const panelEntrance = interpolate(frame, [0, 30], [0.8, 1], {
     easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
   });
   
   const stampEffect = interpolate(frame, [5, 15], [-2, 0], {
     easing: Easing.ease,
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
   });
 
   // Split content
@@ -140,7 +146,7 @@ export const TitlecardAi11B9: React.FC<VariantProps> = (p) => {
             backgroundColor: COLORS.accent,
             margin: '30px 0',
             borderRadius: 2,
-            transform: `scaleX(${interpolate(frame, [10, 30], [0, 1])})`,
+            transform: `scaleX(${interpolate(frame, [10, 30], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })})`,
             transformOrigin: 'center',
           }} />
 
@@ -153,7 +159,7 @@ export const TitlecardAi11B9: React.FC<VariantProps> = (p) => {
               textAlign: 'center',
               fontStyle: 'italic',
               maxWidth: '90%',
-              opacity: interpolate(frame, [15, 30], [0, 1]),
+              opacity: interpolate(frame, [15, 30], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }),
             }}>
               {subtitle}
             </div>
@@ -167,7 +173,7 @@ export const TitlecardAi11B9: React.FC<VariantProps> = (p) => {
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          opacity: interpolate(frame, [20, 45], [0, 0.6]),
+          opacity: interpolate(frame, [20, 45], [0, 0.6], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }),
         }}>
           <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
             <circle cx="20" cy="20" r="18" stroke={COLORS.ink} strokeWidth="1" />

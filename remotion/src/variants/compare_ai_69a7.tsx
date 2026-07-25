@@ -20,15 +20,21 @@ export const CompareAi69A7: React.FC<VariantProps> = (p) => {
   // Slide in from opposite edges
   const slideLeft = interpolate(frame, [0, 40], [-100, 0], {
     easing: Easing.out(Easing.back(1.5)),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
   });
   
   const slideRight = interpolate(frame, [0, 40], [100, 0], {
     easing: Easing.out(Easing.back(1.5)),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
   });
 
   // Divider Draw
   const dividerProgress = interpolate(frame, [30, 80], [0, 1], {
     easing: Easing.quad,
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
   });
 
   // Fade global based on p.enter and p.exit

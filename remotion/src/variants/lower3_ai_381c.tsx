@@ -22,6 +22,8 @@ export const Lower3Ai381C: React.FC<VariantProps> = (p) => {
   // Uses internal interpolation for the slide position to create a "drawer" effect.
   const slideProgress = interpolate(frame, [0, Math.max(1, fps * 0.35)], [0, 1], {
     easing: Easing.linear,
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
   });
 
   // Exit Animation handled by opacity only (p.exit), keeping the slide steady
@@ -29,6 +31,8 @@ export const Lower3Ai381C: React.FC<VariantProps> = (p) => {
   // slightly to feel like it's being pulled away.
   const exitSlide = interpolate(p.exit, [0, 1], [0, -1], {
     easing: Easing.linear,
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
   });
 
   const totalSlideOffset = slideProgress < 1 

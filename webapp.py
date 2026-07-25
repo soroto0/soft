@@ -1014,6 +1014,16 @@ class Api:
                                                or self._read_meta().get("topic", ""))
                 except Exception as e:
                     self.log(f"[Цепочка] Новый оверлей пропущен: {e}", "warn")
+            if p.get("seo", True):
+                # Обложки в цепочке были, а SEO — нет: ролик выходил без
+                # заголовка, описания, тегов и глав, и всё это приходилось
+                # доделывать руками. Идёт ПОСЛЕ субтитров, чтобы главы
+                # получили тайм-коды.
+                self.log("[Цепочка] Заголовок, описание, теги, главы…")
+                try:
+                    self.seo()
+                except Exception as e:
+                    self.log(f"[Цепочка] SEO пропущено: {e}", "warn")
             if p.get("thumbs", True):
                 self.log("[Цепочка] Обложки для YouTube…")
                 try:

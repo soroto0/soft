@@ -40,12 +40,12 @@ export const CalloutAi6CDB: React.FC<VariantProps> = (p) => {
 
   // Entrance Motion (Slide + Scale)
   const progressIn = Math.min(frame / ANIM_DUR_IN, 1);
-  const easedIn = interpolate(progressIn, [0, 0.7, 1], [0, 1, 0.95], { easing: Easing.out(Easing.back(1.5)) });
+  const easedIn = interpolate(progressIn, [0, 0.7, 1], [0, 1, 0.95], { easing: Easing.out(Easing.back(1.5)), extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
   
   // Exit Motion
   const progressOut = frame >= FADE_OUT_START ? Math.min((frame - FADE_OUT_START) / ANIM_DUR_OUT, 1) : 0;
-  const slideOutOffset = interpolate(progressOut, [0, 1], [0, 40], { easing: Easing.in(Easing.ease) });
-  const opacityExit = interpolate(progressOut, [0, 1], [1, 0], { easing: Easing.linear });
+  const slideOutOffset = interpolate(progressOut, [0, 1], [0, 40], { easing: Easing.in(Easing.ease), extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  const opacityExit = interpolate(progressOut, [0, 1], [1, 0], { easing: Easing.linear, extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
 
   // Combined Opacity for all layers
   const layerOpacity = p.enter * p.exit * opacityExit;

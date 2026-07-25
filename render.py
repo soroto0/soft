@@ -653,14 +653,21 @@ def render_group(seg_files: list[Path], durs: list[float],
         if name == "cut" or tdur <= 0:
             name, tdur = "fade", 1.0 / fps    # технически xfade, визуально cut
         tdur = max(min(tdur, real[k] - 0.1), 1.0 / fps)
-        off = min(want_off, max(acc_len, tdur))
+        off = min(want_off, max(acc_len - tdur, 0.0))
         lbl = f"[vx{k}]"
+        # Переход начинается РОВНО на плановой границе плана, а не раньше её.
+        # Сегменты уже нарезаны с припуском (dur + tail, см. render_project) —
+        # именно его переход и должен съедать. Раньше здесь стояло
+        # offset = off - tdur: переход начинался ДО границы, съедал полезное
+        # время, и каждая склейка укорачивала дорожку на свою длительность.
+        # На 84 планах это дало 20 секунд разницы между видео (700 c) и
+        # звуком (720 c) — плеер доигрывал звук на застывшем последнем кадре.
         fc += (f"{acc}[{k}:v]xfade=transition={name}:"
-               f"duration={tdur:.3f}:offset={off - tdur:.3f}{lbl};")
+               f"duration={tdur:.3f}:offset={off:.3f}{lbl};")
         acc = lbl
-        acc_len = (off - tdur) + real[k]
+        acc_len = off + real[k]
         if tdur > 0.1:
-            tr_times.append((off - tdur, off))
+            tr_times.append((off, off + tdur))
     if chromab and tr_times:
         enable = "+".join(f"between(t,{a - 0.05:.3f},{b + 0.05:.3f})"
                           for a, b in tr_times)
