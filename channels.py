@@ -39,9 +39,15 @@ DEFAULTS = {
     #   sub_size  — мелкие | средние | крупные | огромные
     #   sub_width — символов в строке (узкая строка читается быстрее, но
     #               чаще перескакивает; 42 — обычный компромисс)
+    #   sub_font  — гарнитура из установленных в системе. Раньше все каналы
+    #               делили один Segoe UI Black, и субтитры — самый заметный
+    #               на экране элемент — у трёх разных каналов выглядели
+    #               одинаково. Имя должно точно совпадать с системным,
+    #               иначе libass молча подставит свой запасной шрифт.
     "sub_style": "",
     "sub_size": "",
     "sub_width": 0,
+    "sub_font": "",
     "subs_on": True,           # вжигать ли субтитры в кадр
     "watermark": "",           # постоянный бейдж на весь ролик
     "accent": "",              # акцентный цвет обложек, #rrggbb
@@ -145,7 +151,8 @@ def apply_to_params(channel: dict, p: dict) -> dict:
     выпадающий список — и ролик выйдет чужим голосом на чужом языке.
     Пустые поля профиля ничего не навязывают."""
     out = dict(p)
-    for key in ("lang", "tone", "visual_style", "sub_style", "sub_size"):
+    for key in ("lang", "tone", "visual_style", "sub_style", "sub_size",
+                "sub_font"):
         if channel.get(key):
             out[key] = channel[key]
     if channel.get("ai_ratio"):

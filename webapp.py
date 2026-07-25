@@ -617,6 +617,10 @@ class Api:
                 "quality": p.get("quality", "обычное"),
                 "sub_size": p.get("sub_size", "средние"),
                 "sub_style": p.get("sub_style", "bold_box"),
+                # гарнитура канала; «Разнообразие» ниже её НЕ трогает —
+                # шрифт это постоянный признак канала, а не то, что должно
+                # меняться от ролика к ролику
+                "sub_font": p.get("sub_font", ""),
                 "look": p.get("look", "нет"),
                 "subs": bool(p.get("subs", True)),
                 "sfx": bool(p.get("sfx", True)),
@@ -784,26 +788,42 @@ class Api:
                  lambda: self._grow_variant_library(
                      self._read_meta().get("topic", "")))
 
-    def _check_and_fix_shots(self, limit: int = 0, every: int = 3) -> int:
+    def _check_and_fix_shots(self, limit: int = 0, every: int = 1) -> int:
         """Проверить подбор кадров зрением и перекачать те, что мимо.
 
-        every=3 — смотрим каждый третий план: на длинном ролике планов
-        сотни, а проверка каждого стоит запроса к модели. Брак обычно идёт
-        не поодиночке (плохой запрос портит несколько соседних планов),
-        поэтому выборки хватает, чтобы его увидеть."""
+        every=1 — смотрим КАЖДЫЙ план. Здесь стояло 3 «для экономии», и это
+        было прямой причиной того, что кадры не отвечали тексту: чинится
+        только то, что попало в выборку, поэтому две трети брака доезжали до
+        зрителя неосмотренными. Проверка одного плана — один запрос к зрению,
+        и идут они параллельно; против часов рендера это ничто."""
         key = (self._settings.get("gemini_key", "")
                or self._settings.get("agnes_key", ""))
+        ch = self._channel()
+        style = (ch or {}).get("visual_style", "")
         bad = core.review_storyboard(self._project, key, self.log,
                                      limit=limit, every=every)
         if not bad:
             return 0
-        ch = self._channel()
-        return core.refix_storyboard(
+        fixed = core.refix_storyboard(
             self._project, bad, self.log,
             self._settings.get("pexels_keys", ""),
             self._settings.get("pixabay_keys", ""),
-            visual_style=(ch or {}).get("visual_style", ""),
-            prefer_ai=True)
+            visual_style=style, prefer_ai=True)
+        # Второй проход по ЗАМЕНЁННЫМ планам. Без него петля разомкнута:
+        # новый кадр отправлялся зрителю непроверенным, хотя сгенерировать
+        # мимо темы можно ровно так же, как найти мимо темы в стоке.
+        if fixed:
+            again = core.review_storyboard(
+                self._project, key, self.log, only=[r["i"] for r in bad])
+            if again:
+                self.log(f"[Кадры] После замены осталось мимо: {len(again)}"
+                         " — вторая попытка")
+                fixed += core.refix_storyboard(
+                    self._project, again, self.log,
+                    self._settings.get("pexels_keys", ""),
+                    self._settings.get("pixabay_keys", ""),
+                    visual_style=style, prefer_ai=True)
+        return fixed
 
     def check_shots(self):
         self._bg("Проверка кадров", lambda: self._check_and_fix_shots())

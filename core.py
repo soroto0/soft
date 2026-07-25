@@ -1439,7 +1439,8 @@ something a camera can photograph that WOULD fit these words; empty if ok>"}"""
 
 
 def review_storyboard(project_dir: Path, api_key: str = "", log=print,
-                      limit: int = 0, every: int = 1) -> list[dict]:
+                      limit: int = 0, every: int = 1, workers: int = 6,
+                      only: list[int] | None = None) -> list[dict]:
     """Проверяет ПОДБОР КАДРОВ до рендера — там, где исправить дёшево.
 
     Смысл в этом: та же проверка на готовом ролике находит брак, когда
@@ -1450,61 +1451,109 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
     нашли. Возвращает [{i, query, text, file, better}] по несовпадениям —
     `better` это предложенный моделью исправленный запрос.
 
-    limit — сколько планов проверить (0 = все), every — шаг (2 = каждый
-    второй): на длинном ролике планов сотни, и полная проверка стоит дорого.
+    every — шаг проверки, и по умолчанию он 1, то есть смотрим КАЖДЫЙ план.
+    Раньше стояло 3 с обоснованием «брак идёт не поодиночке, выборки хватит
+    его увидеть». Увидеть — да, но чинится-то ровно то, что попало в
+    выборку: refix_storyboard работает по списку найденных записей и соседей
+    не трогает. При шаге 3 две трети брака просто не осматривались, и доля
+    несоответствий в готовом ролике упиралась в потолок около 70% сверху
+    вниз. Осмотр стоит одного запроса к зрению на план — против генерации
+    кадра это копейки, экономить надо было не здесь.
+
+    workers — проверки идут параллельно: они упираются в сеть, а не в
+    процессор, и последовательный обход сотни планов добавлял бы минуты
+    к каждой сборке.
+
+    only — проверить именно эти планы (по индексу), игнорируя every/limit.
+    Нужно для второго прохода: после замены пересматриваются ТОЛЬКО
+    заменённые кадры. Иначе замена никем не проверяется — сгенерировали
+    новый кадр и поверили ему на слово, а он тоже может быть мимо.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     tl_path = Path(project_dir) / "timeline.json"
     if not tl_path.exists():
         raise FileNotFoundError("нет timeline.json — сначала раскадровка")
     beats = json.loads(tl_path.read_text(encoding="utf-8"))
-    picks = beats[::max(1, every)]
-    if limit:
-        picks = picks[:limit]
-    log(f"[Кадры] Проверяю {len(picks)} планов из {len(beats)}...")
+    if only is not None:
+        idx = [i for i in only if 0 <= i < len(beats)]
+    else:
+        idx = list(range(0, len(beats), max(1, every)))
+        if limit:
+            idx = idx[:limit]
+    if not idx:
+        return []
+    log(f"[Кадры] Проверяю {len(idx)} планов из {len(beats)}...")
+    # Сорванные проверки считаем отдельно. Молчаливо считать непроверенный
+    # план хорошим — как раз тот способ получить «0 несоответствий» на
+    # сплошном отказе ключа и уйти в рендер с чувством выполненного долга.
+    errors: list[str] = []
+
+    def check(job):
+        """Один план -> запись о браке или None. Индекс берётся из позиции в
+        beats, а не через beats.index(b): одинаковые планы (повтор запроса на
+        соседних фразах) находились бы по первому вхождению и чинился бы
+        каждый раз один и тот же клип."""
+        n, i, tmp = job
+        b = beats[i]
+        src = Path(b.get("file", ""))
+        if not src.exists():
+            return None
+        shot = Path(tmp) / f"s{i}.jpg"
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-ss", "0.5", "-i", str(src),
+                 "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "5",
+                 str(shot)],
+                capture_output=True, timeout=60, check=True,
+                creationflags=CREATE_NO_WINDOW)
+        except Exception:
+            return None
+        if not shot.exists():
+            return None
+        line = str(b.get("text", "")).replace("\n", " ")[:250]
+        try:
+            out = vision_chat(
+                STORYBOARD_REVIEW_PROMPT.replace("__LINE__", line)
+                    .replace("__QUERY__", str(b.get("query", ""))),
+                shot.read_bytes(), api_key,
+                system="You are a documentary editor checking shot choices.",
+                max_tokens=300)
+            m = re.search(r"\{.*\}", out, re.S)
+            if not m:
+                return None
+            data = json.loads(m.group(0))
+            if data.get("ok"):
+                return None
+            return {"i": i, "query": b.get("query", ""), "text": line,
+                    "file": str(src),
+                    "better": str(data.get("better", "")).strip()}
+        except Exception as e:
+            errors.append(str(e)[:120])
+            log(f"[Кадры] план {i + 1}: проверка не прошла ({e})")
+            return None
+
     bad = []
     with tempfile.TemporaryDirectory() as tmp:
-        for n, b in enumerate(picks, 1):
-            src = Path(b.get("file", ""))
-            if not src.exists():
-                continue
-            shot = Path(tmp) / f"s{n}.jpg"
-            try:
-                subprocess.run(
-                    ["ffmpeg", "-y", "-ss", "0.5", "-i", str(src),
-                     "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "5",
-                     str(shot)],
-                    capture_output=True, timeout=60, check=True,
-                    creationflags=CREATE_NO_WINDOW)
-            except Exception:
-                continue
-            if not shot.exists():
-                continue
-            line = str(b.get("text", "")).replace("\n", " ")[:250]
-            try:
-                out = vision_chat(
-                    STORYBOARD_REVIEW_PROMPT.replace("__LINE__", line)
-                        .replace("__QUERY__", str(b.get("query", ""))),
-                    shot.read_bytes(), api_key,
-                    system="You are a documentary editor checking shot choices.",
-                    max_tokens=300)
-                m = re.search(r"\{.*\}", out, re.S)
-                if not m:
-                    continue
-                data = json.loads(m.group(0))
-                if not data.get("ok"):
-                    rec = {"i": beats.index(b), "query": b.get("query", ""),
-                           "text": line, "file": str(src),
-                           "better": str(data.get("better", "")).strip()}
+        jobs = [(n, i, tmp) for n, i in enumerate(idx, 1)]
+        done = 0
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+            for rec in ex.map(check, jobs):
+                done += 1
+                if rec:
                     bad.append(rec)
                     log(f"[Кадры] план {rec['i'] + 1}: «{rec['query']}» мимо"
                         + (f" -> лучше «{rec['better']}»" if rec["better"] else ""))
-            except Exception as e:
-                log(f"[Кадры] план {n}: проверка не прошла ({e})")
-            if n % 25 == 0:
-                log(f"[Кадры] проверено {n}/{len(picks)}, брака {len(bad)}")
-    share = len(bad) / len(picks) * 100 if picks else 0
-    log(f"[Кадры] Итого: {len(bad)} несоответствий из {len(picks)} "
-        f"({share:.0f}%)")
+                if done % 25 == 0:
+                    log(f"[Кадры] проверено {done}/{len(jobs)}, брака {len(bad)}")
+    bad.sort(key=lambda r: r["i"])
+    checked = len(idx) - len(errors)
+    share = len(bad) / checked * 100 if checked else 0
+    log(f"[Кадры] Итого: {len(bad)} несоответствий из {checked} "
+        f"проверенных ({share:.0f}%)")
+    if errors:
+        log(f"[Кадры] ВНИМАНИЕ: {len(errors)} из {len(idx)} проверок "
+            f"сорвались — эти планы никто не смотрел. Причина: {errors[0]}")
     return bad
 
 

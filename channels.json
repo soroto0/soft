@@ -8,9 +8,11 @@
     "voice": "en-US-ChristopherNeural",
     "rate": -3,
     "visual_style": "тёмный кино",
+    "ai_ratio": 0.6,
     "sub_style": "top",
     "sub_size": "крупные",
     "sub_width": 38,
+    "sub_font": "Franklin Gothic Medium",
     "subs_on": true,
     "watermark": "",
     "accent": "#b83a2b",
@@ -26,21 +28,22 @@
     "series_next": 3,
     "youtube_url": "",
     "notes": "True crime. Конвейерная модель ниши: Abyssal Detective 475k, 56 мин, раз в 3 дня, медиана 253k. Решает ШИРОТА предмета: широкие визуальные темы x6-11, узкие бытовые x0.17.",
-    "id": "abyss",
-    "ai_ratio": 0.6
+    "id": "abyss"
   },
   {
     "name": "The Home Vault",
     "folder": "",
     "lang": "английский",
     "tone": "образовательный",
-    "minutes": 12,
+    "minutes": 20,
     "voice": "en-US-AndrewNeural",
     "rate": 0,
     "visual_style": "тёплый уют",
+    "ai_ratio": 0.55,
     "sub_style": "karaoke",
     "sub_size": "средние",
     "sub_width": 42,
+    "sub_font": "Arial Black",
     "subs_on": true,
     "watermark": "",
     "accent": "#3f9e6b",
@@ -48,16 +51,15 @@
     "thumb_ref": "",
     "avoid": "Не пугать ради кликов. Без медицинских утверждений без источника. Не советовать опасные смеси бытовой химии.",
     "script_extra": "This is a practical home-care channel: professional cleaning and\nrepair methods an ordinary person can do without buying products or calling a\nspecialist.\n\nFORMAT (measured in this exact niche, not assumed):\n- ONE video = ONE specific task, named in the title as \"How to <task>\".\n  On a 2.3M-subscriber channel in this niche, single-task videos of 9-14\n  minutes beat the channel median 7-28x, while 23-minute \"full episodes\"\n  covering several topics managed only 3-5x — same channel, same audience.\n- Keep to 10-14 minutes. Every successful channel here sits at 6-9 minutes\n  median. Do not pad to fill time; stop when the task is done.\n\nEvery video must leave the viewer able to DO the thing today. Give exact\nquantities, times and temperatures — \"a cup of white vinegar, left forty\nminutes\", not \"some vinegar for a while\".\n\nAlways explain WHY the method works — the chemistry or the mechanics. That is\nwhat separates this from a list of tips and makes it trustworthy.\n\nWhere a commercial product is criticised, be specific and fair: name the\nactual ingredient and the actual problem with it. No blanket scare claims.\n\nAlways state the limits: what must never be mixed, which surfaces the method\ndamages, when a professional genuinely is needed.\n\nTone: a competent friend who has done this a hundred times. Warm, calm, never\ncondescending, never salesy.",
-    "topic_formula": "Practical home care and repair.\n\nMEASURED inside a single 2.3M-subscriber channel, so the audience is held\nconstant:\n  WON  x7-28 : \"How to <one specific physical task>\" — run power to a shed,\n               lay a gravel patio, install a paver walkway, landscape a\n               steep yard. 9-14 minutes.\n  LOST x3-5  : \"FULL EPISODE\" style videos covering several topics at once,\n               23 minutes.\n\nThe rule: ONE task per video, named plainly. The viewer must recognise their\nown problem in the title. Prefer tasks that are common, slightly intimidating,\nand normally paid for — that is where the value is felt.\n\nAvoid: broad advice, \"stop buying X\" framing without a concrete replacement\ntask, roundups of several tips.",
+    "topic_formula": "Frugal home fixes: professional-grade results with cheap materials\nand no specialist.\n\nMEASURED on a 302k-subscriber channel in exactly this niche, median 96k views.\nSame channel, same audience, 250x spread between best and worst:\n\n  WON x4-20:\n    \"KILL EVERY Mosquito The AMISH Way. SAFE For Honey Bees & Pets\"  1.9M\n    \"The $4 Amish Fix for a Deadly Hot House (Save $3000 This Summer)\"  1.65M\n    \"Cool a Room for $7 FOREVER... No Electricity, No AC\"  737k\n    \"Stop Buying Laundry Detergent - This Cheap $6 Recipe (Lasts a Year)\"  589k\n    \"The $3 Trick That Makes Any Metal Rust-Proof Forever... They Never\n     Taught You This\"  542k\n    \"The Ancient Powder That Kills Any Bug... And Why Pest Control\n     Companies Hate It\"  610k\n\n  LOST x0.03-0.12:\n    \"5 Things to NEVER Pour Down Your Kitchen Drain\"  7.6k\n    \"15 Plumbing SECRETS to Save You From Ever Calling a Plumber\"  6.9k\n    \"AVOID These 7 Dethatching Mistakes That RUIN Your Lawn\"  3.4k\n    \"3 GENIUS New Pallet Ideas Everyone's Copying this SUMMER\"  11k\n\nTHE THREE ELEMENTS EVERY WINNING TOPIC HAS. Aim for all three:\n\n  1. A SPECIFIC PRICE. \"$4\", \"$7\", \"$6\", \"$3\", \"$20\", \"$300\". Not \"cheap\",\n     not \"budget\" — an actual number. Often paired with the money saved:\n     \"(Save $3000 This Summer)\".\n\n  2. A PERMANENCE CLAIM. \"FOREVER\", \"Lasts a Year\", \"50 Years\",\n     \"Rust-Proof Forever\". The viewer is buying an end to a recurring\n     problem, not a tip.\n\n  3. WITHHELD KNOWLEDGE. \"Why Pest Control Companies Hate It\", \"They Never\n     Taught You This\", \"The Paint Industry Hopes You Never Learn\". Someone\n     profits from you not knowing — name them.\n\nWHAT KILLS A TOPIC HERE: numbered lists. Every single flop was a list —\n\"5 Things\", \"15 Secrets\", \"7 Mistakes\", \"3 Ideas\". A list promises browsing;\nthese viewers want ONE solution to ONE expensive problem. Never write a\nnumbered-list topic for this channel.\n\nONE problem, ONE cheap fix, one video. The problem must be one people\ncurrently pay money to solve — pest control, cooling, detergent, rust,\nplumbing call-outs. That is where the price comparison bites.",
     "used_topics": [
       "How to caulk a bathtub"
     ],
     "series": "",
     "series_next": 1,
     "youtube_url": "",
-    "notes": "Уход за домом. This Old House внутри одного канала: «How to [задача]» 9-14 мин = x7-28, «FULL EPISODE» 23 мин = x3-5. Медиана ниши 6-9 мин. Было 88 и 35 мин при 6 и 2 просмотрах.",
-    "id": "home-vault",
-    "ai_ratio": 0.55
+    "notes": "Бережливые домашние решения. Образец: Elias Yoder 302k, медиана 96k, 21 мин. Решают три элемента: цена в долларах, обещание постоянства, скрытое знание. Нумерованные списки проваливаются в 250 раз.",
+    "id": "home-vault"
   },
   {
     "name": "Pensamiento Estoico - ES",
@@ -68,9 +70,11 @@
     "voice": "es-ES-AlvaroNeural",
     "rate": -5,
     "visual_style": "кинематографичный",
+    "ai_ratio": 0.7,
     "sub_style": "pill",
     "sub_size": "средние",
     "sub_width": 46,
+    "sub_font": "Georgia",
     "subs_on": true,
     "watermark": "",
     "accent": "#c8873a",
@@ -84,7 +88,6 @@
     "series_next": 1,
     "youtube_url": "",
     "notes": "Психология отношений через Юнга, испанский. Образец: @LaPsicologiadeCarlJung — 18.8k за 5.5 мес, ежедневно, 38 мин. Решает наличие ДРУГОГО человека с тайными чувствами: x10-32 против x0.02 у роликов про работу над собой.",
-    "id": "estoico-es",
-    "ai_ratio": 0.7
+    "id": "estoico-es"
   }
 ]

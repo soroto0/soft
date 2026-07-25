@@ -721,23 +721,36 @@ def _group_concat_fallback(seg_files: list[Path], durs: list[float],
 SUB_SIZES = {"мелкие": 15, "средние": 19, "крупные": 24, "огромные": 36}
 
 
-def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box") -> str:
+def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box",
+                      font: str = "") -> str:
     """Красивые субтитры для YouTube. Стили:
       bold_box   — крупный жирный белый, толстая обводка + мягкая тень
                    (универсальный «документальный» вид)
       pill       — белый текст на полупрозрачной тёмной плашке
       yellow_pop — жёлтый жирный с чёрной обводкой (viral/MrBeast-стиль)
-    Позиция — нижняя треть, с воздухом от края."""
+    Позиция — нижняя треть, с воздухом от края.
+
+    font — гарнитура канала (см. channels.sub_font). Шрифт субтитров это
+    часть почерка канала: расследование и бытовые лайфхаки не могут быть
+    набраны одним и тем же гротеском. Пусто — общий Segoe UI Black."""
     p = str(srt.resolve()).replace("\\", "/").replace(":", "\\:")
     # Bold=0: шрифт "Segoe UI Black" сам по себе уже самого жирного начертания
     # — Bold=1 поверх него раньше давал "фальшивый" сверх-жир (жалоба: "слишком
     # жирный"). Обводка/тень тоже почти вдвое тоньше — раньше 3.0-3.4/1.2-1.4
     # выглядело как тяжёлый ободок-ореол вокруг каждой буквы.
-    common = (f"FontName=Segoe UI Black,FontSize={size},Bold=0,"
+    # У обычных гарнитур (Georgia, Franklin Gothic) своего сверхжира нет —
+    # им Bold=1 нужен, иначе субтитр на светлом кадре плывёт.
+    name = (font or "Segoe UI Black").strip()
+    bold = 0 if "Black" in name or "Impact" in name else 1
+    common = (f"FontName={name},FontSize={size},Bold={bold},"
               "Alignment=2,MarginV=60,MarginL=90,MarginR=90,Spacing=0.3")
     if style_name == "pill":            # текст на полупрозрачной плашке
-        style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-                 "BackColour=&HA0000000,BorderStyle=4,Outline=14,Shadow=0")
+        # BorderStyle=3 — сплошной прямоугольник по строке. Было 4 с
+        # Outline=14: такая обводка рисуется вокруг КАЖДОГО знака, наплывы
+        # соседних букв сливались, и вместо плашки выходила бугристая клякса
+        # с двойным контуром. Проверено рендером на реальном кадре.
+        style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H90000000,"
+                 "BackColour=&H90000000,BorderStyle=3,Outline=6,Shadow=0")
     elif style_name == "yellow_pop":    # жёлтый viral (MrBeast-стиль)
         style = (common + ",PrimaryColour=&H0000F0FF,OutlineColour=&H00101010,"
                  "BorderStyle=1,Outline=1.8,Shadow=0.6")
@@ -751,7 +764,13 @@ def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box") -
         style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
                  "BorderStyle=1,Outline=1.2,Shadow=0.5")
     elif style_name == "top":           # субтитры сверху (не мешают кадру)
-        style = (common.replace("Alignment=2", "Alignment=8")
+        # Alignment=6, а не 8. Связка ffmpeg+libass считает выравнивание по
+        # СТАРОЙ нумерации SSA: 1-3 низ, 4-7 верх, 8-11 центр. Значение 8
+        # (верх-центр в ASS v4+) ставило субтитры ровно в середину экрана,
+        # поверх сюжета — то есть стиль «сверху, чтобы не мешать» мешал
+        # сильнее всех прочих. Замерено по пикселям: 8 -> центр 362 из 720,
+        # 6 -> 174. Менять только вместе с повторным замером.
+        style = (common.replace("Alignment=2", "Alignment=6")
                  .replace("MarginV=60", "MarginV=50")
                  + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00151515,"
                  "BorderStyle=1,Outline=1.8,Shadow=0.6")
@@ -767,7 +786,7 @@ def _ass_escape(text: str) -> str:
 
 def build_karaoke_ass(srt_path: Path, words_path: Path, dest: Path,
                       W: int, H: int, size: int = 19,
-                      accent: str = "29d9ff") -> Path | None:
+                      accent: str = "29d9ff", font: str = "") -> Path | None:
     """Цветные субтитры с пословной подсветкой (караоке-заливка) точно в
     такт озвучке: слово подсвечивается акцентным цветом в момент, когда его
     произносят. Границы и текст фраз — как в voiceover.srt (уже ровно
@@ -792,6 +811,10 @@ def build_karaoke_ass(srt_path: Path, words_path: Path, dest: Path,
     primary = bgr(accent)      # уже произнесённое слово — акцент
     secondary = "&H00E6E6E6"   # ещё не произнесённое — светло-серый
     outline = "&H00151515"
+    # то же правило, что и в _subtitles_filter: сверхжирным гарнитурам
+    # Bold не нужен, обычным — обязателен
+    kfont = (font or "Segoe UI Black").strip()
+    kbold = 0 if "Black" in kfont or "Impact" in kfont else 1
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -805,8 +828,8 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, \
 OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, \
 ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, \
 MarginR, MarginV, Encoding
-Style: Karaoke,Segoe UI Black,{size},{primary},{secondary},{outline},\
-&H64000000,0,0,0,0,100,100,0.3,0,1,2.0,0.6,2,90,90,60,1
+Style: Karaoke,{kfont},{size},{primary},{secondary},{outline},\
+&H64000000,{kbold},0,0,0,100,100,0.3,0,1,2.0,0.6,2,90,90,60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1002,18 +1025,20 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
     if srt and srt.exists() and opts.get("subs", True):
         size = SUB_SIZES.get(opts.get("sub_size", "средние"), 19)
         style_name = opts.get("sub_style", "bold_box")
+        sub_font = opts.get("sub_font", "")
         sub_filter = None
         if style_name == "karaoke":
             words_json = srt.parent / "voiceover.json"
             ass = build_karaoke_ass(srt, words_json, tmp / "karaoke.ass",
                                     wh[0], wh[1], size,
-                                    opts.get("accent_color", "d9b36c"))
+                                    opts.get("accent_color", "d9b36c"),
+                                    sub_font)
             if ass:
                 sub_filter = _ass_filter(ass)
             else:
                 style_name = "bold_box"   # нет voiceover.json — откат
         if sub_filter is None:
-            sub_filter = _subtitles_filter(srt, size, style_name)
+            sub_filter = _subtitles_filter(srt, size, style_name, sub_font)
         post.append(sub_filter)
     post += _style_chain(opts, wh)
     post.append("format=yuv420p")
