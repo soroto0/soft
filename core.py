@@ -635,24 +635,50 @@ def agnes_vision(prompt: str, image_bytes: bytes, api_key: str = "",
     raise RuntimeError(f"Agnes (зрение): {last}")
 
 
+def _is_rate_limit(err: str) -> bool:
+    """Лимит запросов, а не настоящая ошибка. Отличать важно: лимит надо
+    переждать, а на «неверный ключ» ждать бессмысленно."""
+    e = err.lower()
+    return ("429" in e or "rate limit" in e or "quota" in e
+            or "resource_exhausted" in e)
+
+
+VISION_RATE_ATTEMPTS = 4
+VISION_RATE_BACKOFF = 20      # секунд, умножается на номер попытки
+
+
 def vision_chat(prompt: str, image_bytes: bytes, api_key: str = "",
                 system: str = "", temperature: float = 0.2,
                 max_tokens: int = 1024) -> str:
     """Спросить про картинку у того, кто ответит: Gemini, иначе Agnes.
     Порядок как в llm_chat — Gemini первым, но здесь фолбэк особенно важен:
     Gemini упирается в лимит именно тогда, когда идёт генерация, то есть
-    ровно в момент, когда проверка и нужна."""
+    ровно в момент, когда проверка и нужна.
+
+    Когда лимит выбран у ОБОИХ — ждём и повторяем, а не сдаёмся. Сдача тут
+    хуже, чем кажется: вызывающий (review_storyboard) считает несостоявшуюся
+    проверку просто пропуском, и на исчерпанной квоте ролик уезжает в
+    сборку с непроверенными кадрами, показывая в логе «брака 6». То же
+    рассуждение, что и у картинок Veo: лимит временный, переждать дешевле,
+    чем потерять проверку."""
     errors = []
-    try:
-        return gemini_vision(prompt, image_bytes, "", system,
-                             temperature, max_tokens)
-    except Exception as e:
-        errors.append(f"Gemini: {e}")
-    try:
-        return agnes_vision(prompt, image_bytes, api_key, system,
-                            temperature, max_tokens)
-    except Exception as e:
-        errors.append(f"Agnes: {e}")
+    for attempt in range(1, VISION_RATE_ATTEMPTS + 1):
+        errors = []
+        try:
+            return gemini_vision(prompt, image_bytes, "", system,
+                                 temperature, max_tokens)
+        except Exception as e:
+            errors.append(f"Gemini: {e}")
+        try:
+            return agnes_vision(prompt, image_bytes, api_key, system,
+                                temperature, max_tokens)
+        except Exception as e:
+            errors.append(f"Agnes: {e}")
+        # повторяем ТОЛЬКО если оба отказали именно по лимиту
+        if attempt == VISION_RATE_ATTEMPTS or not all(
+                _is_rate_limit(x) for x in errors):
+            break
+        time.sleep(VISION_RATE_BACKOFF * attempt)
     raise RuntimeError("; ".join(errors))
 
 
@@ -1439,7 +1465,7 @@ something a camera can photograph that WOULD fit these words; empty if ok>"}"""
 
 
 def review_storyboard(project_dir: Path, api_key: str = "", log=print,
-                      limit: int = 0, every: int = 1, workers: int = 6,
+                      limit: int = 0, every: int = 1, workers: int = 3,
                       only: list[int] | None = None) -> list[dict]:
     """Проверяет ПОДБОР КАДРОВ до рендера — там, где исправить дёшево.
 
@@ -1462,7 +1488,9 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
 
     workers — проверки идут параллельно: они упираются в сеть, а не в
     процессор, и последовательный обход сотни планов добавлял бы минуты
-    к каждой сборке.
+    к каждой сборке. Но не больше трёх: у бесплатной квоты Gemini лимит
+    на ЗАПРОСЫ В МИНУТУ, и шесть потоков выбивали 429 на обоих зрениях
+    сразу — то есть ускорение ломало ровно ту проверку, которую ускоряло.
 
     only — проверить именно эти планы (по индексу), игнорируя every/limit.
     Нужно для второго прохода: после замены пересматриваются ТОЛЬКО
@@ -1552,8 +1580,17 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
     log(f"[Кадры] Итого: {len(bad)} несоответствий из {checked} "
         f"проверенных ({share:.0f}%)")
     if errors:
-        log(f"[Кадры] ВНИМАНИЕ: {len(errors)} из {len(idx)} проверок "
-            f"сорвались — эти планы никто не смотрел. Причина: {errors[0]}")
+        # Отдельной заметной строкой, а не примечанием: «брака 6» на
+        # исчерпанной квоте читается как «ролик почти чистый», хотя на самом
+        # деле кадры просто никто не смотрел. Худший вид отчёта — тот, что
+        # выглядит хорошо именно потому, что проверка не работала.
+        lost = len(errors) / len(idx) * 100
+        log(f"[Кадры] ⚠ ПРОВЕРКА НЕ СОСТОЯЛАСЬ на {len(errors)} из "
+            f"{len(idx)} планов ({lost:.0f}%) — эти кадры НЕ проверены и "
+            f"НЕ починены. Причина: {errors[0]}")
+        if lost > 50:
+            log("[Кадры] ⚠ Проверено меньше половины — считайте, что "
+                "проверки кадров в этом ролике не было.")
     return bad
 
 
