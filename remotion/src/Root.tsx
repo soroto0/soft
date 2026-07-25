@@ -1,11 +1,30 @@
 import './index.css';
 import {Composition} from 'remotion';
 import {Overlay, OverlayProps} from './Overlay';
+import {Thumbnail} from './Thumbnail';
+import type {ThumbnailProps} from './types';
 
 // Одна композиция «Overlay»: тип, контент и геометрия приходят из props
 // (их передаёт python-пайплайн через --props=file.json)
 export const RemotionRoot: React.FC = () => {
   return (
+    <>
+    <Composition
+      id="Thumbnail"
+      component={Thumbnail}
+      durationInFrames={1}
+      fps={1}
+      width={1280}
+      height={720}
+      defaultProps={
+        {
+          headline: 'ОНИ НЕ\nВЕРНУЛИСЬ',
+          bg: '',
+          accent: '#f5c451',
+          layout: 'left',
+        } as ThumbnailProps
+      }
+    />
     <Composition
       id="Overlay"
       component={Overlay}
@@ -36,5 +55,6 @@ export const RemotionRoot: React.FC = () => {
         };
       }}
     />
+    </>
   );
 };

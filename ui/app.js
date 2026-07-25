@@ -261,7 +261,13 @@ const app = {
       ? (EDGE_VOICES_BY_LANG[$("lang").value] || EDGE_VOICES_BY_LANG["английский"])
       : POLLY_VOICES;
     $("ttsVoice").innerHTML = list.map(v => `<option>${v}</option>`).join("");
-    $("pausesWrap").style.display = edge ? "none" : "";
+    // паузы между абзацами теперь умеет и Edge (нарезкой + вставкой тишины),
+    // раньше это был только Polly через SSML — галочку больше не прячем
+    $("pausesWrap").style.display = "";
+    // движок Polly различается по цене в 25 раз — показываем выбор только
+    // когда он вообще применим
+    $("pollyEngineWrap").style.display = edge ? "none" : "";
+    $("pollyEngine").style.display = edge ? "none" : "";
   },
   genScript() {
     const t = $("topic").value.trim();
@@ -274,6 +280,7 @@ const app = {
       .then(r => { if (r) { $("scenesText").value = r; showPage("video", "media"); } }),
   runTts: () => rpc("tts", {
     engine: $("ttsEngine").value, voice: $("ttsVoice").value,
+    polly_engine: $("pollyEngine") ? $("pollyEngine").value : "neural",
     rate: $("ttsRate").value, pauses: $("ttsPauses").checked,
     enhance: $("ttsEnhance").checked,
     script: $("scriptText").value,
@@ -340,6 +347,9 @@ const app = {
     chapters: $("rChapters").checked, draft: $("rDraft").checked,
     bloom: $("rBloom").checked, light_leak: $("rLeak").checked,
     dust: $("rDust").checked, flicker: $("rFlicker").checked,
+    sand: $("rSand") ? $("rSand").checked : false,
+    stars: $("rStars") ? $("rStars").checked : false,
+    embers: $("rEmbers") ? $("rEmbers").checked : false,
     out_name: $("outName").value,
     overlays: $("overlaysText").value,
   }),
@@ -347,6 +357,7 @@ const app = {
   openResult: () => rpc("open_result", $("outName").value),
   openFolder: () => rpc("open_folder"),
   runSeo: () => rpc("seo").then(r => { if (r) $("seoOut").textContent = r; }),
+  makeThumbs: () => rpc("make_thumbnails", 3),
   generateAll() {
     rpc("generate_all", {
       lang: $("lang").value, tone: $("tone").value,
@@ -354,6 +365,7 @@ const app = {
       ai_ratio: parseFloat($("aiRatio").value),
       script: $("scriptText").value,
       engine: $("ttsEngine").value, voice: $("ttsVoice").value,
+    polly_engine: $("pollyEngine") ? $("pollyEngine").value : "neural",
       rate: $("ttsRate").value, pauses: $("ttsPauses").checked,
       enhance: $("ttsEnhance").checked,
       whisper: $("whisperModel").value, beat: parseFloat($("beat").value),
@@ -366,6 +378,9 @@ const app = {
       chapters: $("rChapters").checked, draft: $("rDraft").checked,
       overlays: $("overlaysText").value,
       randomize: $("randomize").checked,
+      thumbs: $("rThumbs") ? $("rThumbs").checked : true,
+      grow_variants: $("rGrow") ? $("rGrow").checked : true,
+      topic: $("topic") ? $("topic").value : "",
     });
   },
   clearLog() { $("console").innerHTML = ""; $("console2").innerHTML = ""; },

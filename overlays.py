@@ -27,11 +27,12 @@ import os
 import re
 import json
 import math
+import base64
 import shutil
 import subprocess
 from pathlib import Path
 
-from core import srt_to_seconds, CREATE_NO_WINDOW
+from core import srt_to_seconds, CREATE_NO_WINDOW, run_tree
 
 ACCENT = (124, 92, 255, 255)        # фиолетовый бренд-акцент
 PLATE = (12, 12, 18, 200)           # полупрозрачная тёмная подложка
@@ -127,7 +128,13 @@ def parse_overlays(text: str) -> list[dict]:
         if otype not in ("popup", "lower3", "callout", "counter",
                          "bars", "timeline", "infographic",
                          "compare", "banner", "collage", "titlecard",
-                         "watermark"):
+                         "watermark",
+                         # техники движения, а не «ещё одна плашка»:
+                         # kinetic — слова влетают по одному (стаггер),
+                         # highlight — обводка рисуется по контуру,
+                         # quote — врезка-цитата, stamp — оттиск в углу,
+                         # redact — строки замазываются одна за другой
+                         "kinetic", "highlight", "quote", "stamp", "redact"):
             continue
         pos = parts[3] if len(parts) > 3 and parts[3] else ""
         dur = 4.0
@@ -570,10 +577,8 @@ def _remotion_bundle(log=print) -> Path:
     if marker.exists() and marker.stat().st_mtime >= newest:
         return build
     log("[Оверлеи] Remotion: собираю бандл (~30-60 c, один раз)...")
-    r = subprocess.run([_npx(), "remotion", "bundle", "--log=error"],
-                       cwd=REMOTION_DIR, env=_node_env(),
-                       capture_output=True, text=True, timeout=600,
-                       creationflags=CREATE_NO_WINDOW)
+    r = run_tree([_npx(), "remotion", "bundle", "--log=error"], 600,
+                 cwd=REMOTION_DIR, env=_node_env())
     if r.returncode != 0 or not marker.exists():
         raise RuntimeError(f"remotion bundle: {r.stderr[-300:]}")
     return build
@@ -626,13 +631,11 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
     props_file.write_text(json.dumps(props, ensure_ascii=False),
                           encoding="utf-8")
     build = _remotion_bundle(log)
-    r = subprocess.run(
+    r = run_tree(
         [_npx(), "remotion", "render", str(build), "Overlay", str(dest_dir),
          "--sequence", "--image-format=png", f"--props={props_file}",
-         "--log=error"],
-        cwd=REMOTION_DIR, env=_node_env(),
-        capture_output=True, text=True, timeout=900,
-        creationflags=CREATE_NO_WINDOW)
+         "--log=error"], 900,
+        cwd=REMOTION_DIR, env=_node_env())
     if r.returncode != 0:
         raise RuntimeError(f"remotion render: {r.stderr[-300:]}")
     frames = sorted(dest_dir.glob("*.png"),
@@ -642,6 +645,58 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
     for i, f in enumerate(frames):   # element-N.png -> %04d.png для ffmpeg
         f.rename(dest_dir / f"{i:04d}.png")
     return W, H
+
+
+def render_thumbnail(headline: str, dest: Path, bg: Path | None = None,
+                     layout: str = "left", accent: str = "#f5c451",
+                     log=print) -> Path:
+    """Обложка для YouTube (1280x720 JPG) композицией Thumbnail.
+
+    Отдельная функция, а не тип оверлея: у обложки противоположные
+    требования — непрозрачный фон на весь кадр и кегль, читаемый в ленте
+    шириной ~210px. Картинка фона уходит в props как data-URI, как и у
+    popup/collage: у Remotion своя рабочая папка, относительный путь оттуда
+    не разрешится."""
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    props = {"headline": headline, "layout": layout, "accent": accent, "bg": ""}
+    if bg and Path(bg).exists():
+        # Фон ужимаем до размера обложки ПЕРЕД вставкой: генератор отдаёт
+        # апскейл до 2K (6+ МБ), а в base64 это раздувало props.json до
+        # 8.5 МБ — Remotion парсил его целиком ради картинки, которую всё
+        # равно масштабирует в 1280x720. При сбое Pillow берём файл как есть.
+        raw = Path(bg).read_bytes()
+        mime = "jpeg"
+        try:
+            from PIL import Image
+            import io as _io
+            im = Image.open(Path(bg)).convert("RGB")
+            if im.width > 1280:
+                im = im.resize((1280, round(im.height * 1280 / im.width)),
+                               Image.LANCZOS)
+            buf = _io.BytesIO()
+            im.save(buf, format="JPEG", quality=88)
+            raw = buf.getvalue()
+        except Exception as e:
+            log(f"[Обложка] Не смог ужать фон ({e}) — вставляю как есть")
+            mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png",
+                    "webp": "webp"}.get(Path(bg).suffix.lower().lstrip("."),
+                                        "jpeg")
+        props["bg"] = (f"data:image/{mime};base64,"
+                       + base64.b64encode(raw).decode("ascii"))
+    props_file = dest.parent / f".{dest.stem}_props.json"
+    props_file.write_text(json.dumps(props, ensure_ascii=False), encoding="utf-8")
+    build = _remotion_bundle(log)
+    try:
+        r = run_tree(
+            [_npx(), "remotion", "still", str(build), "Thumbnail", str(dest),
+             f"--props={props_file}", "--log=error"], 300,
+            cwd=REMOTION_DIR, env=_node_env())
+    finally:
+        props_file.unlink(missing_ok=True)
+    if r.returncode != 0 or not dest.exists():
+        raise RuntimeError(f"remotion still: {r.stderr[-300:]}")
+    return dest
 
 
 def _render_hyperframes(item: dict, W: int, H: int, fps: int, dest_dir: Path,
@@ -675,10 +730,7 @@ def _render_hyperframes(item: dict, W: int, H: int, fps: int, dest_dir: Path,
         cmd += ["-c", composition]
     cmd += ["--format", "png-sequence", "-o", str(dest_dir),
            "--variables", variables, "--quiet"]
-    r = subprocess.run(
-        cmd, cwd=HYPERFRAMES_DIR, env=_node_env(),
-        capture_output=True, text=True, timeout=300,
-        creationflags=CREATE_NO_WINDOW)
+    r = run_tree(cmd, 300, cwd=HYPERFRAMES_DIR, env=_node_env())
     if r.returncode != 0:
         raise RuntimeError(f"hyperframes render: {r.stderr[-300:]}")
     frames = sorted(dest_dir.glob("*.png"),
@@ -842,6 +894,126 @@ LOWER3_VARIANTS = ("remotion_classic", "remotion_underline", "hyperframes_chyron
 # референс: документальные каналы с бумажными вставками-фактами).
 COUNTER_VARIANTS = ("remotion_classic", "remotion_tag")
 
+# Типы, у которых есть РУЧНЫЕ варианты. Остальные начинают с одного
+# классического вида и обрастают только тем, что нагенерирует ИИ.
+BASE_VARIANTS = {
+    "banner": BANNER_VARIANTS,
+    "lower3": LOWER3_VARIANTS,
+    "counter": COUNTER_VARIANTS,
+}
+
+VARIANTS_META = Path(__file__).parent / "variants.json"
+VARIANTS_DIR = Path(__file__).parent / "remotion" / "src" / "variants"
+
+
+def load_variants_meta() -> dict:
+    """Библиотека накопленных ИИ-вариантов. Живёт здесь, а не в
+    gen_remotion_gemini: тот импортирует overlays, обратная связь дала бы
+    циклический импорт — а реестр нужен именно на рендере."""
+    try:
+        return json.loads(VARIANTS_META.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}      # библиотеки ещё нет — это норма, не ошибка
+
+
+def save_variants_meta(meta: dict) -> None:
+    VARIANTS_META.write_text(json.dumps(meta, ensure_ascii=False, indent=2),
+                             encoding="utf-8")
+
+
+def rebuild_registry(log=print, meta: dict | None = None) -> int:
+    """Пересобирает variants/_registry.ts. Механически, без ИИ: Remotion
+    собирает бандл статически, динамический import() в него не попадёт.
+
+    Запись пропускается, если файла нет на диске или она выключена
+    (enabled=false). Это критично: ссылка на удалённый файл роняет СБОРКУ
+    ЦЕЛИКОМ, то есть все оверлеи ролика, а не только свой вариант."""
+    meta = load_variants_meta() if meta is None else meta
+    live = {}
+    for key, rec in sorted(meta.items()):
+        if not rec.get("enabled", True):
+            continue
+        # в реестр Remotion попадают ТОЛЬКО его варианты: у HyperFrames
+        # свои файлы .html, они подключаются флагом -c при рендере и в
+        # статический бандл React не входят
+        if rec.get("engine", "remotion") != "remotion":
+            continue
+        fname = rec.get("file", "")
+        if not fname or not (VARIANTS_DIR / fname).exists():
+            log(f"[Варианты] {key}: файла {fname or '?'} нет — пропускаю")
+            continue
+        live[key] = rec
+    imports = "".join(
+        f"import {{ {rec['component']} }} from './{Path(rec['file']).stem}';\n"
+        for rec in live.values())
+    entries = "".join(f"  '{key}': {rec['component']},\n"
+                      for key, rec in live.items())
+    VARIANTS_DIR.mkdir(parents=True, exist_ok=True)
+    (VARIANTS_DIR / "_registry.ts").write_text(
+        "// АВТОГЕНЕРИРУЕМЫЙ ФАЙЛ — не редактировать руками.\n"
+        "// Пересоздаётся из overlays.rebuild_registry() по variants.json.\n"
+        "// Нужен потому, что Remotion собирает бандл статически:\n"
+        "// динамический import() в бандл не попадёт.\n"
+        "import React from 'react';\n"
+        "import type { VariantProps } from '../types';\n"
+        f"{imports}\n"
+        "export const VARIANTS: Record<string, React.FC<VariantProps>> = {\n"
+        f"{entries}}};\n",
+        encoding="utf-8")
+    return len(live)
+
+
+def _registry_is_stale() -> bool:
+    """Реестр ссылается на файл, которого больше нет (вариант удалили руками)?
+    Такой импорт уронит сборку всех оверлеев, поэтому перед рендером сверяем."""
+    reg = VARIANTS_DIR / "_registry.ts"
+    if not reg.exists():
+        return True
+    try:
+        text = reg.read_text(encoding="utf-8")
+    except OSError:
+        return True
+    for stem in re.findall(r"from '\./([^']+)'", text):
+        if stem != "../types" and not (VARIANTS_DIR / f"{stem}.tsx").exists():
+            return True
+    expected = sum(1 for rec in load_variants_meta().values()
+                   if rec.get("enabled", True)
+                   and rec.get("engine", "remotion") == "remotion"
+                   and (VARIANTS_DIR / rec.get("file", "")).exists())
+    return text.count("':") != expected
+
+
+def _variant_file(rec: dict) -> Path:
+    """Где лежит файл варианта — зависит от движка: у Remotion это .tsx в
+    remotion/src/variants/, у HyperFrames — .html в hyperframes/."""
+    if rec.get("engine", "remotion") == "hyperframes":
+        return HYPERFRAMES_DIR / rec.get("file", "")
+    return VARIANTS_DIR / rec.get("file", "")
+
+
+def _library_variants(kind: str, engine: str | None = None) -> tuple[str, ...]:
+    """Накопленные ИИ-варианты для типа `kind` — те, что прошли проверку в
+    прошлых роликах и остались в библиотеке навсегда. Запись без файла на
+    диске игнорируем. engine=None — оба движка."""
+    return tuple(
+        rec["variant"] for rec in load_variants_meta().values()
+        if rec.get("type") == kind and rec.get("enabled", True)
+        and rec.get("variant")
+        and (engine is None or rec.get("engine", "remotion") == engine)
+        and _variant_file(rec).exists())
+
+
+def _pick_variant(out_dir, kind: str) -> str:
+    """Вариант для типа на это видео: ручные + накопленные ИИ ОБОИХ движков
+    в одном жребии. Чем больше библиотека, тем реже повторяется вид между
+    роликами. Префикс имени говорит, чем рендерить."""
+    base = BASE_VARIANTS.get(kind, ("remotion_classic",))
+    lib = tuple(f"remotion_{v}" for v in _library_variants(kind, "remotion"))
+    if hyperframes_available():
+        lib += tuple(f"hyperframes_{v}"
+                     for v in _library_variants(kind, "hyperframes"))
+    return _project_variant(out_dir, kind, base + lib)
+
 
 def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                    log=print) -> list[dict]:
@@ -854,15 +1026,29 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
     if not items:
         return []
     engine = overlay_engine()
-    banner_variant = _project_variant(out_dir, "banner", BANNER_VARIANTS)
-    lower3_variant = _project_variant(out_dir, "lower3", LOWER3_VARIANTS)
-    counter_variant = _project_variant(out_dir, "counter", COUNTER_VARIANTS)
+    # Реестр мог устареть: вариант удалили руками, а импорт на него остался —
+    # это уронило бы сборку ВСЕХ оверлеев, не только своего. Чиним молча.
+    if _registry_is_stale():
+        n = rebuild_registry(log)
+        log(f"[Оверлеи] Реестр вариантов был неактуален — пересобран ({n})")
+    # по варианту на КАЖДЫЙ встреченный тип: у banner/lower3/counter в жребии
+    # участвуют и ручные виды, у остальных — только накопленные ИИ (если есть)
+    picked = {kind: _pick_variant(out_dir, kind)
+              for kind in {it["type"] for it in items}}
+    banner_variant = picked.get("banner", "remotion_classic")
+    lower3_variant = picked.get("lower3", "remotion_classic")
+    counter_variant = picked.get("counter", "remotion_classic")
     hf_note = " + HyperFrames для banner/lower3" if hyperframes_available() else ""
     log(f"[Оверлеи] {len(items)} шт. — движок: "
         + ("Remotion (кинокачество)" if engine == "remotion"
            else "Pillow (быстрый)") + hf_note)
-    log(f"[Оверлеи] Варианты на это видео: banner={banner_variant}, "
-        f"lower3={lower3_variant}, counter={counter_variant}")
+    ai_picked = {k: v for k, v in picked.items()
+                 if v.startswith(("remotion_ai_", "hyperframes_ai_"))}
+    log("[Оверлеи] Варианты на это видео: "
+        + ", ".join(f"{k}={v}" for k, v in sorted(picked.items())))
+    if ai_picked:
+        log(f"[Оверлеи] Из библиотеки ИИ: {len(ai_picked)} шт. "
+            + ", ".join(sorted(ai_picked)))
     renderers = {"popup": None, "lower3": render_lower3,
                  "callout": None, "counter": render_counter,
                  "bars": render_bars, "timeline": render_timeline,
@@ -898,7 +1084,47 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
             dest = Path(tmp) / f"ovl_{k:02d}"
             used_engine = engine
             variant_done = False
-            if it["type"] == "banner":
+            # Вариант из библиотеки ИИ — один общий путь для ЛЮБОГО типа:
+            # все они рендерятся Remotion'ом, отличается только имя варианта,
+            # по которому Overlay.tsx находит компонент в реестре. Не прошёл —
+            # молча падаем в ручные ветки ниже, ролик не страдает.
+            lib_pick = picked.get(it["type"], "")
+            if lib_pick.startswith("remotion_ai_") and engine == "remotion":
+                try:
+                    cw, ch = _render_remotion(
+                        it, W, H, fps, dest, Path(out_dir), log,
+                        variant=lib_pick[len("remotion_"):])
+                    x = y = 0
+                    used_engine = "remotion"
+                    variant_done = True
+                except Exception as e:
+                    log(f"[Оверлеи] Вариант из библиотеки {lib_pick} не "
+                        f"справился ({e}) — откат на встроенный вид.")
+                    for old in Path(dest).glob("*.png"):
+                        old.unlink()
+            elif lib_pick.startswith("hyperframes_ai_") and hyperframes_available():
+                # у HyperFrames вариант — это отдельный .html, путь к нему
+                # лежит в библиотеке; движок ролика тут не важен, он умеет
+                # рендерить альфу независимо от Remotion
+                rec = next((r for r in load_variants_meta().values()
+                            if r.get("variant") == lib_pick[len("hyperframes_"):]
+                            and r.get("engine") == "hyperframes"), None)
+                try:
+                    if not rec:
+                        raise RuntimeError("нет записи в библиотеке")
+                    cw, ch = _render_hyperframes(it, W, H, fps, dest, log,
+                                                 composition=rec["file"])
+                    x = y = 0
+                    used_engine = "hyperframes"
+                    variant_done = True
+                except Exception as e:
+                    log(f"[Оверлеи] Вариант из библиотеки {lib_pick} не "
+                        f"справился ({e}) — откат на встроенный вид.")
+                    for old in Path(dest).glob("*.png"):
+                        old.unlink()
+            if variant_done:
+                pass          # уже отрисовано библиотечным вариантом
+            elif it["type"] == "banner":
                 if banner_variant == "hyperframes_wipe" and hyperframes_available():
                     try:
                         cw, ch = _render_hyperframes(it, W, H, fps, dest, log)
@@ -1282,17 +1508,56 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "exactly as \"label1::topic1;;label2::topic2;;label3::"
                   "topic3\" (2 or 3 entries, label is 1-3 words shown under "
                   "the photo, topic is a short image search query)\n"
+                  "  'kinetic' — a short punchy line (under 7 words) whose "
+                  "words should land ONE BY ONE for emphasis; best on a "
+                  "hard-hitting statement, not on a neutral fact\n"
+                  "  'quote' — an actual quotation or a line worth setting "
+                  "apart, formatted \"quote text::who said it\" (the "
+                  "attribution may be empty, keep the quote under 14 words)\n"
+                  "  'stamp' — a place and/or date being established, "
+                  "formatted \"PLACE::DATE\" (either part may be empty), e.g. "
+                  "\"ANTARCTICA::MARCH 1911\" — only where the narration "
+                  "actually names a location or a time\n"
+                  "  'redact' — 2-4 short document-like lines where at least "
+                  "one is withheld/unknown/classified, formatted "
+                  "\"line1::*hidden line::line3\" — prefix with * the lines "
+                  "that must be blacked out; only for records, reports, "
+                  "names withheld\n"
                   "Use at most 2 titlecards and at most 2 collages total "
-                  "(only for real turning points / evidence moments), and "
+                  "(only for real turning points / evidence moments), at "
+                  "most 2 'kinetic' and at most 1 'redact', and "
                   "roughly even amounts of the rest. Reply "
                   f'with a JSON array of {{"line": <line number>, "type": '
-                  '"titlecard|banner|lower3|compare|callout|collage", "text": '
+                  '"titlecard|banner|lower3|compare|callout|collage|kinetic|'
+                  'quote|stamp|redact", "text": '
                   '"..."}, nothing else.\n\n' + numbered}],
-                api_key, 0.6, 2200)
+                # 2200 не хватало: ответ обрывался на середине JSON-массива
+                # (в журнале — «ответ без JSON-массива» три попытки подряд,
+                # и расстановка молча уходила на слабый regex-путь).
+                # У gemini-2.5-flash «размышления» тратят тот же бюджет.
+                api_key, 0.6, 12000)
             m = re.search(r"\[.*\]", out, re.S)
             if not m:
-                log(f"[Оверлеи] LLM (попытка {attempt}/{attempts}): "
-                    f"ответ без JSON-массива: {out[:200]!r}")
+                # Отличаем ОБРЕЗАННЫЙ ответ от бессмысленного: если он начался
+                # как массив, но не закрылся — это упёрлись в лимит токенов, а
+                # не «модель не поняла». Раньше и то и другое выглядело
+                # одинаково, и настоящая причина пряталась. Спасаем, что
+                # успело прийти: обрезаем по последнему целому объекту.
+                cut = out.strip()
+                if cut.startswith("[") and "}" in cut:
+                    salvaged = cut[:cut.rfind("}") + 1] + "]"
+                    try:
+                        picks = json.loads(salvaged)
+                        log(f"[Оверлеи] LLM: ответ обрезан лимитом токенов — "
+                            f"спас {len(picks)} пунктов из начала")
+                        break
+                    except ValueError:
+                        pass
+                    log(f"[Оверлеи] LLM (попытка {attempt}/{attempts}): ответ "
+                        "ОБОРВАН на середине JSON (упёрлись в лимит токенов)")
+                else:
+                    log(f"[Оверлеи] LLM (попытка {attempt}/{attempts}): "
+                        f"ответ без JSON-массива: {out[:200]!r}")
                 continue
             picks = json.loads(m.group(0))
             break
@@ -1303,8 +1568,13 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
         return None
     # LLM отдаёт моменты НЕ по хронологии — без сортировки min_gap-фильтр
     # (сравнивает с последним ПРИНЯТЫМ t) отбраковывает случайные пункты
+    # Тип, которого тут нет, молча превращается в banner (см. ниже) — значит
+    # добавляя новый вид оверлея, ОБЯЗАТЕЛЬНО дописывать его сюда, иначе он
+    # не появится в роликах вообще, сколько ни описывай его в промпте.
     POS = {"titlecard": "center", "banner": "top", "lower3": "bottom",
-          "compare": "center", "callout": "point:70,40", "collage": "center"}
+          "compare": "center", "callout": "point:70,40", "collage": "center",
+          "kinetic": "center", "quote": "center", "stamp": "top",
+          "redact": "center", "highlight": "point:62,45"}
     dated = []
     for p in picks:
         idx = int(p.get("line", 0)) - 1
@@ -1314,6 +1584,13 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
             otype = "banner"
         if otype == "compare" and "::" not in text:
             otype = "banner"          # без парного текста compare не соберётся
+        if otype in ("quote", "stamp") and "::" not in text:
+            # у quote вторая часть (автор) и у stamp вторая (дата) могут быть
+            # пустыми, но сам разделитель нужен — иначе компонент получит
+            # неразобранную строку и нарисует её целиком одним куском
+            text += "::"
+        if otype == "redact" and "*" not in text:
+            otype = "banner"          # нечего вымарывать — эффект бессмыслен
         if otype == "collage" and text.count(";;") < 1:
             otype = "banner"          # меньше 2 позиций — не коллаж
         if text and 0 <= idx < len(rows):

@@ -14,6 +14,11 @@ project*.zip
 app.log
 app.log.old
 
+# Временные копии src/ для tsc-проверки сгенерированного кода. Живут внутри
+# remotion/ (иначе tsc не найдёт node_modules) и существуют только во время
+# генерации — но при `git add -A` в этот момент утекли бы в репозиторий.
+remotion/tmp*/
+
 # Python
 __pycache__/
 *.pyc

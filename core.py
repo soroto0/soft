@@ -15,6 +15,7 @@ import time
 import random
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -118,6 +119,33 @@ def download_file(url: str, dest: Path):
                 f.write(chunk)
 
 
+def run_tree(cmd: list, timeout: float, **kw):
+    """subprocess.run, но по таймауту убивающий ВСЁ дерево процессов.
+
+    Штатный run() при таймауте гасит только прямого потомка. Для npx/npm это
+    не работает: npx — тонкая обёртка, реальную работу делает внук node, и он
+    остаётся сиротой. Реальный случай: зависший `remotion still` крутился два
+    часа и съел 6800 секунд CPU уже после того, как питон-родитель умер."""
+    kw.setdefault("creationflags", CREATE_NO_WINDOW)
+    # errors="replace" обязателен: часть windows-утилит пишет в cp866, и на
+    # первом же нерусском байте поток-читатель падал с UnicodeDecodeError,
+    # уводя за собой весь вызов (поймано на таймаут-тесте с ping)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, encoding="utf-8", errors="replace", **kw)
+    try:
+        out, err = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name == "nt":
+            # /T — вместе с деревом потомков, /F — принудительно
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)],
+                           capture_output=True, creationflags=CREATE_NO_WINDOW)
+        else:
+            p.kill()
+        p.communicate()
+        raise
+    return subprocess.CompletedProcess(cmd, p.returncode, out, err)
+
+
 def audio_duration(path: Path) -> float | None:
     """Длительность аудио в секундах через ffprobe (None, если не удалось)."""
     try:
@@ -164,21 +192,68 @@ def enhance_voice(mp3: Path, log=print) -> Path:
 
 
 def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
-             enhance: bool = False) -> Path:
+             enhance: bool = False, pauses: bool = True) -> Path:
     """Бесплатная озвучка через Edge TTS (голоса Microsoft, ключи не нужны).
-    rate — отклонение темпа в процентах; enhance — «дикторская» обработка."""
+    rate — отклонение темпа в процентах; enhance — «дикторская» обработка;
+    pauses — паузы между абзацами.
+
+    Паузы делаются НАРЕЗКОЙ по абзацам со вставкой тишины, а не через SSML:
+    edge_tts.Communicate принимает только plain text, теги <break/> он
+    зачитал бы вслух. Раньше пауз в этом движке не было вовсе (они были
+    только у Polly) — начитка шла сплошным потоком без воздуха между
+    мыслями, что для документалки слышно сразу."""
     import asyncio
     import edge_tts
 
     audio_dir = out_dir / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
     final = audio_dir / "voiceover.mp3"
-    log(f"[Озвучка] Edge TTS, голос {voice}, темп {rate:+d}%, {len(text)} символов...")
+    paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if not pauses or len(paras) < 2:
+        log(f"[Озвучка] Edge TTS, голос {voice}, темп {rate:+d}%, "
+            f"{len(text)} символов...")
 
-    async def run():
-        await edge_tts.Communicate(text, voice, rate=f"{rate:+d}%").save(str(final))
+        async def run():
+            await edge_tts.Communicate(
+                text, voice, rate=f"{rate:+d}%").save(str(final))
 
-    asyncio.run(run())
+        asyncio.run(run())
+    else:
+        log(f"[Озвучка] Edge TTS, голос {voice}, темп {rate:+d}%, "
+            f"{len(text)} символов -> {len(paras)} абзацев с паузами...")
+        parts = []
+        for i, para in enumerate(paras, 1):
+            p = audio_dir / f"part_{i:03d}.mp3"
+
+            async def run(txt=para, dest=p):
+                await edge_tts.Communicate(
+                    txt, voice, rate=f"{rate:+d}%").save(str(dest))
+
+            asyncio.run(run())
+            parts.append(p)
+            if i % 10 == 0:
+                log(f"[Озвучка] абзац {i}/{len(paras)}...")
+        gap = audio_dir / "_gap.mp3"
+        subprocess.run(
+            ["ffmpeg", "-y", "-f", "lavfi", "-i",
+             "anullsrc=r=24000:cl=mono", "-t", "0.55", "-q:a", "9", str(gap)],
+            check=True, creationflags=CREATE_NO_WINDOW,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        seq = []
+        for i, p in enumerate(parts):
+            if i:
+                seq.append(gap)
+            seq.append(p)
+        concat = audio_dir / "concat.txt"
+        concat.write_text("\n".join(f"file '{p.name}'" for p in seq),
+                          encoding="utf-8")
+        subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                        "-i", str(concat), str(final)],
+                       check=True, cwd=audio_dir,
+                       creationflags=CREATE_NO_WINDOW,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for p in parts + [gap, concat]:
+            p.unlink(missing_ok=True)
     if enhance:
         enhance_voice(final, log)
     log(f"[Озвучка] Готово: {final}")
@@ -207,6 +282,16 @@ def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
         log(f"[Озвучка] Кусок {i}/{len(chunks)}...")
         kwargs = dict(OutputFormat="mp3", VoiceId=voice, Engine=engine)
         resp = None
+        # long-form/generative поддерживают не все голоса — при отказе
+        # откатываемся на neural, который есть почти везде, вместо падения
+        if engine in ("long-form", "generative"):
+            try:
+                polly.synthesize_speech(Text="test", **kwargs)
+            except (BotoCoreError, ClientError) as e:
+                log(f"[Озвучка] Голос {voice} не поддерживает движок "
+                    f"«{engine}» ({e.__class__.__name__}) — беру neural")
+                engine = "neural"
+                kwargs["Engine"] = engine
         if use_ssml:
             body = escape(chunk).replace("\n", '<break time="550ms"/>')
             if rate != 0:
@@ -448,6 +533,113 @@ def gemini_chat(messages: list[dict], api_key: str,
     raise RuntimeError(f"Gemini (текст): {last}")
 
 
+def gemini_vision(prompt: str, image_bytes: bytes, api_key: str = "",
+                  system: str = "", temperature: float = 0.2,
+                  max_tokens: int = 1024, mime: str = "image/png") -> str:
+    """Отдать Gemini КАРТИНКУ вместе с вопросом. Нужно там, где текстовой
+    проверки принципиально мало: код может быть валидным, а кадр — уродливым
+    или с обрезанным текстом. Перебирает ключи так же, как llm_chat: у
+    Gemini первым кончается лимит, а фолбэка на Agnes здесь нет — тот текстовый."""
+    import base64
+    import requests
+    keys = [k for k in ([api_key] if api_key else []) + _gemini_keys() if k]
+    if not keys:
+        raise RuntimeError("Нет GEMINI_API_KEY для проверки картинки")
+    body = {
+        "contents": [{"role": "user", "parts": [
+            {"text": prompt},
+            {"inline_data": {"mime_type": mime,
+                             "data": base64.b64encode(image_bytes).decode()}},
+        ]}],
+        "generationConfig": {"temperature": temperature,
+                             "maxOutputTokens": max_tokens},
+    }
+    if system:
+        body["systemInstruction"] = {"parts": [{"text": system}]}
+    last = "нет ответа"
+    for key in keys:
+        for url in _gemini_endpoints(GEMINI_TEXT_MODEL, key):
+            try:
+                r = requests.post(url, params={"key": key}, json=body, timeout=180)
+            except Exception as e:
+                last = str(e)
+                continue
+            if r.status_code != 200:
+                last = f"{r.status_code}: {r.text[:200]}"
+                continue
+            cands = r.json().get("candidates") or []
+            parts = (cands[0].get("content") or {}).get("parts") if cands else []
+            text = "".join(p.get("text", "") for p in parts or []).strip()
+            if text:
+                return text
+            last = "пустой ответ"
+    raise RuntimeError(f"Gemini (зрение): {last}")
+
+
+def agnes_vision(prompt: str, image_bytes: bytes, api_key: str = "",
+                 system: str = "", temperature: float = 0.2,
+                 max_tokens: int = 1024, mime: str = "image/png") -> str:
+    """То же, что gemini_vision, но через Agnes (OpenAI-совместимый формат:
+    картинка идёт как data-URI в content-части image_url). Нужен как фолбэк:
+    ключей Gemini всего два, и при параллельной генерации они упираются в
+    лимит запросов в минуту — зрение тогда молча отключалось."""
+    import base64
+    import requests
+    keys = _agnes_keys(api_key)
+    if not keys:
+        raise RuntimeError("Нет AGNES_API_KEY для проверки картинки")
+    data_uri = f"data:{mime};base64," + base64.b64encode(image_bytes).decode()
+    messages = ([{"role": "system", "content": system}] if system else []) + [
+        {"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": data_uri}},
+        ]}]
+    last = "нет ответа"
+    for key in keys:
+        try:
+            r = requests.post(f"{AGNES_BASE_URL}/chat/completions",
+                              headers={"Authorization": f"Bearer {key}"},
+                              json={"model": AGNES_MODEL, "messages": messages,
+                                    "temperature": temperature,
+                                    "max_tokens": max_tokens},
+                              timeout=180)
+        except Exception as e:
+            last = str(e)
+            continue
+        if r.status_code != 200:
+            last = f"{r.status_code}: {r.text[:200]}"
+            continue
+        try:
+            text = r.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            last = f"неожиданный ответ: {e}"
+            continue
+        if text:
+            return text
+    raise RuntimeError(f"Agnes (зрение): {last}")
+
+
+def vision_chat(prompt: str, image_bytes: bytes, api_key: str = "",
+                system: str = "", temperature: float = 0.2,
+                max_tokens: int = 1024) -> str:
+    """Спросить про картинку у того, кто ответит: Gemini, иначе Agnes.
+    Порядок как в llm_chat — Gemini первым, но здесь фолбэк особенно важен:
+    Gemini упирается в лимит именно тогда, когда идёт генерация, то есть
+    ровно в момент, когда проверка и нужна."""
+    errors = []
+    try:
+        return gemini_vision(prompt, image_bytes, "", system,
+                             temperature, max_tokens)
+    except Exception as e:
+        errors.append(f"Gemini: {e}")
+    try:
+        return agnes_vision(prompt, image_bytes, api_key, system,
+                            temperature, max_tokens)
+    except Exception as e:
+        errors.append(f"Agnes: {e}")
+    raise RuntimeError("; ".join(errors))
+
+
 def agnes_chat(messages: list[dict], api_key: str,
                temperature: float = 0.7, max_tokens: int = 4096) -> str:
     import requests
@@ -504,6 +696,33 @@ SCRIPT_BASE = (
     "'stay tuned', 'as we mentioned', 'in conclusion', 'without further ado'. "
     "No headings, no lists, no stage directions — pure spoken narration. "
     "Separate paragraphs with a blank line. "
+    "\n\nSTRUCTURE — this decides whether anyone watches past the first "
+    "minute, so it outweighs any individual sentence:\n"
+    "- COLD OPEN. The first three sentences drop the viewer inside a "
+    "specific moment, image or unresolved fact. No throat-clearing, no "
+    "scene-setting preamble, no defining terms, no announcing the subject. "
+    "Never open with 'imagine', a dictionary definition, or a rhetorical "
+    "question the viewer has no reason to care about yet. Start where it is "
+    "already strange.\n"
+    "- OPEN LOOP. Within the first 30 seconds raise ONE concrete question "
+    "the viewer now needs answered — something missing, withheld, "
+    "unexplained or contradictory. Do NOT answer it until the final third; "
+    "everything between should feel like circling closer to it.\n"
+    "- WITHHOLD THE BEST. The single most surprising fact belongs late. "
+    "Front-loading it leaves no reason to stay.\n"
+    "- NEVER PREVIEW THE STRUCTURE. Do not say what will be covered, do not "
+    "number sections, do not signpost 'first… then… finally'. A viewer who "
+    "already knows the shape of the video has permission to leave.\n"
+    "- RE-HOOK ROUGHLY EVERY 90 SECONDS. At each turn add a complication, a "
+    "contradiction of something said earlier, a new witness/document/number, "
+    "or a question that reopens the tension. Tension must never sit flat for "
+    "two minutes.\n"
+    "- ESCALATE. Each section raises the stakes or narrows the mystery "
+    "compared to the one before. A section that could be moved anywhere in "
+    "the video without loss is not doing its job.\n"
+    "- LAND, DON'T SUMMARISE. The ending pays off the opening loop and then "
+    "stops on an implication or a detail that lingers. No recap, no moral, "
+    "no 'so what have we learned'.\n"
     "\n\nCRITICAL — this must not read as AI-generated (platforms flag "
     "formulaic AI narration as inauthentic/reused content and demonetize "
     "it, so avoid every tell below):\n"
@@ -568,7 +787,10 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
           "line, numbered 1..N. Each chapter is a concrete sub-topic with a "
           "specific angle — no vague titles. Build a narrative arc: hook, "
           "escalation, payoff."}],
-        api_key, 0.8, 1500)
+        # с запасом: на длинном ролике глав больше, а «размышления»
+        # модели расходуют тот же лимит — обрезанный план глав молча
+        # укорачивал сценарий
+        api_key, 0.8, 6000)
     chapters = [re.sub(r"^\s*\d+[.)]\s*", "", ln).strip()
                 for ln in outline.splitlines() if re.match(r"\s*\d+[.)]", ln)]
     if not chapters:
@@ -614,15 +836,31 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
     for i, ch in enumerate(chapters, 1):
         log(f"[Агент] Глава {i}/{len(chapters)}: {ch}")
         if i == 1:
-            flow = ("Open with a hook that grabs attention within the first "
-                    "two sentences. ")
+            # Открытая петля задаётся ЗДЕСЬ и закрывается только в последней
+            # главе — без явного указания модель отвечает на собственный
+            # вопрос через абзац, и смотреть дальше становится незачем
+            flow = ("COLD OPEN: drop straight into a specific moment, image "
+                    "or unresolved fact — no preamble, no defining the "
+                    "subject, no 'imagine'. Within the first 30 seconds of "
+                    "narration plant ONE concrete unanswered question (a gap, "
+                    "a contradiction, something missing) that this video will "
+                    "not resolve until its very last chapter. Do NOT answer "
+                    "it here, and do not hint at what the video will cover. ")
         else:
             flow = (f"Continue seamlessly from the previous chapter, which "
                     f"ended with: \"...{prev_tail}\". Do not repeat any of "
                     "that text — start with genuinely new content. ")
         if i == len(chapters):
-            flow += "End with a satisfying payoff that rewards watching to the end. "
-        else:
+            flow += ("This is the FINAL chapter: pay off the question planted "
+                     "at the very start, then stop on an implication or a "
+                     "detail that lingers. No recap, no moral, no summary of "
+                     "what was covered. ")
+        elif i > 1:
+            flow += ("Partway through, RE-HOOK: introduce a complication, a "
+                     "fact that contradicts something said earlier, or a new "
+                     "document/witness/number that reopens the tension. Raise "
+                     "the stakes compared to the previous chapter. ")
+        if i != len(chapters):
             flow += "End on a note that pulls the viewer into the next chapter. "
         flow += ("Always end the chapter on a grammatically complete sentence "
                 "— never cut off mid-clause, since the next chapter is a "
@@ -795,7 +1033,10 @@ def gen_scenes_ai(script_text: str, api_key: str = "", log=print,
           '"type": "video" or "image"}. Prefer "video"; use "image" for '
           "static, historical or abstract moments. Nothing but the JSON "
           "array.\n\n" + numbered}],
-        api_key, 0.4, 4000)
+        # по объекту JSON на КАЖДЫЙ абзац сценария: на 35-минутном ролике
+        # это сотни строк, 4000 токенов обрезало массив и вся раскладка
+        # сцен падала в фолбэк
+        api_key, 0.4, 16000)
     m = re.search(r"\[.*\]", out, re.S)
     if not m:
         raise RuntimeError("ответ без JSON")
@@ -811,20 +1052,65 @@ def gen_scenes_ai(script_text: str, api_key: str = "", log=print,
     return "\n".join(lines)
 
 
-def gen_seo(script_text: str, api_key: str = "", log=print) -> str:
-    """Варианты названия, описание и теги для YouTube по готовому сценарию."""
-    log("[Агент] Генерирую названия, описание и теги...")
+def gen_seo(script_text: str, api_key: str = "", log=print,
+            lang: str = "английский", srt: Path | None = None) -> str:
+    """Названия, описание, теги и главы для YouTube по готовому сценарию.
+
+    Язык раньше был ЗАШИТ английским — русский сценарий получал английское
+    описание, и это тихо портило выдачу. Теперь берётся язык ролика.
+
+    Сценарий отдаётся началом И концом: заголовок должен отражать вопрос,
+    поставленный в начале, а описание — не спойлерить развязку; по одному
+    только началу модель не видит, чем всё кончилось."""
+    log("[Агент] Генерирую названия, описание, теги и главы...")
+    lang_name = LANGS.get(lang, "English")
+    body = script_text[:5000]
+    if len(script_text) > 9000:
+        body += "\n\n[…середина пропущена…]\n\n" + script_text[-3500:]
+    chapters_note = ""
+    if srt and Path(srt).exists():
+        try:
+            rows = parse_srt(Path(srt))
+            total = srt_to_seconds(rows[-1][1]) if rows else 0
+            chapters_note = (
+                "\nCHAPTERS: 5-8 YouTube chapters covering the whole video. "
+                "The FIRST one must be exactly '00:00' and its label must not "
+                "give away the ending. Format one per line as 'M:SS Label' "
+                f"(the video is {int(total // 60)}:{int(total % 60):02d} long, "
+                "so spread them across that whole span, never past it). "
+                "Labels are 2-5 words, concrete, no numbering.\n")
+        except Exception:
+            chapters_note = ""
     return llm_chat(
         [{"role": "system", "content":
-          "You are a YouTube strategist for documentary channels. "
-          "Curiosity-driven, never misleading."},
+          "You are a YouTube strategist for documentary channels. You write "
+          "for curiosity, never for clickbait you cannot deliver on."},
          {"role": "user", "content":
-          "Based on this script, output in English:\n"
-          "TITLES: 5 options, each under 70 characters\n"
-          "DESCRIPTION: 2 short paragraphs, first line must hook\n"
-          "TAGS: 15 comma-separated tags\n\nScript:\n"
-          + script_text[:6000]}],
-        api_key, 0.8, 1500)
+          f"Based on this documentary script, write everything in {lang_name}.\n\n"
+          "TITLES: 5 options, each under 60 characters so nothing is cut off "
+          "on mobile. Each must open a curiosity gap tied to the actual "
+          "unresolved question the script raises — not a summary of the "
+          "topic. Put the most concrete, specific words FIRST (the tail gets "
+          "truncated). Forbidden: ALL-CAPS words, 'You won't believe', "
+          "'SHOCKING', 'This is why', trailing '...', any promise the script "
+          "does not actually keep. Vary the shape across the five: at least "
+          "one is a plain factual statement, at least one a question.\n\n"
+          "DESCRIPTION: first sentence under 120 characters — it is all that "
+          "shows in search and above the fold, so it must stand alone and "
+          "restate the hook without answering it. Then 2 short paragraphs of "
+          "real context. Do NOT spoil the ending. No hashtag spam, no 'like "
+          "and subscribe', no links.\n\n"
+          "TAGS: 15 comma-separated, lower-case. Mix three kinds: 3-4 broad "
+          "(the genre/field), 6-7 specific (names, places, events actually in "
+          "the script), 4-5 long-tail phrases someone would really type.\n"
+          + chapters_note +
+          "\nUse these exact section headers: TITLES:, DESCRIPTION:, TAGS:"
+          + (", CHAPTERS:" if chapters_note else "") +
+          "\n\nScript:\n" + body}],
+        # лимит с большим запасом: у gemini-2.5-flash «размышления» тратят
+        # тот же бюджет maxOutputTokens, и на 2500 ответ обрывался прямо на
+        # главах — последней секции («CHAPTERS:\n00:00 T» и конец)
+        api_key, 0.8, 8000)
 
 
 # ---------- Генерация изображений (Agnes -> Gemini) ----------
@@ -943,39 +1229,289 @@ def veo_image(prompt: str, dest: Path, api_key: str, log=print,
     return dest
 
 
+# Сколько раз пережидать занятость VeoNonStop, прежде чем сдаться. Фолбэков
+# на другие генераторы больше нет (разнородные кадры рушат единый вид ролика),
+# поэтому ждать — единственный способ не потерять план.
+VEO_IMAGE_ATTEMPTS = 4
+VEO_IMAGE_BACKOFF = 6      # секунд; умножается на номер попытки
+
+
 def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
               style: str = "") -> Path:
     """Картинка: VeoNonStop (Banana, ОСНОВНОЙ) -> Agnes -> Gemini (фолбэки,
     если Veo недоступен/ключ истёк/упал). style — единый визуальный стиль
     проекта (VISUAL_STYLES), добавляется к промпту."""
     veo_key = os.getenv("VEO_API_KEY", "").strip()
-    agn_keys = _agnes_keys()
-    gem = (api_key or os.getenv("GEMINI_API_KEY", "")).strip()
-    if not veo_key and not agn_keys and not gem:
-        raise RuntimeError("Нет ключей для картинок: задай VEO_API_KEY, "
-                           "AGNES_API_KEY или GEMINI_API_KEY (.env или «Настройки API»).")
+    if not veo_key:
+        raise RuntimeError("Нет VEO_API_KEY — картинки генерирует только "
+                           "VeoNonStop (.env или «Настройки API»).")
+    # ТОЛЬКО VeoNonStop. Раньше при его отказе шли фолбэки на Agnes и Gemini,
+    # но три разных генератора в одном ролике дают визуально разнородные
+    # кадры — а весь смысл в том, чтобы канал выглядел одним фильмом, а не
+    # нарезкой. Вместо смены генератора ЖДЁМ: RATE_LIMIT у Veo временный,
+    # переждать его выгоднее, чем подменять картинку чужой эстетикой.
     last = None
-    if veo_key:
+    for attempt in range(1, VEO_IMAGE_ATTEMPTS + 1):
         try:
             return veo_image(prompt, dest, veo_key, log, style)
         except Exception as e:
             last = e
-            if agn_keys or gem:
-                log(f"[Картинка] VeoNonStop не справился ({e}) — пробую Agnes/Gemini...")
-    for i, key in enumerate(agn_keys, 1):
-        try:
-            return agnes_image(prompt, dest, key, log, style)
-        except Exception as e:
-            last = e
-            if i < len(agn_keys):
-                log(f"[Картинка] Ключ Agnes #{i} не сработал ({e}) — следующий...")
-    if gem:
-        try:
-            return gemini_image(prompt, dest, gem, style)
-        except Exception as e:
-            last = e
-            log(f"[Картинка] Gemini не справился ({e})")
+            msg = str(e)
+            if attempt == VEO_IMAGE_ATTEMPTS:
+                break
+            # лимит — ждём с нарастанием; прочие ошибки повторять смысла мало
+            if "RATE_LIMIT" in msg or "429" in msg or "500" in msg:
+                pause = VEO_IMAGE_BACKOFF * attempt
+                log(f"[Картинка] VeoNonStop занят (попытка {attempt}/"
+                    f"{VEO_IMAGE_ATTEMPTS}) — жду {pause} c...")
+                time.sleep(pause)
+                continue
+            break
+    log(f"[Картинка] VeoNonStop не справился ({last}) — этот план возьмёт "
+        "сток/Ken Burns")
     raise last
+
+
+VIDEO_REVIEW_PROMPT = """This is a single frame from a finished documentary
+video, taken at __TIME__.
+
+At this exact moment the narrator is saying:
+"__LINE__"
+
+You are a demanding documentary editor doing quality control on the finished
+cut. Judge ONLY this frame. Report a problem if any of these is true:
+- the picture has nothing to do with what is being narrated right now
+- the frame is blank, black, a solid colour, or visually dead
+- on-screen text (subtitles, lower-thirds, banners) is cut off, overlapping
+  something, or unreadable against what is behind it
+- the shot looks like a generic stock-photo slideshow rather than a documentary
+- the image is obviously distorted, badly stretched, or upscaled to mush
+- a graphic covers the subject of the shot
+
+If the frame is fine, say so. Do not invent problems; a plain but relevant shot
+is FINE — documentaries are full of them.
+
+Reply with ONLY a JSON object, no markdown fences:
+{"ok": true|false, "problem": "<if not ok: one short concrete sentence>"}"""
+
+
+def review_video(video: Path, api_key: str = "", log=print,
+                 every: float = 25.0, max_frames: int = 14,
+                 srt: Path | None = None) -> list[dict]:
+    """Прогоняет ГОТОВЫЙ ролик через того же визуального судью, что проверяет
+    оверлеи. Смысл шире: технические проверки смотрят на один элемент, а
+    зритель видит кадр целиком — несовпадение картинки со словами, мёртвый
+    план, наехавший титр ловятся только так.
+
+    Кадр показывается вместе с фразой, которая звучит в этот момент (из srt),
+    иначе судить «в тему ли картинка» невозможно. Возвращает список
+    [{t, problem}] — пустой, если всё чисто. Ничего не роняет: недоступный
+    API или битый ответ просто уменьшают охват проверки."""
+    video = Path(video)
+    if not video.exists():
+        raise FileNotFoundError(f"нет файла {video}")
+    total = audio_duration(video) or 0.0
+    if total <= 0:
+        log("[Ревью] Не удалось измерить длительность — пропускаю")
+        return []
+    # фразы по таймкодам, чтобы спросить «картинка в тему того, что говорят?»
+    phrases = []
+    if srt and Path(srt).exists():
+        try:
+            phrases = [(srt_to_seconds(s), srt_to_seconds(e), t)
+                       for s, e, t in parse_srt(Path(srt))]
+        except Exception:
+            phrases = []
+
+    def line_at(t: float) -> str:
+        for s, e, txt in phrases:
+            if s <= t <= e:
+                return txt.replace("\n", " ")[:300]
+        return "(в этот момент речи нет)"
+
+    step = max(float(every), 5.0)
+    points = [t for t in _frange(step / 2, total, step)][:max_frames]
+    log(f"[Ревью] Смотрю {len(points)} кадров из {total / 60:.1f} мин ролика...")
+    issues = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for t in points:
+            shot = Path(tmp) / f"f{int(t)}.jpg"
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-ss", f"{t:.2f}", "-i", str(video),
+                     "-frames:v", "1", "-vf", "scale=854:-2", "-q:v", "4",
+                     str(shot)],
+                    capture_output=True, timeout=120, check=True,
+                    creationflags=CREATE_NO_WINDOW)
+            except Exception as e:
+                log(f"[Ревью] {int(t)}с: кадр не достался ({e})")
+                continue
+            if not shot.exists():
+                continue
+            mm, ss = divmod(int(t), 60)
+            try:
+                out = vision_chat(
+                    VIDEO_REVIEW_PROMPT.replace("__TIME__", f"{mm:02d}:{ss:02d}")
+                                       .replace("__LINE__", line_at(t)),
+                    shot.read_bytes(), api_key,
+                    system="You are a meticulous documentary editor.",
+                    max_tokens=300)
+                m = re.search(r"\{.*\}", out, re.S)
+                if not m:
+                    continue
+                data = json.loads(m.group(0))
+                if not data.get("ok"):
+                    problem = str(data.get("problem", "")).strip()
+                    issues.append({"t": t, "problem": problem})
+                    log(f"[Ревью] {mm:02d}:{ss:02d} — {problem}", )
+            except Exception as e:
+                log(f"[Ревью] {mm:02d}:{ss:02d}: проверка не прошла ({e})")
+    if not issues:
+        log("[Ревью] Замечаний нет — просмотренные кадры в порядке")
+    else:
+        log(f"[Ревью] Итого замечаний: {len(issues)} из {len(points)} кадров")
+    return issues
+
+
+def _frange(start: float, stop: float, step: float):
+    t = start
+    while t < stop:
+        yield t
+        t += step
+
+
+def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
+                        count: int = 3) -> list[dict]:
+    """Идеи обложек по сценарию: короткий текст на картинку + промпт фона.
+
+    Текст обложки — НЕ заголовок ролика: в ленте YouTube карточка шириной
+    ~210px, туда влезает 2-4 крупных слова, а не предложение. Поэтому
+    просим отдельно и коротко. Возвращает [{headline, bg_prompt, layout}],
+    пустой список при любом сбое (обложки — не критичный этап)."""
+    text = (script_text or "").strip()
+    if not text:
+        return []
+    try:
+        out = llm_chat(
+            [{"role": "system", "content":
+              "You design YouTube thumbnails for documentary channels. "
+              "Curiosity-driven, never clickbait that the video doesn't deliver."},
+             {"role": "user", "content":
+              f"Based on this narration, propose {count} DIFFERENT thumbnail "
+              "concepts.\n\nRules for `headline`:\n"
+              "- 2 to 4 words TOTAL, uppercase, no punctuation except ? or !\n"
+              "- it must be readable at 210px wide, so short is mandatory\n"
+              "- use \\n to split it into at most 2 lines\n"
+              "- it is NOT the video title — it is the hook ON the image\n\n"
+              "Rules for `bg_prompt`: one sentence describing a photographic "
+              "background image for that concept — a place, an object or a "
+              "scene from the narration. No text, no words in the image, no "
+              "collage, no watermark.\n\n"
+              "`layout` must be one of: left, bottom, split.\n\n"
+              "Reply with ONLY a JSON array, no markdown fences:\n"
+              '[{"headline":"...","bg_prompt":"...","layout":"left"}]\n\n'
+              f"NARRATION:\n{text[:5000]}"}],
+            api_key, 0.9, 900)
+        m = re.search(r"\[.*\]", out or "", re.S)
+        if not m:
+            log(f"[Обложка] Не нашёл JSON в ответе: {(out or '')[:120]!r}")
+            return []
+        ideas = []
+        for it in json.loads(m.group(0)):
+            head = str(it.get("headline", "")).strip()
+            if not head:
+                continue
+            ideas.append({
+                "headline": head.replace("\\n", "\n")[:60],
+                "bg_prompt": str(it.get("bg_prompt", "")).strip()[:400],
+                "layout": (str(it.get("layout", "left")).strip().lower()
+                           if str(it.get("layout", "")).strip().lower()
+                           in ("left", "bottom", "split") else "left"),
+            })
+        return ideas[:count]
+    except Exception as e:
+        log(f"[Обложка] Не вышло придумать концепции ({e})")
+        return []
+
+
+def gen_variant_theme(topic: str, kind: str, api_key: str = "",
+                      log=print) -> str:
+    """Художественное описание НОВОГО оверлея под тему ролика — то, что потом
+    получит генератор кода. Придумывает LLM, а не мы: захардкоженный список
+    тем быстро исчерпается и библиотека начнёт наполняться близнецами.
+
+    Пустая строка при любом сбое — вызывающий тогда просто не пополнит
+    библиотеку, на сам ролик это не влияет."""
+    try:
+        out = llm_chat(
+            [{"role": "system", "content":
+              "You are an art director for documentary motion graphics."},
+             {"role": "user", "content":
+              f'A documentary video about: "{topic or "an unknown subject"}".\n\n'
+              f'Invent ONE fresh visual treatment for its "{kind}" on-screen '
+              "graphic. Describe the LOOK and the MOTION in 2-3 sentences: "
+              "what physical object or material it evokes, how it is built up "
+              "on screen, and how it enters and leaves.\n"
+              "Be concrete and unusual — name a material (etched brass, "
+              "carbon paper, frosted glass, oscilloscope trace, index card, "
+              "microfilm), a real motion (unrolls, stamps down, wipes, "
+              "develops like a photograph, ticks like a counter), and a "
+              "palette. Avoid a plain rectangle with a fade.\n"
+              "Reply with ONLY that description, no preamble, no quotes."}],
+            # лимит щедрый не по объёму ответа, а потому что у gemini-2.5-flash
+            # «размышления» тратят тот же бюджет maxOutputTokens: при 300 текст
+            # обрывался на полуслове («A fragment of sea ice, its edges sharp»)
+            api_key, 1.0, 2000)
+        theme = (out or "").strip().strip('"')
+        # обрубок бесполезен: генератору кода нужна законченная мысль,
+        # а не половина фразы — лучше не пополнить библиотеку вовсе
+        if len(theme) < 80 or not theme.rstrip().endswith((".", "!", "?")):
+            log(f"[Варианты] Описание нового оверлея вышло обрывочным "
+                f"({len(theme)} симв.) — пропускаю пополнение")
+            return ""
+        return theme[:600]
+    except Exception as e:
+        log(f"[Варианты] Не вышло придумать тему нового оверлея ({e})")
+        return ""
+
+
+MUSIC_MOODS = ("calm", "dark", "upbeat", "epic", "horror")
+
+
+def guess_music_mood(script_text: str, fallback: str = "calm",
+                     api_key: str = "", log=print) -> str:
+    """Настроение музыки по СОДЕРЖАНИЮ сценария, а не по выбранному жанру.
+    Жанр один на канал, поэтому таблица «тон → настроение» давала всем
+    документалкам одинаковый calm — и ролик про полярную экспедицию звучал
+    как ролик про пчеловодство. Ошибка не критична: при любом сбое (нет
+    ключей, лимит, мусор в ответе) возвращаем fallback из старой таблицы."""
+    text = (script_text or "").strip()
+    if not text:
+        return fallback
+    try:
+        out = llm_chat(
+            [{"role": "system", "content":
+              "You pick background music for documentary videos."},
+             {"role": "user", "content":
+              "Read this narration and choose the ONE background-music mood "
+              "that fits its actual subject and emotional arc.\n"
+              f"Allowed answers, reply with one word only: {', '.join(MUSIC_MOODS)}\n"
+              "  calm = reflective, observational, gentle\n"
+              "  dark = tense, sombre, investigative, tragedy\n"
+              "  upbeat = light, curious, energetic, positive\n"
+              "  epic = grand scale, awe, survival, historic weight\n"
+              "  horror = dread, menace, the supernatural\n\n"
+              f"NARRATION (first part):\n{text[:4000]}"}],
+            api_key, 0.3, 20)
+        word = re.sub(r"[^a-z]", "", (out or "").strip().lower())
+        if word in MUSIC_MOODS:
+            return word
+        log(f"[Музыка] Непонятный ответ про настроение ({out!r:.60}) — "
+            f"остаюсь на «{fallback}»")
+    except Exception as e:
+        log(f"[Музыка] Не вышло определить настроение по сценарию ({e}) — "
+            f"остаюсь на «{fallback}»")
+    return fallback
 
 
 def pick_music_by_mood(music_dir: Path, mood: str) -> Path:
@@ -2092,12 +2628,19 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
         try:
             import veo_client
             usage = veo_client.account_usage(api_key=veo_key)
-            free = usage.get("max_concurrent_tasks", workers) - usage.get("active_tasks", 0)
+            limit = usage.get("max_concurrent_tasks", workers)
+            free = limit - usage.get("active_tasks", 0)
+            # ГЛАВНОЕ: воркер != задача. Каждый «photo»-job занимает у Veo
+            # ДВЕ задачи сразу — banana_generate на картинку и image-to-video
+            # на её оживление (см. run_job выше). Раньше workers равнялся
+            # числу свободных задач, то есть 4 воркера просили 8 слотов при
+            # лимите 4 — отсюда были RATE_LIMIT'ы на ровном месте.
+            per_worker = 2 if any(j[1] == "photo" for j in jobs) else 1
             if free > 0:
-                workers = max(1, min(workers, free))
-            log(f"[Раскадровка] VeoNonStop: план допускает "
-                f"{usage.get('max_concurrent_tasks', '?')} задач одновременно, "
-                f"сейчас занято {usage.get('active_tasks', 0)}")
+                workers = max(1, min(workers, free // per_worker or 1))
+            log(f"[Раскадровка] VeoNonStop: план допускает {limit} задач "
+                f"одновременно, занято {usage.get('active_tasks', 0)}; "
+                f"один кадр занимает {per_worker} — беру {workers} потоков")
         except Exception:
             pass   # нет ключа/недоступен — остаёмся на переданном workers
     log(f"[Раскадровка] Параллельная генерация: {len(jobs)} кадров, "

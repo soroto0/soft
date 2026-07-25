@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[
+    {"id":"content","type":"string","label":"Banner text","default":"Blueprint for the future"},
+    {"id":"dur","type":"number","label":"Duration (seconds)","default":4}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      /* Using 'Consolas' for a technical drawing aesthetic */
+      @font-face { font-family: 'Consolas'; src: local('Consolas'); }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+
+      /* Main container for the entire banner, positioned at the bottom */
+      #banner-wrap {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 90px; /* Position from the bottom of the frame */
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+        padding: 0 90px; /* Horizontal padding from frame edges */
+      }
+
+      /* The actual blueprint banner element */
+      #blueprint-banner {
+        position: relative;
+        width: 100%;
+        max-width: 1400px; /* Max width to keep it centered and not full screen */
+        height: 80px; /* Slim height for a technical strip */
+        background-color: #002244; /* Deep navy blue */
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); /* Subtle shadow for depth */
+        overflow: hidden; /* Crucial for lines and elements drawing within its bounds */
+        display: flex;
+        align-items: center;
+        padding: 0 40px; /* Inner padding for text */
+      }
+
+      /* Styles for the "drawing" lines */
+      .blueprint-line {
+        position: absolute;
+        background-color: #00bbff; /* Bright cyan */
+      }
+
+      #line-top { top: 0; left: 0; width: 100%; height: 2px; transform-origin: left; }
+      #line-bottom { bottom: 0; left: 0; width: 100%; height: 2px; transform-origin: left; }
+      #line-left { top: 0; left: 0; height: 100%; width: 2px; transform-origin: top; }
+      #line-right { top: 0; right: 0; height: 100%; width: 2px; transform-origin: top; }
+
+      /* Styles for the corner registration marks */
+      .corner-mark {
+        position: absolute;
+        width: 15px; /* Overall size of the corner mark area */
+        height: 15px;
+        opacity: 0; /* Hidden by default, animated in */
+      }
+      .corner-mark::before, .corner-mark::after {
+        content: '';
+        position: absolute;
+        background-color: #00bbff; /* Bright cyan */
+      }
+
+      /* Top-left corner mark */
+      #corner-tl { top: 0; left: 0; }
+      #corner-tl::before { top: 0; left: 0; width: 2px; height: 10px; } /* Vertical part */
+      #corner-tl::after { top: 0; left: 0; width: 10px; height: 2px; } /* Horizontal part */
+
+      /* Top-right corner mark */
+      #corner-tr { top: 0; right: 0; }
+      #corner-tr::before { top: 0; right: 0; width: 2px; height: 10px; }
+      #corner-tr::after { top: 0; right: 0; width: 10px; height: 2px; }
+
+      /* Bottom-left corner mark */
+      #corner-bl { bottom: 0; left: 0; }
+      #corner-bl::before { bottom: 0; left: 0; width: 2px; height: 10px; }
+      #corner-bl::after { bottom: 0; left: 0; width: 10px; height: 2px; }
+
+      /* Bottom-right corner mark */
+      #corner-br { bottom: 0; right: 0; }
+      #corner-br::before { bottom: 0; right: 0; width: 2px; height: 10px; }
+      #corner-br::after { bottom: 0; right: 0; width: 10px; height: 2px; }
+
+      /* Text content styling */
+      #banner-text {
+        color: #00bbff; /* Bright cyan */
+        font-family: 'Consolas', 'Courier New', monospace; /* Technical font */
+        font-size: 32px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        text-align: left;
+        flex-grow: 1; /* Allows text to take available space */
+        opacity: 0; /* Hidden by default, animated in */
+        position: relative;
+        z-index: 2; /* Ensure text is above drawing lines */
+        padding-left: 20px; /* Padding from the left inner edge */
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="banner_ai_dd0f" data-start="0" data-width="1920" data-height="1080">
+      <div id="banner-wrap" class="clip" data-start="0" data-duration="4" data-track-index="1">
+        <div id="blueprint-banner">
+          <!-- Horizontal and vertical rule lines that "draw" in -->
+          <div id="line-top" class="blueprint-line"></div>
+          <div id="line-bottom" class="blueprint-line"></div>
+          <div id="line-left" class="blueprint-line"></div>
+          <div id="line-right" class="blueprint-line"></div>
+
+          <!-- Corner registration marks, styled with pseudo-elements -->
+          <div id="corner-tl" class="corner-mark"></div>
+          <div id="corner-tr" class="corner-mark"></div>
+          <div id="corner-bl" class="corner-mark"></div>
+          <div id="corner-br" class="corner-mark"></div>
+
+          <!-- The main text content -->
+          <div id="banner-text" data-var-text="content">Blueprint for the future</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const vars = window.__hyperframes.getVariables();
+      const dur = Number(vars.dur) || 4;
+      document.getElementById('banner-wrap').setAttribute('data-duration', String(dur));
+
+      const tl = gsap.timeline({ paused: true });
+      
+      // Animation sequence
+      tl.fromTo("#blueprint-banner", { width: 0, opacity: 0 }, { width: "100%", opacity: 1, duration: 0.8, ease: "power2.out" })
+        .fromTo("#line-top", { scaleX: 0 }, { scaleX: 1, duration: 0.4, ease: "power1.out" }, "<0.2")
+        .fromTo("#line-bottom", { scaleX: 0 }, { scaleX: 1, duration: 0.4, ease: "power1.out" }, "<")
+        .fromTo("#line-left", { scaleY: 0 }, { scaleY: 1, duration: 0.4, ease: "power1.out" }, "<0.1")
+        .fromTo("#line-right", { scaleY: 0 }, { scaleY: 1, duration: 0.4, ease: "power1.out" }, "<")
+        .to(".corner-mark", { opacity: 1, duration: 0.2, stagger: 0.05 }, "<0.2")
+        .fromTo("#banner-text", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }, "<0.2");
+
+      // Add to global timelines for Remotion to control
+      window.__timelines["banner_ai_dd0f"] = tl;
+    </script>
+  </body>
+</html>

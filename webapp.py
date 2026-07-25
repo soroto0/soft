@@ -9,6 +9,7 @@
 """
 
 import os
+import re
 import json
 import threading
 import traceback
@@ -346,9 +347,15 @@ class Api:
                      "(случайно под этот проект)")
         enh = bool(p.get("enhance"))
         if "Edge" in p.get("engine", "Edge"):
-            core.tts_edge(text, voice, self._project, self.log, rate, enh)
+            core.tts_edge(text, voice, self._project, self.log, rate, enh,
+                          bool(p.get("pauses", True)))
         else:
-            core.tts_polly(text, voice, "neural", self._project,
+            # Движок Polly выбирает ПОЛЬЗОВАТЕЛЬ: цены различаются в 25 раз
+            # ($4/млн у standard против $100/млн у long-form — на ролике в
+            # 32 тыс. символов это $0.13 против $3.23). Прошивать такой
+            # выбор в код нельзя, это чужие деньги. По умолчанию neural.
+            eng = str(p.get("polly_engine", "neural")).strip() or "neural"
+            core.tts_polly(text, voice, eng, self._project,
                            self.log, rate, bool(p.get("pauses", True)), enh)
 
     def tts(self, p: dict):
@@ -394,7 +401,17 @@ class Api:
         if not lib:
             return False
         tone = self._read_meta().get("tone", "документальный")
-        mood = TONE_TO_MOOD.get(tone, "calm")
+        # жанр один на весь канал, поэтому по нему все документалки получали
+        # одинаковый calm — уточняем по СОДЕРЖАНИЮ сценария, а таблица
+        # остаётся страховкой на случай, если LLM недоступна
+        by_tone = TONE_TO_MOOD.get(tone, "calm")
+        mood = core.guess_music_mood(
+            self._read("script.txt"), by_tone,
+            self._settings.get("gemini_key", "") or self._settings.get("agnes_key", ""),
+            self.log)
+        if mood != by_tone:
+            self.log(f"[Музыка] По сценарию настроение «{mood}» "
+                     f"(по жанру было бы «{by_tone}»)")
         try:
             track = core.pick_music_by_mood(Path(lib), mood)
         except FileNotFoundError:
@@ -545,6 +562,9 @@ class Api:
                 "bloom": bool(p.get("bloom")),
                 "light_leak": bool(p.get("light_leak")),
                 "dust": bool(p.get("dust")),
+                "sand": bool(p.get("sand")),
+                "stars": bool(p.get("stars")),
+                "embers": bool(p.get("embers")),
                 "flicker": bool(p.get("flicker")),
                 "draft": bool(p.get("draft"))}
         if p.get("randomize"):   # свой «почерк» на каждый проект
@@ -556,7 +576,13 @@ class Api:
             fx = [n for n, k in (("bloom", "bloom"), ("засветка", "light_leak"),
                                  ("пыль", "dust"), ("мерцание", "flicker"))
                   if st[k]]
-            self.log(f"[Разнообразие] Субтитры «{st['sub_style']}», монтаж "
+            # стиль субтитров выбирается всегда, но если галочка «Вшить
+            # субтитры» снята — он никуда не пойдёт. Раньше лог всё равно
+            # печатал «Субтитры «karaoke»», и это читалось как «субтитры
+            # включены» — пишем честно, что именно будет в кадре.
+            subs_note = (f"«{st['sub_style']}»" if opts["subs"]
+                         else "в кадр НЕ вжигаются (галочка снята)")
+            self.log(f"[Разнообразие] Субтитры {subs_note}, монтаж "
                      f"«{st['intensity']}», цветокор случайный, эффекты: "
                      f"{', '.join(fx) or 'нет'} (под этот проект)")
         return opts
@@ -644,13 +670,117 @@ class Api:
             except Exception:
                 pass   # нет активных задач/недоступен — не критично при Стопе
 
+    def _grow_variant_library(self, topic: str = "") -> str | None:
+        """Один НОВЫЙ вариант оверлея под тему этого ролика — так библиотека
+        растёт сама, от видео к видео, а не только когда её пополняют руками.
+
+        Тип берём тот, у которого вариантов МЕНЬШЕ всего: иначе ИИ будет
+        снова и снова обогащать banner, а popup/collage так и останутся с
+        одним видом. Движки чередуем по чётности размера библиотеки.
+        Любой провал молча пропускается — ролик от этого не зависит."""
+        key = (self._settings.get("gemini_key", "")
+               or self._settings.get("agnes_key", ""))
+        if not key:
+            return None
+        meta = gen_remotion_gemini.load_variants_meta()
+        kinds = list(gen_remotion_gemini.TYPE_BRIEF)
+        counts = {k: len(overlays.BASE_VARIANTS.get(k, ("classic",)))
+                  + len(overlays._library_variants(k)) for k in kinds}
+        kind = min(kinds, key=lambda k: (counts[k], k))
+        theme = core.gen_variant_theme(topic, kind, key, self.log)
+        if not theme:
+            return None
+        use_hf = (len(meta) % 2 == 1) and overlays.hyperframes_available()
+        eng = "HyperFrames" if use_hf else "Remotion"
+        self.log(f"[Цепочка] Новый оверлей «{kind}» через {eng} "
+                 f"(у типа сейчас {counts[kind]} видов)…")
+        fn = (gen_remotion_gemini.gen_variant_hyperframes if use_hf
+              else gen_remotion_gemini.gen_variant)
+        return fn(kind, theme, key, self.log)
+
+    def grow_variants(self):
+        self._bg("Новый оверлей",
+                 lambda: self._grow_variant_library(
+                     self._read_meta().get("topic", "")))
+
+    def _do_thumbnails(self, count: int = 3) -> list[str]:
+        """Обложки по сценарию: концепции -> AI-фон -> рендер -> проверка
+        зрением на читаемость. Возвращает список путей к готовым JPG.
+
+        Ничего не роняет: без сценария/ключей/картинок просто вернёт меньше
+        вариантов или пустой список — обложка не критична для ролика."""
+        text = self._read("script.txt")
+        if not text:
+            self.log("[Обложка] Нет сценария — пропускаю", "warn")
+            return []
+        key = (self._settings.get("gemini_key", "")
+               or self._settings.get("agnes_key", ""))
+        ideas = core.gen_thumbnail_ideas(text, key, self.log, count)
+        if not ideas:
+            self.log("[Обложка] Не удалось придумать концепции", "warn")
+            return []
+        out_dir = self._project / "thumbs"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        style = self._read_meta().get("visual_style", "")
+        made = []
+        for i, idea in enumerate(ideas, 1):
+            head = idea["headline"]
+            self.log(f"[Обложка] {i}/{len(ideas)}: «{head.replace(chr(10), ' / ')}»")
+            bg = None
+            if idea.get("bg_prompt"):
+                try:
+                    bg = core.gen_image(idea["bg_prompt"],
+                                        out_dir / f".bg{i}.jpg", key,
+                                        self.log, style)
+                except Exception as e:
+                    self.log(f"[Обложка] Фон не сгенерировался ({e}) — "
+                             "делаю на тёмной подложке", "warn")
+            dest = out_dir / f"thumb{i}.jpg"
+            try:
+                overlays.render_thumbnail(head, dest, bg,
+                                          idea.get("layout", "left"),
+                                          log=self.log)
+            except Exception as e:
+                self.log(f"[Обложка] Рендер {i} не вышел: {e}", "warn")
+                continue
+            # главная беда самодельных превью — текст, нечитаемый в ленте;
+            # спрашиваем у модели, видно ли его, но вердикт НЕ блокирует
+            try:
+                verdict = core.vision_chat(
+                    "This is a YouTube thumbnail. It will be seen 210px wide "
+                    "in a feed. Reply with ONLY JSON: "
+                    '{"ok":true|false,"problem":"<one short sentence>"}. '
+                    "Set ok=false if the headline is hard to read at that "
+                    "size, is cut off, or clashes with the background.",
+                    dest.read_bytes(), key,
+                    system="You are a YouTube thumbnail reviewer.")
+                m = re.search(r"\{.*\}", verdict, re.S)
+                if m:
+                    data = json.loads(m.group(0))
+                    if not data.get("ok"):
+                        self.log(f"[Обложка] {dest.name}: замечание — "
+                                 f"{data.get('problem', '')}", "warn")
+            except Exception:
+                pass   # проверка необязательна, обложка уже готова
+            made.append(str(dest))
+        if made:
+            self.log(f"[Обложка] Готово: {len(made)} шт. в {out_dir.name}\\")
+        return made
+
+    def make_thumbnails(self, count: int = 3):
+        self._bg("Обложки", lambda: self._do_thumbnails(int(count)))
+
     def seo(self):
         text = self._read("script.txt")
         if not text:
             self.log("Нет сценария для SEO", "warn")
             return None
         key = self._settings.get("gemini_key", "") or self._settings.get("agnes_key", "")
-        out = core.gen_seo(text, key, self.log)
+        # язык ролика и субтитры — иначе описание выходило по-английски для
+        # русского сценария, а глав (тайм-кодов) не было вовсе
+        out = core.gen_seo(text, key, self.log,
+                           self._read_meta().get("lang", "английский"),
+                           self._project / "subs" / "voiceover.srt")
         (self._project / "seo.txt").write_text(out, encoding="utf-8")
         self.log("[SEO] Сохранено: seo.txt")
         return out
@@ -712,11 +842,26 @@ class Api:
                 self._auto_overlays()   # моушн-графика сама, если не задана
             self._regen_overlay_theme()   # своя палитра оверлеев под это видео
             if self._settings.get("music_library", "").strip():
-                self.log("[Цепочка] Музыка — подбираю под жанр...")
+                self.log("[Цепочка] Музыка — подбираю под содержание...")
                 try:
                     self._do_auto_music(-14)
                 except Exception as e:
                     self.log(f"[Цепочка] Музыка пропущена: {e}", "warn")
+            if p.get("grow_variants", True):
+                # библиотека пополняется НА КАЖДЫЙ ролик — иначе десятое
+                # видео выглядит ровно как первое
+                try:
+                    self._grow_variant_library(p.get("topic", "")
+                                               or self._read_meta().get("topic", ""))
+                except Exception as e:
+                    self.log(f"[Цепочка] Новый оверлей пропущен: {e}", "warn")
+            if p.get("thumbs", True):
+                self.log("[Цепочка] Обложки для YouTube…")
+                try:
+                    self._do_thumbnails(3)
+                except Exception as e:
+                    # обложки не должны рушить готовый ролик
+                    self.log(f"[Цепочка] Обложки пропущены: {e}", "warn")
             self.log("[Цепочка] Шаг 4/4 — рендер…")
             render.render_project(self._project, self.log,
                                   self._progress, opts)

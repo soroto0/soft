@@ -102,6 +102,16 @@
             <select id="ttsEngine" onchange="app.fillVoices()">
               <option>Edge TTS (бесплатно)</option><option>Amazon Polly</option>
             </select>
+            <!-- Цены Polly различаются в 25 раз между движками, поэтому выбор
+                 за пользователем, а не прошит в коде. ~32 000 симв. = ролик
+                 на 35 мин. Бесплатный лимит — первые 12 мес. -->
+            <label id="pollyEngineWrap" style="display:none">Движок:</label>
+            <select id="pollyEngine" style="display:none">
+              <option value="neural" selected>neural — $16/млн (~$0.52 за ролик)</option>
+              <option value="standard">standard — $4/млн (~$0.13, звучит проще)</option>
+              <option value="generative">generative — $30/млн (~$0.97, живее)</option>
+              <option value="long-form">long-form — $100/млн (~$3.23, для длинной начитки)</option>
+            </select>
             <label>Голос:</label><select id="ttsVoice"></select>
             <label>Темп:</label>
             <select id="ttsRate"><option>-10%</option><option>-5%</option><option selected>0%</option><option>+5%</option><option>+10%</option></select>
@@ -215,7 +225,11 @@
             <label>Стиль:</label><select id="rSubStyle"><option value="bold_box" selected>жирный (контур+тень)</option><option value="karaoke">караоке (цветное слово в такт речи)</option><option value="pill">плашка</option><option value="yellow_pop">жёлтый viral</option><option value="cyan_pop">голубой неон</option><option value="red_alert">красный акцент</option><option value="thin_clean">тонкий минимал</option><option value="top">сверху кадра</option></select>
           </div>
           <div class="subrow" id="renderSwitches">
-            <label class="switch"><input type="checkbox" id="rSubs" checked><span class="tr"></span>Вшить субтитры</label>
+            <!-- ВРЕМЕННО выключено по умолчанию: текущий вид субтитров в кадре
+                 не устраивает. Вернуть — дописать `checked` обратно. Сам Whisper
+                 при этом работает всегда: таймкоды фраз нужны для нарезки сцен
+                 (render.py: build_render_plan), без .srt рендер не стартует. -->
+            <label class="switch"><input type="checkbox" id="rSubs"><span class="tr"></span>Вшить субтитры</label>
             <label class="switch"><input type="checkbox" id="rGrain"><span class="tr"></span>Зерно</label>
             <label class="switch"><input type="checkbox" id="rVignette"><span class="tr"></span>Виньетка</label>
             <label class="switch"><input type="checkbox" id="rLetterbox"><span class="tr"></span>Letterbox 2.35:1</label>
@@ -223,6 +237,17 @@
             <label class="switch"><input type="checkbox" id="rChromab"><span class="tr"></span>Аберрация на переходах</label>
             <label class="switch"><input type="checkbox" id="rChapters"><span class="tr"></span>Цветокор по главам</label>
             <label class="switch"><input type="checkbox" id="rDraft"><span class="tr"></span>Черновик 720p (быстро)</label>
+            <!-- Атмосферные частицы отдельным слоем поверх кадра: делают
+                 картинку «живой» и непохожей от ролика к ролику. Заметнее
+                 всего на тёмных сценах. -->
+            <label class="switch"><input type="checkbox" id="rSand"><span class="tr"></span>Пыль в воздухе</label>
+            <label class="switch"><input type="checkbox" id="rStars"><span class="tr"></span>Звёзды/искры</label>
+            <label class="switch"><input type="checkbox" id="rEmbers"><span class="tr"></span>Тёплые угольки</label>
+            <label class="switch"><input type="checkbox" id="rThumbs" checked><span class="tr"></span>Обложки для YouTube</label>
+            <!-- Каждый ролик пополняет библиотеку одним новым оверлеем,
+                 сгенерированным ИИ под его тему. Иначе десятое видео
+                 выглядит ровно как первое. +1-3 мин к генерации. -->
+            <label class="switch"><input type="checkbox" id="rGrow" checked><span class="tr"></span>Новый оверлей на каждый ролик (ИИ)</label>
           </div>
           <div class="sect" style="font-size:13px">Эффекты поверх кадра</div>
           <div class="subrow">
@@ -252,6 +277,7 @@
         <div class="row">
           <button class="btn gold" onclick="app.openFolder()">📂 Открыть папку проекта</button>
           <button class="btn" onclick="app.runSeo()">📝 SEO: названия и описание</button>
+          <button class="btn" onclick="app.makeThumbs()">🖼 Обложки по сценарию</button>
         </div>
         <div class="hint">Premiere Pro: File → Import → sequence.xml — готовый таймлайн:
           клипы по таймкодам, озвучка под ними. Субтитры: File → Import → subs/voiceover.srt.

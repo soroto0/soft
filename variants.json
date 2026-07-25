@@ -1,0 +1,49 @@
+{
+  "titlecard/ai_11b9": {
+    "file": "titlecard_ai_11b9.tsx",
+    "component": "TitlecardAi11B9",
+    "type": "titlecard",
+    "variant": "ai_11b9",
+    "enabled": true,
+    "created": "2026-07-25T09:54:35",
+    "theme": "Vintage cartography title card: aged parchment panel over the footage, sepia ink engraved rule lines, a small wax-seal / compass-rose accent, serif letterpress headline that stamps into place. The pan"
+  },
+  "lower3/ai_381c": {
+    "file": "lower3_ai_381c.tsx",
+    "component": "Lower3Ai381C",
+    "type": "lower3",
+    "variant": "ai_381c",
+    "enabled": false,
+    "created": "2026-07-25T10:12:31",
+    "theme": "Typewriter dossier lower-third: a narrow strip of manila card that slides up from the bottom edge, a red index stripe down the left, monospaced-feeling uppercase name in dark ink, a thin carbon-copy s",
+    "note": "забракован проверкой зрением: не привязан к нижней кромке, уезжает вправо"
+  },
+  "compare/ai_69a7": {
+    "file": "compare_ai_69a7.tsx",
+    "component": "CompareAi69A7",
+    "type": "compare",
+    "variant": "ai_69a7",
+    "enabled": true,
+    "created": "2026-07-25T10:19:09",
+    "theme": "Field-notebook comparison: two facts pinned side by side on a faint graph-paper grid panel, hand-drawn divider between them, small pencil-tick marks, muted olive and warm grey ink, each side slides in"
+  },
+  "callout/ai_6cdb": {
+    "file": "callout_ai_6cdb.tsx",
+    "component": "CalloutAi6CDB",
+    "type": "callout",
+    "variant": "ai_6cdb",
+    "enabled": true,
+    "created": "2026-07-25T10:20:40",
+    "theme": "Archival photo-frame callout: a thin cream mount with a hairline inner rule, like a museum specimen label, a slender leader line reaching out to the point of interest with a small circular target, ser"
+  },
+  "banner/ai_dd0f": {
+    "file": "compositions/banner_ai_dd0f.html",
+    "component": "banner_ai_dd0f",
+    "type": "banner",
+    "variant": "ai_dd0f",
+    "engine": "hyperframes",
+    "enabled": true,
+    "created": "2026-07-25T12:42:01",
+    "theme": "Blueprint drafting banner: a slim cyan-on-navy technical-drawing strip with fine grid ticks and corner registration marks, the rule lines draw themselves in first and the text arrives after, like a pl"
+  }
+}

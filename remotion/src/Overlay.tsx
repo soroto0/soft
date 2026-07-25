@@ -1,7 +1,11 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import { VARIANTS } from './variants/_registry';
+import type { OverlayProps } from './types';
 
-export type OverlayProps = { type: string; content: string; pos: string; dur: number; fps?: number; width?: number; height?: number; img?: string; items?: { label: string; img: string }[]; variant?: string; };
+// тип переехал в types.ts (варианты не могут тянуть его отсюда — вышел бы
+// цикл импортов), но реэкспортируем: на него ссылается Root.tsx
+export type { OverlayProps };
 
 // Единственное место с "брендовыми" цветами — Gemini подбирает под тему
 // видео и переписывает ТОЛЬКО этот объект (тонкая, низкорисковая правка),
@@ -9,14 +13,14 @@ export type OverlayProps = { type: string; content: string; pos: string; dur: nu
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#3A5A78',
-  accentLight: '#6B8E9F',
-  accentRgb: '58,90,120',
-  bannerFrom: '#C2D4E0',
-  bannerTo: '#E8F1F5',
-  bannerText: '#1A242D',
-  kickerFrom: '#24303D',
-  kickerTo: '#161E26',
+  accent: '#00d4ff',
+  accentLight: '#4de8e8',
+  accentRgb: '0,212,255',
+  bannerFrom: '#e6f7ff',
+  bannerTo: '#ffffff',
+  bannerText: '#051923',
+  kickerFrom: '#0b2e3a',
+  kickerTo: '#16485c',
 };
 
 const useExit = (dur: number) => {
@@ -711,9 +715,231 @@ const TitleCard = ({ content, exit, enter }: { content: string; exit: number; en
   );
 };
 
+// ── Новые типы: не «ещё одна плашка», а другие ТЕХНИКИ движения ──────────
+
+// Кинетическая типографика: слова влетают ПО ОДНОМУ со сдвигом по времени.
+// Техника — покадровый стагger, а не появление блока целиком.
+const Kinetic = ({ content, exit }: { content: string; exit: number }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const words = content.split(/\s+/).filter(Boolean);
+  const step = Math.max(2, Math.round(fps * 0.09));   // задержка между словами
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', padding: '0 8%' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0 22px' }}>
+        {words.map((w, i) => {
+          const t0 = i * step;
+          const a = interpolate(frame, [t0, t0 + 9], [0, 1], {
+            easing: Easing.out(Easing.cubic),
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+          });
+          const up = interpolate(frame, [t0, t0 + 9], [34, 0], {
+            easing: Easing.out(Easing.back(1.6)),
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+          });
+          return (
+            <span key={i} style={{
+              opacity: a * exit,
+              transform: `translateY(${up}px)`,
+              fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
+              fontSize: 88, lineHeight: 1.12, color: '#ffffff',
+              textTransform: 'uppercase', letterSpacing: '-0.02em',
+              textShadow: '0 6px 22px rgba(0,0,0,0.85)',
+            }}>{w}</span>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// Аннотация-обводка: круг РИСУЕТСЯ по контуру (stroke-dashoffset) и от него
+// тянется линия-выноска. Техника — прорисовка пути, как рукой поверх кадра.
+const Highlight = ({ content, pos, exit, enter }: { content: string; pos: string; exit: number; enter: number }) => {
+  const frame = useCurrentFrame();
+  const m = /point:([\d.]+),([\d.]+)/.exec(pos || '');
+  const cx = m ? parseFloat(m[1]) : 62;
+  const cy = m ? parseFloat(m[2]) : 45;
+  const draw = interpolate(frame, [0, 26], [0, 1], {
+    easing: Easing.inOut(Easing.cubic),
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const LEN = 2 * Math.PI * 78;
+  const labelIn = interpolate(frame, [20, 34], [0, 1], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  // Выноска уходит В СТОРОНУ СВОБОДНОГО МЕСТА: при точке в правой половине
+  // подпись справа не помещалась (60% + отступ + ширина > 100%) и обрезалась
+  // краем кадра. Отражаем сторону и держим вертикаль в безопасных пределах.
+  const toLeft = cx > 55;
+  const dir = toLeft ? -1 : 1;
+  const labelTop = Math.min(Math.max(cy - 16, 6), 74);
+
+  return (
+    <AbsoluteFill style={{ opacity: exit }}>
+      <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none"
+           style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
+        <ellipse cx={cx} cy={cy} rx={9} ry={7}
+                 fill="none" stroke={THEME.accent} strokeWidth={0.55}
+                 strokeDasharray={LEN} strokeDashoffset={LEN * (1 - draw)}
+                 vectorEffect="non-scaling-stroke"
+                 style={{ filter: `drop-shadow(0 0 6px rgba(${THEME.accentRgb},0.7))` }} />
+        <line x1={cx + 8 * dir} y1={cy - 5}
+              x2={cx + (8 + 12 * labelIn) * dir} y2={cy - 11 * labelIn}
+              stroke={THEME.accent} strokeWidth={0.4} vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div style={{
+        position: 'absolute',
+        ...(toLeft ? { right: `${100 - cx + 22}%` } : { left: `${cx + 22}%` }),
+        top: `${labelTop}%`,
+        opacity: labelIn * enter, transform: `translateY(${(1 - labelIn) * 10}px)`,
+        fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 34, color: '#fff',
+        background: 'rgba(12,14,18,0.82)', padding: '10px 18px',
+        [toLeft ? 'borderRight' : 'borderLeft']: `4px solid ${THEME.accent}`,
+        textAlign: toLeft ? 'right' : 'left',
+        textShadow: '0 2px 8px rgba(0,0,0,0.9)', maxWidth: '30%',
+      } as React.CSSProperties}>{content}</div>
+    </AbsoluteFill>
+  );
+};
+
+// Врезка-цитата: огромная кавычка масштабируется, текст проявляется строкой.
+const PullQuote = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
+  const frame = useCurrentFrame();
+  const [text, author] = content.split('::');
+  const markScale = interpolate(frame, [0, 16], [0.5, 1], {
+    easing: Easing.out(Easing.back(2)),
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const rule = interpolate(frame, [10, 30], [0, 1], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', padding: '0 12%', opacity: enter * exit }}>
+      <div style={{ position: 'relative', maxWidth: '76%' }}>
+        <div style={{
+          position: 'absolute', left: -70, top: -70, fontSize: 200, lineHeight: 1,
+          fontFamily: 'Georgia, serif', color: THEME.accent, opacity: 0.55,
+          transform: `scale(${markScale})`, transformOrigin: 'left top',
+        }}>“</div>
+        <div style={{
+          fontFamily: 'Georgia, serif', fontSize: 58, lineHeight: 1.3,
+          color: '#ffffff', fontStyle: 'italic',
+          textShadow: '0 4px 18px rgba(0,0,0,0.9)',
+        }}>{text}</div>
+        <div style={{
+          height: 3, background: THEME.accent, marginTop: 26, width: 180,
+          transform: `scaleX(${rule})`, transformOrigin: 'left center',
+        }} />
+        {author ? (
+          <div style={{
+            marginTop: 14, fontFamily: "'Segoe UI', Arial, sans-serif",
+            fontSize: 28, letterSpacing: '0.12em', textTransform: 'uppercase',
+            color: THEME.accentLight, opacity: rule,
+          }}>{author}</div>
+        ) : null}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// Штамп места/даты в углу: «впечатывается» — резкий наезд масштаба с лёгким
+// поворотом, как оттиск. Техника — короткий импульс, а не плавный въезд.
+const Stamp = ({ content, exit }: { content: string; exit: number }) => {
+  const frame = useCurrentFrame();
+  const h = _hashStr(content);
+  const tilt = ((h % 500) / 100) - 2.5;
+  const punch = interpolate(frame, [0, 5, 9], [2.4, 0.94, 1], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const fade = interpolate(frame, [0, 6], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const [main, sub] = content.split('::');
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'flex-start', alignItems: 'flex-end', padding: '70px 80px' }}>
+      <div style={{
+        opacity: fade * exit * 0.92,
+        transform: `scale(${punch}) rotate(${tilt}deg)`,
+        border: `4px solid ${THEME.accent}`, padding: '14px 26px',
+        textAlign: 'right', background: 'rgba(10,12,16,0.35)',
+      }}>
+        <div style={{
+          fontFamily: "'Bahnschrift', 'Segoe UI', sans-serif", fontSize: 44,
+          letterSpacing: '0.18em', textTransform: 'uppercase', color: '#ffffff',
+        }}>{main}</div>
+        {sub ? (
+          <div style={{
+            fontFamily: "'Courier New', monospace", fontSize: 24,
+            letterSpacing: '0.1em', color: THEME.accentLight, marginTop: 6,
+          }}>{sub}</div>
+        ) : null}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// Засекреченный документ: чёрные полосы ЗАМАЗЫВАЮТ строки одна за другой.
+// Техника — последовательная маскировка, узнаваемая по true-crime.
+const Redact = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const lines = content.split('::').filter(Boolean);
+  const step = Math.max(3, Math.round(fps * 0.22));
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', opacity: enter * exit }}>
+      <div style={{
+        background: '#efe9dd', padding: '48px 60px', maxWidth: '62%',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+        display: 'flex', flexDirection: 'column', gap: 20,
+      }}>
+        {lines.map((ln, i) => {
+          const w = interpolate(frame, [i * step, i * step + 8], [0, 1], {
+            easing: Easing.out(Easing.cubic),
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+          });
+          const hide = ln.startsWith('*');
+          const txt = hide ? ln.slice(1) : ln;
+          return (
+            <div key={i} style={{ position: 'relative' }}>
+              <div style={{
+                fontFamily: "'Courier New', monospace", fontSize: 34,
+                color: '#1d1a16', letterSpacing: '0.04em',
+              }}>{txt}</div>
+              {hide ? (
+                <div style={{
+                  position: 'absolute', inset: '-4px -8px',
+                  background: '#12100e',
+                  transform: `scaleX(${w})`, transformOrigin: 'left center',
+                }} />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 export const Overlay: React.FC<OverlayProps> = (p) => {
   const exit = useExit(p.dur);
   const enter = useEnter(p.dur);
+
+  // Сначала библиотека накопленных вариантов (ручные из этого файла + всё,
+  // что нагенерировал ИИ за прошлые ролики). Ключ — "тип/вариант". Если
+  // варианта нет — молча падаем в switch ниже на встроенный вид, поэтому
+  // удаление файла варианта не может сломать рендер.
+  if (p.variant) {
+    const Generated = VARIANTS[`${p.type}/${p.variant}`];
+    if (Generated) return <Generated {...p} exit={exit} enter={enter} />;
+  }
 
   if (p.type === 'watermark') {
     // своя, более медленная кривая появления — рассчитана на весь ролик,
@@ -749,6 +975,16 @@ export const Overlay: React.FC<OverlayProps> = (p) => {
       return <Collage items={p.items ?? []} exit={exit} enter={enter} />;
     case 'titlecard':
       return <TitleCard content={p.content} exit={exit} enter={enter} />;
+    case 'kinetic':
+      return <Kinetic content={p.content} exit={exit} />;
+    case 'highlight':
+      return <Highlight content={p.content} pos={p.pos} exit={exit} enter={enter} />;
+    case 'quote':
+      return <PullQuote content={p.content} exit={exit} enter={enter} />;
+    case 'stamp':
+      return <Stamp content={p.content} exit={exit} />;
+    case 'redact':
+      return <Redact content={p.content} exit={exit} enter={enter} />;
     default:
       return <AbsoluteFill />;
   }

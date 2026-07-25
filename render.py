@@ -932,6 +932,44 @@ def _style_chain(opts: dict, wh: tuple[int, int] = (1920, 1080)) -> list[str]:
     if opts.get("flicker"):
         # лёгкое мерцание яркости — «живая» плёнка
         chain.append("eq=brightness='0.012*sin(2*PI*t*3)'")
+    # Частицы поверх кадра. ВАЖНО: шум только по ЛЮМЕ (c0s/c0f), а не alls —
+    # alls шумит и по цветовым плоскостям, lutyuv их не чистит, и кадр
+    # заливало ядовито-фиолетовым. hue=s=0 добивает остатки цвета, а нужный
+    # оттенок задаётся уже при смешивании через colorbalance.
+    if opts.get("sand"):
+        # Пыльная взвесь в воздухе: мелкое подвижное зерно отдельным слоем,
+        # а не правка самого кадра (как у dust) — тени не грязнятся.
+        w, h = wh
+        chain.append(
+            f"null[sdb];color=c=gray:s={w}x{h},format=gray,"
+            f"noise=c0s=64:c0f=t+u,boxblur=1:1,eq=contrast=2.2,"
+            f"format=yuv420p,colorbalance=rm=0.18:gm=0.06:bm=-0.16[sdn];"
+            f"[sdb][sdn]blend=all_mode=screen:all_opacity=0.07")
+    if opts.get("stars"):
+        # Редкие светлые точки — «звёзды»/искры. Порог по яркости оставляет
+        # только самые светлые крапины, иначе выходит сплошной шум.
+        w, h = wh
+        chain.append(
+            f"null[stb];color=c=black:s={w}x{h},format=gray,"
+            f"noise=c0s=100:c0f=t,lutyuv=y='if(gt(val,246),val,0)',"
+            # colorbalance тут не ради цвета (сдвиги почти нулевые), а чтобы
+            # заставить ffmpeg провести корректное преобразование плоскостей:
+            # без него слой уходил в розовый (255,169,255) на реальном видео.
+            # Проверено сравнением с/без на настоящем клипе.
+            f"boxblur=1:1,format=yuv420p,"
+            f"colorbalance=rm=-0.04:gm=0:bm=0.06[stn];"
+            # all_opacity — ЧИСЛО, выражение оно не принимает («Unable to
+            # parse option value»). Мерцание даёт временной шум c0f=t.
+            f"[stb][stn]blend=all_mode=screen:all_opacity=0.85")
+    if opts.get("embers"):
+        # Тёплые угольки в луче света — плотнее звёзд, для тёмных сцен.
+        w, h = wh
+        chain.append(
+            f"null[emb];color=c=black:s={w}x{h},format=gray,"
+            f"noise=c0s=90:c0f=t,lutyuv=y='if(gt(val,240),val,0)',"
+            f"boxblur=2:1,format=yuv420p,"
+            f"colorbalance=rm=0.45:gm=0.12:bm=-0.35[emn];"
+            f"[emb][emn]blend=all_mode=screen:all_opacity=0.5")
     if opts.get("vignette"):
         chain.append("vignette=angle=PI/5")
     if opts.get("letterbox"):
