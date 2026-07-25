@@ -133,8 +133,11 @@ def parse_overlays(text: str) -> list[dict]:
                          # kinetic — слова влетают по одному (стаггер),
                          # highlight — обводка рисуется по контуру,
                          # quote — врезка-цитата, stamp — оттиск в углу,
-                         # redact — строки замазываются одна за другой
-                         "kinetic", "highlight", "quote", "stamp", "redact"):
+                         # redact — строки замазываются одна за другой,
+                         # marker — фразу закрашивают маркером слово за словом,
+                         # gallery — карточки с фото уходят вглубь кадра
+                         "kinetic", "highlight", "quote", "stamp", "redact",
+                         "marker", "gallery"):
             continue
         pos = parts[3] if len(parts) > 3 and parts[3] else ""
         dur = 4.0
@@ -615,17 +618,20 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
 
     if item["type"] == "popup":
         props["img"] = _data_uri(item["content"])
-    elif item["type"] == "collage":
-        # content: "label1::путь1;;label2::путь2;;label3::путь3" (до 3 фото)
+    elif item["type"] in ("collage", "gallery"):
+        # content: "label1::путь1;;label2::путь2;;label3::путь3"
+        # collage — до 3 фото, gallery — до 4 (карточки уходят вглубь, там
+        # четвёртая ещё читается, а пятая уже вне кадра)
         entries = []
         for chunk in item["content"].split(";;"):
             label, _, rel = chunk.partition("::")
             if rel.strip():
                 entries.append((label.strip(), rel.strip()))
         if not entries:
-            raise ValueError("collage: нет пар label::путь в content")
+            raise ValueError(f"{item['type']}: нет пар label::путь в content")
+        limit = 4 if item["type"] == "gallery" else 3
         props["items"] = [{"label": lab, "img": _data_uri(rel)}
-                          for lab, rel in entries[:3]]
+                          for lab, rel in entries[:limit]]
     dest_dir = Path(dest_dir)
     props_file = dest_dir.parent / (dest_dir.name + "_props.json")
     props_file.write_text(json.dumps(props, ensure_ascii=False),
@@ -1396,8 +1402,8 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
         m = re.match(r"# NEEDS_IMAGE: (.+?) — .*?(\d{2}:\d{2}:\d{2}) \| popup",
                      line)
         mc = None if m else re.match(
-            r"# NEEDS_COLLAGE: (.+?) — .*?(\d{2}:\d{2}:\d{2}) \| collage "
-            r"\| (\S+) \| (\S+)", line)
+            r"# NEEDS_COLLAGE: (.+?) — .*?(\d{2}:\d{2}:\d{2}) \| "
+            r"(collage|gallery) \| (\S+) \| (\S+)", line)
         if not m and not mc:
             out_lines.append(line)
             continue
@@ -1412,7 +1418,7 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
             else:
                 out_lines.append(line)
             continue
-        text, tc, pos, dur = mc.groups()
+        text, tc, kind, pos, dur = mc.groups()
         entries = []
         for i, chunk in enumerate(text.split(";;")):
             label, _, topic = chunk.partition("::")
@@ -1423,12 +1429,13 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
             if img_rel:
                 entries.append((label, img_rel))
         if len(entries) >= 2:
-            content = ";;".join(f"{lab}::{rel}" for lab, rel in entries[:3])
-            out_lines.append(f"{tc} | collage | {content} | {pos} | {dur}")
-            log(f"[Оверлеи] {tc} collage: {len(entries)} фото найдено "
+            keep = 4 if kind == "gallery" else 3
+            content = ";;".join(f"{lab}::{rel}" for lab, rel in entries[:keep])
+            out_lines.append(f"{tc} | {kind} | {content} | {pos} | {dur}")
+            log(f"[Оверлеи] {tc} {kind}: {len(entries)} фото найдено "
                 f"({', '.join(lab for lab, _ in entries)})")
         else:
-            log(f"[Оверлеи] {tc} collage: фото нашлось меньше 2 — пропускаю")
+            log(f"[Оверлеи] {tc} {kind}: фото нашлось меньше 2 — пропускаю")
     _save_used(used)
     if watermark.strip() and rows:
         total = srt_to_seconds(rows[-1][1])
@@ -1543,13 +1550,23 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "\"line1::*hidden line::line3\" — prefix with * the lines "
                   "that must be blacked out; only for records, reports, "
                   "names withheld\n"
+                  "  'marker' — one short sentence (under 9 words) that gets "
+                  "HIGHLIGHTED word by word as it is spoken, like a marker "
+                  "pen running along the line; use it on the single sentence "
+                  "that carries the promise or the number, not on background "
+                  "detail\n"
+                  "  'gallery' — 2-4 photo topics shown as framed cards "
+                  "receding into depth, formatted \"label::photo topic;;"
+                  "label::photo topic\"; use it when several examples or "
+                  "options are being compared in sequence\n"
                   "Use at most 2 titlecards and at most 2 collages total "
                   "(only for real turning points / evidence moments), at "
-                  "most 2 'kinetic' and at most 1 'redact', and "
+                  "most 2 'kinetic', at most 1 'redact', at most 2 'marker' "
+                  "and at most 1 'gallery', and "
                   "roughly even amounts of the rest. Reply "
                   f'with a JSON array of {{"line": <line number>, "type": '
                   '"titlecard|banner|lower3|compare|callout|collage|kinetic|'
-                  'quote|stamp|redact", "text": '
+                  'quote|stamp|redact|marker|gallery", "text": '
                   '"..."}, nothing else.\n\n' + numbered}],
                 # 2200 не хватало: ответ обрывался на середине JSON-массива
                 # (в журнале — «ответ без JSON-массива» три попытки подряд,
@@ -1594,7 +1611,8 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
     POS = {"titlecard": "center", "banner": "top", "lower3": "bottom",
           "compare": "center", "callout": "point:70,40", "collage": "center",
           "kinetic": "center", "quote": "center", "stamp": "top",
-          "redact": "center", "highlight": "point:62,45"}
+          "redact": "center", "highlight": "point:62,45",
+          "marker": "center", "gallery": "center"}
     dated = []
     for p in picks:
         idx = int(p.get("line", 0)) - 1
@@ -1611,8 +1629,8 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
             text += "::"
         if otype == "redact" and "*" not in text:
             otype = "banner"          # нечего вымарывать — эффект бессмыслен
-        if otype == "collage" and text.count(";;") < 1:
-            otype = "banner"          # меньше 2 позиций — не коллаж
+        if otype in ("collage", "gallery") and text.count(";;") < 1:
+            otype = "banner"          # меньше 2 позиций — не коллаж/галерея
         if text and 0 <= idx < len(rows):
             dated.append((srt_to_seconds(rows[idx][0]), otype, text))
     dated.sort(key=lambda x: x[0])
@@ -1622,13 +1640,13 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
             continue
         accepted_times.append(t)
         tc = f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
-        dur = "5s" if otype in ("titlecard", "collage") else "4s"
-        if otype == "collage":
+        dur = "5s" if otype in ("titlecard", "collage", "gallery") else "4s"
+        if otype in ("collage", "gallery"):
             # у нас пока только темы фото (label::topic), не сами картинки —
             # suggest_overlays_auto() позже находит фото по каждой теме и
             # дособирает настоящую строку (как NEEDS_IMAGE для popup)
             line = (f"# NEEDS_COLLAGE: {text} — соберётся картинками: "
-                   f" {tc} | collage | {POS[otype]} | {dur}")
+                   f" {tc} | {otype} | {POS[otype]} | {dur}")
         else:
             line = f"{tc} | {otype} | {text} | {POS[otype]} | {dur}"
         timed_lines.append((t, line))

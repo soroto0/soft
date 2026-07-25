@@ -286,6 +286,8 @@ TYPE_BRIEF = {
     "quote": "p.content is \"quote text::attribution\" (attribution may be empty) — a PULL QUOTE: oversized typographic quotation mark, large serif italic text, a rule that draws out under it, attribution in small caps.",
     "stamp": "p.content is \"MAIN::sub\" (sub may be empty), e.g. \"ANTARCTICA::MARCH 1911\" — a corner LOCATION/DATE STAMP that punches down like an ink impression: a fast scale overshoot settling to rest, slight rotation, boxed rule. Small, cornered, never centred.",
     "redact": "p.content is lines separated by \"::\"; a line starting with \"*\" must get BLACKED OUT — a REDACTED DOCUMENT: monospaced lines on paper, and the marked lines are covered by black bars that sweep across them one after another (animate scaleX from a left origin, staggered).",
+    "marker": "p.content is a short sentence — a HIGHLIGHTER SWEEP: split on whitespace and draw a coloured bar BEHIND each word in turn (animate its width from 0), as if running a marker pen along the line. The words are all present from the start and do not move; only the bar travels. Text on the bar must stay readable — a light word on a light bar is the failure mode here, so change the word's colour as its own bar passes under it.",
+    "gallery": "p.items is an array of up to 4 {label, img} — framed photo cards RECEDING INTO DEPTH and drifting past the camera. Use real CSS perspective on the container and translateZ on the cards; plain scale() reads as \"pictures of different sizes\", not as space. Fade each card in on approach and out as it passes, or it pops into existence at the lens.",
 }
 
 VARIANT_CONTRACT = """Write ONE self-contained Remotion overlay component in TSX.

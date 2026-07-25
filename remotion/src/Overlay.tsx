@@ -928,6 +928,135 @@ const Redact = ({ content, exit, enter }: { content: string; exit: number; enter
   );
 };
 
+// Маркер по тексту: цветная полоса прочерчивается ЗА словами, слово за
+// словом, как будто фразу выделяют маркером по ходу речи. Отличие от
+// kinetic: там слова прилетают по одному, здесь они стоят на месте с
+// самого начала, а бежит только подсветка — читать можно всю фразу сразу,
+// а внимание всё равно ведётся по строке.
+const Marker = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const words = content.split(/\s+/).filter(Boolean);
+  const step = Math.max(2, Math.round(fps * 0.11));
+  const grow = Math.max(3, Math.round(fps * 0.13));   // за сколько кадров закрасить слово
+
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', padding: '0 9%' }}>
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', justifyContent: 'center',
+        alignItems: 'baseline', gap: '10px 16px', opacity: enter * exit,
+      }}>
+        {words.map((w, i) => {
+          const t0 = i * step;
+          // ширина полосы 0→100%: extrapolate обязателен с обеих сторон,
+          // иначе после t0+grow полоса продолжает расти и вылезает за слово
+          const fill = interpolate(frame, [t0, t0 + grow], [0, 1], {
+            easing: Easing.out(Easing.quad),
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+          });
+          // Слово перекрашивается из белого в тёмное ПОКА по нему идёт
+          // полоса. Белое по акценту даёт контраст 1.8:1 — нечитаемо; но и
+          // просто сделать текст тёмным нельзя: пока маркер до слова не
+          // дошёл, оно лежит на самом видео, где тонет всё тёмное. Переход
+          // привязан к fill, поэтому совпадает с проходом полосы и читается
+          // как часть эффекта, а не как моргание.
+          const ink = (from: number, to: number) =>
+            interpolate(fill, [0.45, 0.72], [from, to], {
+              extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+            });
+          const halo = interpolate(fill, [0.45, 0.72], [0.8, 0], {
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+          });
+          return (
+            <span key={i} style={{ position: 'relative', display: 'inline-block' }}>
+              <span style={{
+                position: 'absolute', left: '-0.14em', top: '0.10em', bottom: '0.04em',
+                // запас на поля тоже умножается на fill: при fill=0 иначе
+                // остаётся полоска в 0.28em и перед каждым непокрашенным
+                // словом торчит бирюзовая засечка
+                width: `calc(${fill * 100}% + ${fill * 0.28}em)`,
+                background: THEME.accent, borderRadius: 3,
+                transformOrigin: 'left center',
+              }} />
+              <span style={{
+                position: 'relative',
+                fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
+                fontSize: 76, lineHeight: 1.24,
+                color: `rgb(${ink(255, 10)},${ink(255, 38)},${ink(255, 40)})`,
+                letterSpacing: '-0.01em',
+                textShadow: `0 4px 18px rgba(0,0,0,${halo})`,
+              }}>{w}</span>
+            </span>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// Галерея в перспективе: карточки с фото уходят вглубь по сетчатому полу и
+// проплывают мимо камеры. Глубина делается честным CSS-perspective, а не
+// масштабом — при простом scale карточки остаются плоскими и эффект
+// читается как «картинки разного размера», а не как пространство.
+const Gallery = ({ items, exit, enter }: { items: { label: string; img: string }[]; exit: number; enter: number }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const cards = (items ?? []).slice(0, 4);
+  if (!cards.length) return <AbsoluteFill />;
+
+  // общий проезд камеры вглубь: одна медленная линейная величина, от неё
+  // считаются позиции всех карточек — так они движутся согласованно
+  const travel = (frame / fps) * 260;
+  const GAP = 620;
+
+  return (
+    <AbsoluteFill style={{ perspective: 900, opacity: enter * exit }}>
+      {/* сетчатый пол — задаёт горизонт, без него глубину не прочитать */}
+      <div style={{
+        position: 'absolute', left: '-50%', right: '-50%', bottom: 0, height: '62%',
+        transform: 'rotateX(72deg)', transformOrigin: 'bottom center',
+        backgroundImage:
+          'linear-gradient(rgba(255,255,255,0.16) 1px, transparent 1px),'
+          + 'linear-gradient(90deg, rgba(255,255,255,0.16) 1px, transparent 1px)',
+        backgroundSize: '90px 90px',
+        backgroundPosition: `0 ${travel % 90}px`,
+        maskImage: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent 78%)',
+        WebkitMaskImage: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent 78%)',
+      }} />
+      {cards.map((c, i) => {
+        const z = -GAP * (i + 1) + travel;          // -далеко ... 0 у камеры
+        // гаснет и на подлёте, и когда проходит мимо: иначе карточка резко
+        // возникает из ниоткуда у самого объектива
+        const a = interpolate(z, [-GAP * 2, -GAP * 1.3, -120, 60], [0, 1, 1, 0], {
+          extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+        });
+        const side = i % 2 === 0 ? -1 : 1;
+        return (
+          <div key={i} style={{
+            position: 'absolute', top: '30%', left: '50%',
+            transform: `translateX(-50%) translateX(${side * 210}px) translateZ(${z}px)`,
+            opacity: a,
+          }}>
+            <div style={{
+              background: '#ffffff', padding: 12, paddingBottom: 34,
+              boxShadow: '0 26px 60px rgba(0,0,0,0.6)',
+            }}>
+              <Img src={c.img} style={{ display: 'block', width: 460, height: 268, objectFit: 'cover' }} />
+              <div style={{
+                position: 'absolute', left: '50%', bottom: -14, transform: 'translateX(-50%)',
+                background: '#ffffff', color: '#111', padding: '4px 14px',
+                fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
+                fontSize: 26, whiteSpace: 'nowrap',
+                boxShadow: '0 6px 18px rgba(0,0,0,0.45)',
+              }}>{c.label}</div>
+            </div>
+          </div>
+        );
+      })}
+    </AbsoluteFill>
+  );
+};
+
 export const Overlay: React.FC<OverlayProps> = (p) => {
   const exit = useExit(p.dur);
   const enter = useEnter(p.dur);
@@ -985,6 +1114,10 @@ export const Overlay: React.FC<OverlayProps> = (p) => {
       return <Stamp content={p.content} exit={exit} />;
     case 'redact':
       return <Redact content={p.content} exit={exit} enter={enter} />;
+    case 'marker':
+      return <Marker content={p.content} exit={exit} enter={enter} />;
+    case 'gallery':
+      return <Gallery items={p.items ?? []} exit={exit} enter={enter} />;
     default:
       return <AbsoluteFill />;
   }

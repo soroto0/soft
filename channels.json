@@ -9,7 +9,7 @@
     "rate": -3,
     "visual_style": "тёмный кино",
     "ai_ratio": 0.6,
-    "sub_style": "top",
+    "sub_style": "bold_box",
     "sub_size": "крупные",
     "sub_width": 38,
     "sub_font": "Franklin Gothic Medium",
