@@ -464,9 +464,7 @@ class Api:
         voice = self._project / "audio" / "voiceover.mp3"
         if not voice.exists():
             raise RuntimeError("Сначала озвучка.")
-        lib = self._settings.get("music_library", "").strip()
-        if not lib:
-            return False
+        lib = self._music_dir()
         tone = self._read_meta().get("tone", "документальный")
         # жанр один на весь канал, поэтому по нему все документалки получали
         # одинаковый calm — уточняем по СОДЕРЖАНИЮ сценария, а таблица
@@ -482,7 +480,7 @@ class Api:
         try:
             track = core.pick_music_by_mood(Path(lib), mood)
         except FileNotFoundError:
-            jkey = self._settings.get("jamendo_key", "").strip()
+            jkey = self._jamendo_key()
             if not jkey:
                 raise RuntimeError(
                     f"Нет треков настроения «{mood}» в библиотеке, и не "
@@ -509,16 +507,29 @@ class Api:
                     "куда будут ложиться треки (свои или с Jamendo).")
         self._bg("Музыка (авто)", job)
 
+    def _jamendo_key(self) -> str:
+        """Ключ Jamendo: сначала Настройки, потом .env. Остальные ключи давно
+        читаются и оттуда тоже — а этот брался ТОЛЬКО из настроек, поэтому
+        прописанный в .env он молча игнорировал, и подбор музыки пропускался
+        без единого слова в журнале."""
+        return (self._settings.get("jamendo_key", "").strip()
+                or os.getenv("JAMENDO_CLIENT_ID", "").strip())
+
+    def _music_dir(self) -> str:
+        """Папка библиотеки музыки. Пустая настройка — не повод пропускать
+        шаг: берём music_library рядом с софтом (она в .gitignore)."""
+        lib = self._settings.get("music_library", "").strip()
+        return lib or str(BASE / "music_library")
+
     def fill_music_library(self, per_mood: int):
         """Разово наполняет все 5 папок настроения треками с Jamendo — после
         этого auto_music работает вообще без интернета."""
         def job():
-            lib = self._settings.get("music_library", "").strip()
-            if not lib:
-                raise RuntimeError("Сначала укажи «Библиотека музыки» в Настройках.")
-            jkey = self._settings.get("jamendo_key", "").strip()
+            lib = self._music_dir()
+            jkey = self._jamendo_key()
             if not jkey:
                 raise RuntimeError("Сначала укажи Jamendo API Key в Настройках "
+                                   "или JAMENDO_CLIENT_ID в .env "
                                    "(бесплатно на jamendo.com/developer).")
             core.fill_music_library_jamendo(Path(lib), jkey, self.log,
                                             int(per_mood))
@@ -1031,12 +1042,16 @@ class Api:
             if not (p.get("overlays") or "").strip():
                 self._auto_overlays()   # моушн-графика сама, если не задана
             self._regen_overlay_theme()   # своя палитра оверлеев под это видео
-            if self._settings.get("music_library", "").strip():
-                self.log("[Цепочка] Музыка — подбираю под содержание...")
-                try:
-                    self._do_auto_music(-14)
-                except Exception as e:
-                    self.log(f"[Цепочка] Музыка пропущена: {e}", "warn")
+            # Условия «если настроена библиотека» здесь больше нет: оно было
+            # ЕДИНСТВЕННОЙ причиной, по которой музыки не было ни в одном
+            # ролике — настройка пустовала, и шаг молча пропускался, ничего
+            # не написав в журнал. Теперь папка берётся по умолчанию, а при
+            # нехватке трека он докачивается с Jamendo.
+            self.log("[Цепочка] Музыка — подбираю под содержание...")
+            try:
+                self._do_auto_music(-14)
+            except Exception as e:
+                self.log(f"[Цепочка] Музыка пропущена: {e}", "warn")
             if p.get("grow_variants", True):
                 # библиотека пополняется НА КАЖДЫЙ ролик — иначе десятое
                 # видео выглядит ровно как первое
