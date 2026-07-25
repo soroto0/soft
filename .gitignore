@@ -13,6 +13,13 @@ output/
 project*/
 project*.zip
 
+# Папки проектов КАНАЛОВ (channels.projects_dir): там готовые ролики по
+# сотням мегабайт, озвучка и раскадровка — не место в репозитории.
+# Имена берутся из id канала в channels.json.
+abyss/
+home-vault/
+estoico-es/
+
 # Локальные настройки Claude Code
 .claude/settings.local.json
 

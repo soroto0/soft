@@ -27,6 +27,16 @@ DEFAULTS = {
     "voice": "",               # пусто — берётся из «почерка» проекта
     "rate": 0,                 # темп речи, %
     "visual_style": "кинематографичный",
+    # Субтитры — тоже часть почерка канала, а не общая настройка:
+    #   sub_style — bold_box | pill | karaoke | yellow_pop | cyan_pop |
+    #               red_alert | thin_clean | top
+    #   sub_size  — мелкие | средние | крупные | огромные
+    #   sub_width — символов в строке (узкая строка читается быстрее, но
+    #               чаще перескакивает; 42 — обычный компромисс)
+    "sub_style": "",
+    "sub_size": "",
+    "sub_width": 0,
+    "subs_on": True,           # вжигать ли субтитры в кадр
     "watermark": "",           # постоянный бейдж на весь ролик
     "accent": "",              # акцентный цвет обложек, #rrggbb
     "thumb_layout": "",        # left | bottom | split; пусто — по очереди
@@ -129,9 +139,12 @@ def apply_to_params(channel: dict, p: dict) -> dict:
     выпадающий список — и ролик выйдет чужим голосом на чужом языке.
     Пустые поля профиля ничего не навязывают."""
     out = dict(p)
-    for key in ("lang", "tone", "visual_style"):
+    for key in ("lang", "tone", "visual_style", "sub_style", "sub_size"):
         if channel.get(key):
             out[key] = channel[key]
+    out["subs"] = bool(channel.get("subs_on", True))
+    if channel.get("sub_width"):
+        out["sub_width"] = int(channel["sub_width"])
     if channel.get("voice"):
         out["voice"] = channel["voice"]
         out["rate"] = f"{int(channel.get('rate', 0)):+d}%"
