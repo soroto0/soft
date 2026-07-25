@@ -129,6 +129,7 @@ function taskDone() { setStatus("Готов"); setProgress(0, 0); refresh(); }
 /* ---------- Состояние ---------- */
 let state = null;
 let lastProject = null;
+let channelsCache = [];
 
 async function refresh() {
   const s = await rpc("get_state");
@@ -236,6 +237,78 @@ $("scriptText").addEventListener("input", updateStats);
 
 /* ---------- Действия ---------- */
 const app = {
+  /* ---------- каналы ---------- */
+  async loadChannels(showGate) {
+    const r = await rpc("channels_get");
+    if (!r) return;
+    const sel = $("channelSel");
+    sel.innerHTML = (r.channels || []).map(
+      (c) => `<option value="${c.id}">${c.name}</option>`).join("")
+      || '<option value="">— нет каналов —</option>';
+    if (r.current) sel.value = r.current;
+    channelsCache = r.channels || [];
+    app.renderGate();
+    // Экран входа поднимаем только при старте и только если канал ещё не
+    // выбран: дёргать его на каждое обновление списка — значит выбрасывать
+    // пользователя из работы посреди дела.
+    if (showGate && !r.current) $("gate").classList.add("open");
+  },
+  renderGate() {
+    const grid = $("gateGrid");
+    if (!grid) return;
+    const tiles = channelsCache.map((c) => {
+      const letter = (c.name || c.id || "?").trim().charAt(0).toUpperCase();
+      const sub = [c.lang, c.tone].filter(Boolean).join(" · ");
+      return `<div class="ch-tile" onclick="app.gatePick('${c.id}')">
+        <div class="ch-face"><span class="dot"></span>${letter}</div>
+        <div class="ch-name">${c.name || c.id}</div>
+        <div class="ch-sub">${sub}</div>
+      </div>`;
+    });
+    tiles.push(`<div class="ch-tile" onclick="app.newChannel()">
+      <div class="ch-face add">+</div>
+      <div class="ch-name">Создать канал</div>
+      <div class="ch-sub">новый</div>
+    </div>`);
+    grid.innerHTML = tiles.join("");
+  },
+  gatePick(id) {
+    $("channelSel").value = id;
+    $("gate").classList.remove("open");
+    rpc("channel_select", id).then(refresh);
+  },
+  skipGate() { $("gate").classList.remove("open"); },
+  openGate() { app.renderGate(); $("gate").classList.add("open"); },
+  selectChannel() {
+    const id = $("channelSel").value;
+    if (id) rpc("channel_select", id).then(refresh);
+  },
+  editChannel() {
+    const id = $("channelSel").value;
+    const cur = channelsCache.find((c) => c.id === id) || {};
+    // Форма намеренно простая: правится JSON профиля целиком. Каналов три,
+    // меняются они редко — отдельный экран с два десятками полей тут лишний.
+    const draft = JSON.stringify({
+      id: cur.id || "", name: cur.name || "", lang: cur.lang || "английский",
+      tone: cur.tone || "документальный", minutes: cur.minutes || 10,
+      voice: cur.voice || "", rate: cur.rate || 0,
+      visual_style: cur.visual_style || "кинематографичный",
+      watermark: cur.watermark || "", accent: cur.accent || "",
+      avoid: cur.avoid || "", youtube_url: cur.youtube_url || "",
+    }, null, 2);
+    const out = prompt(
+      "Настройки канала (id — латиницей, он же имя папки).\n" +
+      "Пустой voice = голос выбирается автоматически.", draft);
+    if (!out) return;
+    let obj;
+    try { obj = JSON.parse(out); }
+    catch (e) { return addLog("Не разобрал JSON: " + e, "err"); }
+    rpc("channel_save", obj).then(() => { app.loadChannels(true); refresh(); });
+  },
+  newChannel() {
+    $("channelSel").value = "";
+    app.editChannel();
+  },
   browse: () => rpc("browse_project").then(refresh),
   newProject() { openName("Новый проект", "Введи имя папки проекта:", "", null); },
   renameProject(path, cur) {
@@ -380,6 +453,7 @@ const app = {
       randomize: $("randomize").checked,
       thumbs: $("rThumbs") ? $("rThumbs").checked : true,
       grow_variants: $("rGrow") ? $("rGrow").checked : true,
+      check_shots: $("rShots") ? $("rShots").checked : true,
       topic: $("topic") ? $("topic").value : "",
     });
   },
@@ -443,7 +517,11 @@ try {
 app.fillVoices();
 addLog("Интерфейс загружен. Порядок: Сценарий → Озвучка → Транскрибация → " +
        "Раскадровка → Рендер, или одна кнопка «Генерировать видео».", "dim");
-if (window.pywebview) refresh();
-else window.addEventListener("pywebviewready", refresh);
-setTimeout(() => { if (!state) refresh(); }, 700);   // демо-режим в браузере
+// Каналы грузим ТОЛЬКО когда мост pywebview поднят: вызов сразу при разборе
+// скрипта уходил в заглушку (window.pywebview ещё нет) и список оставался
+// пустым, хотя профили в channels.json были.
+function boot() { refresh(); app.loadChannels(true); }
+if (window.pywebview) boot();
+else window.addEventListener("pywebviewready", boot);
+setTimeout(() => { if (!state) boot(); }, 700);   // демо-режим в браузере
 setInterval(() => rpc("noop"), 3600 * 1000);          // держим мост живым

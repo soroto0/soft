@@ -6,6 +6,17 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+<!-- Экран входа: выбор канала. Показывается, пока канал не выбран —
+     чтобы нельзя было случайно отрендерить ролик не в тот канал. -->
+<div class="gate" id="gate">
+  <h2>Выберите канал</h2>
+  <div class="gate-grid" id="gateGrid"></div>
+  <div class="gate-foot">
+    <button class="btn ghost" onclick="app.skipGate()">Работать без канала</button>
+  </div>
+</div>
+
 <div class="layout">
 
   <aside class="sidebar">
@@ -21,6 +32,12 @@
 
   <div class="main">
     <div class="topbar">
+      <!-- Канал задаёт язык, жанр, голос, стиль и СВОЮ библиотеку оверлеев.
+           Стоит первым, потому что выбирается раньше проекта. -->
+      <label>Канал:</label>
+      <select id="channelSel" onchange="app.selectChannel()" style="min-width:150px"></select>
+      <button class="btn ghost" onclick="app.openGate()" title="Сменить канал">⇄</button>
+      <button class="btn ghost" onclick="app.editChannel()" title="Настройки канала">⚙</button>
       <label>Проект:</label>
       <input class="proj-input" id="projPath" spellcheck="false">
       <button class="btn ghost" onclick="app.browse()">…</button>
@@ -248,6 +265,10 @@
                  сгенерированным ИИ под его тему. Иначе десятое видео
                  выглядит ровно как первое. +1-3 мин к генерации. -->
             <label class="switch"><input type="checkbox" id="rGrow" checked><span class="tr"></span>Новый оверлей на каждый ролик (ИИ)</label>
+            <!-- Проверяет зрением, что кадр соответствует закадровому тексту,
+                 и перекачивает несовпавшие. Делается ДО рендера, где замена
+                 стоит одну закачку, а не пересборку всего ролика. -->
+            <label class="switch"><input type="checkbox" id="rShots" checked><span class="tr"></span>Проверять кадры по тексту (ИИ)</label>
           </div>
           <div class="sect" style="font-size:13px">Эффекты поверх кадра</div>
           <div class="subrow">

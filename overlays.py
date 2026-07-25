@@ -991,27 +991,47 @@ def _variant_file(rec: dict) -> Path:
     return VARIANTS_DIR / rec.get("file", "")
 
 
-def _library_variants(kind: str, engine: str | None = None) -> tuple[str, ...]:
+def _library_variants(kind: str, engine: str | None = None,
+                      channel: str = "") -> tuple[str, ...]:
     """Накопленные ИИ-варианты для типа `kind` — те, что прошли проверку в
     прошлых роликах и остались в библиотеке навсегда. Запись без файла на
-    диске игнорируем. engine=None — оба движка."""
+    диске игнорируем. engine=None — оба движка.
+
+    channel — если задан, берутся ТОЛЬКО варианты этого канала плюс общие
+    (без метки канала). Иначе оверлей, придуманный для канала про сантехнику,
+    всплыл бы на канале про полярные экспедиции, и каналы стали бы
+    неотличимы — ровно то, ради чего профили и заводятся."""
     return tuple(
         rec["variant"] for rec in load_variants_meta().values()
         if rec.get("type") == kind and rec.get("enabled", True)
         and rec.get("variant")
         and (engine is None or rec.get("engine", "remotion") == engine)
+        and (not channel or rec.get("channel", "") in ("", channel))
         and _variant_file(rec).exists())
+
+
+def _project_channel(out_dir) -> str:
+    """К какому каналу относится проект — из его meta.json. Пусто, если
+    каналы не заведены: тогда работает вся библиотека, как раньше."""
+    try:
+        meta = json.loads((Path(out_dir) / "meta.json").read_text(encoding="utf-8"))
+        return str(meta.get("channel", "")).strip()
+    except (OSError, ValueError):
+        return ""
 
 
 def _pick_variant(out_dir, kind: str) -> str:
     """Вариант для типа на это видео: ручные + накопленные ИИ ОБОИХ движков
-    в одном жребии. Чем больше библиотека, тем реже повторяется вид между
-    роликами. Префикс имени говорит, чем рендерить."""
+    в одном жребии, но только те, что принадлежат каналу этого проекта.
+    Чем больше библиотека, тем реже повторяется вид между роликами.
+    Префикс имени говорит, чем рендерить."""
+    ch = _project_channel(out_dir)
     base = BASE_VARIANTS.get(kind, ("remotion_classic",))
-    lib = tuple(f"remotion_{v}" for v in _library_variants(kind, "remotion"))
+    lib = tuple(f"remotion_{v}"
+                for v in _library_variants(kind, "remotion", ch))
     if hyperframes_available():
         lib += tuple(f"hyperframes_{v}"
-                     for v in _library_variants(kind, "hyperframes"))
+                     for v in _library_variants(kind, "hyperframes", ch))
     return _project_variant(out_dir, kind, base + lib)
 
 

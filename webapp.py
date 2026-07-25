@@ -28,6 +28,7 @@ import core
 import render
 import overlays
 import gen_remotion_gemini
+import channels as channels_mod
 
 APP_TITLE = "Контент-фабрика"
 APP_VERSION = "3.0"
@@ -207,6 +208,46 @@ class Api:
     def noop(self):
         return True
 
+    # ---------- каналы ----------
+    def channels_get(self):
+        """Профили каналов + какой сейчас выбран."""
+        return {"channels": channels_mod.load(),
+                "current": self._settings.get("current_channel", "")}
+
+    def channel_save(self, ch: dict):
+        """Создать или обновить профиль. id — латиницей, он же имя папки."""
+        cid = str(ch.get("id", "")).strip()
+        if not cid:
+            cid = re.sub(r"[^\w\-]+", "_",
+                         str(ch.get("name", "")).strip().lower()) or "channel"
+            ch["id"] = cid
+        channels_mod.upsert(ch)
+        self.log(f"[Каналы] Сохранён профиль «{ch.get('name', cid)}»")
+        return self.channels_get()
+
+    def channel_select(self, channel_id: str):
+        """Переключиться на канал: дальше все запуски идут в его папку и с
+        его настройками."""
+        ch = channels_mod.get(channel_id)
+        if not ch:
+            self.log(f"[Каналы] Нет профиля «{channel_id}»", "warn")
+            return self.get_state()
+        self._settings["current_channel"] = channel_id
+        d = channels_mod.projects_dir(ch)
+        d.mkdir(parents=True, exist_ok=True)
+        # внутри канала работаем в его папке; конкретный проект пользователь
+        # выберет как обычно, но список уже не смешивает три канала
+        self._project = d
+        self._settings["last_project"] = str(d)
+        self._save_settings_file()
+        self.log(f"[Каналы] Канал «{ch['name']}» — язык {ch['lang']}, "
+                 f"жанр «{ch['tone']}», стиль «{ch['visual_style']}»"
+                 + (f", голос {ch['voice']}" if ch.get("voice") else ""))
+        return self.get_state()
+
+    def _channel(self) -> dict | None:
+        return channels_mod.get(self._settings.get("current_channel", ""))
+
     # ---------- проект ----------
     def set_project(self, path: str):
         if path:
@@ -324,11 +365,28 @@ class Api:
                    tone: str = "документальный", lang: str = "английский"):
         key = self._settings.get("gemini_key", "") or self._settings.get("agnes_key", "")
 
+        # Профиль канала задаёт язык, жанр, ДЛИНУ и свой голос повествования.
+        # Длина здесь особенно важна: она выведена из замеров ниши (у дома
+        # 12 мин, у true crime 45), а выпадающий список на странице остался
+        # общим на все каналы — без этой строки ролик выходил бы той длины,
+        # которая случайно осталась в списке.
+        ch = self._channel()
+        if ch:
+            lang = ch.get("lang") or lang
+            tone = ch.get("tone") or tone
+            if ch.get("minutes"):
+                if int(minutes) != int(ch["minutes"]):
+                    self.log(f"[Канал] Длина {ch['minutes']} мин из профиля "
+                             f"«{ch['name']}» (в списке стояло {minutes})")
+                minutes = int(ch["minutes"])
+
         def job():
             text = core.gen_script(topic, int(minutes), key, self.log,
-                                   tone=tone, lang=lang)
+                                   tone=tone, lang=lang,
+                                   extra=(ch or {}).get("script_extra", ""))
             self.save_script(text)
-            self._write_meta(tone=tone, topic=topic)
+            self._write_meta(tone=tone, topic=topic,
+                             **({"channel": ch["id"]} if ch else {}))
             self._js(f"$('scriptText').value = {json.dumps(text)}; updateStats()")
         self._bg("Генерация сценария", job)
 
@@ -338,6 +396,15 @@ class Api:
         if not text:
             raise RuntimeError("Нет сценария — заполни страницу «Сценарий».")
         self.save_script(text)
+        # Режиссёрские ремарки в скобках диктор зачитал бы вслух. Сохраняем
+        # их отдельным файлом (по ним снимают и подбирают кадры) и озвучиваем
+        # только чистый текст.
+        text, cues = core.strip_cues(text)
+        if cues:
+            (self._project / "cues.txt").write_text(
+                "\n".join(cues), encoding="utf-8")
+            self.log(f"[Озвучка] Вырезал {len(cues)} режиссёрских ремарок "
+                     "— сохранил в cues.txt, вслух они не пойдут")
         voice = p.get("voice")
         rate = int(str(p.get("rate", "0%")).replace("%", "").replace("+", ""))
         if p.get("randomize"):
@@ -603,8 +670,13 @@ class Api:
                 manifest = json.loads(mf.read_text(encoding="utf-8"))
             except Exception:
                 pass
-        text = overlays.suggest_overlays_auto(core.parse_srt(srt), manifest,
-                                              self._project, self.log)
+        # Постоянный бейдж канала на весь ролик. Функция это умела давно, но
+        # параметр никто не передавал — код был мёртвым. Берём из профиля
+        # канала, чтобы у каждого был свой знак присутствия автора.
+        ch = self._channel()
+        text = overlays.suggest_overlays_auto(
+            core.parse_srt(srt), manifest, self._project, self.log,
+            watermark=(ch or {}).get("watermark", ""))
         if text.strip():
             ov.write_text(text.strip() + "\n", encoding="utf-8")
             n = len([l for l in text.splitlines()
@@ -684,24 +756,54 @@ class Api:
             return None
         meta = gen_remotion_gemini.load_variants_meta()
         kinds = list(gen_remotion_gemini.TYPE_BRIEF)
+        ch0 = self._channel()
+        # считаем покрытие ПО ЭТОМУ КАНАЛУ: у соседнего канала может быть
+        # десяток вариантов popup, но этому от них ни холодно ни жарко —
+        # он их не увидит, значит и добирать надо свои
         counts = {k: len(overlays.BASE_VARIANTS.get(k, ("classic",)))
-                  + len(overlays._library_variants(k)) for k in kinds}
+                  + len(overlays._library_variants(k, None,
+                                                   ch0["id"] if ch0 else ""))
+                  for k in kinds}
         kind = min(kinds, key=lambda k: (counts[k], k))
         theme = core.gen_variant_theme(topic, kind, key, self.log)
         if not theme:
             return None
         use_hf = (len(meta) % 2 == 1) and overlays.hyperframes_available()
         eng = "HyperFrames" if use_hf else "Remotion"
+        ch = self._channel()
+        cid = ch["id"] if ch else ""
         self.log(f"[Цепочка] Новый оверлей «{kind}» через {eng} "
-                 f"(у типа сейчас {counts[kind]} видов)…")
+                 f"(у типа сейчас {counts[kind]} видов)"
+                 + (f", канал «{ch['name']}»" if ch else "") + "…")
         fn = (gen_remotion_gemini.gen_variant_hyperframes if use_hf
               else gen_remotion_gemini.gen_variant)
-        return fn(kind, theme, key, self.log)
+        return fn(kind, theme, key, self.log, channel=cid)
 
     def grow_variants(self):
         self._bg("Новый оверлей",
                  lambda: self._grow_variant_library(
                      self._read_meta().get("topic", "")))
+
+    def _check_and_fix_shots(self, limit: int = 0, every: int = 3) -> int:
+        """Проверить подбор кадров зрением и перекачать те, что мимо.
+
+        every=3 — смотрим каждый третий план: на длинном ролике планов
+        сотни, а проверка каждого стоит запроса к модели. Брак обычно идёт
+        не поодиночке (плохой запрос портит несколько соседних планов),
+        поэтому выборки хватает, чтобы его увидеть."""
+        key = (self._settings.get("gemini_key", "")
+               or self._settings.get("agnes_key", ""))
+        bad = core.review_storyboard(self._project, key, self.log,
+                                     limit=limit, every=every)
+        if not bad:
+            return 0
+        return core.refix_storyboard(
+            self._project, bad, self.log,
+            self._settings.get("pexels_keys", ""),
+            self._settings.get("pixabay_keys", ""))
+
+    def check_shots(self):
+        self._bg("Проверка кадров", lambda: self._check_and_fix_shots())
 
     def _do_thumbnails(self, count: int = 3) -> list[str]:
         """Обложки по сценарию: концепции -> AI-фон -> рендер -> проверка
@@ -778,9 +880,14 @@ class Api:
         key = self._settings.get("gemini_key", "") or self._settings.get("agnes_key", "")
         # язык ролика и субтитры — иначе описание выходило по-английски для
         # русского сценария, а глав (тайм-кодов) не было вовсе
-        out = core.gen_seo(text, key, self.log,
-                           self._read_meta().get("lang", "английский"),
-                           self._project / "subs" / "voiceover.srt")
+        ch = self._channel()
+        out = core.gen_seo(
+            text, key, self.log,
+            (ch or {}).get("lang") or self._read_meta().get("lang", "английский"),
+            self._project / "subs" / "voiceover.srt",
+            # формула заголовков из разбора ниши — она решает больше всего:
+            # на канале-образце разброс между лучшим и худшим в тысячу раз
+            formula=(ch or {}).get("topic_formula", ""))
         (self._project / "seo.txt").write_text(out, encoding="utf-8")
         self.log("[SEO] Сохранено: seo.txt")
         return out
@@ -803,6 +910,19 @@ class Api:
         return min(beat, avg)
 
     def generate_all(self, p: dict):
+        # Профиль канала ЗАДАЁТ язык, жанр, голос и стиль — иначе достаточно
+        # один раз забыть переключить выпадающий список, и ролик выйдет
+        # чужим голосом на чужом языке. Проект запоминает свой канал, чтобы
+        # библиотека оверлеев потом отфильтровалась по нему.
+        ch = self._channel()
+        if ch:
+            p = channels_mod.apply_to_params(ch, p)
+            self._write_meta(channel=ch["id"])
+            if ch.get("watermark") and not (p.get("overlays") or "").strip():
+                p["watermark"] = ch["watermark"]
+            self.log(f"[Канал] «{ch['name']}»: {p.get('lang')}, "
+                     f"«{p.get('tone')}»"
+                     + (f", голос {p.get('voice')}" if ch.get("voice") else ""))
         opts = self._render_opts(p)
         if (p.get("overlays") or "").strip():
             self.save_overlays(p["overlays"])
@@ -820,6 +940,36 @@ class Api:
                             "задач одновременно")
                 except Exception:
                     pass   # чисто информационно — не блокирует цепочку
+            # Сценария может ещё не быть: цепочка начиналась сразу с озвучки
+            # и падала с «Нет сценария». Пишем его сами — по теме из поля и
+            # ДЛИНЕ ИЗ ПРОФИЛЯ канала, а не из общего выпадающего списка.
+            if not (p.get("script") or "").strip() and not self._read("script.txt"):
+                key = (self._settings.get("gemini_key", "")
+                       or self._settings.get("agnes_key", ""))
+                topic = (p.get("topic") or "").strip()
+                if not topic and ch:
+                    # тема по ФОРМУЛЕ НИШИ канала — из разбора конкурентов,
+                    # а не наугад. Уже использованные не повторяются.
+                    topic = core.gen_topic(ch, key, self.log)
+                    if topic:
+                        self.log(f"[Тема] По формуле ниши: «{topic}»")
+                        used = list(ch.get("used_topics") or [])
+                        used.append(topic)
+                        ch["used_topics"] = used[-60:]
+                        channels_mod.upsert(ch)
+                if not topic:
+                    raise RuntimeError(
+                        "Нет ни сценария, ни темы — впиши тему на странице "
+                        "«Сценарий» или сгенерируй черновик.")
+                mins = int((ch or {}).get("minutes") or p.get("minutes") or 12)
+                self.log(f"[Цепочка] Шаг 0 — сценарий «{topic}», {mins} мин…")
+                text = core.gen_script(
+                    topic, mins, key, self.log,
+                    tone=p.get("tone", "документальный"),
+                    lang=p.get("lang", "английский"),
+                    extra=(ch or {}).get("script_extra", ""))
+                self.save_script(text)
+                self._write_meta(topic=topic)
             self.log("[Цепочка] Шаг 1/4 — озвучка…")
             self._tts_step(p)
             self.log("[Цепочка] Шаг 2/4 — субтитры…")
@@ -838,6 +988,15 @@ class Api:
                 int(self._settings.get("max_unique", 200)),
                 p.get("visual_mode", "mixed"), p.get("visual_style", ""),
                 float(p.get("ai_ratio", 0.35)))
+            if p.get("check_shots", True):
+                # ГЛАВНАЯ проверка качества: кадр не про то, что говорит
+                # диктор — самый заметный признак сборки «на автомате».
+                # Ловим ЗДЕСЬ, где замена стоит одну закачку, а не после
+                # рендера, когда пересобирать часами.
+                try:
+                    self._check_and_fix_shots()
+                except Exception as e:
+                    self.log(f"[Цепочка] Проверка кадров пропущена: {e}", "warn")
             if not (p.get("overlays") or "").strip():
                 self._auto_overlays()   # моушн-графика сама, если не задана
             self._regen_overlay_theme()   # своя палитра оверлеев под это видео

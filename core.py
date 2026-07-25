@@ -191,6 +191,22 @@ def enhance_voice(mp3: Path, log=print) -> Path:
     return mp3
 
 
+def strip_cues(text: str) -> tuple[str, list[str]]:
+    """Убрать из сценария режиссёрские ремарки в квадратных скобках и вернуть
+    (чистый текст для озвучки, список ремарок).
+
+    Нужно потому, что сценарий уходит в TTS как есть: подсказка вроде
+    «[берег моря, задумчиво]» была бы ЗАЧИТАНА ВСЛУХ. При этом сами ремарки
+    ценны — по ним снимают и подбирают кадры, поэтому не выбрасываем, а
+    отдаём вызывающему."""
+    cues = re.findall(r"\[([^\[\]]{2,200})\]", text or "")
+    clean = re.sub(r"\[[^\[\]]{2,200}\]", " ", text or "")
+    clean = re.sub(r"[ \t]{2,}", " ", clean)
+    clean = re.sub(r" +([,.!?;:])", r"\1", clean)
+    clean = re.sub(r"\n{3,}", "\n\n", clean)
+    return clean.strip(), [c.strip() for c in cues if c.strip()]
+
+
 def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
              enhance: bool = False, pauses: bool = True) -> Path:
     """Бесплатная озвучка через Edge TTS (голоса Microsoft, ключи не нужны).
@@ -767,7 +783,8 @@ LANGS = {"английский": "English", "русский": "Russian", "исп
 
 
 def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
-               tone: str = "документальный", lang: str = "английский") -> str:
+               tone: str = "документальный", lang: str = "английский",
+               extra: str = "") -> str:
     """Длинный сценарий без воды на ЛЮБУЮ тему: план из глав, потом главы по
     очереди. tone — жанр/подача, lang — язык. ~150 слов на минуту."""
     target_words = minutes * WORDS_PER_MINUTE
@@ -776,6 +793,12 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
     lang_name = LANGS.get(lang, "English")
     system = SCRIPT_BASE.format(lang=lang_name) + TONES.get(
         tone, TONES["документальный"])
+    if (extra or "").strip():
+        # указания канала идут ПОСЛЕДНИМИ и потому перевешивают общие:
+        # это голос конкретного канала, а не ещё один совет вообще
+        system += ("\n\nCHANNEL VOICE — these instructions describe THIS "
+                   "channel specifically and take precedence over the general "
+                   "guidance above wherever they conflict:\n" + extra.strip())
     log(f"[Агент] Сценарий «{topic}»: ~{minutes} мин (~{target_words} слов), "
         f"{n_sections} глав, жанр «{tone}», язык {lang_name}")
 
@@ -813,11 +836,23 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
         if not tail:
             return part
         norm = lambda s: re.sub(r"[^\w\s]", "", s.lower()).split()
-        tail_words, part_words = norm(tail), part.split()
+        tail_words = norm(tail)
         part_norm = norm(part)
         for k in range(min(len(tail_words), len(part_norm)), 1, -1):
             if part_norm[:k] == tail_words[-k:]:
-                return " ".join(part_words[k:]).strip()
+                # Режем ровно k слов С НАЧАЛА, не трогая остальной текст.
+                # Раньше здесь было part.split() + " ".join(...) — это
+                # склеивало главу в одну строку, УНИЧТОЖАЯ разбивку на
+                # абзацы. А по пустым строкам режется всё дальнейшее:
+                # планировщик сцен видел один абзац вместо сотни и
+                # выдавал один план на весь 51-минутный ролик.
+                cut, seen = 0, 0
+                for m in re.finditer(r"\S+", part):
+                    seen += 1
+                    if seen > k:
+                        cut = m.start()
+                        break
+                return part[cut:].lstrip() if cut else part
         return part
 
     def _gen_chapter(i, ch, flow, sec_words):
@@ -963,19 +998,53 @@ def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
     return result
 
 
+# Правила для ЛЮБОГО поискового запроса к стоку. Вынесены в константу,
+# потому что нужны и smart_queries(), и gen_scenes_ai() — а копия неизбежно
+# разъедется, и половина роликов снова поедет с несоответствием.
+#
+# Появились после разбора реального ролика: запрос «rotten egg smell sink»
+# (запах!) вернул КОРОБКУ ЯИЦ под рассказ о серной кислоте. Проверка зрением
+# нашла 3 таких кадра из 6 — это и есть главный видимый признак сборки
+# «на автомате», хуже которого для канала ничего нет.
+SHOT_RULES = (
+    "THE ONE RULE: name something a camera can physically photograph. "
+    "A stock library matches your words literally, so anything abstract "
+    "comes back as nonsense.\n"
+    "FORBIDDEN — these are not things: smells, tastes, feelings, "
+    "sensations, risks, warnings, concepts, statistics, chemical names, "
+    "organisation names, processes, absences ('invisible', 'silent').\n"
+    "Real failures from a previous run — do not repeat them:\n"
+    '  a sulfur smell -> "rotten egg smell sink" returned a carton of EGGS. '
+    'Correct: "kitchen sink drain closeup"\n'
+    '  fumes -> "volatile organic compounds lungs" is unfilmable. '
+    'Correct: "spray bottle mist sunlight"\n'
+    '  danger -> "strict safety protocols" is unfilmable. '
+    'Correct: "worker gloves goggles chemical"\n'
+    "When the narration is abstract, film its PHYSICAL EVIDENCE: the object "
+    "involved, the place it happens, the hand doing it, the damage it "
+    "leaves. Every fragment has something physical in it — find that."
+)
+
+
 def smart_queries(beats: list[dict], api_key: str = "", log=print) -> list[str] | None:
     """Поисковые запросы для стока по смыслу текста каждого плана (LLM),
-    батчами по 20 — короткая фраза под сток-поиск (2-4 слова)."""
+    батчами по 20 — короткая фраза под сток-поиск (2-5 слов)."""
     return _llm_batch_prompts(
         beats, api_key, log, batch_size=20,
-        system="You convert narration fragments into stock-footage search queries.",
+        system=("You are a documentary shot-lister. You never describe ideas "
+                "— you describe what a camera is pointed at."),
         instruction=(
             "For each numbered narration fragment output ONE stock video "
-            "search query: 2-4 English words, concrete and visual — what "
-            "should literally be on screen while these words are spoken. "
+            "search query naming the SHOT that plays while it is spoken.\n\n"
+            + SHOT_RULES +
+            "\n\nEach query is 2-5 English words: a concrete subject, plus a "
+            "setting or shot size (closeup, overhead, slow motion) where it "
+            "helps.\n"
             "Reply with a JSON array of exactly {n} strings, no markdown, "
             "nothing else."),
-        temperature=0.4, max_tokens=1200, label="Умные запросы")
+        # лимит с запасом: 20 запросов в батче плюс «размышления» модели,
+        # на 1200 ответ обрывался и батч уходил в фолбэк
+        temperature=0.4, max_tokens=4000, label="Умные запросы")
 
 
 def ai_scene_prompts(beats: list[dict], api_key: str = "", log=print
@@ -1018,21 +1087,40 @@ def gen_scenes_ai(script_text: str, api_key: str = "", log=print,
              if p.strip()]
     if not paras:
         raise RuntimeError("пустой сценарий")
+    # Сценарий без пустых строк даёт ОДИН «абзац» на весь ролик — и тогда на
+    # 51 минуту приходится один план, а видеоряд разъезжается с текстом.
+    # Реальный случай: script.txt на 47 000 символов в одну строку. Режем по
+    # предложениям на куски примерно по 60 слов — это близко к абзацу.
+    if len(paras) < 4 and len(script_text.split()) > 400:
+        sents = re.split(r"(?<=[.!?])\s+", " ".join(paras))
+        paras, buf = [], []
+        for s in sents:
+            buf.append(s)
+            if sum(len(x.split()) for x in buf) >= 60:
+                paras.append(" ".join(buf))
+                buf = []
+        if buf:
+            paras.append(" ".join(buf))
+        log(f"[Агент] В сценарии не размечены абзацы — разбил по смыслу на "
+            f"{len(paras)} фрагментов, иначе весь ролик получил бы один план")
     while len(paras) > max_scenes:  # слишком много абзацев — склеиваем соседние
         paras = [" ".join(paras[i:i + 2]) for i in range(0, len(paras), 2)]
     numbered = "\n".join(f"{i}. {p[:300]}" for i, p in enumerate(paras, 1))
     log(f"[Агент] Составляю сцены по смыслу текста: {len(paras)} фрагментов...")
     out = llm_chat(
         [{"role": "system", "content":
-          "You plan stock footage for documentary videos."},
+          "You are a documentary shot-lister. You never describe ideas — you "
+          "describe what a camera is pointed at."},
          {"role": "user", "content":
-          "For each numbered narration fragment, decide what should literally "
-          "be on screen while it is spoken. Output a JSON array of exactly "
-          f"{len(paras)} objects: "
-          '{"q": "2-4 concrete English words for a stock footage search", '
-          '"type": "video" or "image"}. Prefer "video"; use "image" for '
-          "static, historical or abstract moments. Nothing but the JSON "
-          "array.\n\n" + numbered}],
+          "For each numbered narration fragment, write the SHOT that plays "
+          "while it is spoken.\n\n"
+          + SHOT_RULES +
+          "\n\nEach `q` is 2-5 English words naming a concrete subject, and "
+          "where useful a setting or shot size (closeup, overhead, slow "
+          "motion).\n\n"
+          f"Output ONLY a JSON array of exactly {len(paras)} objects: "
+          '{"q": "...", "type": "video" or "image"}. Prefer "video"; use '
+          '"image" for historical or still subjects.\n\n' + numbered}],
         # по объекту JSON на КАЖДЫЙ абзац сценария: на 35-минутном ролике
         # это сотни строк, 4000 токенов обрезало массив и вся раскладка
         # сцен падала в фолбэк
@@ -1040,12 +1128,32 @@ def gen_scenes_ai(script_text: str, api_key: str = "", log=print,
     m = re.search(r"\[.*\]", out, re.S)
     if not m:
         raise RuntimeError("ответ без JSON")
-    lines = []
+    # Слова, которые НЕЛЬЗЯ снять. Сток цепляется за них буквально и отдаёт
+    # мусор: на «rotten egg smell» пришла коробка ЯИЦ под рассказ о серной
+    # кислоте. Ловим здесь, а не после рендера, когда исправлять уже дорого.
+    UNFILMABLE = (
+        "smell", "odor", "odour", "scent", "aroma", "stench", "fume",
+        "taste", "feeling", "sensation", "emotion", "fear", "risk",
+        "danger", "warning", "protocol", "policy", "concept", "idea",
+        "process", "invisible", "unseen", "silent", "society", "agency",
+        "association", "compound", "molecule", "statistic", "percent",
+    )
+    lines, flagged = [], []
     for it in json.loads(m.group(0)):
         q = str(it.get("q", "")).strip()
         t = "image" if str(it.get("type", "")).lower().startswith("i") else "video"
-        if q:
-            lines.append(f"{q} | type: {t}")
+        if not q:
+            continue
+        # по НАЧАЛУ слова, а не по точному совпадению: иначе множественное
+        # число проскакивает («compounds», «protocols» мимо «compound»)
+        if any(w.startswith(UNFILMABLE) for w in re.findall(r"[a-z]+", q.lower())):
+            flagged.append(q)
+        lines.append(f"{q} | type: {t}")
+    if flagged:
+        log(f"[Агент] ⚠ {len(flagged)} запросов описывают НЕснимаемое — сток "
+            f"подберёт по случайному слову: {', '.join(flagged[:5])}"
+            + (" …" if len(flagged) > 5 else "")
+            + ". Проверь эти планы в scenes.txt.")
     if not lines:
         raise RuntimeError("ИИ не вернул ни одной сцены")
     log(f"[Агент] Готово: {len(lines)} сцен")
@@ -1053,7 +1161,8 @@ def gen_scenes_ai(script_text: str, api_key: str = "", log=print,
 
 
 def gen_seo(script_text: str, api_key: str = "", log=print,
-            lang: str = "английский", srt: Path | None = None) -> str:
+            lang: str = "английский", srt: Path | None = None,
+            formula: str = "") -> str:
     """Названия, описание, теги и главы для YouTube по готовому сценарию.
 
     Язык раньше был ЗАШИТ английским — русский сценарий получал английское
@@ -1087,7 +1196,10 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
           "for curiosity, never for clickbait you cannot deliver on."},
          {"role": "user", "content":
           f"Based on this documentary script, write everything in {lang_name}.\n\n"
-          "TITLES: 5 options, each under 60 characters so nothing is cut off "
+          + (("WHAT WORKS ON THIS CHANNEL'S NICHE — measured on competing "
+              "channels, follow this pattern for the titles, it matters more "
+              f"than anything else here:\n{formula}\n\n") if formula.strip() else "")
+          + "TITLES: 5 options, each under 60 characters so nothing is cut off "
           "on mobile. Each must open a curiosity gap tied to the actual "
           "unresolved question the script raises — not a summary of the "
           "topic. Put the most concrete, specific words FIRST (the tail gets "
@@ -1295,6 +1407,171 @@ Reply with ONLY a JSON object, no markdown fences:
 {"ok": true|false, "problem": "<if not ok: one short concrete sentence>"}"""
 
 
+STORYBOARD_REVIEW_PROMPT = """This is one shot from a documentary, taken from
+the clip that will play while the narrator says:
+
+"__LINE__"
+
+It was found by searching a stock library for: "__QUERY__"
+
+You are the editor checking the shot before the cut is locked. Answer one
+question: does this picture belong under those words?
+
+Say NO if the shot is about something else entirely — the classic failure is a
+stock library matching one word literally (a search for a "rotten egg smell"
+returning a carton of eggs under narration about acid).
+
+Say YES if it is relevant, even loosely: an object, place, action or mood that
+fits what is being said. Documentaries are full of plain establishing shots and
+that is fine. A shot does not have to illustrate every word.
+
+Reply with ONLY a JSON object, no markdown fences:
+{"ok": true|false, "better": "<if not ok: a 2-5 word stock search naming
+something a camera can photograph that WOULD fit these words; empty if ok>"}"""
+
+
+def review_storyboard(project_dir: Path, api_key: str = "", log=print,
+                      limit: int = 0, every: int = 1) -> list[dict]:
+    """Проверяет ПОДБОР КАДРОВ до рендера — там, где исправить дёшево.
+
+    Смысл в этом: та же проверка на готовом ролике находит брак, когда
+    пересобирать уже три часа. Здесь достаточно перекачать один клип.
+
+    Для каждого плана берётся кадр из его клипа и показывается модели вместе
+    с фразой, которая в этот момент звучит, и запросом, по которому клип
+    нашли. Возвращает [{i, query, text, file, better}] по несовпадениям —
+    `better` это предложенный моделью исправленный запрос.
+
+    limit — сколько планов проверить (0 = все), every — шаг (2 = каждый
+    второй): на длинном ролике планов сотни, и полная проверка стоит дорого.
+    """
+    tl_path = Path(project_dir) / "timeline.json"
+    if not tl_path.exists():
+        raise FileNotFoundError("нет timeline.json — сначала раскадровка")
+    beats = json.loads(tl_path.read_text(encoding="utf-8"))
+    picks = beats[::max(1, every)]
+    if limit:
+        picks = picks[:limit]
+    log(f"[Кадры] Проверяю {len(picks)} планов из {len(beats)}...")
+    bad = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for n, b in enumerate(picks, 1):
+            src = Path(b.get("file", ""))
+            if not src.exists():
+                continue
+            shot = Path(tmp) / f"s{n}.jpg"
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-y", "-ss", "0.5", "-i", str(src),
+                     "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "5",
+                     str(shot)],
+                    capture_output=True, timeout=60, check=True,
+                    creationflags=CREATE_NO_WINDOW)
+            except Exception:
+                continue
+            if not shot.exists():
+                continue
+            line = str(b.get("text", "")).replace("\n", " ")[:250]
+            try:
+                out = vision_chat(
+                    STORYBOARD_REVIEW_PROMPT.replace("__LINE__", line)
+                        .replace("__QUERY__", str(b.get("query", ""))),
+                    shot.read_bytes(), api_key,
+                    system="You are a documentary editor checking shot choices.",
+                    max_tokens=300)
+                m = re.search(r"\{.*\}", out, re.S)
+                if not m:
+                    continue
+                data = json.loads(m.group(0))
+                if not data.get("ok"):
+                    rec = {"i": beats.index(b), "query": b.get("query", ""),
+                           "text": line, "file": str(src),
+                           "better": str(data.get("better", "")).strip()}
+                    bad.append(rec)
+                    log(f"[Кадры] план {rec['i'] + 1}: «{rec['query']}» мимо"
+                        + (f" -> лучше «{rec['better']}»" if rec["better"] else ""))
+            except Exception as e:
+                log(f"[Кадры] план {n}: проверка не прошла ({e})")
+            if n % 25 == 0:
+                log(f"[Кадры] проверено {n}/{len(picks)}, брака {len(bad)}")
+    share = len(bad) / len(picks) * 100 if picks else 0
+    log(f"[Кадры] Итого: {len(bad)} несоответствий из {len(picks)} "
+        f"({share:.0f}%)")
+    return bad
+
+
+def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
+                     pexels_keys: str = "", pixabay_keys: str = "") -> int:
+    """Перекачивает ТОЛЬКО забракованные планы по исправленному запросу.
+
+    Файл перезаписывается под тем же именем, поэтому timeline.json и все
+    ссылки остаются валидными — пересобирать раскадровку целиком не нужно.
+    Возвращает число реально заменённых клипов.
+
+    Если замена не нашлась — старый клип остаётся: плохой кадр всё же лучше
+    дырки в монтаже."""
+    if not bad:
+        return 0
+    pexels = KeyRotator(pexels_keys or os.getenv("PEXELS_API_KEY", ""))
+    pixabay = KeyRotator(pixabay_keys or os.getenv("PIXABAY_API_KEY", ""))
+    if not pexels.current and not pixabay.current:
+        log("[Кадры] Нет ключей стоков — заменить нечем")
+        return 0
+    pexels_get, _ = _stock_getters(pexels, pixabay, log)
+    used = _load_used()
+    fixed = 0
+    for rec in bad:
+        q = (rec.get("better") or "").strip()
+        dest = Path(rec.get("file", ""))
+        if not q or not dest.parent.exists():
+            continue
+        old_q = (rec.get("query") or "").strip()
+        # Судья иногда предлагает ТОТ ЖЕ запрос, который сам и забраковал —
+        # менять клип на другой по тому же запросу бессмысленно, а лотерея
+        # может дать хуже. Наблюдалось на живом прогоне.
+        if q.lower() == old_q.lower():
+            log(f"[Кадры] план {rec['i'] + 1}: замена совпала с оригиналом "
+                f"«{q}» — оставляю как есть")
+            continue
+        # Замена не должна терять предмет: если в новом запросе нет ни одного
+        # значимого слова из старого и он при этом расплывчатый, это скорее
+        # уход в сторону, чем исправление.
+        VAGUE = ("close up", "hand touching", "person using", "man on phone",
+                 "looking at camera", "surface", "object")
+        if any(v in q.lower() for v in VAGUE) and len(q.split()) <= 5:
+            log(f"[Кадры] план {rec['i'] + 1}: «{q}» слишком общий — пропускаю")
+            continue
+        need = 6
+        try:
+            r = pexels_get("https://api.pexels.com/videos/search",
+                           {"query": q, "per_page": SEARCH_POOL,
+                            "orientation": "landscape"})
+            vids = (r.json().get("videos")
+                    if r is not None and r.status_code == 200 else None)
+            if not vids:
+                log(f"[Кадры] план {rec['i'] + 1}: по «{q}» ничего не нашлось")
+                continue
+            long_enough = [v for v in vids if (v.get("duration") or 0) >= need]
+            picked = _pick_unused(long_enough or vids, "pexels_video",
+                                  used, 1, log)
+            if not picked:
+                continue
+            tmp_dest = dest.with_suffix(".new.mp4")
+            download_file(pick_video_file(picked[0]["video_files"])["link"],
+                          tmp_dest)
+            # заменяем только после УСПЕШНОЙ загрузки: иначе при обрыве сети
+            # останется ни старого клипа, ни нового, и рендер упадёт
+            dest.unlink(missing_ok=True)
+            tmp_dest.rename(dest)
+            fixed += 1
+            log(f"[Кадры] план {rec['i'] + 1}: «{rec['query']}» -> «{q}» ✔")
+        except Exception as e:
+            log(f"[Кадры] план {rec['i'] + 1}: заменить не вышло ({e})")
+    _save_used(used)
+    log(f"[Кадры] Заменено {fixed} из {len(bad)}")
+    return fixed
+
+
 def review_video(video: Path, api_key: str = "", log=print,
                  every: float = 25.0, max_frames: int = 14,
                  srt: Path | None = None) -> list[dict]:
@@ -1432,6 +1709,49 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
     except Exception as e:
         log(f"[Обложка] Не вышло придумать концепции ({e})")
         return []
+
+
+def gen_topic(channel: dict, api_key: str = "", log=print) -> str:
+    """Тема очередного ролика по ФОРМУЛЕ НИШИ канала.
+
+    Формула — не выдумка, а вывод из замеров соседних каналов (см.
+    yt_research): какие темы там обгоняли медиану в разы, а какие проваливались
+    в сто раз. Без неё пайплайн делает ролик на любую тему одинаково хорошо и
+    одинаково незаметно.
+
+    Пустая строка при сбое — вызывающий тогда попросит тему у пользователя."""
+    formula = (channel.get("topic_formula") or "").strip()
+    if not formula:
+        return ""
+    used = channel.get("used_topics") or []
+    avoid = ("\n\nALREADY COVERED on this channel — pick something clearly "
+             "different:\n- " + "\n- ".join(used[-25:])) if used else ""
+    try:
+        out = llm_chat(
+            [{"role": "system", "content":
+              "You choose video topics for a YouTube channel, guided strictly "
+              "by what has been measured to work in its niche."},
+             {"role": "user", "content":
+              f"Channel: {channel.get('name', '')}\n"
+              f"Language of the channel: {LANGS.get(channel.get('lang', ''), 'English')}\n\n"
+              "WHAT WORKS HERE (measured on competing channels in this exact "
+              f"niche):\n{formula}\n"
+              + (f"\nWHAT THIS CHANNEL AVOIDS: {channel['avoid']}\n"
+                 if channel.get("avoid") else "")
+              + avoid +
+              "\n\nPropose ONE topic for the next video. It must fit the "
+              "pattern above exactly — that pattern is the whole point.\n"
+              "Reply with ONLY the topic as a single short phrase in the "
+              "channel's language, no quotes, no explanation, no title "
+              "formatting."}],
+            api_key, 1.0, 800)
+        topic = " ".join((out or "").split()).strip().strip('"«»')
+        if 8 < len(topic) < 160:
+            return topic
+        log(f"[Тема] Ответ не похож на тему ({len(topic)} симв.) — пропускаю")
+    except Exception as e:
+        log(f"[Тема] Не вышло подобрать тему по формуле ниши ({e})")
+    return ""
 
 
 def gen_variant_theme(topic: str, kind: str, api_key: str = "",

@@ -821,7 +821,7 @@ def _hf_smoke_test(kind: str, rel_path: str, log=print,
 
 
 def gen_variant_hyperframes(kind: str, theme: str, api_key: str, log=print,
-                            max_attempts: int = 8) -> str | None:
+                            max_attempts: int = 8, channel: str = "") -> str | None:
     """То же, что gen_variant, но для второго движка: ИИ пишет композицию
     HyperFrames (HTML+GSAP), она проходит его собственный линтер, реальный
     альфа-рендер и проверку зрением, и попадает в ту же библиотеку.
@@ -884,7 +884,7 @@ def gen_variant_hyperframes(kind: str, theme: str, api_key: str, log=print,
                     meta[f"{kind}/{variant}"] = {
                         "file": rel, "component": comp_id, "type": kind,
                         "variant": variant, "engine": "hyperframes",
-                        "enabled": True,
+                        "enabled": True, "channel": channel,
                         "created": datetime.now().isoformat(timespec="seconds"),
                         "theme": theme[:200]}
                     save_variants_meta(meta)
@@ -911,7 +911,7 @@ def gen_variant_hyperframes(kind: str, theme: str, api_key: str, log=print,
 
 
 def gen_variant(kind: str, theme: str, api_key: str, log=print,
-                max_attempts: int = 8) -> str | None:
+                max_attempts: int = 8, channel: str = "") -> str | None:
     """Просит ИИ написать ОДИН новый вариант оверлея типа kind и, если тот
     проходит tsc + реальный рендер, кладёт его в библиотеку навсегда.
 
@@ -960,7 +960,7 @@ def gen_variant(kind: str, theme: str, api_key: str, log=print,
                 trial = dict(meta)
                 trial[f"{kind}/{variant}"] = {
                     "file": fname, "component": component, "type": kind,
-                    "variant": variant, "enabled": True,
+                    "variant": variant, "enabled": True, "channel": channel,
                     "created": datetime.now().isoformat(timespec="seconds"),
                     "theme": theme[:200]}
                 rebuild_registry(lambda *_: None, trial)
