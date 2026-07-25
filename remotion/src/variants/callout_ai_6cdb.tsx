@@ -57,12 +57,18 @@ export const CalloutAi6CDB: React.FC<VariantProps> = (p) => {
     <svg width="0" height="0">
       <defs>
         {/* Subtle paper texture */}
+        {/* feTurbulence ГЕНЕРИРУЕТ шум и не принимает исходник на вход:
+            без обратного сведения с SourceGraphic фильтр ЗАМЕНЯЛ подложку
+            шумом целиком. Кремовая подложка исчезала, оставалась тёмная
+            рамка с тёмным текстом — надпись была нечитаема. */}
         <filter id="paperGrain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="3" stitchTiles="stitch" />
-          <feColorMatrix type="saturate" values="0" />
-          <feComponentTransfer>
+          <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="3" stitchTiles="stitch" result="noise" />
+          <feColorMatrix in="noise" type="saturate" values="0" result="mono" />
+          <feComponentTransfer in="mono" result="grain">
             <feFuncA type="linear" slope="0.08" />
           </feComponentTransfer>
+          <feComposite in="grain" in2="SourceGraphic" operator="in" result="masked" />
+          <feBlend in="SourceGraphic" in2="masked" mode="multiply" />
         </filter>
         {/* Soft shadow for depth */}
         <filter id="softDrop" x="-20%" y="-20%" width="140%" height="140%">

@@ -372,14 +372,25 @@ __API_RULES__
   them for paper grain, fibre, ink bleed, rough torn edges, soft smoke:
   ```
   <svg width="0" height="0"><defs>
-    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.8"
-      numOctaves="4" stitchTiles="stitch"/><feColorMatrix type="saturate"
-      values="0"/></filter>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="4"
+        stitchTiles="stitch" result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0" result="mono"/>
+      <feComponentTransfer in="mono" result="grain">
+        <feFuncA type="linear" slope="0.08"/></feComponentTransfer>
+      <feComposite in="grain" in2="SourceGraphic" operator="in" result="m"/>
+      <feBlend in="SourceGraphic" in2="m" mode="multiply"/>
+    </filter>
     <filter id="rough"><feTurbulence type="fractalNoise" baseFrequency="0.02"
       numOctaves="3" result="n"/><feDisplacementMap in="SourceGraphic" in2="n"
       scale="12"/></filter>
   </defs></svg>
   ```
+  CRITICAL — `feTurbulence` GENERATES noise, it does not take the element as
+  input. A filter that ends on the turbulence chain REPLACES your element
+  with noise and the element disappears. You MUST bring `SourceGraphic` back
+  in at the end (`feComposite`/`feBlend`, as above). This exact mistake made
+  a cream panel vanish, leaving dark text on a dark box — unreadable.
   Then `filter: 'url(#rough)'` on an element gives genuinely irregular, torn
   or deckled edges; a `#grain` layer at low opacity over a panel gives real
   paper tooth instead of a flat rectangle. `baseFrequency` MUST be a fixed
