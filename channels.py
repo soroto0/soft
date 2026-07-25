@@ -27,6 +27,12 @@ DEFAULTS = {
     "voice": "",               # пусто — берётся из «почерка» проекта
     "rate": 0,                 # темп речи, %
     "visual_style": "кинематографичный",
+    # Доля кадров, СОЗДАВАЕМЫХ ИИ, а не найденных в стоках. Было общее 0.35 —
+    # и проверка зрением честно браковала 57-63% планов: стоковая библиотека
+    # просто не имеет кадра под многие фразы, поиск отдаёт случайно совпавшее
+    # по слову. Сгенерированный кадр соответствует тексту по построению.
+    # Цена — время и лимиты Veo, поэтому величина на канал, а не общая.
+    "ai_ratio": 0.35,
     # Субтитры — тоже часть почерка канала, а не общая настройка:
     #   sub_style — bold_box | pill | karaoke | yellow_pop | cyan_pop |
     #               red_alert | thin_clean | top
@@ -142,6 +148,8 @@ def apply_to_params(channel: dict, p: dict) -> dict:
     for key in ("lang", "tone", "visual_style", "sub_style", "sub_size"):
         if channel.get(key):
             out[key] = channel[key]
+    if channel.get("ai_ratio"):
+        out["ai_ratio"] = float(channel["ai_ratio"])
     out["subs"] = bool(channel.get("subs_on", True))
     if channel.get("sub_width"):
         out["sub_width"] = int(channel["sub_width"])

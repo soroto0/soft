@@ -26,7 +26,8 @@
     "series_next": 3,
     "youtube_url": "",
     "notes": "True crime. Конвейерная модель ниши: Abyssal Detective 475k, 56 мин, раз в 3 дня, медиана 253k. Решает ШИРОТА предмета: широкие визуальные темы x6-11, узкие бытовые x0.17.",
-    "id": "abyss"
+    "id": "abyss",
+    "ai_ratio": 0.6
   },
   {
     "name": "The Home Vault",
@@ -55,7 +56,8 @@
     "series_next": 1,
     "youtube_url": "",
     "notes": "Уход за домом. This Old House внутри одного канала: «How to [задача]» 9-14 мин = x7-28, «FULL EPISODE» 23 мин = x3-5. Медиана ниши 6-9 мин. Было 88 и 35 мин при 6 и 2 просмотрах.",
-    "id": "home-vault"
+    "id": "home-vault",
+    "ai_ratio": 0.55
   },
   {
     "name": "Pensamiento Estoico - ES",
@@ -82,6 +84,7 @@
     "series_next": 1,
     "youtube_url": "",
     "notes": "Психология отношений через Юнга, испанский. Образец: @LaPsicologiadeCarlJung — 18.8k за 5.5 мес, ежедневно, 38 мин. Решает наличие ДРУГОГО человека с тайными чувствами: x10-32 против x0.02 у роликов про работу над собой.",
-    "id": "estoico-es"
+    "id": "estoico-es",
+    "ai_ratio": 0.7
   }
 ]

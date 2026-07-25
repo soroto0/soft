@@ -797,10 +797,13 @@ class Api:
                                      limit=limit, every=every)
         if not bad:
             return 0
+        ch = self._channel()
         return core.refix_storyboard(
             self._project, bad, self.log,
             self._settings.get("pexels_keys", ""),
-            self._settings.get("pixabay_keys", ""))
+            self._settings.get("pixabay_keys", ""),
+            visual_style=(ch or {}).get("visual_style", ""),
+            prefer_ai=True)
 
     def check_shots(self):
         self._bg("Проверка кадров", lambda: self._check_and_fix_shots())

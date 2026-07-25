@@ -1509,7 +1509,8 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
 
 
 def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
-                     pexels_keys: str = "", pixabay_keys: str = "") -> int:
+                     pexels_keys: str = "", pixabay_keys: str = "",
+                     visual_style: str = "", prefer_ai: bool = True) -> int:
     """Перекачивает ТОЛЬКО забракованные планы по исправленному запросу.
 
     Файл перезаписывается под тем же именем, поэтому timeline.json и все
@@ -1550,6 +1551,26 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
             log(f"[Кадры] план {rec['i'] + 1}: «{q}» слишком общий — пропускаю")
             continue
         need = 6
+        # ГЛАВНОЕ ЛЕКАРСТВО от несоответствия: сначала СОЗДАТЬ кадр под
+        # запрос, а не искать его в стоках. Стоковая библиотека часто просто
+        # НЕ ИМЕЕТ кадра под конкретную фразу («термоудар в трубе» никто не
+        # снимал), и поиск отдаёт то, что случайно совпало по слову. Кадр,
+        # сгенерированный по описанию, соответствует тексту по построению.
+        if prefer_ai and os.getenv("VEO_API_KEY", "").strip():
+            try:
+                jpg = dest.with_suffix(".ai.jpg")
+                gen_image(q, jpg, "", log, visual_style)
+                tmp_mp4 = dest.with_suffix(".ai.mp4")
+                ken_burns(jpg, tmp_mp4, duration=max(need, 6), fps=25)
+                dest.unlink(missing_ok=True)
+                tmp_mp4.rename(dest)
+                jpg.unlink(missing_ok=True)
+                fixed += 1
+                log(f"[Кадры] план {rec['i'] + 1}: «{old_q}» -> ИИ-кадр «{q}» ✔")
+                continue
+            except Exception as e:
+                log(f"[Кадры] план {rec['i'] + 1}: ИИ-кадр не вышел ({e}) "
+                    "— пробую сток")
         try:
             r = pexels_get("https://api.pexels.com/videos/search",
                            {"query": q, "per_page": SEARCH_POOL,
