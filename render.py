@@ -187,16 +187,31 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm"}
 
 
-def _run(cmd: list[str], label: str = "ffmpeg"):
+# Предел длины командной строки Windows — 32767 символов. Ниже него держим
+# запас: превышение даёт «[WinError 206] Имя файла или его расширение имеет
+# слишком большую длину» — сообщение, по которому невозможно догадаться, что
+# речь о команде, а не о файле. Один такой отказ стоил трёх часов рендера,
+# упав на самом последнем шаге.
+CMDLINE_LIMIT = 30000
+
+
+def _run(cmd: list[str], label: str = "ffmpeg", cwd: Path | None = None):
     """ffmpeg с живым прогрессом в Консоль и внятной ошибкой (хвост stderr)."""
     full = list(cmd)
     if full and full[0] == "ffmpeg":
         # -progress pipe:1 даёт машиночитаемый прогресс построчно в stdout
         full[1:1] = ["-hide_banner", "-loglevel", "error",
                      "-nostats", "-progress", "pipe:1"]
-    _console(f"[{label}] $ " + " ".join(str(a) for a in full))
+    line = " ".join(str(a) for a in full)
+    if len(line) > CMDLINE_LIMIT:
+        raise RuntimeError(
+            f"команда ffmpeg длиной {len(line)} символов — Windows примет не "
+            f"более {CMDLINE_LIMIT}. Обычно это слишком много входов -i "
+            "(оверлеи, звуки): вынеси их в файл или переиспользуй входы.")
+    _console(f"[{label}] $ " + line)
     p = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                          text=True, encoding="utf-8", errors="replace",
+                         cwd=str(cwd) if cwd else None,
                          creationflags=CREATE_NO_WINDOW)
     err_tail = deque(maxlen=40)
 
@@ -1058,9 +1073,18 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
     cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
            "-i", str(concat_list), "-i", str(audio)]
     if ovls:
+        # Пути к секвенциям — относительные, ffmpeg запускается из папки
+        # проекта. Абсолютный путь тут повторяется на КАЖДЫЙ оверлей, и на
+        # сотне с лишним это тысячи лишних символов в команде, длина которой
+        # и так упирается в предел Windows.
+        base_dir = Path(tmp).parent
         for ov in ovls:
-            cmd += ["-framerate", str(fps), "-start_number", "0",
-                    "-i", ov["pattern"]]
+            pat = ov["pattern"]
+            try:
+                pat = str(Path(pat).relative_to(base_dir))
+            except ValueError:
+                pass
+            cmd += ["-framerate", str(fps), "-start_number", "0", "-i", pat]
         fc = "[0:v]" + (",".join(filters) if filters else "null") + "[vb];"
         prev = "[vb]"
         for i, ov in enumerate(ovls):
@@ -1080,17 +1104,34 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
         audio_map = "1:a"
         if opts.get("sfx", True):
             try:
-                sfx_idx0 = 2 + len(ovls)
-                sfx_parts, sfx_labels = [], []
+                # Каждый ЗВУК подключается ОДИН раз и размножается asplit.
+                # Раньше на каждый оверлей добавлялся свой -i, и один и тот
+                # же whoosh.wav попадал в команду 155 раз — это одно и было
+                # главным вкладом в переполнение длины командной строки
+                # Windows (см. ниже про filter_complex_script).
+                want = []
                 for ov in ovls:
                     name = SFX_FOR_TYPE.get(ov.get("type", ""))
-                    if not name:
-                        continue
-                    cmd += ["-i", str(get_sfx(name))]
-                    delay_ms = max(0, round(ov["t0"] * 1000))
+                    if name:
+                        want.append((name, max(0, round(ov["t0"] * 1000))))
+                uniq = sorted({n for n, _ in want})
+                base = 2 + len(ovls)
+                slot = {n: base + k for k, n in enumerate(uniq)}
+                for n in uniq:
+                    cmd += ["-i", str(get_sfx(n))]
+                sfx_parts, sfx_labels = [], []
+                # сколько копий каждого звука нужно — столько выходов у asplit
+                need = {n: sum(1 for x, _ in want if x == n) for n in uniq}
+                for n in uniq:
+                    outs = "".join(f"[{n}_{j}]" for j in range(need[n]))
+                    sfx_parts.append(f"[{slot[n]}:a]asplit={need[n]}{outs}")
+                used = {n: 0 for n in uniq}
+                for n, delay_ms in want:
+                    src = f"[{n}_{used[n]}]"
+                    used[n] += 1
                     lbl = f"sfx{len(sfx_labels)}"
-                    sfx_parts.append(f"[{sfx_idx0 + len(sfx_labels)}:a]"
-                                     f"adelay={delay_ms}:all=1,volume=0.3[{lbl}]")
+                    sfx_parts.append(f"{src}adelay={delay_ms}:all=1,"
+                                     f"volume=0.3[{lbl}]")
                     sfx_labels.append(lbl)
                 if sfx_labels:
                     sfx_parts.append(
@@ -1102,14 +1143,25 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
             except Exception as e:
                 log(f"[Рендер] SFX пропущены ({e.__class__.__name__}: {e})")
                 audio_map = "1:a"
-        cmd += ["-filter_complex", fc, "-map", "[vout]", "-map", audio_map]
+        # filter_complex УХОДИТ В ФАЙЛ. На 54-минутном ролике со 163
+        # оверлеями команда превысила лимит Windows (~32000 символов) и
+        # рендер упал в самом конце, после трёх часов работы, с
+        # «[WinError 206] Имя файла ... слишком большую длину». Сама цепочка
+        # фильтров тянет здесь десятки тысяч символов, и никакое сокращение
+        # путей её не спасёт — она обязана лежать отдельно.
+        fc_file = tmp / "filter_complex.txt"
+        fc_file.write_text(fc, encoding="utf-8")
+        cmd += ["-filter_complex_script", str(fc_file),
+                "-map", "[vout]", "-map", audio_map]
     else:
         cmd += ["-map", "0:v", "-map", "1:a",
                 "-vf", ",".join(filters + post)]
     cmd += ["-t", f"{total:.3f}",
             "-c:v", "libx264", "-preset", PRESET_FINAL, "-crf", CRF_FINAL,
             "-c:a", "aac", "-b:a", "192k", str(dest)]
-    _run(cmd, label="финал")
+    # cwd = папка проекта: относительные пути секвенций выше разрешаются
+    # именно от неё
+    _run(cmd, label="финал", cwd=Path(tmp).parent)
 
 
 # ---------- Оркестратор ----------
