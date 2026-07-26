@@ -1001,11 +1001,25 @@ def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
         chunk = beats[start:start + batch_size]
         numbered = "\n".join(f"{i}. {b['text'][:280]}"
                              for i, b in enumerate(chunk, 1))
+        # Контекст по краям батча. Планы режутся по времени, а не по
+        # предложениям: замерено, что 99% фрагментов не заканчиваются точкой
+        # и 92% не начинаются с заглавной. Фраза «why leave your food
+        # supplies untouched?» живёт в ДВУХ соседних планах, и без соседей
+        # модель видит «why leave your» — ни подлежащего, ни отрицания.
+        # Внутри батча соседи и так рядом, а на его границах терялись.
+        before = beats[start - 1]["text"][-200:] if start else ""
+        after = (beats[start + len(chunk)]["text"][:200]
+                 if start + len(chunk) < n else "")
+        ctx = ""
+        if before:
+            ctx += f"\n\n[фрагмент ПЕРЕД первым: ...{before}]"
+        if after:
+            ctx += f"\n\n[фрагмент ПОСЛЕ последнего: {after}...]"
         try:
             out = llm_chat(
                 [{"role": "system", "content": system},
                  {"role": "user", "content":
-                  instruction.format(n=len(chunk)) + "\n\n" + numbered}],
+                  instruction.format(n=len(chunk)) + "\n\n" + numbered + ctx}],
                 api_key, temperature, max_tokens)
             qs = _parse_query_list(out, len(chunk))
             for j in range(len(chunk)):
@@ -1074,6 +1088,14 @@ def smart_queries(beats: list[dict], api_key: str = "", log=print) -> list[str] 
         instruction=(
             "For each numbered narration fragment output ONE stock video "
             "search query naming the SHOT that plays while it is spoken.\n\n"
+            "THE FRAGMENTS ARE ONE CONTINUOUS NARRATION, cut by timing and "
+            "not by sentence. A sentence routinely starts in one fragment "
+            "and finishes in the next, so a fragment on its own can be "
+            "missing its subject, its verb or its 'not'. ALWAYS read the "
+            "neighbouring fragments before deciding what fragment N shows. "
+            "Measured example: fragment 12 ended '...why leave your' and "
+            "fragment 13 began 'food supplies untouched?' — one question "
+            "split in half, and each half alone gives a wrong shot.\n\n"
             + SHOT_RULES +
             "\n\nEach query is 2-5 English words: a concrete subject, plus a "
             "setting or shot size (closeup, overhead, slow motion) where it "
@@ -1100,6 +1122,12 @@ def ai_scene_prompts(beats: list[dict], api_key: str = "", log=print
                "an AI video/image generator, illustrating documentary "
                "narration."),
         instruction=(
+            "The fragments are ONE continuous narration cut by timing, not "
+            "by sentence: a sentence often starts in one fragment and ends "
+            "in the next, so a fragment alone can lack its subject or its "
+            "'not'. Read the neighbours before deciding what fragment N "
+            "shows, and never illustrate a thing the narration says was "
+            "ABSENT or ruled out.\n\n"
             "For each numbered narration fragment, write ONE concrete "
             "visual scene description (10-20 English words): specific "
             "setting, subject, action, camera framing and mood — "
@@ -2572,6 +2600,119 @@ def _pick_unused(items: list[dict], kind: str, used: dict, count: int, log) -> l
     return picked
 
 
+# Ответ «ни один кандидат не подходит» — не то же самое, что сбой проверки.
+NOTHING_FITS = object()
+
+PICK_PROMPT = """This is a contact sheet of stock clips, each numbered.
+One of them will play while a documentary narrator says:
+
+"__LINE__"
+
+Pick the number of the clip that actually belongs under those words.
+
+Judge what is IN the picture, not what the search words were. The stock
+library ranks by literal word match, so most of these are here by accident
+— a search about a smell returns a photo of eggs. A plain establishing shot
+that fits the subject beats a dramatic shot about something else.
+
+If the narration says a thing was ABSENT, ruled out or not there, do NOT
+pick a picture of that thing.
+
+Answer 0 when none of them fit. That is a NORMAL answer, not a failure —
+the shot will then be generated instead, which is better than a wrong one.
+Prefer 0 over a picture that would look absurd in a documentary about this
+subject (a costumed model, a staged studio scene, an unrelated sport), and
+over one that merely shares a word with the narration.
+
+Reply with ONLY a JSON object, no markdown:
+{"pick": <number, or 0 if none fit>}"""
+
+
+def _contact_sheet(images: list[bytes], cols: int = 3, cell: int = 320) -> bytes:
+    """Пронумерованный лист из превью кандидатов — ОДИН запрос к зрению на
+    весь выбор вместо запроса на каждого кандидата."""
+    from PIL import Image, ImageDraw
+    import io
+    ims = []
+    for b in images:
+        try:
+            ims.append(Image.open(io.BytesIO(b)).convert("RGB"))
+        except Exception:
+            continue
+    if not ims:
+        raise ValueError("нет читаемых превью")
+    rows = (len(ims) + cols - 1) // cols
+    ch = int(cell * 9 / 16)
+    sheet = Image.new("RGB", (cols * cell, rows * (ch + 26)), (20, 20, 22))
+    d = ImageDraw.Draw(sheet)
+    for i, im in enumerate(ims):
+        im = im.resize((cell, ch))
+        x, y = (i % cols) * cell, (i // cols) * (ch + 26)
+        sheet.paste(im, (x, y + 26))
+        d.text((x + 8, y + 5), f"{i + 1}", fill=(255, 220, 120))
+    buf = io.BytesIO()
+    # PNG, а не JPEG: vision_chat отдаёт байты дальше с mime image/png и
+    # своего параметра под другой формат не имеет
+    sheet.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+def _vision_pick(items: list[dict], thumb_of, line: str, api_key: str,
+                 log, top: int = 6):
+    """Выбрать из кандидатов тот, что отвечает ФРАЗЕ ДИКТОРА, а не совпал по
+    словам. Возвращает элемент или None (тогда решает вызывающий).
+
+    Зачем: сток отдаёт 15 результатов, ранжированных по буквальному
+    совпадению слов, а выбирался из них СЛУЧАЙНЫЙ — никто на картинку не
+    смотрел. Замерено, что так попадают 48% кадров. Один запрос к зрению
+    здесь заменяет такой же запрос в review_storyboard ПОСЛЕ скачивания:
+    бюджет тот же, но кадр выбирается верно сразу, без перекачки.
+
+    Любой сбой — не ошибка: возвращаем None и работаем как раньше."""
+    import requests
+    cands = items[:top]
+    if len(cands) < 2:
+        return cands[0] if cands else None
+    thumbs = []
+    keep = []
+    for it in cands:
+        url = thumb_of(it)
+        if not url:
+            continue
+        try:
+            r = requests.get(url, timeout=15)
+            if r.status_code == 200 and r.content:
+                thumbs.append(r.content)
+                keep.append(it)
+        except Exception:
+            continue
+    if len(keep) < 2:
+        return keep[0] if keep else None
+    try:
+        sheet = _contact_sheet(thumbs)
+        out = vision_chat(
+            PICK_PROMPT.replace("__LINE__", str(line)[:250].replace("\n", " ")),
+            sheet, api_key,
+            system="You are a documentary editor choosing a shot.",
+            max_tokens=120)
+        m = re.search(r"\{.*\}", out, re.S)
+        if not m:
+            return None
+        n = int(json.loads(m.group(0)).get("pick", 0))
+        if 1 <= n <= len(keep):
+            return keep[n - 1]
+        # 0 — осознанный ответ «в стоке под эту фразу ничего нет», а не сбой.
+        # Отличать важно: при сбое разумно взять что дают, а здесь брать
+        # что дают — значит сознательно поставить заведомо чужой кадр.
+        # Замер: под «сбежали босиком» лучшим из стока оказался «мужчина с
+        # мечом в зимнем лесу». Такой план должен уйти на генерацию.
+        log("[Стоки] Под эту фразу в стоке ничего нет — план уйдёт на ИИ")
+        return NOTHING_FITS
+    except Exception as e:
+        log(f"[Стоки] Выбор кадра зрением не вышел ({e}) — беру как раньше")
+        return None
+
+
 def _stock_getters(pexels: KeyRotator, pixabay: KeyRotator, log):
     """GET-функции для Pexels/Pixabay с ротацией ключей при 401/403/429."""
     import requests
@@ -3159,7 +3300,7 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         log("[Раскадровка] Составляю умные запросы по смыслу текста (LLM)...")
         queries = smart_queries(beats, agnes_key, log)
 
-    def fetch_video(query, need, dest):
+    def fetch_video(query, need, dest, line=""):
         r = pexels_get("https://api.pexels.com/videos/search",
                        {"query": query, "per_page": SEARCH_POOL,
                         "orientation": "landscape"})
@@ -3167,23 +3308,49 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         if not vids:
             return None
         long_enough = [v for v in vids if (v.get("duration") or 0) >= need]
-        picked = _pick_unused(long_enough or vids, "pexels_video", used, 1, log)
-        if not picked:
-            return None
-        v = picked[0]
+        pool = long_enough or vids
+        # Сначала пробуем ВЫБРАТЬ по картинке под фразу диктора, и только
+        # если это не вышло — как раньше, случайным из совпавших по словам.
+        v = None
+        if line and (gemini_key or os.getenv("GEMINI_API_KEY", "")):
+            seen = set(map(str, used.get("pexels_video", [])))
+            fresh = [x for x in pool if str(x["id"]) not in seen] or pool
+            v = _vision_pick(fresh, lambda x: x.get("image"), line,
+                             gemini_key, log)
+            if v is NOTHING_FITS:
+                return None      # пусть вызывающий сгенерирует кадр
+            if v is not None:
+                used.setdefault("pexels_video", []).append(str(v["id"]))
+        if v is None:
+            picked = _pick_unused(pool, "pexels_video", used, 1, log)
+            if not picked:
+                return None
+            v = picked[0]
         download_file(pick_video_file(v["video_files"])["link"], dest)
         return v.get("duration") or audio_duration(dest) or need
 
-    def fetch_photo(query, need, dest):
+    def fetch_photo(query, need, dest, line=""):
         # источники по очереди: Pexels -> Pixabay -> Openverse -> Wikimedia
         url = None
         r = pexels_get("https://api.pexels.com/v1/search",
                        {"query": query, "per_page": SEARCH_POOL,
                         "orientation": "landscape"})
         photos = r.json().get("photos") if r is not None and r.status_code == 200 else None
-        picked = _pick_unused(photos or [], "pexels_photo", used, 1, log)
-        if picked:
-            url = picked[0]["src"]["original"]
+        # то же, что у видео: сначала выбрать по картинке под фразу
+        if photos and line and (gemini_key or os.getenv("GEMINI_API_KEY", "")):
+            seen = set(map(str, used.get("pexels_photo", [])))
+            fresh = [x for x in photos if str(x["id"]) not in seen] or photos
+            got = _vision_pick(fresh, lambda x: (x.get("src") or {}).get("medium"),
+                               line, gemini_key, log)
+            if got is NOTHING_FITS:
+                return None      # пусть вызывающий сгенерирует кадр
+            if got is not None:
+                used.setdefault("pexels_photo", []).append(str(got["id"]))
+                url = got["src"]["original"]
+        if url is None:
+            picked = _pick_unused(photos or [], "pexels_photo", used, 1, log)
+            if picked:
+                url = picked[0]["src"]["original"]
         if url is None:
             r = pixabay_get({"q": query, "per_page": SEARCH_POOL,
                              "orientation": "horizontal", "image_type": "photo"})
@@ -3321,18 +3488,21 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     reused += 1
         else:
             try:
+                # фраза диктора идёт в загрузку: по ней кадр ВЫБИРАЕТСЯ из
+                # найденных, а не берётся случайный из совпавших по словам
+                line = str(b.get("text", ""))
                 if want_photo:
                     clip = sdir / f"beat_{i:03d}_{safe}_kb.mp4"
-                    src_dur = fetch_photo(query, need, clip)
+                    src_dur = fetch_photo(query, need, clip, line)
                     if src_dur is None:                   # фото нет — берём видео
                         clip = sdir / f"beat_{i:03d}_{safe}.mp4"
-                        src_dur = fetch_video(query, need, clip)
+                        src_dur = fetch_video(query, need, clip, line)
                 else:
                     clip = sdir / f"beat_{i:03d}_{safe}.mp4"
-                    src_dur = fetch_video(query, need, clip)
+                    src_dur = fetch_video(query, need, clip, line)
                     if src_dur is None:                   # видео нет — берём фото
                         clip = sdir / f"beat_{i:03d}_{safe}_kb.mp4"
-                        src_dur = fetch_photo(query, need, clip)
+                        src_dur = fetch_photo(query, need, clip, line)
                 if src_dur is None:
                     clip = None
                 else:
