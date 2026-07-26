@@ -3011,22 +3011,90 @@ def auto_scenes(script_text: str) -> str:
     return "\n".join(lines)
 
 
+def _script_sentences(script_text: str) -> list[str]:
+    """Сценарий -> список предложений. Нужен потому, что Whisper отдаёт
+    расшифровку БЕЗ пунктуации вообще: замерено на реальном ролике — в
+    сценарии 550 точек на 8092 слова, в субтитрах 0 точек на 8068 слов.
+    Границы предложений у нас есть, мы их просто теряли."""
+    clean = strip_cues(script_text)[0] if script_text else ""
+    clean = re.sub(r"\s+", " ", clean).strip()
+    if not clean:
+        return []
+    parts = re.split(r"(?<=[.!?])\s+", clean)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _whole_sentences(sents: list[str], s_sent: list[int],
+                     a: int, b: int) -> str:
+    """Целые предложения, покрывающие слова сценария [a..b].
+
+    Соседние планы из-за этого делят пограничное предложение — и это
+    правильно: смысл нужен обоим целиком. Обрывок «why leave your» без
+    продолжения «food supplies untouched?» не даёт подобрать кадр ни
+    одному из них."""
+    if not sents or a < 0 or b < a or b >= len(s_sent):
+        return ""
+    return " ".join(sents[s_sent[a]:s_sent[b] + 1]).strip()
+
+
 def build_beats(rows: list[tuple[str, str, str]], min_beat: float = 6.0,
-                total: float | None = None) -> list[dict]:
+                total: float | None = None,
+                script_text: str = "") -> list[dict]:
     """Группирует srt-сегменты в визуальные планы длиной >= min_beat секунд.
-    Планы идут встык: конец плана = начало следующего, без дыр."""
+    Планы идут встык: конец плана = начало следующего, без дыр.
+
+    script_text — исходный сценарий. Если он есть, текст плана берётся ИЗ
+    НЕГО (с пунктуацией), а план тянется до конца предложения. Иначе плану
+    достаётся кусок расшифровки Whisper, оборванный посреди фразы: замерено,
+    что так 99% планов не кончаются точкой и 92% не начинаются с заглавной,
+    а фраза «why leave your food supplies untouched?» разрезана надвое между
+    соседними планами. Генератор запроса видел «why leave your» — ни
+    подлежащего, ни отрицания."""
+    sents = _script_sentences(script_text)
+    # слова сценария и номер предложения для каждого
+    s_words, s_sent = [], []
+    for si, s in enumerate(sents):
+        for w in s.split():
+            s_words.append(w)
+            s_sent.append(si)
+    w_words = [w for _, _, t in rows for w in t.split()]
+    # Соответствие пропорцией, а не индекс-в-индекс: расшифровка и сценарий
+    # расходятся в словах (8068 против 8092), и накопленный сдвиг к концу
+    # ролика увёл бы текст на пару фраз. Пропорция держит оба конца.
+    ratio = (len(s_words) / len(w_words)) if (s_words and w_words) else 0.0
+
+    def s_at(wi: int) -> int:
+        return min(len(s_words) - 1, int(round(wi * ratio))) if ratio else -1
+
     beats, cur = [], None
+    seen_words = 0          # слов расшифровки пройдено до текущей строки
     for start_s, end_s, text in rows:
         start, end = srt_to_seconds(start_s), srt_to_seconds(end_s)
+        n_here = len(text.split())
         if cur is None:
-            cur = {"start": start, "end": end, "text": text}
+            cur = {"start": start, "end": end, "text": text,
+                   "_w0": seen_words}
         else:
             cur["end"] = end
             cur["text"] += " " + text
+        seen_words += n_here
+        # Режем ПО ВРЕМЕНИ, как и раньше: ритм монтажа задаёт длина плана.
+        # Тянуть план до конца предложения нельзя — на реальном ролике это
+        # разогнало среднюю длину с 9.5 до 16.8 с, а семнадцать секунд на
+        # одном кадре хуже любого обрывка текста. Пунктуацию возвращаем
+        # иначе: тексту плана отдаём ЦЕЛЫЕ предложения, попавшие в него.
         if cur["end"] - cur["start"] >= min_beat:
+            if ratio:
+                cur["text"] = _whole_sentences(
+                    sents, s_sent, s_at(cur["_w0"]), s_at(seen_words - 1))
+            cur.pop("_w0", None)
             beats.append(cur)
             cur = None
     if cur is not None:
+        if ratio:
+            cur["text"] = _whole_sentences(
+                sents, s_sent, s_at(cur.get("_w0", 0)), len(s_words) - 1)
+        cur.pop("_w0", None)
         # короткий хвост приклеиваем к последнему плану
         if beats and cur["end"] - cur["start"] < min_beat / 2:
             beats[-1]["end"] = cur["end"]
@@ -3284,7 +3352,12 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
 
     rows = parse_srt(srt)
     total = audio_duration(voice)
-    beats = build_beats(rows, min_beat, total)
+    # сценарий даёт пунктуацию, которой в расшифровке Whisper нет вообще
+    try:
+        script_text = (out_dir / "script.txt").read_text(encoding="utf-8")
+    except OSError:
+        script_text = ""
+    beats = build_beats(rows, min_beat, total, script_text)
     log(f"[Раскадровка] {len(rows)} фраз -> {len(beats)} планов по ~{min_beat:.0f} с, "
         f"звук: {voice.name}")
 
