@@ -46,6 +46,13 @@ def _console(msg: str):
 
 RESOLUTIONS = {"1080p": (1920, 1080), "4K": (3840, 2160)}
 GROUP_SIZE = 8          # сегментов в одной xfade-команде
+
+# Запас в конце входа xfade, секунды. Ровно на границе (offset+duration ==
+# длина первого входа) фильтр отдаёт обрубок и МОЛЧИТ — ffmpeg завершается
+# с кодом 0. Замерено: вход 4.000 с, offset 3.967 + duration 0.033 дали на
+# выходе 4.33 с вместо 8.23; offset 3.900 (запас 2 кадра) — верные 8.17.
+# 0.1 с это три кадра при 30 fps, с запасом на округление таймбазы.
+XFADE_GUARD = 0.1
 CRF_SEGMENT = "18"      # качество/пресеты подменяются в черновом режиме
 CRF_FINAL = "19"
 PRESET_SEG = "fast"
@@ -653,7 +660,12 @@ def render_group(seg_files: list[Path], durs: list[float],
         if name == "cut" or tdur <= 0:
             name, tdur = "fade", 1.0 / fps    # технически xfade, визуально cut
         tdur = max(min(tdur, real[k] - 0.1), 1.0 / fps)
-        off = min(want_off, max(acc_len - tdur, 0.0))
+        # Отступ от конца накопленного потока обязателен: при
+        # offset+duration ровно в его конце xfade отдаёт обрубок и НЕ
+        # сообщает об ошибке (см. XFADE_GUARD). Раньше здесь стоял
+        # max(acc_len - tdur, 0) — то есть офсет садился ровно на границу
+        # всякий раз, когда припуска не хватало, и группа схлопывалась.
+        off = min(want_off, max(acc_len - tdur - XFADE_GUARD, 0.0))
         lbl = f"[vx{k}]"
         # Переход начинается РОВНО на плановой границе плана, а не раньше её.
         # Сегменты уже нарезаны с припуском (dur + tail, см. render_project) —
@@ -1185,10 +1197,25 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
         dur = sc["end"] - sc["start"]
         tail = 0.0
         if i < len(scenes) - 1 and (i + 1) % GROUP_SIZE != 0:
+            # Припуск = длительность перехода ПЛЮС защитный зазор, и он
+            # никогда не нулевой — даже под "cut". Смысл: render_group
+            # ставит переход ровно на плановой границе, и для этого поток
+            # должен тянуться ещё на tdur + XFADE_GUARD дальше неё. Не
+            # хватит — офсет придётся тянуть назад, а это либо обрубок
+            # (см. XFADE_GUARD), либо накопительное укорачивание дорожки.
+            # У "cut" своя длительность 0, но склеивается он кадровым fade,
+            # поэтому запас нужен и ему: без этого КАЖДАЯ группа с резкой
+            # склейкой схлопывалась до одного плана (замерено: 4.63 c
+            # вместо 31.8).
             tdur = trans[i][1]
-            tail = min(tdur, dur * 0.4, (scenes[i + 1]["end"] -
-                                         scenes[i + 1]["start"]) * 0.4)
-            trans[i] = (trans[i][0], tail)   # клампим и запоминаем
+            eff = tdur if tdur > 0 else 1.0 / fps   # что реально сделает xfade
+            room = min(dur * 0.4, (scenes[i + 1]["end"] -
+                                   scenes[i + 1]["start"]) * 0.4)
+            tail = min(eff + XFADE_GUARD, room)
+            # если места меньше, чем просит переход — укорачиваем ПЕРЕХОД,
+            # а не зазор: зазор отвечает за целостность склейки
+            eff = max(min(eff, tail - XFADE_GUARD), 1.0 / fps)
+            trans[i] = (trans[i][0], 0.0 if tdur <= 0 else eff)
         dest = tmp / f"seg_{i:04d}.mp4"
         extra = (_chapter_grade(sc["start"] / total)
                  if opts.get("chapters_grade") else "")
@@ -1247,6 +1274,29 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
              look_chain, ovls, (w, h), log)
     tick()
     size_mb = final.stat().st_size / 1e6
+
+    # Сверка длины видео со звуком. Ровно этот дефект уехал зрителю: цепочка
+    # xfade укорачивала дорожку на каждой склейке, видео кончалось на 20 с
+    # раньше звука, и плеер доигрывал озвучку на застывшем последнем кадре.
+    # Ни одна проверка того не заметила, потому что смотреть было некому —
+    # ffmpeg отработал без ошибок, файл получился. Стоит одного ffprobe.
+    # _video_dur, а НЕ audio_duration: последняя читает format=duration, то
+    # есть максимум по всем потокам. На битом файле (8.7 c видео и 40 c
+    # звука — ровно этот дефект) она отдаёт 40 и рапортует «всё сходится».
+    # Первая версия этой проверки так и обманулась.
+    vid_len = _video_dur(final)
+    aud_len = audio_duration(audio) if audio and Path(audio).exists() else None
+    if vid_len and aud_len:
+        drift = vid_len - aud_len
+        if abs(drift) > 1.5:
+            log(f"[Рендер] ⚠ РАСХОЖДЕНИЕ: видео {vid_len:.1f} c, звук "
+                f"{aud_len:.1f} c — разница {drift:+.1f} c. "
+                + ("Хвост звука пойдёт по застывшему кадру."
+                   if drift < 0 else "В конце будет видео без звука."))
+        else:
+            log(f"[Рендер] Длина сходится: видео {vid_len:.1f} c, "
+                f"звук {aud_len:.1f} c ({drift:+.1f} c)")
+
     shutil.rmtree(tmp, ignore_errors=True)   # временные сегменты больше не нужны
     log(f"[Рендер] ГОТОВО: {final} ({size_mb:.0f} МБ). Временные файлы "
         "удалены. Это черновик — доведи в Premiere перед публикацией.")
