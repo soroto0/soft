@@ -1048,7 +1048,19 @@ SHOT_RULES = (
     'Correct: "worker gloves goggles chemical"\n'
     "When the narration is abstract, film its PHYSICAL EVIDENCE: the object "
     "involved, the place it happens, the hand doing it, the damage it "
-    "leaves. Every fragment has something physical in it — find that."
+    "leaves. Every fragment has something physical in it — find that.\n"
+    "READ THE WHOLE SENTENCE, NOT THE NOUNS. Narration constantly says a "
+    "thing was ABSENT, ruled out, or contradicted — and a shot of that very "
+    "thing then contradicts the narrator on screen. Measured failures:\n"
+    '  "...far from any airbase or industrial zone" -> "rocket fuel canister '
+    'warehouse". The line is about there being NO industry for miles. '
+    'Correct: "empty snowy mountain pass"\n'
+    '  "...consistent with a jet exhaust plume, but the sky was clear" -> '
+    '"jet engine exhaust plume sky". The line RULES OUT the plume. '
+    'Correct: "clear empty night sky"\n'
+    "If the sentence denies, doubts or excludes something, film what was "
+    "actually there instead — the empty place, the intact object, the "
+    "unmarked snow."
 )
 
 
