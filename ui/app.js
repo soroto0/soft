@@ -156,6 +156,11 @@ async function refresh() {
   setField("scriptText", state.script);
   setField("scenesText", state.scenes);
   setField("overlaysText", state.overlays);
+  // «Тема» — тот же класс бага: не очищалась при смене проекта, и старая
+  // тема тихо уезжала в generate_all нового проекта, минуя topic_formula
+  // канала
+  if (projectChanged && document.activeElement !== $("topic"))
+    $("topic").value = "";
   if (state.subs) renderSubs(state.subs);
   else if (projectChanged) renderSubs([]);
   updateStats();

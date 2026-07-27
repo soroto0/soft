@@ -119,18 +119,21 @@ def get(channel_id: str) -> dict | None:
 
 
 def upsert(channel: dict) -> list[dict]:
-    """Добавить или обновить профиль по его id."""
+    """Добавить или обновить профиль по его id. Частичное обновление (как
+    из формы UI — присылает не все ~26 полей) мёрджится ПОВЕРХ уже
+    сохранённой записи, а не поверх DEFAULTS — иначе любое поле, которое
+    форма не прислала (topic_formula, used_topics, script_extra и т.д.),
+    тихо откатывалось на дефолт при каждом редактировании канала."""
     cid = str(channel.get("id", "")).strip()
     if not cid:
         raise ValueError("у канала должен быть id")
     chans = load()
-    merged = {**DEFAULTS, **channel, "id": cid}
     for i, ch in enumerate(chans):
         if ch["id"] == cid:
-            chans[i] = {**ch, **merged}
+            chans[i] = {**ch, **channel, "id": cid}
             break
     else:
-        chans.append(merged)
+        chans.append({**DEFAULTS, **channel, "id": cid})
     save(chans)
     return chans
 

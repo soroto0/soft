@@ -572,7 +572,7 @@ class Api:
 
     def storyboard(self, beat: float, genvideo: bool,
                    visual_mode: str = "stock", visual_style: str = "",
-                   ai_ratio: float = 0.35):
+                   ai_ratio: float = 0.85):
         def job():
             if visual_mode == "ai":
                 self.log("[Раскадровка] Режим ЕДИНЫЙ СТИЛЬ: каждый кадр "
@@ -648,7 +648,7 @@ class Api:
                 "letterbox": bool(p.get("letterbox")),
                 "vhs": bool(p.get("vhs")),
                 "chromab": bool(p.get("chromab")),
-                "chapters": bool(p.get("chapters")),
+                "chapters_grade": bool(p.get("chapters")),  # render.py читает chapters_grade
                 "bloom": bool(p.get("bloom")),
                 "light_leak": bool(p.get("light_leak")),
                 "dust": bool(p.get("dust")),
@@ -1029,7 +1029,7 @@ class Api:
                 self._settings.get("agnes_key", ""), False,
                 int(self._settings.get("max_unique", 200)),
                 p.get("visual_mode", "mixed"), p.get("visual_style", ""),
-                float(p.get("ai_ratio", 0.35)))
+                float(p.get("ai_ratio", 0.85)))
             if p.get("check_shots", True):
                 # ГЛАВНАЯ проверка качества: кадр не про то, что говорит
                 # диктор — самый заметный признак сборки «на автомате».

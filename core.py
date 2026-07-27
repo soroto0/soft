@@ -221,6 +221,9 @@ def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
     import asyncio
     import edge_tts
 
+    if not text.strip():
+        raise RuntimeError("Пустой сценарий — озвучивать нечего. Сначала "
+                           "сгенерируй/вставь текст на вкладке «Сценарий».")
     audio_dir = out_dir / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
     final = audio_dir / "voiceover.mp3"
@@ -285,6 +288,9 @@ def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
 
+    if not text.strip():
+        raise RuntimeError("Пустой сценарий — озвучивать нечего. Сначала "
+                           "сгенерируй/вставь текст на вкладке «Сценарий».")
     audio_dir = out_dir / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
     chunks = split_text(text)
@@ -293,21 +299,23 @@ def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
         f"голос {voice} ({engine}), темп {rate:+d}%"
         + (", паузы между абзацами" if pauses else ""))
     polly = boto3.client("polly", region_name=os.getenv("AWS_REGION", "us-east-1"))
+    # long-form/generative поддерживают не все голоса — проверяем ОДИН РАЗ
+    # до цикла (раньше пробный запрос летел на каждый кусок — на длинном
+    # сценарии это десятки лишних платных вызовов); при отказе откатываемся
+    # на neural, который есть почти везде, вместо падения
+    if engine in ("long-form", "generative"):
+        try:
+            polly.synthesize_speech(Text="test", OutputFormat="mp3",
+                                    VoiceId=voice, Engine=engine)
+        except (BotoCoreError, ClientError) as e:
+            log(f"[Озвучка] Голос {voice} не поддерживает движок "
+                f"«{engine}» ({e.__class__.__name__}) — беру neural")
+            engine = "neural"
     parts = []
     for i, chunk in enumerate(chunks, 1):
         log(f"[Озвучка] Кусок {i}/{len(chunks)}...")
         kwargs = dict(OutputFormat="mp3", VoiceId=voice, Engine=engine)
         resp = None
-        # long-form/generative поддерживают не все голоса — при отказе
-        # откатываемся на neural, который есть почти везде, вместо падения
-        if engine in ("long-form", "generative"):
-            try:
-                polly.synthesize_speech(Text="test", **kwargs)
-            except (BotoCoreError, ClientError) as e:
-                log(f"[Озвучка] Голос {voice} не поддерживает движок "
-                    f"«{engine}» ({e.__class__.__name__}) — беру neural")
-                engine = "neural"
-                kwargs["Engine"] = engine
         if use_ssml:
             body = escape(chunk).replace("\n", '<break time="550ms"/>')
             if rate != 0:
@@ -692,7 +700,13 @@ def agnes_chat(messages: list[dict], api_key: str,
                       timeout=300)
     if r.status_code != 200:
         raise RuntimeError(f"Agnes API {r.status_code}: {r.text[:300]}")
-    return r.json()["choices"][0]["message"]["content"].strip()
+    text = r.json()["choices"][0]["message"]["content"].strip()
+    if not text:
+        # как в gemini_chat: HTTP 200 с пустым содержимым (модерация/сбой) —
+        # это ОШИБКА, а не результат. Иначе пустая строка тихо утекает в
+        # gen_script -> пустой сценарий -> невнятный краш уже на озвучке.
+        raise RuntimeError("Agnes: пустой ответ (возможно, фильтр контента)")
+    return text
 
 
 def _gemini_keys() -> list[str]:
@@ -942,6 +956,13 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
         prev_tail = " ".join(part.split()[-25:])
 
     text = "\n\n".join(parts)
+    if not text.strip():
+        # все главы вернулись пустыми (модерация/сбой провайдера) — падаем
+        # ЗДЕСЬ с внятной причиной, а не через два шага в TTS/Whisper
+        raise RuntimeError(
+            "ИИ не сгенерировал ни одной главы (все ответы пустые — "
+            "возможно, фильтр контента на этой теме). Попробуй ещё раз "
+            "или переформулируй тему.")
     words = len(text.split())
     # заказанная длительность — это и минимум (retry выше), и максимум:
     # модель нередко расходится и сильно перевыполняет план, особенно
@@ -2576,8 +2597,26 @@ def _load_used() -> dict:
 
 
 def _save_used(used: dict):
-    USED_MEDIA_FILE.write_text(
-        json.dumps(used, ensure_ascii=False, indent=1), encoding="utf-8")
+    """Сохранение с защитой от параллельных прогонов (два канала могут
+    рендериться одновременно): 1) перед записью подмешиваем то, что другой
+    процесс успел добавить на диск, пока мы работали в памяти — иначе
+    последний пишущий стирал чужую историю дедупликации; 2) пишем во
+    временный файл + os.replace — атомарно, обрыв посреди записи не
+    оставит битый JSON."""
+    on_disk = _load_used()
+    for k, v in used.items():
+        if isinstance(v, list) and isinstance(on_disk.get(k), list):
+            merged = list(on_disk[k])
+            merged += [x for x in v if x not in on_disk[k]]
+            used[k] = merged
+        # не-списки (если появятся) — наша версия просто побеждает
+    for k, v in on_disk.items():
+        if k not in used:          # новый источник, добавленный параллельно
+            used[k] = v
+    tmp = USED_MEDIA_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(used, ensure_ascii=False, indent=1),
+                   encoding="utf-8")
+    os.replace(tmp, USED_MEDIA_FILE)
 
 
 def used_media_count() -> int:
@@ -3292,8 +3331,11 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
             # числу свободных задач, то есть 4 воркера просили 8 слотов при
             # лимите 4 — отсюда были RATE_LIMIT'ы на ровном месте.
             per_worker = 2 if any(j[1] == "photo" for j in jobs) else 1
-            if free > 0:
-                workers = max(1, min(workers, free // per_worker or 1))
+            # клапан работает ВСЕГДА, включая free <= 0 (аккаунт целиком
+            # занят — реально, когда два канала генерируют одновременно):
+            # раньше `if free > 0` пропускал клапан именно в этом случае,
+            # и 4 воркера били в нулевую квоту, устраивая шторм RATE_LIMIT
+            workers = max(1, min(workers, max(free, 1) // per_worker or 1))
             log(f"[Раскадровка] VeoNonStop: план допускает {limit} задач "
                 f"одновременно, занято {usage.get('active_tasks', 0)}; "
                 f"один кадр занимает {per_worker} — беру {workers} потоков")
@@ -3317,7 +3359,7 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     gemini_key: str = "", agnes_key: str = "",
                     genvideo: bool = False, max_unique: int = 200,
                     visual_mode: str = "stock", visual_style: str = "",
-                    ai_ratio: float = 0.35, queries: list[str] | None = None):
+                    ai_ratio: float = 0.85, queries: list[str] | None = None):
     """Подбирает материал по таймлайну озвучки: субтитры -> планы по min_beat
     секунд -> ключевые слова из текста каждого плана -> сток под план
     (видео нужной длины; если нет — фото + Ken Burns ровно на длину плана;
@@ -3327,9 +3369,13 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
       "stock"  — только стоки; ИИ-картинка лишь как аварийный fallback,
                  если сток совсем ничего не нашёл (редко — почти всегда
                  что-то находится, поэтому ИИ-кадров в ролике мало).
-      "mixed"  — намеренно ai_ratio (по умолчанию 35%) планов генерируются
+      "mixed"  — намеренно ai_ratio (по умолчанию 85%) планов генерируются
                  ИИ, ровными интервалами по всему ролику, а не только когда
                  сток провалился — так видео не выглядит «сплошным стоком».
+                 Высокая доля специально: сток подбирается по ключевым
+                 словам и часто не совпадает с тем, о чём говорится именно
+                 в этот момент — ИИ-кадр генерируется под конкретный текст
+                 плана, поэтому реже расходится с закадровым текстом.
       "ai"     — каждый кадр генерируется ИИ в едином визуальном стиле.
 
     queries — готовый список умных запросов (по одному на план, см.
