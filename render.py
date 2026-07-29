@@ -16,6 +16,7 @@
 Выход: output_final.mp4 в папке проекта.
 """
 
+import os
 import re
 import json
 import time
@@ -57,6 +58,72 @@ CRF_SEGMENT = "18"      # качество/пресеты подменяются
 CRF_FINAL = "19"
 PRESET_SEG = "fast"
 PRESET_FINAL = "medium"
+
+_HW_ENCODER: str | None = None      # кэш результата проверки (None = не проверяли)
+
+
+def hw_encoder() -> str:
+    """Имя доступного аппаратного кодировщика ("h264_nvenc") или "" если его
+    нет. Проверяется РЕАЛЬНЫМ пробным кодированием, а не наличием в списке
+    ffmpeg -encoders: сборка ffmpeg почти всегда собрана с nvenc/qsv/amf, но
+    это флаги компиляции, а не наличие железа. На машине без подходящей
+    видеокарты вызов упадёт, и мы честно вернём "".
+
+    Отключается принудительно через HW_ENCODE=0 в .env.
+    Результат кэшируется — проверка стоит ~1 с."""
+    global _HW_ENCODER
+    if _HW_ENCODER is not None:
+        return _HW_ENCODER
+    if os.getenv("HW_ENCODE", "1").strip().lower() in ("0", "false", "no", "off"):
+        _HW_ENCODER = ""
+        return _HW_ENCODER
+    for enc in ("h264_nvenc", "h264_qsv", "h264_amf"):
+        try:
+            r = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "color=c=black:s=256x144:d=0.1", "-c:v", enc,
+                 "-f", "null", "-"],
+                capture_output=True, text=True, timeout=10,
+                creationflags=CREATE_NO_WINDOW)
+            if r.returncode == 0:
+                _HW_ENCODER = enc
+                _console(f"[Рендер] Аппаратное кодирование: {enc}")
+                return _HW_ENCODER
+        except Exception:
+            continue
+    _HW_ENCODER = ""
+    return _HW_ENCODER
+
+
+def disable_hw(reason: str = "") -> None:
+    """Выключает аппаратный путь до конца процесса. Нужно при отказе на
+    лету: у GeForce жёсткий лимит одновременных сессий NVENC, и когда
+    сегменты пойдут параллельно, лишние просто не закодируются. Без этого
+    отката вызывающий уходил в _placeholder, то есть в ЧЁРНЫЙ КАДР."""
+    global _HW_ENCODER
+    if _HW_ENCODER:
+        _console(f"[Рендер] Аппаратное кодирование отключено{': ' + reason if reason else ''}"
+                 " — перехожу на процессор (libx264)")
+    _HW_ENCODER = ""
+
+
+def venc_args(crf: str, preset: str, final: bool = False) -> list[str]:
+    """Аргументы кодировщика: аппаратный, если есть, иначе libx264.
+    NVENC не понимает -crf/-preset от x264: у него -cq и свои пресеты
+    (p1 самый быстрый .. p7 самый качественный).
+
+    ФИНАЛЬНЫЙ проход всегда идёт через libx264: именно он определяет
+    качество готового ролика, а x264 при равном размере даёт лучшую
+    картинку, чем NVENC. Аппаратный кодировщик экономит время только на
+    промежуточных сегментах и группах, которые всё равно перекодируются."""
+    enc = "" if final else hw_encoder()
+    if not enc:
+        return ["-c:v", "libx264", "-preset", preset, "-crf", crf]
+    if enc == "h264_nvenc":
+        return ["-c:v", enc, "-preset", "p2", "-rc", "vbr", "-cq", crf, "-b:v", "0"]
+    if enc == "h264_qsv":
+        return ["-c:v", enc, "-global_quality", crf]
+    return ["-c:v", enc, "-rc", "cqp", "-qp_i", crf, "-qp_p", crf]
 
 
 # ---------- Синтезированные SFX (whoosh/pop/ding на появление оверлеев) ----------
@@ -281,7 +348,7 @@ def _placeholder(dest: Path, dur: float, w: int, h: int, fps: int):
     _run(["ffmpeg", "-y", "-f", "lavfi",
           "-i", f"color=c=0x14120f:s={w}x{h}:r={fps}",
           "-t", f"{max(dur, 0.2):.3f}", "-vf", "format=yuv420p,setsar=1",
-          "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
+          *venc_args(CRF_SEGMENT, PRESET_SEG),
           str(dest)], label=dest.stem + "~заглушка")
 
 
@@ -328,8 +395,15 @@ def build_render_plan(rows, total: float, rng: random.Random,
             end = phrases[i][1]
             i += 1
         if end <= start:                     # фраза длиннее target — берём её
-            end = phrases[i][1]
-            i += 1
+            # i уже мог уехать за конец списка (перекрывающиеся таймкоды в
+            # srt: очередная фраза заканчивается не позже предыдущей, цикл
+            # выше крутит i, но end не растёт) — раньше это давало IndexError
+            # на последней фразе. Берём последнюю доступную границу.
+            if i < len(phrases):
+                end = max(phrases[i][1], start + 0.5)
+                i += 1
+            else:
+                end = max(phrases[-1][1], start + 0.5)
         scenes.append({"start": round(start, 3), "end": round(end, 3)})
         cur = end
         if burst_left == 0 and cur >= next_burst:
@@ -522,7 +596,7 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
             amp = int(w * 0.05)
             fc = (
                 f"[0:v]split[bg0][fg0];"
-                f"[bg0]scale={w * 2}:-2:flags=lanczos,"
+                f"[bg0]scale={int(w * 1.6)}:-2:flags=lanczos,"
                 f"zoompan=z=1.06:x='(iw-iw/zoom)*on/{n1}':"
                 f"y='ih/2-(ih/zoom/2)':d={frames}:s={w}x{h}:fps={fps},"
                 f"gblur=sigma=16,eq=brightness=-0.28[bg];"
@@ -532,8 +606,8 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
                 + tail_vf)
             try:
                 _run(["ffmpeg", "-y", "-i", str(src), "-filter_complex", fc,
-                      "-c:v", "libx264", "-preset", PRESET_SEG,
-                      "-crf", CRF_SEGMENT, "-an", str(dest)], label=dest.stem)
+                      *venc_args(CRF_SEGMENT, PRESET_SEG),
+                      "-an", str(dest)], label=dest.stem)
                 if not _has_video(dest):
                     raise RuntimeError("пустой результат")
             except RuntimeError as e:
@@ -543,19 +617,29 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
                          f"({str(e)[:80]}) — заглушка")
                 _placeholder(dest, dur, w, h, fps)
             return
-        vf = (f"scale={w * 2}:-2:flags=lanczos,"
+        vf = (f"scale={int(w * 1.6)}:-2:flags=lanczos,"
               f"zoompan={_motion_expr(motion, frames, fps)}"
               f":d={frames}:s={w}x{h}:fps={fps},"
               + tail_vf)
         try:
             _run(["ffmpeg", "-y", "-i", str(src), "-vf", vf,
-                  "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
+                  *venc_args(CRF_SEGMENT, PRESET_SEG),
                   "-an", str(dest)], label=dest.stem)
             if not _has_video(dest):
                 raise RuntimeError("пустой результат")
         except RuntimeError as e:
             if CANCEL.is_set():
                 raise
+            if hw_encoder():          # отказал аппаратный — пробуем процессор
+                disable_hw(str(e)[:60])
+                try:
+                    _run(["ffmpeg", "-y", "-i", str(src), "-vf", vf,
+                          *venc_args(CRF_SEGMENT, PRESET_SEG),
+                          "-an", str(dest)], label=dest.stem)
+                    if _has_video(dest):
+                        return
+                except RuntimeError:
+                    pass
             _console(f"[{dest.stem}] картинка не закодировалась "
                      f"({str(e)[:80]}) — заглушка")
             _placeholder(dest, dur, w, h, fps)
@@ -600,8 +684,8 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
                 v += "tpad=stop_mode=clone:stop=-1,"
             _run(["ffmpeg", "-y", "-ss", f"{off:.2f}", "-i", str(src),
                   "-t", f"{dur:.3f}", "-vf", v + tail_vf,
-                  "-c:v", "libx264", "-preset", PRESET_SEG,
-                  "-crf", CRF_SEGMENT, "-an", str(dest)], label=dest.stem)
+                  *venc_args(CRF_SEGMENT, PRESET_SEG),
+                  "-an", str(dest)], label=dest.stem)
 
         try:
             enc(offset)
@@ -702,7 +786,7 @@ def render_group(seg_files: list[Path], durs: list[float],
         acc = "[vab]"
     fc = fc.rstrip(";")
     cmd += ["-filter_complex", fc, "-map", acc,
-            "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
+            *venc_args(CRF_SEGMENT, PRESET_SEG),
             "-r", str(fps), str(dest)]
     try:
         _run(cmd, label=dest.stem)
@@ -725,7 +809,7 @@ def _group_concat_fallback(seg_files: list[Path], durs: list[float],
     for i, (f, d) in enumerate(zip(seg_files, durs)):
         p = dest.parent / f"{dest.stem}_cut{i:02d}.mp4"
         _run(["ffmpeg", "-y", "-i", str(f), "-t", f"{d:.3f}", "-r", str(fps),
-              "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
+              *venc_args(CRF_SEGMENT, PRESET_SEG),
               "-an", str(p)], label=p.stem)
         parts.append(p)
     lst = dest.parent / f"{dest.stem}_list.txt"
@@ -739,7 +823,7 @@ def _group_concat_fallback(seg_files: list[Path], durs: list[float],
     # видно по логу finalного прохода). Перекодирование пересчитывает PTS
     # с нуля по кадрам — дороже по CPU, но без разрыва.
     _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-          "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
+          *venc_args(CRF_SEGMENT, PRESET_SEG),
           "-r", str(fps), "-fflags", "+genpts", str(dest)], label=dest.stem)
 
 
@@ -1157,7 +1241,7 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
         cmd += ["-map", "0:v", "-map", "1:a",
                 "-vf", ",".join(filters + post)]
     cmd += ["-t", f"{total:.3f}",
-            "-c:v", "libx264", "-preset", PRESET_FINAL, "-crf", CRF_FINAL,
+            *venc_args(CRF_FINAL, PRESET_FINAL, final=True),
             "-c:a", "aac", "-b:a", "192k", str(dest)]
     # cwd = папка проекта: относительные пути секвенций выше разрешаются
     # именно от неё
@@ -1180,9 +1264,15 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
     else:
         w, h = RESOLUTIONS.get(opts.get("resolution", "1080p"), (1920, 1080))
         # пресет качества: чем ниже CRF, тем лучше картинка (и больше файл)
-        q = {"обычное":    ("18", "19", "fast", "medium"),
-             "высокое":    ("16", "16", "medium", "slow"),
-             "максимум":   ("14", "14", "medium", "slow")}
+        # Первые два числа — промежуточные сегменты/группы, они ПЕРЕкодируются
+        # ещё дважды и в итоговый файл попадают только через финальный проход.
+        # Тратить на них medium/slow и CRF 14-16 бессмысленно: качество
+        # определяется последним проходом, а время — всеми тремя. Держим
+        # промежуточные заведомо выше финального CRF (запас на потери при
+        # перекодировании), но на быстром пресете.
+        q = {"обычное":    ("16", "19", "superfast", "medium"),
+             "высокое":    ("15", "16", "veryfast", "slow"),
+             "максимум":   ("13", "14", "faster", "slow")}
         CRF_SEGMENT, CRF_FINAL, PRESET_SEG, PRESET_FINAL = \
             q.get(opts.get("quality", "обычное"), q["обычное"])
     fps = int(opts.get("fps", 30))

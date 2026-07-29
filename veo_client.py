@@ -14,8 +14,15 @@ import requests
 VEO_BASE_URL = os.getenv("VEO_BASE_URL", "https://veononstop.org/api/v1")
 VEO_API_KEY = os.getenv("VEO_API_KEY", "")
 
-DONE_STATES = {"completed"}
-FAILED_STATES = {"failed"}
+DONE_STATES = {"completed", "succeeded", "success"}
+# cancelled/expired обязаны быть здесь: это ТЕРМИНАЛЬНЫЕ состояния, но раньше
+# они не попадали ни в DONE, ни в FAILED — и опрос крутился до полного
+# timeout_s (30 мин) на КАЖДОЙ такой задаче. Пока задачи создавались только
+# в этом же запуске, состояние «cancelled» было недостижимо; с появлением
+# журнала возобновления (pending_task) осиротевшие после аварийного
+# завершения задачи сервер отменяет сам — и следующий запуск вставал
+# на 30 минут за каждый такой кадр.
+FAILED_STATES = {"failed", "cancelled", "canceled", "expired"}
 
 # Незавершённые задачи Veo переживают закрытие приложения. Файл создаётся
 # внутри папки конкретного проекта, поэтому задачи разных роликов не смешаны.
@@ -53,11 +60,29 @@ def _save_tasks(tasks: dict) -> None:
     os.replace(tmp, _TASK_STORE)
 
 
+# Задачи Veo живут на сервере ~30 мин, но запись нужна дольше самой
+# задачи: ожидание до 30 мин плюс апскейл с повторами. TTL с запасом,
+# чтобы НЕ удалить запись задачи, которая ещё в работе, и при этом
+# не копить осиротевшие записи вечно.
+TASK_TTL_S = 6 * 3600
+
+
 def pending_task(dest: Path, kind: str) -> str:
-    """Возвращает ID ранее отправленной, но ещё не скачанной задачи."""
+    """Возвращает ID ранее отправленной, но ещё не скачанной задачи.
+    Просроченные записи (старше TASK_TTL_S) игнорируются: на сервере такой
+    задачи давно нет, а раньше её всё равно пытались дождаться."""
     with _TASK_LOCK:
         item = _load_tasks().get(str(Path(dest).resolve())) or {}
-        return str(item.get("task_id", "")) if item.get("kind") == kind else ""
+        if item.get("kind") != kind:
+            return ""
+        created = item.get("created_at")
+        if created:
+            try:
+                if time.time() - float(created) > TASK_TTL_S:
+                    return ""
+            except (TypeError, ValueError):
+                pass
+        return str(item.get("task_id", ""))
 
 
 def track_task(task_id: str, dest: Path, kind: str) -> None:
@@ -79,9 +104,27 @@ def finish_task(dest: Path) -> None:
 
 
 def pending_tasks() -> list[dict]:
-    """Копия журнала задач текущего проекта, без ключей API."""
+    """Копия журнала задач текущего проекта, без ключей API. Просроченные
+    записи не возвращаются И вычищаются с диска: иначе осиротевшие записи
+    (имя файла кадра зависит от запроса, а он меняется между прогонами)
+    копились вечно, и интерфейс навсегда показывал «Сохранено задач Veo: N»."""
+    now = time.time()
     with _TASK_LOCK:
-        return [dict(item, dest=dest) for dest, item in _load_tasks().items()]
+        tasks = _load_tasks()
+        fresh, expired = {}, 0
+        for dest, item in tasks.items():
+            created = item.get("created_at")
+            try:
+                stale = created is not None and now - float(created) > TASK_TTL_S
+            except (TypeError, ValueError):
+                stale = False
+            if stale:
+                expired += 1
+            else:
+                fresh[dest] = item
+        if expired:
+            _save_tasks(fresh)
+        return [dict(item, dest=dest) for dest, item in fresh.items()]
 
 
 def cancel_pending_tasks(api_key: str = "") -> int:
@@ -227,7 +270,7 @@ def wait_for_completion(task_id: str, api_key: str = "", poll_s: int = 10,
     t0 = time.time()
     while time.time() - t0 < timeout_s:
         data = get_status(task_id, api_key)
-        status = data.get("status", "")
+        status = str(data.get("status", "")).strip().lower()
         log(f"[VeoNonStop] {task_id}: {status}")
         if status in DONE_STATES:
             return data

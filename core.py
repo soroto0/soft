@@ -38,8 +38,15 @@ SEARCH_POOL = 15  # сколько результатов запрашивать
 
 
 def _env_switch(name: str, default: bool) -> bool:
-    """Безопасно читает флаги режима из .env."""
-    value = os.getenv(name, "1" if default else "0").strip().lower()
+    """Безопасно читает флаги режима из .env.
+
+    Пустое значение (`VEO_FAST_MODE=` в .env — обычный способ «погасить»
+    переменную) раньше означало True, потому что "" не входит в список
+    выключающих слов: флаг с default=False молча ВКЛЮЧАЛСЯ. Теперь пустая
+    строка трактуется как «не задано» и берётся default."""
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return default
     return value not in {"0", "false", "no", "off"}
 
 
