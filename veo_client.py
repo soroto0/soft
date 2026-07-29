@@ -5,6 +5,8 @@
 import os
 import time
 import base64
+import json
+import threading
 from pathlib import Path
 
 import requests
@@ -15,9 +17,89 @@ VEO_API_KEY = os.getenv("VEO_API_KEY", "")
 DONE_STATES = {"completed"}
 FAILED_STATES = {"failed"}
 
+# Незавершённые задачи Veo переживают закрытие приложения. Файл создаётся
+# внутри папки конкретного проекта, поэтому задачи разных роликов не смешаны.
+_TASK_STORE: Path | None = None
+_TASK_LOCK = threading.RLock()
+
 
 class VeoError(RuntimeError):
     pass
+
+
+def configure_task_store(project_dir: Path | str | None) -> None:
+    """Включает журнал незавершённых Veo-задач для одного проекта."""
+    global _TASK_STORE
+    with _TASK_LOCK:
+        _TASK_STORE = (Path(project_dir) / "veo_tasks.json") if project_dir else None
+
+
+def _load_tasks() -> dict:
+    if not _TASK_STORE or not _TASK_STORE.exists():
+        return {}
+    try:
+        data = json.loads(_TASK_STORE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_tasks(tasks: dict) -> None:
+    if not _TASK_STORE:
+        return
+    _TASK_STORE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _TASK_STORE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(tasks, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, _TASK_STORE)
+
+
+def pending_task(dest: Path, kind: str) -> str:
+    """Возвращает ID ранее отправленной, но ещё не скачанной задачи."""
+    with _TASK_LOCK:
+        item = _load_tasks().get(str(Path(dest).resolve())) or {}
+        return str(item.get("task_id", "")) if item.get("kind") == kind else ""
+
+
+def track_task(task_id: str, dest: Path, kind: str) -> None:
+    """Сохраняет ID сразу после отправки задачи, до начала ожидания."""
+    with _TASK_LOCK:
+        tasks = _load_tasks()
+        tasks[str(Path(dest).resolve())] = {
+            "task_id": task_id, "kind": kind, "created_at": int(time.time()),
+        }
+        _save_tasks(tasks)
+
+
+def finish_task(dest: Path) -> None:
+    """Удаляет запись только после успешного скачивания результата."""
+    with _TASK_LOCK:
+        tasks = _load_tasks()
+        tasks.pop(str(Path(dest).resolve()), None)
+        _save_tasks(tasks)
+
+
+def pending_tasks() -> list[dict]:
+    """Копия журнала задач текущего проекта, без ключей API."""
+    with _TASK_LOCK:
+        return [dict(item, dest=dest) for dest, item in _load_tasks().items()]
+
+
+def cancel_pending_tasks(api_key: str = "") -> int:
+    """Отменяет только задачи текущего проекта, а не всего аккаунта Veo."""
+    cancelled = 0
+    for item in pending_tasks():
+        task_id = str(item.get("task_id", ""))
+        if not task_id:
+            continue
+        try:
+            cancel_task(task_id, api_key)
+            cancelled += 1
+        except Exception:
+            # Уже готовая/удалённая задача не должна блокировать отмену.
+            pass
+        finally:
+            finish_task(Path(str(item["dest"])))
+    return cancelled
 
 
 def _headers(api_key: str = "") -> dict:
@@ -170,8 +252,20 @@ def generate_video_and_wait(prompt: str, dest: Path, aspect_ratio: str = "16:9",
     наблюдался апскейл дольше 180с — поэтому таймаут 420с и один повтор)
     до 1080p и скачивает уже апскейленную версию; если обе попытки не
     удались, тихо скачивает исходный 720p, а не проваливает всю генерацию."""
-    task_id = text_to_video(prompt, aspect_ratio=aspect_ratio, api_key=api_key)
-    data = wait_for_completion(task_id, api_key, poll_s, timeout_s, log)
+    dest = Path(dest)
+    task_id = pending_task(dest, "text-to-video")
+    if task_id:
+        log(f"[VeoNonStop] Продолжаю сохранённую задачу {task_id}")
+    else:
+        task_id = text_to_video(prompt, aspect_ratio=aspect_ratio, api_key=api_key)
+        track_task(task_id, dest, "text-to-video")
+    try:
+        data = wait_for_completion(task_id, api_key, poll_s, timeout_s, log)
+    except Exception:
+        # Failed/cancelled task нельзя пытаться «продолжать» при следующем
+        # запуске: тогда новая попытка никогда не будет создана.
+        finish_task(dest)
+        raise
     videos = data.get("videos") or []
     if upscale and videos and videos[0].get("mediaGenerationId"):
         last_err = None
@@ -182,14 +276,18 @@ def generate_video_and_wait(prompt: str, dest: Path, aspect_ratio: str = "16:9",
                     video_url=videos[0].get("fifeUrl") or videos[0].get("servingBaseUri") or "",
                     aspect_ratio=aspect_ratio, api_key=api_key)
                 wait_for_completion(up_task, api_key, poll_s=5, timeout_s=420, log=log)
-                return download_video(up_task, dest, api_key=api_key)
+                result = download_video(up_task, dest, api_key=api_key)
+                finish_task(dest)
+                return result
             except Exception as e:
                 last_err = e
                 if attempt == 0:
                     log(f"[VeoNonStop] Апскейл до 1080p не вышел с первой попытки "
                         f"({e}) — пробую ещё раз")
         log(f"[VeoNonStop] Апскейл до 1080p не удался ({last_err}) — беру оригинал 720p")
-    return download_video(task_id, dest, api_key=api_key)
+    result = download_video(task_id, dest, api_key=api_key)
+    finish_task(dest)
+    return result
 
 
 # ---------- Картинки: Banana (синхронно) ----------

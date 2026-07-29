@@ -135,6 +135,9 @@ async function refresh() {
   const s = await rpc("get_state");
   if (!s) { if (!state) state = await mockApi.get_state(); else return; }
   else state = s;
+  if (state.pending_veo && state.pending_veo > 0) {
+    setStatus(`⏳ Сохранено задач Veo: ${state.pending_veo}. Нажми «Генерировать видео», чтобы продолжить.`);
+  }
   $("projPath").value = state.project || "";
   $("version").textContent = "v" + (state.version || "3.0");
   renderCards();

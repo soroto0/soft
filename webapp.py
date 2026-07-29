@@ -68,6 +68,7 @@ class Api:
                             or BASE / "project1")
         self._busy = None
         self._win = None
+        self._configure_veo_store()
         core.CONSOLE = lambda m: self.log(m, "dim")
         render.CONSOLE = lambda m: self.log(m, "dim")
         self._apply_env()   # ключи из settings.json -> os.environ (не только
@@ -80,6 +81,13 @@ class Api:
                        ("veo_key", "VEO_API_KEY")):
             if self._settings.get(k):
                 os.environ[env] = self._settings[k]
+
+    def _configure_veo_store(self):
+        try:
+            import veo_client
+            veo_client.configure_task_store(self._project)
+        except Exception:
+            pass
 
     # ---------- связь с JS ----------
     def _js(self, code: str):
@@ -174,6 +182,13 @@ class Api:
 
     def get_state(self):
         d = self._project
+        pending_veo = 0
+        try:
+            import veo_client
+            veo_client.configure_task_store(d)
+            pending_veo = len(veo_client.pending_tasks())
+        except Exception:
+            pass
         subs = []
         srt = d / "subs" / "voiceover.srt"
         if srt.exists():
@@ -199,6 +214,7 @@ class Api:
         return {
             "project": str(d), "version": APP_VERSION,
             "checks": self._checks(d), "projects": projects[:8],
+            "pending_veo": pending_veo,
             "script": self._read("script.txt"),
             "scenes": self._read("scenes.txt"),
             "overlays": self._read("overlays.txt"),
@@ -240,6 +256,7 @@ class Api:
         self._project = d
         self._settings["last_project"] = str(d)
         self._save_settings_file()
+        self._configure_veo_store()
         self.log(f"[Каналы] Канал «{ch['name']}» — язык {ch['lang']}, "
                  f"жанр «{ch['tone']}», стиль «{ch['visual_style']}»"
                  + (f", голос {ch['voice']}" if ch.get("voice") else ""))
@@ -254,6 +271,7 @@ class Api:
             self._project = Path(path)
             self._settings["last_project"] = str(self._project)
             self._save_settings_file()
+            self._configure_veo_store()
 
     def browse_project(self):
         res = self._win.create_file_dialog(webview.FOLDER_DIALOG)
@@ -757,11 +775,11 @@ class Api:
         if veo_key:
             try:
                 import veo_client
-                cancelled = veo_client.cancel_all(api_key=veo_key)
-                n = (cancelled or {}).get("cancelled_count", 0)
+                veo_client.configure_task_store(self._project)
+                n = veo_client.cancel_pending_tasks(api_key=veo_key)
                 if n:
-                    self.log(f"[Рендер] VeoNonStop: отменено {n} "
-                            "незавершённых задач (освобождены слоты)", "warn")
+                    self.log(f"[Рендер] VeoNonStop: отменено {n} задач "
+                             "только этого проекта (освобождены слоты)", "warn")
             except Exception:
                 pass   # нет активных задач/недоступен — не критично при Стопе
 
@@ -1080,6 +1098,9 @@ class Api:
             self.log("[Цепочка] Шаг 4/4 — рендер…")
             render.render_project(self._project, self.log,
                                   self._progress, opts)
+            self.log("[YouTube] Перед загрузкой отметь «Да» в поле об "
+                     "ИИ-контенте, если в ролике есть реалистичные "
+                     "сгенерированные сцены.", "warn")
         self._bg("Генерация видео", job)
 
     # ---------- настройки ----------
