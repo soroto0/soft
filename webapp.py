@@ -52,6 +52,17 @@ TONE_TO_MOOD = {
 }
 
 
+class Stopped(BaseException):
+    """Нажата кнопка «Стоп».
+
+    Наследуемся от BaseException, а не от Exception, СПЕЦИАЛЬНО: и в core, и
+    в цепочке generate_all десятки блоков `except Exception` глушат сбой
+    отдельного плана, чтобы ролик не рушился из-за одной картинки. Обычное
+    исключение остановки они бы проглотили ровно так же, и «Стоп» снова
+    ничего бы не останавливал — как это и было, пока отмена жила только
+    внутри render.py."""
+
+
 def load_settings() -> dict:
     if SETTINGS_FILE.exists():
         try:
@@ -67,10 +78,20 @@ class Api:
         self._project = Path(self._settings.get("last_project")
                             or BASE / "project1")
         self._busy = None
+        # «Стоп» на любой стадии, а не только на рендере: render.CANCEL знает
+        # про ffmpeg, но озвучка, субтитры и раскадровка живут в core и о нём
+        # не подозревали — цепочка молча доезжала до рендера уже без картинок.
+        self._cancel = threading.Event()
+        self._worker = None      # поток текущей задачи, см. _stop_check
         self._win = None
         self._configure_veo_store()
-        core.CONSOLE = lambda m: self.log(m, "dim")
-        render.CONSOLE = lambda m: self.log(m, "dim")
+        # Живой вывод дочерних процессов идёт мимо проверки «Стопа»
+        # (_log_raw, а не log): в него льётся ffmpeg строка за строкой прямо
+        # из цикла, который сам же и убивает процесс по CANCEL. Брось мы
+        # оттуда исключение — ffmpeg остался бы висеть сиротой. Останов на
+        # этих стадиях делает render.CANCEL, а в core — обычный callback log.
+        core.CONSOLE = lambda m: self._log_raw(m, "dim")
+        render.CONSOLE = lambda m: self._log_raw(m, "dim")
         self._apply_env()   # ключи из settings.json -> os.environ (не только
                             # при явном сохранении в диалоге, но и при старте)
 
@@ -98,6 +119,30 @@ class Api:
                 pass
 
     def log(self, msg: str, cls: str = ""):
+        """Обычный журнал — и одновременно ЕДИНСТВЕННАЯ точка, где стадия из
+        core может узнать про «Стоп». Другого способа нет: core.py трогать
+        нельзя, а log — тот самый callback, который туда передаётся и который
+        зовётся на каждом плане раскадровки, на каждом шаге озвучки и т.д.
+        Поэтому здесь бросаем Stopped: работа обрывается на ближайшем
+        сообщении, а не через полчаса скачиваний."""
+        self._stop_check()
+        self._log_raw(msg, cls)
+
+    def _stop_check(self):
+        """Точка выхода между стадиями и внутри них. Зовётся из log() и явно
+        в цепочке generate_all — там между шагами бывают минуты без единой
+        строки в журнале.
+
+        Бросаем только в рабочем потоке: тот же log() зовут и обработчики
+        кнопок интерфейса (сохранить сценарий, черновик оверлеев), а там
+        исключение вылетело бы прямо в JS и выглядело бы поломкой окна."""
+        if self._cancel.is_set() and threading.current_thread() is self._worker:
+            raise Stopped()
+
+    def _log_raw(self, msg: str, cls: str = ""):
+        """Запись в журнал БЕЗ проверки «Стопа». Нужна там, где бросать
+        нельзя: сообщения самой остановки и итоговые строки задачи в finally —
+        иначе Stopped вылетал бы из обработчика остановки."""
         msg = str(msg)
         if not cls:
             low = msg.lower()
@@ -123,24 +168,40 @@ class Api:
                      "Дождись завершения или останови (⛔ Стоп).", "warn")
             return
         self._busy = name
+        # Флаги отмены сбрасываются ЗДЕСЬ: после остановки они остаются
+        # взведёнными, и следующая задача обрывалась бы на первой же строке
+        # журнала. render.CANCEL чистит и сам себя, но только когда дело
+        # доходит до рендера.
+        self._cancel.clear()
+        render.CANCEL.clear()
 
         def wrap():
             t0 = datetime.now()
+            self._worker = threading.current_thread()
             self._js(f"setStatus({json.dumps('⏳ ' + name + '…')})")
-            self.log(f"▶ {name}: запущено")
-            ok = True
+            self._log_raw(f"▶ {name}: запущено")
+            ok = stopped = False
             try:
                 fn()
+                ok = True
+            except Stopped:
+                stopped = True
+                self._log_raw(f"[Стоп] «{name}» прервана по кнопке ⛔ — "
+                              "сделанное до этого момента сохранено", "warn")
             except Exception as e:
-                ok = False
-                self.log(traceback.format_exc().rstrip(), "dim")
-                self.log(f"[ОШИБКА] {e}")
+                self._log_raw(traceback.format_exc().rstrip(), "dim")
+                self._log_raw(f"[ОШИБКА] {e}")
             finally:
                 self._busy = None
+                # флаг живёт РОВНО столько, сколько идёт задача: иначе
+                # следующая кнопка оборвалась бы на первой же строке журнала
+                self._cancel.clear()
+                self._worker = None
                 sec = (datetime.now() - t0).total_seconds()
-                self.log(f"{'✔' if ok else '✖'} {name}: "
-                         f"{'завершено' if ok else 'прервано'} за {sec:.0f} c",
-                         "ok" if ok else "err")
+                res = ("завершено" if ok
+                       else "остановлено" if stopped else "прервано")
+                self._log_raw(f"{'✔' if ok else '✖'} {name}: {res} "
+                              f"за {sec:.0f} c", "ok" if ok else "err")
                 self._js("taskDone()")
         threading.Thread(target=wrap, daemon=True).start()
 
@@ -426,10 +487,18 @@ class Api:
         voice = p.get("voice")
         rate = int(str(p.get("rate", "0%")).replace("%", "").replace("+", ""))
         if p.get("randomize"):
-            st = core.project_style(self._project)
-            voice, rate = st["voice"], st["rate"]
-            self.log(f"[Разнообразие] Голос {voice}, темп {rate:+d}% "
-                     "(случайно под этот проект)")
+            # Голос — постоянный признак канала: если профиль его задал, он
+            # в channel_locked, и «Разнообразие» перебирает всё остальное,
+            # но не голос. Раньше ради этого целиком гасили randomize — и
+            # заодно теряли разнообразие монтажа и цветокора.
+            if "voice" in (p.get("channel_locked") or ()):
+                self.log(f"[Канал] Голос {voice} и темп {rate:+d}% из "
+                         "профиля — «Разнообразие» их не трогает")
+            else:
+                st = core.project_style(self._project)
+                voice, rate = st["voice"], st["rate"]
+                self.log(f"[Разнообразие] Голос {voice}, темп {rate:+d}% "
+                         "(случайно под этот проект)")
         enh = bool(p.get("enhance"))
         if "Edge" in p.get("engine", "Edge"):
             core.tts_edge(text, voice, self._project, self.log, rate, enh,
@@ -677,10 +746,20 @@ class Api:
                 "draft": bool(p.get("draft"))}
         if p.get("randomize"):   # свой «почерк» на каждый проект
             st = core.project_style(self._project)
-            opts.update(intensity=st["intensity"], sub_style=st["sub_style"],
-                        sub_size=st["sub_size"], look=st["look"],
-                        bloom=st["bloom"], light_leak=st["light_leak"],
-                        dust=st["dust"], flicker=st["flicker"])
+            upd = {"intensity": st["intensity"], "sub_style": st["sub_style"],
+                   "sub_size": st["sub_size"], "look": st["look"],
+                   "bloom": st["bloom"], "light_leak": st["light_leak"],
+                   "dust": st["dust"], "flicker": st["flicker"]}
+            # Поля, прибитые профилем канала (стиль и размер субтитров), —
+            # такой же постоянный признак, как гарнитура: они не должны
+            # меняться от ролика к ролику. Всё остальное — монтаж, цветокор,
+            # эффекты — меняется, ради этого «Разнообразие» и существует.
+            # Раньше канал с заданным голосом гасил флаг целиком, и ролики
+            # канала выходили один в один.
+            locked = [k for k in (p.get("channel_locked") or ()) if k in upd]
+            for k in locked:
+                upd.pop(k)
+            opts.update(upd)
             fx = [n for n, k in (("bloom", "bloom"), ("засветка", "light_leak"),
                                  ("пыль", "dust"), ("мерцание", "flicker"))
                   if st[k]]
@@ -688,11 +767,13 @@ class Api:
             # субтитры» снята — он никуда не пойдёт. Раньше лог всё равно
             # печатал «Субтитры «karaoke»», и это читалось как «субтитры
             # включены» — пишем честно, что именно будет в кадре.
-            subs_note = (f"«{st['sub_style']}»" if opts["subs"]
+            subs_note = (f"«{opts['sub_style']}»" if opts["subs"]
                          else "в кадр НЕ вжигаются (галочка снята)")
             self.log(f"[Разнообразие] Субтитры {subs_note}, монтаж "
-                     f"«{st['intensity']}», цветокор случайный, эффекты: "
-                     f"{', '.join(fx) or 'нет'} (под этот проект)")
+                     f"«{opts['intensity']}», цветокор случайный, эффекты: "
+                     f"{', '.join(fx) or 'нет'} (под этот проект)"
+                     + (f"; из профиля канала не менялось: "
+                        f"{', '.join(locked)}" if locked else ""))
         return opts
 
     def _auto_overlays(self):
@@ -769,8 +850,24 @@ class Api:
             self._project, self.log, self._progress, opts))
 
     def stop_render(self):
+        # Кнопка одна, а стадий много: раньше она взводила только
+        # render.CANCEL, то есть работала лишь если в этот момент крутился
+        # ffmpeg. На озвучке, субтитрах и раскадровке нажатие отменяло задачи
+        # Veo — и на этом всё: core продолжал работать, а цепочка в конце
+        # всё равно запускала рендер (render_project ещё и сбрасывает CANCEL
+        # на старте). Взводим общий флаг: его видит log() и проверки между
+        # шагами цепочки.
+        stage = self._busy
+        if stage:
+            self._cancel.set()
+            self._log_raw(f"[Стоп] ⛔ Останавливаю «{stage}» — оборвётся на "
+                          "ближайшем шаге, ffmpeg будет убит", "warn")
+        else:
+            # ничего не идёт — флаг НЕ взводим, иначе он дождётся следующей
+            # кнопки и убьёт её ни за что
+            self._log_raw("[Стоп] Сейчас ничего не выполняется — снимаю "
+                          "только висящие задачи Veo", "warn")
         render.CANCEL.set()
-        self.log("[Рендер] ⛔ Остановка — текущий ffmpeg будет убит", "warn")
         veo_key = os.getenv("VEO_API_KEY", "").strip()
         if veo_key:
             try:
@@ -1030,13 +1127,20 @@ class Api:
                     extra=(ch or {}).get("script_extra", ""))
                 self.save_script(text)
                 self._write_meta(topic=topic)
+            # Между шагами цепочки бывают минуты без единой строки в
+            # журнале (whisper, ожидание Veo), поэтому спрашиваем про «Стоп»
+            # явно: иначе нажатие в такую паузу заметили бы только на
+            # следующем сообщении — то есть уже следующей стадией.
+            self._stop_check()
             self.log("[Цепочка] Шаг 1/4 — озвучка…")
             self._tts_step(p)
+            self._stop_check()
             self.log("[Цепочка] Шаг 2/4 — субтитры…")
             core.transcribe_whisper(self._project / "audio" / "voiceover.mp3",
                                     p.get("whisper", "tiny.en"),
                                     self._project, self.log, 42,
                                     p.get("lang", "английский"))
+            self._stop_check()
             self.log("[Цепочка] Шаг 3/4 — стоки по таймлайну…")
             core.auto_storyboard(
                 self._project, self.log,
@@ -1048,6 +1152,7 @@ class Api:
                 int(self._settings.get("max_unique", 200)),
                 p.get("visual_mode", "mixed"), p.get("visual_style", ""),
                 float(p.get("ai_ratio", 0.85)))
+            self._stop_check()
             if p.get("check_shots", True):
                 # ГЛАВНАЯ проверка качества: кадр не про то, что говорит
                 # диктор — самый заметный признак сборки «на автомате».
@@ -1095,6 +1200,11 @@ class Api:
                 except Exception as e:
                     # обложки не должны рушить готовый ролик
                     self.log(f"[Цепочка] Обложки пропущены: {e}", "warn")
+            # Последняя и самая важная проверка: render_project СБРАСЫВАЕТ
+            # render.CANCEL на старте, поэтому «Стоп», нажатый на любом
+            # предыдущем шаге, рендеру ничего не сообщал — часовой рендер
+            # начинался уже после остановки, да ещё и с неполной раскадровкой.
+            self._stop_check()
             self.log("[Цепочка] Шаг 4/4 — рендер…")
             render.render_project(self._project, self.log,
                                   self._progress, opts)
