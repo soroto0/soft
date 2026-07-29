@@ -36,6 +36,37 @@ MUSIC_EXTS = {".mp3", ".wav", ".m4a", ".ogg", ".flac",
 MAX_CLIPS_PER_SCENE = 5
 SEARCH_POOL = 15  # сколько результатов запрашивать у стоков для выбора
 
+
+def _env_switch(name: str, default: bool) -> bool:
+    """Безопасно читает флаги режима из .env."""
+    value = os.getenv(name, "1" if default else "0").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+def _local_prompt_chat(messages: list[dict], temperature: float,
+                       max_tokens: int) -> str:
+    """Локальный Ollama только для черновиков промптов/сцен.
+
+    Veo, картинки и видео через него не идут. Ошибка здесь обрабатывается
+    вызывающим кодом и даёт откат к облачному LLM, поэтому отсутствие модели
+    никогда не останавливает создание ролика.
+    """
+    import requests
+    model = os.getenv("LOCAL_PROMPT_MODEL", "qwen2.5:1.5b").strip()
+    response = requests.post(
+        os.getenv("OLLAMA_URL", "http://127.0.0.1:11434") + "/api/chat",
+        json={"model": model, "messages": messages, "stream": False,
+              "options": {"temperature": temperature,
+                          "num_predict": max_tokens}},
+        timeout=300,
+    )
+    response.raise_for_status()
+    data = response.json()
+    content = ((data.get("message") or {}).get("content") or "").strip()
+    if not content:
+        raise RuntimeError("локальная модель вернула пустой ответ")
+    return content
+
 # для извлечения ключевых слов из текста плана (авто-раскадровка)
 STOPWORDS = frozenset("""
 a an the and or but if then than that this these those there here is are was
@@ -1018,8 +1049,9 @@ def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
         return None
     result = [""] * n
     got = 0
-    for start in range(0, n, batch_size):
-        chunk = beats[start:start + batch_size]
+    effective_batch = min(batch_size, 5) if _env_switch("LOCAL_PROMPT_MODE", False) else batch_size
+    for start in range(0, n, effective_batch):
+        chunk = beats[start:start + effective_batch]
         numbered = "\n".join(f"{i}. {b['text'][:280]}"
                              for i, b in enumerate(chunk, 1))
         # Контекст по краям батча. Планы режутся по времени, а не по
@@ -1036,18 +1068,40 @@ def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
             ctx += f"\n\n[фрагмент ПЕРЕД первым: ...{before}]"
         if after:
             ctx += f"\n\n[фрагмент ПОСЛЕ последнего: {after}...]"
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content":
+             instruction.format(n=len(chunk)) + "\n\n" + numbered + ctx},
+        ]
         try:
-            out = llm_chat(
-                [{"role": "system", "content": system},
-                 {"role": "user", "content":
-                  instruction.format(n=len(chunk)) + "\n\n" + numbered + ctx}],
-                api_key, temperature, max_tokens)
+            if _env_switch("LOCAL_PROMPT_MODE", False):
+                # Маленькой CPU-модели не даём огромные батчи: так она даёт
+                # стабильный черновик, а облако остаётся страховкой качества.
+                out = _local_prompt_chat(messages, temperature,
+                                         min(max_tokens, 1200))
+                log(f"[Локальный ИИ] {label}, планы {start + 1}-"
+                    f"{start + len(chunk)}: черновик готов")
+            else:
+                out = llm_chat(messages, api_key, temperature, max_tokens)
             qs = _parse_query_list(out, len(chunk))
             for j in range(len(chunk)):
                 if j < len(qs) and qs[j]:
                     result[start + j] = qs[j]
                     got += 1
         except Exception as e:
+            if _env_switch("LOCAL_PROMPT_MODE", False) and api_key:
+                try:
+                    out = llm_chat(messages, api_key, temperature, max_tokens)
+                    qs = _parse_query_list(out, len(chunk))
+                    for j in range(len(chunk)):
+                        if j < len(qs) and qs[j]:
+                            result[start + j] = qs[j]
+                            got += 1
+                    log(f"[Локальный ИИ] {label}: недоступен "
+                        f"({e.__class__.__name__}), использую облачный резерв")
+                    continue
+                except Exception:
+                    pass
             log(f"[Агент] {label}, планы {start + 1}-{start + len(chunk)}: "
                 f"{e.__class__.__name__} — эти уйдут на ключевые слова.")
     if got == 0:
@@ -1407,13 +1461,22 @@ def gemini_image(prompt: str, dest: Path, api_key: str, style: str = "") -> Path
 
 
 def veo_image(prompt: str, dest: Path, api_key: str, log=print,
-              style: str = "", upscale: bool = True) -> Path:
-    """Картинка через VeoNonStop (Banana Pro), синхронно. upscale=True —
+              style: str = "", upscale: bool | None = None) -> Path:
+    """Картинка через VeoNonStop (Banana Pro), синхронно. upscale —
     дополнительно апскейлит результат до 2K через banana_upscale (1 повтор
     при транзиентной ошибке); апскейл не критичен для результата, поэтому
     провал обеих попыток тихо падает обратно на исходную (не апскейленную)
-    картинку, а не проваливает вызов."""
+    картинку, а не проваливает вызов.
+
+    upscale=None (по умолчанию) — берём из VEO_UPSCALE, как и видео. Раньше
+    здесь стояло True, а VEO_UPSCALE читался только в veo_video: настройка
+    «быстрый черновик без апскейла» молча не действовала на картинки, и
+    каждое ИИ-фото делало лишний вызов banana_upscale. Замер: 51 c без
+    апскейла против 74 c с ним — на ~117 фото это ~46 минут лишней работы."""
     import veo_client
+    if upscale is None:
+        upscale = os.getenv("VEO_UPSCALE", "1").strip().lower() not in (
+            "0", "false", "no", "off")
     data = veo_client.banana_generate(_image_prompt(prompt, style), api_key=api_key)
     media = data.get("media") or []
     if not media:
@@ -2210,8 +2273,15 @@ def veo_video(prompt: str, dest: Path, api_key: str, log=print) -> Path:
     не совпадает с заказанными seconds; при монтаже клип обрезается/тянется
     как обычный сток."""
     import veo_client
-    log(f"[Видео-ИИ] VeoNonStop: «{prompt[:60]}» (1-3 мин)...")
-    veo_client.generate_video_and_wait(prompt, dest, api_key=api_key, log=log)
+    # Апскейл — отдельная задача Veo. Для быстрого черновика его можно
+    # отключить через VEO_UPSCALE=0: результат останется в 720p.
+    upscale = os.getenv("VEO_UPSCALE", "1").strip().lower() not in (
+        "0", "false", "no", "off"
+    )
+    quality = "1080p с апскейлом" if upscale else "720p без апскейла"
+    log(f"[Видео-ИИ] VeoNonStop ({quality}): «{prompt[:60]}» (1-3 мин)...")
+    veo_client.generate_video_and_wait(prompt, dest, api_key=api_key,
+                                       upscale=upscale, log=log)
     log(f"[Видео-ИИ] Готово: {dest.name}")
     return dest
 
@@ -2233,11 +2303,21 @@ def gen_video_from_image(image_path: Path, prompt: str, dest: Path,
                                      "image/jpeg")
     full_prompt = _image_prompt(prompt, style) + " Subtle cinematic motion."
     log(f"[Видео-ИИ] VeoNonStop image-to-video: «{prompt[:60]}» (1-3 мин)...")
-    task_id = veo_client.image_to_video(full_prompt, Path(image_path),
-                                        mime_type=mime, aspect_ratio="16:9",
-                                        api_key=veo_key)
-    veo_client.wait_for_completion(task_id, veo_key, log=log)
+    task_id = veo_client.pending_task(dest, "image-to-video")
+    if task_id:
+        log(f"[Видео-ИИ] Продолжаю сохранённую задачу Veo: {task_id}")
+    else:
+        task_id = veo_client.image_to_video(full_prompt, Path(image_path),
+                                            mime_type=mime, aspect_ratio="16:9",
+                                            api_key=veo_key)
+        veo_client.track_task(task_id, dest, "image-to-video")
+    try:
+        veo_client.wait_for_completion(task_id, veo_key, log=log)
+    except Exception:
+        veo_client.finish_task(dest)
+        raise
     veo_client.download_video(task_id, dest, api_key=veo_key)
+    veo_client.finish_task(dest)
     log(f"[Видео-ИИ] Готово: {dest.name}")
     return dest
 
@@ -2255,10 +2335,20 @@ def gen_video_multi(prompt: str, images: list[dict], dest: Path,
         raise RuntimeError("Нет VEO_API_KEY для multi-image-to-video")
     log(f"[Видео-ИИ] VeoNonStop multi-image: «{prompt[:60]}» "
         f"({len(images)} референса, 1-3 мин)...")
-    task_id = veo_client.multi_image_to_video(prompt, images, aspect_ratio="16:9",
-                                              api_key=veo_key)
-    veo_client.wait_for_completion(task_id, veo_key, log=log)
+    task_id = veo_client.pending_task(dest, "multi-image-to-video")
+    if task_id:
+        log(f"[Видео-ИИ] Продолжаю сохранённую задачу Veo: {task_id}")
+    else:
+        task_id = veo_client.multi_image_to_video(prompt, images, aspect_ratio="16:9",
+                                                  api_key=veo_key)
+        veo_client.track_task(task_id, dest, "multi-image-to-video")
+    try:
+        veo_client.wait_for_completion(task_id, veo_key, log=log)
+    except Exception:
+        veo_client.finish_task(dest)
+        raise
     veo_client.download_video(task_id, dest, api_key=veo_key)
+    veo_client.finish_task(dest)
     log(f"[Видео-ИИ] Готово: {dest.name}")
     return dest
 
@@ -2273,11 +2363,21 @@ def gen_video_transition(prompt: str, start_image: Path, end_image: Path,
     if not veo_key:
         raise RuntimeError("Нет VEO_API_KEY для batch-frame")
     log(f"[Видео-ИИ] VeoNonStop batch-frame: «{prompt[:60]}» (1-3 мин)...")
-    task_id = veo_client.batch_frame_to_video(prompt, Path(start_image),
-                                              Path(end_image), aspect_ratio="16:9",
-                                              api_key=veo_key)
-    veo_client.wait_for_completion(task_id, veo_key, log=log)
+    task_id = veo_client.pending_task(dest, "batch-frame-to-video")
+    if task_id:
+        log(f"[Видео-ИИ] Продолжаю сохранённую задачу Veo: {task_id}")
+    else:
+        task_id = veo_client.batch_frame_to_video(prompt, Path(start_image),
+                                                  Path(end_image), aspect_ratio="16:9",
+                                                  api_key=veo_key)
+        veo_client.track_task(task_id, dest, "batch-frame-to-video")
+    try:
+        veo_client.wait_for_completion(task_id, veo_key, log=log)
+    except Exception:
+        veo_client.finish_task(dest)
+        raise
     veo_client.download_video(task_id, dest, api_key=veo_key)
+    veo_client.finish_task(dest)
     log(f"[Видео-ИИ] Готово: {dest.name}")
     return dest
 
@@ -3300,13 +3400,19 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
         return
 
     veo_key = os.getenv("VEO_API_KEY", "").strip()
+    # Разрешает снизить параллельность вручную, но не превысить лимит Veo.
+    try:
+        configured_workers = int(os.getenv("VEO_WORKERS", str(workers)))
+    except ValueError:
+        configured_workers = workers
+    workers = max(1, configured_workers)
 
     def run_job(job):
         i, kind, query, dest = job
         try:
             if kind == "photo":
                 gen_image(query, dest, gemini_key, log, visual_style)
-                if veo_key:   # оживляем кадр (image-to-video) прямо в префетче,
+                if veo_key and _env_switch("VEO_ANIMATE_PHOTOS", True):
                     clip = dest.with_name(dest.stem + "_kb.mp4")   # параллельно с остальными —
                     try:                                            # иначе это ~1-3 мин НА КАЖДЫЙ
                         gen_video_from_image(dest, query, clip, veo_key, log,
@@ -3323,34 +3429,46 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
         try:
             import veo_client
             usage = veo_client.account_usage(api_key=veo_key)
-            limit = usage.get("max_concurrent_tasks", workers)
-            free = limit - usage.get("active_tasks", 0)
-            # ГЛАВНОЕ: воркер != задача. Каждый «photo»-job занимает у Veo
-            # ДВЕ задачи сразу — banana_generate на картинку и image-to-video
-            # на её оживление (см. run_job выше). Раньше workers равнялся
-            # числу свободных задач, то есть 4 воркера просили 8 слотов при
-            # лимите 4 — отсюда были RATE_LIMIT'ы на ровном месте.
-            per_worker = 2 if any(j[1] == "photo" for j in jobs) else 1
-            # клапан работает ВСЕГДА, включая free <= 0 (аккаунт целиком
-            # занят — реально, когда два канала генерируют одновременно):
-            # раньше `if free > 0` пропускал клапан именно в этом случае,
-            # и 4 воркера били в нулевую квоту, устраивая шторм RATE_LIMIT
-            workers = max(1, min(workers, max(free, 1) // per_worker or 1))
+            # Лимит берём из /account/info (контрактный лимит тарифа), а НЕ из
+            # /account/usage: когда аккаунт простаивает, usage отдаёт
+            # max_concurrent_tasks=0, и расчёт давал 1 поток вместо 4 — то
+            # есть душил параллельность ровно тогда, когда свободны все слоты.
+            # Занятость (active_tasks) берём из usage — там она достоверна.
+            limit = 0
+            try:
+                limit = int(veo_client.account_info(
+                    api_key=veo_key).get("concurrent_tasks", 0))
+            except Exception:
+                pass
+            if limit <= 0:      # info недоступен — падаем обратно на usage
+                limit = int(usage.get("max_concurrent_tasks", 0))
+            limit = max(1, limit or workers)
+            active = max(0, int(usage.get("active_tasks", 0)))
+            free = max(0, limit - active)
+            # В run_job фото и image-to-video идут последовательно: сначала
+            # Banana возвращает файл, только потом он передаётся в Veo.
+            # Значит, один воркер занимает максимум один слот, а не два.
+            # Старый расчёт делил лимит 4 на 2 и запускал лишь два видео.
+            # При занятых внешним запуском слотах оставляем один поток:
+            # контролируемые повторы лучше, чем шторм RATE_LIMIT.
+            workers = min(workers, free) if free else 1
             log(f"[Раскадровка] VeoNonStop: план допускает {limit} задач "
-                f"одновременно, занято {usage.get('active_tasks', 0)}; "
-                f"один кадр занимает {per_worker} — беру {workers} потоков")
+                f"одновременно, занято {active}, свободно {free}; "
+                f"запускаю {workers} поток(а/ов)")
         except Exception:
             pass   # нет ключа/недоступен — остаёмся на переданном workers
     log(f"[Раскадровка] Параллельная генерация: {len(jobs)} кадров, "
         f"до {workers} одновременно...")
     ok = 0
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        for i, success, err in ex.map(run_job, jobs):
+        for completed, (i, success, err) in enumerate(ex.map(run_job, jobs), 1):
             if success:
                 ok += 1
             else:
                 log(f"[Раскадровка] План {i}: параллельно не вышло "
-                    f"({err}) — досоздастся в обычном проходе")
+                    f"({err}) - досоздастся в обычном проходе")
+            log(f"[Очередь Veo] Готово {completed}/{len(jobs)}; "
+                f"успешно {ok}, в работе до {workers}")
     log(f"[Раскадровка] Параллельно готово: {ok}/{len(jobs)}")
 
 
@@ -3409,6 +3527,13 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
 
     sdir = out_dir / "storyboard"
     sdir.mkdir(parents=True, exist_ok=True)
+    # После перезапуска Veo-клиент по этому журналу продолжит уже отправленные
+    # задачи, а не создаст для той же сцены новую платную генерацию.
+    try:
+        import veo_client
+        veo_client.configure_task_store(out_dir)
+    except Exception:
+        pass
     pexels = KeyRotator(pexels_keys or os.getenv("PEXELS_API_KEY", ""))
     pixabay = KeyRotator(pixabay_keys or os.getenv("PIXABAY_API_KEY", ""))
     pexels_get, pixabay_get = _stock_getters(pexels, pixabay, log)
@@ -3496,8 +3621,23 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     # Чередуем видео и фото: раньше фото попадали только когда видео не
     # нашлось — ролик выходил «чисто из видео». Первые два плана — живое
     # видео (хук), дальше через один фото с Ken Burns (документальный вид).
-    plan_kinds = ["video" if i < 2 or i % 2 == 0 else "photo"
-                  for i in range(len(beats))]
+    if _env_switch("VEO_FAST_MODE", False):
+        try:
+            video_ratio = float(os.getenv("VEO_VIDEO_RATIO", "0.25"))
+        except ValueError:
+            video_ratio = 0.25
+        video_ratio = min(1.0, max(0.0, video_ratio))
+        video_count = min(len(beats), max(1, round(len(beats) * video_ratio)))
+        step = len(beats) / video_count
+        video_indices = {min(int(n * step), len(beats) - 1)
+                         for n in range(video_count)}
+        plan_kinds = ["video" if i in video_indices else "photo"
+                      for i in range(len(beats))]
+        log(f"[Раскадровка] Быстрый Veo-режим: {video_count}/{len(beats)} "
+            f"ключевых сцен — Veo-видео, остальные — фото с Ken Burns")
+    else:
+        plan_kinds = ["video" if i < 2 or i % 2 == 0 else "photo"
+                      for i in range(len(beats))]
 
     # mixed: заранее фиксируем, какие планы будут ИИ-кадрами — РАВНОМЕРНО
     # по всему ролику (не случайным разбросом, чтобы не было ни скоплений,
@@ -3575,7 +3715,8 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                         gen_image(query, jpg, gemini_key, log, visual_style)
                     clip = sdir / f"beat_{i:03d}_{safe}_ai_kb.mp4"
                     animated = clip.exists()   # уже мог подготовить префетч
-                    if not animated and os.getenv("VEO_API_KEY", "").strip():
+                    if (not animated and os.getenv("VEO_API_KEY", "").strip()
+                            and _env_switch("VEO_ANIMATE_PHOTOS", True)):
                         try:
                             gen_video_from_image(jpg, query, clip, log=log,
                                                  style=visual_style)
