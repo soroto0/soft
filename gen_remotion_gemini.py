@@ -10,7 +10,7 @@ import json
 import shutil
 import subprocess
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import core
@@ -135,6 +135,79 @@ load_variants_meta = _ov.load_variants_meta
 save_variants_meta = _ov.save_variants_meta
 rebuild_registry = _ov.rebuild_registry
 
+# Журнал систематических провалов. Одна неудачная попытка пополнить
+# библиотеку — это 8 генераций плюс столько же починок, ~16 платных вызовов
+# ИИ. Тип, который не получается в принципе (движок не умеет, контракт
+# неисполним), пополнялка выбирает СНОВА на каждом ролике: она берёт тип с
+# наименьшим покрытием, а у провального оно и не растёт — и так бесконечно.
+# Поэтому провалы запоминаем и выдерживаем паузу, удваивая её с каждым
+# новым провалом. Отдельный файл, а не variants.json: там каждая запись —
+# это вариант, и посторонний ключ сбил бы и сборку реестра, и проверку его
+# устаревания.
+FAIL_LOG = BASE / "variant_failures.json"
+FAIL_FREE_TRIES = 2      # столько полных провалов прощаем без паузы
+FAIL_MAX_DAYS = 30       # потолок паузы: тип не должен пропасть навсегда
+
+
+def _load_fails() -> dict:
+    try:
+        return json.loads(FAIL_LOG.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_fails(data: dict) -> None:
+    # Журнал — вспомогательный: если его не удалось записать, это не повод
+    # ронять генерацию, максимум мы лишний раз попробуем провальный тип.
+    try:
+        FAIL_LOG.write_text(json.dumps(data, ensure_ascii=False, indent=2),
+                            encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _fail_cooldown(kind: str, engine: str, log=print) -> bool:
+    """True = этот тип на этом движке проваливается систематически, пауза
+    ещё не вышла, и пробовать его сейчас — впустую сжечь ~16 вызовов ИИ."""
+    rec = _load_fails().get(f"{engine}/{kind}")
+    if not rec:
+        return False
+    fails = int(rec.get("fails", 0))
+    if fails < FAIL_FREE_TRIES:
+        return False
+    try:
+        last = datetime.fromisoformat(str(rec.get("last", "")))
+    except ValueError:
+        return False      # битая запись — не повод блокировать тип
+    days = min(2 ** (fails - FAIL_FREE_TRIES), FAIL_MAX_DAYS)
+    left = last + timedelta(days=days) - datetime.now()
+    if left.total_seconds() <= 0:
+        return False
+    log(f"[Варианты] «{kind}» ({engine}) провалился {fails} раз(а) подряд — "
+        f"пропускаю ещё ~{left.days + 1} дн., чтобы не жечь вызовы ИИ на "
+        f"каждом ролике. Прошлая причина: {str(rec.get('problem', ''))[:160]}")
+    return True
+
+
+def _note_fail(kind: str, engine: str, problem: str = "") -> None:
+    data = _load_fails()
+    key = f"{engine}/{kind}"
+    rec = dict(data.get(key) or {})
+    rec["fails"] = int(rec.get("fails", 0)) + 1
+    rec["last"] = datetime.now().isoformat(timespec="seconds")
+    rec["problem"] = (problem or "")[:300]
+    data[key] = rec
+    _save_fails(data)
+
+
+def _note_success(kind: str, engine: str) -> None:
+    """Получилось — счётчик обнуляем: значит тип рабочий, а мешало что-то
+    временное (лимит API, неудачная тема), и штрафовать его больше не за что."""
+    data = _load_fails()
+    if data.pop(f"{engine}/{kind}", None) is not None:
+        _save_fails(data)
+
+
 # Компонент варианта обязан экспортироваться ровно так — по этой строке
 # реестр находит его имя, а проверка контракта убеждается, что он вообще есть.
 _EXPORT_RE = re.compile(
@@ -163,6 +236,22 @@ def _contract_check(code: str) -> str:
     return ""
 
 
+# Образцы для дым-теста ядра. Только типы, которым для рендера хватает
+# СТРОКИ: popup/collage/gallery требуют настоящих картинок на диске (см.
+# _render_remotion в overlays.py), и класть их сюда значило бы тащить
+# генерацию файлов в проверку ядра — их вид проверяется в
+# _variant_smoke_test. Типы намеренно РАЗНЫЕ по силуэту: _smoke_test
+# сравнивает соседние кадры и ловит «один общий вид на всё».
+SMOKE_ITEMS = (
+    {"type": "lower3", "content": "12 марта 1974", "pos": "bottom", "dur": 3},
+    {"type": "counter", "content": "$200,000", "pos": "center", "dur": 3},
+    {"type": "bars", "content": "Found:30,Missing:70", "pos": "center", "dur": 3},
+    {"type": "banner", "content": "Проверочная строка баннера", "pos": "top", "dur": 3},
+    {"type": "compare", "content": "Слева::Справа", "pos": "center", "dur": 3},
+    {"type": "titlecard", "content": "ЗАГОЛОВОК::подзаголовок", "pos": "center", "dur": 3},
+)
+
+
 def _smoke_test(log=print) -> str:
     """Реально рендерит по кадру для нескольких типов на уже подставленном
     кандидате Overlay.tsx — проверяет и что кадр не пустой, и что разные
@@ -173,7 +262,12 @@ def _smoke_test(log=print) -> str:
     prev_img, prev_type = None, None
     for item in SMOKE_ITEMS:
         with tempfile.TemporaryDirectory(dir=BASE) as tmp:
-            dest = Path(tmp)
+            # кадры в ПОДПАПКУ: props-файл _render_remotion кладёт рядом с
+            # папкой вывода (dest_dir.parent), и с dest=самим tmp он оседал
+            # в корне репозитория — там уже десятки осиротевших
+            # tmp*_props.json. Внутри tmp он удаляется вместе с ним.
+            dest = Path(tmp) / "frames"
+            dest.mkdir()
             try:
                 _ov._render_remotion(item, 1280, 720, 30, dest, dest, log)
             except Exception as e:
@@ -716,28 +810,79 @@ def _judge_frames(frames: list[Path], keep_frame: Path | None = None) -> str:
     return ""
 
 
+TEXT_SAMPLES = {
+    "counter": "30,000", "bars": "Found:30,Missing:70",
+    "timeline": "1911:Начало,1945:Конец",
+    "compare": "Слева::Справа",
+    "titlecard": "ЗАГОЛОВОК::подзаголовок",
+}
+
+
+def _test_photo(path: Path, seed: int) -> Path:
+    """Правдоподобная тестовая «фотография» для типов, которым нужна
+    картинка. Именно картинка, а не однотонный квадрат: вариант может
+    масштабировать/кадрировать её, и на заливке одним цветом не видно ни
+    рамки, ни того, что фото вообще нарисовано."""
+    from PIL import Image, ImageDraw
+    w, h = 480, 360
+    tint = ((58, 74, 96), (120, 84, 60), (72, 96, 72), (96, 72, 110))[seed % 4]
+    img = Image.new("RGB", (w, h))
+    d = ImageDraw.Draw(img)
+    for y in range(h):                       # вертикальный градиент
+        k = 0.45 + 0.9 * (y / h)
+        d.line([(0, y), (w, y)], fill=tuple(min(255, int(c * k)) for c in tint))
+    d.ellipse([w * 0.18, h * 0.20, w * 0.62, h * 0.72],
+              fill=tuple(min(255, c + 70) for c in tint))
+    d.rectangle([0, h * 0.78, w, h], fill=tuple(int(c * 0.45) for c in tint))
+    d.line([(0, h * 0.78), (w, h * 0.78)], fill=(230, 226, 218), width=3)
+    img.save(path)
+    return path
+
+
+def _sample_content(kind: str, media_dir: Path) -> str:
+    """content для дым-теста. popup/collage/gallery раньше получали сюда
+    обычную строку — а _render_remotion ждёт от них ПУТЬ к картинке (popup)
+    и пары "подпись::путь" через ";;" (collage до 3, gallery до 4). Итог:
+    FileNotFoundError/ValueError на всех восьми попытках, то есть эти три
+    типа не могли пополниться в принципе, сколько бы ни просили ИИ."""
+    if kind == "popup":
+        return str(_test_photo(media_dir / "smoke_0.png", 0))
+    if kind in ("collage", "gallery"):
+        n = 4 if kind == "gallery" else 3
+        return ";;".join(
+            f"Снимок {i + 1}::{_test_photo(media_dir / f'smoke_{i}.png', i)}"
+            for i in range(n))
+    return TEXT_SAMPLES.get(kind, "Проверочная строка варианта")
+
+
 def _variant_smoke_test(kind: str, variant: str, log=print,
                         keep_frame: Path | None = None) -> str:
     """Реально рендерит кадр этого варианта. Пустая строка = ок.
     keep_frame — куда сохранить средний кадр, чтобы потом показать его
     Gemini на визуальную оценку (второй раз рендерить незачем)."""
-    sample = {"type": kind, "variant": variant, "pos": "center", "dur": 3,
-              "content": {
-                  "counter": "30,000", "bars": "Found:30,Missing:70",
-                  "timeline": "1911:Начало,1945:Конец",
-                  "compare": "Слева::Справа",
-                  "titlecard": "ЗАГОЛОВОК::подзаголовок",
-              }.get(kind, "Проверочная строка варианта")}
-    if kind == "collage":
-        sample["items"] = []
     with tempfile.TemporaryDirectory(dir=BASE) as tmp:
-        dest = Path(tmp)
+        # Кадры и тестовые картинки — в РАЗНЫХ подпапках: после рендера
+        # _render_remotion переименовывает ВСЕ *.png из папки вывода в
+        # 0000.png, и лежи исходники popup/collage там же, они уехали бы в
+        # секвенцию, а «средним кадром» оказалась бы тестовая фотография.
+        # Заодно props-файл (dest_dir.parent) остаётся внутри tmp, а не
+        # оседает в корне репозитория.
+        frames = Path(tmp) / "frames"
+        media = Path(tmp) / "media"
+        frames.mkdir()
+        media.mkdir()
         try:
-            _ov._render_remotion(sample, 1280, 720, 30, dest, dest, log,
+            content = _sample_content(kind, media)
+        except Exception as e:
+            return f"не удалось подготовить тестовые данные: {e}"
+        sample = {"type": kind, "variant": variant, "pos": "center", "dur": 3,
+                  "content": content}
+        try:
+            _ov._render_remotion(sample, 1280, 720, 30, frames, media, log,
                                  variant=variant)
         except Exception as e:
             return f"рендер варианта упал: {e}"
-        return _judge_frames(sorted(dest.glob("*.png")), keep_frame)
+        return _judge_frames(sorted(frames.glob("*.png")), keep_frame)
 
 
 VISION_PROMPT = """You are art-directing overlay graphics for a premium
@@ -835,13 +980,10 @@ def _hf_smoke_test(kind: str, rel_path: str, log=print,
     """Реальный рендер варианта HyperFrames в альфа-PNG. Проверки те же, что
     у Remotion-варианта: не пусто, не залито на весь кадр, не одноцветно,
     есть движение."""
+    # HyperFrames получает только content+dur — картинок ему передать нечем,
+    # поэтому здесь общий текстовый образец, без веток popup/collage.
     sample = {"type": kind, "pos": "center", "dur": 3,
-              "content": {
-                  "counter": "30,000", "bars": "Found:30,Missing:70",
-                  "timeline": "1911:Начало,1945:Конец",
-                  "compare": "Слева::Справа",
-                  "titlecard": "ЗАГОЛОВОК::подзаголовок",
-              }.get(kind, "Проверочная строка варианта")}
+              "content": TEXT_SAMPLES.get(kind, "Проверочная строка варианта")}
     with tempfile.TemporaryDirectory(dir=BASE) as tmp:
         dest = Path(tmp)
         try:
@@ -865,6 +1007,9 @@ def gen_variant_hyperframes(kind: str, theme: str, api_key: str, log=print,
         return None
     if not _ov.hyperframes_available():
         log("[Варианты] HyperFrames недоступен (нет npm/npx или index.html)")
+        return None
+    # Проверка ДО первого запроса к ИИ — иначе смысл паузы теряется
+    if _fail_cooldown(kind, "hyperframes", log):
         return None
     import hashlib
     import time as _time
@@ -890,7 +1035,7 @@ def gen_variant_hyperframes(kind: str, theme: str, api_key: str, log=print,
     code = re.sub(r"^```(?:html)?\n?", "", out.strip())
     code = re.sub(r"\n?```$", "", code).strip() + "\n"
 
-    last_sig, stuck = "", 0
+    last_sig, stuck, problem = "", 0, ""
     dest.parent.mkdir(parents=True, exist_ok=True)
     for attempt in range(1, max_attempts + 1):
         problem = _hf_check(code, comp_id)
@@ -920,6 +1065,7 @@ def gen_variant_hyperframes(kind: str, theme: str, api_key: str, log=print,
                         "created": datetime.now().isoformat(timespec="seconds"),
                         "theme": theme[:200]}
                     save_variants_meta(meta)
+                    _note_success(kind, "hyperframes")
                     log(f"[Варианты] ✔ Новый вариант «{kind}/{variant}» "
                         f"(HyperFrames) прошёл проверку и добавлен "
                         f"(попытка {attempt})")
@@ -937,6 +1083,7 @@ def gen_variant_hyperframes(kind: str, theme: str, api_key: str, log=print,
         code = _ask_fix(code, problem, api_key, insist=stuck)
 
     dest.unlink(missing_ok=True)
+    _note_fail(kind, "hyperframes", problem)
     log(f"[Варианты] HyperFrames: не получилось за {max_attempts} попыток — "
         "библиотека осталась как была")
     return None
@@ -952,6 +1099,9 @@ def gen_variant(kind: str, theme: str, api_key: str, log=print,
     работать на том, что уже есть. Возвращает имя варианта или None."""
     if kind not in TYPE_BRIEF:
         log(f"[Варианты] Неизвестный тип «{kind}» — пропускаю")
+        return None
+    # Проверка ДО первого запроса к ИИ — иначе смысл паузы теряется
+    if _fail_cooldown(kind, "remotion", log):
         return None
     variant, component, fname = _variant_names(kind, theme)
     log(f"[Варианты] Прошу ИИ придумать новый вариант «{kind}» ({variant})...")
@@ -969,7 +1119,7 @@ def gen_variant(kind: str, theme: str, api_key: str, log=print,
     code = re.sub(r"^```(?:tsx|typescript|ts)?\n?", "", out.strip())
     code = re.sub(r"\n?```$", "", code).strip() + "\n"
 
-    last_sig, stuck = "", 0
+    last_sig, stuck, problem = "", 0, ""
     dest = VARIANTS_DIR / fname
     for attempt in range(1, max_attempts + 1):
         problem = ""
@@ -1006,6 +1156,7 @@ def gen_variant(kind: str, theme: str, api_key: str, log=print,
                 shot.unlink(missing_ok=True)
                 if not problem:
                     save_variants_meta(trial)
+                    _note_success(kind, "remotion")
                     rebuild_registry(log)
                     log(f"[Варианты] ✔ Новый вариант «{kind}/{variant}» прошёл "
                         f"проверку и добавлен в библиотеку (попытка {attempt})")
@@ -1026,6 +1177,7 @@ def gen_variant(kind: str, theme: str, api_key: str, log=print,
 
     dest.unlink(missing_ok=True)
     rebuild_registry(lambda *_: None)
+    _note_fail(kind, "remotion", problem)
     log(f"[Варианты] Не получилось за {max_attempts} попыток — библиотека "
         "осталась как была (на рендер это не влияет)")
     return None
@@ -1157,11 +1309,19 @@ def apply_theme(theme: str, api_key: str, log=print,
     пустой/битый кадр, а tsc такое не ловит. При проблеме на любом из двух
     уровней шлёт описание обратно в Gemini на исправление (до max_attempts).
     Если так и не получилось — возвращает боевой файл на место (без изменений)
-    и возвращает False; вызывающий остаётся на текущей рабочей версии."""
+    и возвращает False; вызывающий остаётся на текущей рабочей версии.
+
+    Откат сделан через try/finally СОЗНАТЕЛЬНО: между записью кандидата в
+    боевой Overlay.tsx и вердиктом дым-теста может вылететь что угодно —
+    сеть, лимит API, опечатка в имени переменной (ровно так и терялся файл:
+    NameError после записи кандидата, до строки отката). Возврат рабочей
+    версии не имеет права зависеть от того, предусмотрели ли мы конкретное
+    исключение: потерять единственный рабочий Overlay.tsx нельзя."""
     backup = OVERLAY_PATH.read_text(encoding="utf-8")
-    code = gen_overlay_code(theme, api_key, log)
+    applied = False    # кандидат принят и должен остаться в боевом файле
     last_sig = ""      # отпечаток прошлой проблемы
     stuck = 0          # сколько раз подряд она повторилась байт-в-байт
+    code = gen_overlay_code(theme, api_key, log)
 
     def _fix(problem: str) -> str:
         """Общий путь для всех трёх уровней проверки: считает, топчемся ли мы
@@ -1175,37 +1335,47 @@ def apply_theme(theme: str, api_key: str, log=print,
                 "требую переписать проблемное место проще")
         return _ask_fix(code, problem, api_key, insist=stuck)
 
-    for attempt in range(1, max_attempts + 1):
-        errors = _tsc_check(code)
-        if errors:
-            log(f"[Remotion/Gemini] tsc нашёл ошибки (попытка {attempt}/"
-               f"{max_attempts}):\n{errors[:500]}")
+    try:
+        for attempt in range(1, max_attempts + 1):
+            errors = _tsc_check(code)
+            if errors:
+                log(f"[Remotion/Gemini] tsc нашёл ошибки (попытка {attempt}/"
+                   f"{max_attempts}):\n{errors[:500]}")
+                if attempt == max_attempts:
+                    break
+                code = _fix(f"tsc --noEmit errors:\n{errors}")
+                continue
+            contract_problem = _contract_check(code)
+            if contract_problem:
+                log(f"[Remotion/Gemini] Код скомпилировался, но нарушает контракт "
+                   f"(попытка {attempt}/{max_attempts}): {contract_problem}")
+                if attempt == max_attempts:
+                    break
+                code = _fix(contract_problem)
+                continue
+            OVERLAY_PATH.write_text(code, encoding="utf-8")
+            problem = _smoke_test(log)
+            if not problem:
+                log(f"[Remotion/Gemini] Готово: tsc чист, образцы отрендерились "
+                    f"— применено (попытка {attempt}/{max_attempts})")
+                applied = True
+                return True
+            log(f"[Remotion/Gemini] Реальный рендер нашёл проблему (попытка "
+               f"{attempt}/{max_attempts}): {problem}")
             if attempt == max_attempts:
                 break
-            code = _fix(f"tsc --noEmit errors:\n{errors}")
-            continue
-        contract_problem = _contract_check(code)
-        if contract_problem:
-            log(f"[Remotion/Gemini] Код скомпилировался, но нарушает контракт "
-               f"(попытка {attempt}/{max_attempts}): {contract_problem}")
-            if attempt == max_attempts:
-                break
-            code = _fix(contract_problem)
-            continue
-        OVERLAY_PATH.write_text(code, encoding="utf-8")
-        problem = _smoke_test(log)
-        if not problem:
-            log(f"[Remotion/Gemini] Готово: tsc чист, образцы отрендерились "
-                f"— применено (попытка {attempt}/{max_attempts})")
-            return True
-        log(f"[Remotion/Gemini] Реальный рендер нашёл проблему (попытка "
-           f"{attempt}/{max_attempts}): {problem}")
-        if attempt == max_attempts:
-            break
-        code = _fix(f"Rendered output problem: {problem}")
-    OVERLAY_PATH.write_text(backup, encoding="utf-8")   # откат на рабочую версию
-    log("[Remotion/Gemini] НЕ ПОЛУЧИЛОСЬ — остаёмся на текущей версии Overlay.tsx")
-    return False
+            code = _fix(f"Rendered output problem: {problem}")
+        return False
+    finally:
+        # Единственная точка отката — срабатывает и при исчерпании попыток,
+        # и при ЛЮБОМ исключении по дороге. Пишем безусловно, не сверяясь с
+        # текущим содержимым: лишняя запись того же текста безвредна, а
+        # любая проверка — это ещё одна операция, которая может упасть
+        # прямо здесь и оставить в боевом файле кандидата.
+        if not applied:
+            OVERLAY_PATH.write_text(backup, encoding="utf-8")
+            log("[Remotion/Gemini] НЕ ПОЛУЧИЛОСЬ — остаёмся на текущей "
+                "(рабочей) версии Overlay.tsx")
 
 
 if __name__ == "__main__":
