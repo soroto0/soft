@@ -60,6 +60,7 @@ PRESET_SEG = "fast"
 PRESET_FINAL = "medium"
 
 _HW_ENCODER: str | None = None      # кэш результата проверки (None = не проверяли)
+_HW_DISABLED = False                # «выключено навсегда» переживает гонку проверок
 
 
 def hw_encoder() -> str:
@@ -72,9 +73,13 @@ def hw_encoder() -> str:
     Отключается принудительно через HW_ENCODE=0 в .env.
     Результат кэшируется — проверка стоит ~1 с."""
     global _HW_ENCODER
+    if _HW_DISABLED:
+        return ""
     if _HW_ENCODER is not None:
         return _HW_ENCODER
-    if os.getenv("HW_ENCODE", "1").strip().lower() in ("0", "false", "no", "off"):
+    # пустое значение = «не задано» -> берём умолчание (как _env_switch в core)
+    flag = os.getenv("HW_ENCODE", "").strip().lower()
+    if flag in ("0", "false", "no", "off"):
         _HW_ENCODER = ""
         return _HW_ENCODER
     for enc in ("h264_nvenc", "h264_qsv", "h264_amf"):
@@ -86,6 +91,8 @@ def hw_encoder() -> str:
                 capture_output=True, text=True, timeout=10,
                 creationflags=CREATE_NO_WINDOW)
             if r.returncode == 0:
+                if _HW_DISABLED:      # пока шла проверка, кодировщик отключили
+                    return ""
                 _HW_ENCODER = enc
                 _console(f"[Рендер] Аппаратное кодирование: {enc}")
                 return _HW_ENCODER
@@ -100,7 +107,8 @@ def disable_hw(reason: str = "") -> None:
     лету: у GeForce жёсткий лимит одновременных сессий NVENC, и когда
     сегменты пойдут параллельно, лишние просто не закодируются. Без этого
     отката вызывающий уходил в _placeholder, то есть в ЧЁРНЫЙ КАДР."""
-    global _HW_ENCODER
+    global _HW_ENCODER, _HW_DISABLED
+    _HW_DISABLED = True
     if _HW_ENCODER:
         _console(f"[Рендер] Аппаратное кодирование отключено{': ' + reason if reason else ''}"
                  " — перехожу на процессор (libx264)")
@@ -343,12 +351,40 @@ def _video_dur(path: Path) -> float | None:
         return None
 
 
+def _run_enc(build_cmd, label: str, crf: str, preset: str, final: bool = False):
+    """Кодирование с ЕДИНЫМ откатом на процессор.
+
+    build_cmd(venc) -> список аргументов ffmpeg, куда venc подставляется
+    распаковкой. Если аппаратный кодировщик отказал (у GeForce жёсткий лимит
+    одновременных сессий NVENC — при параллельных сегментах это штатная
+    ситуация), выключаем его насовсем и повторяем на libx264.
+
+    Ключевое: какой кодировщик РЕАЛЬНО использовался, запоминаем ДО попытки.
+    Проверять hw_encoder() уже в обработчике нельзя: соседний поток мог
+    успеть отключить аппаратный путь, и тогда откат бы не сработал — сегмент
+    ушёл бы в чёрную заглушку."""
+    used = venc_args(crf, preset, final)
+    is_hw = used[:2] != ["-c:v", "libx264"]
+    try:
+        _run(build_cmd(used), label=label)
+        return
+    except RuntimeError:
+        if CANCEL.is_set() or not is_hw:
+            raise          # отмена пользователем или уже процессор — не глушим
+    disable_hw(label)
+    _run(build_cmd(["-c:v", "libx264", "-preset", preset, "-crf", crf]),
+         label=label)
+
+
 def _placeholder(dest: Path, dur: float, w: int, h: int, fps: int):
     """Тёмная заглушка вместо битого сегмента — рендер продолжается."""
+    # ВСЕГДА процессор: заглушку зовут из except-обработчиков, и если
+    # аппаратный кодировщик отказал (именно это и привело сюда), попытка
+    # снова через него роняет весь рендер вместо продолжения.
     _run(["ffmpeg", "-y", "-f", "lavfi",
           "-i", f"color=c=0x14120f:s={w}x{h}:r={fps}",
           "-t", f"{max(dur, 0.2):.3f}", "-vf", "format=yuv420p,setsar=1",
-          *venc_args(CRF_SEGMENT, PRESET_SEG),
+          "-c:v", "libx264", "-preset", PRESET_SEG, "-crf", CRF_SEGMENT,
           str(dest)], label=dest.stem + "~заглушка")
 
 
@@ -605,9 +641,10 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
                 f"x='(W-w)/2-{amp}+{amp * 2}*n/{frames}':y='(H-h)/2',"
                 + tail_vf)
             try:
-                _run(["ffmpeg", "-y", "-i", str(src), "-filter_complex", fc,
-                      *venc_args(CRF_SEGMENT, PRESET_SEG),
-                      "-an", str(dest)], label=dest.stem)
+                _run_enc(lambda v: ["ffmpeg", "-y", "-i", str(src),
+                                    "-filter_complex", fc, *v,
+                                    "-an", str(dest)],
+                         dest.stem, CRF_SEGMENT, PRESET_SEG)
                 if not _has_video(dest):
                     raise RuntimeError("пустой результат")
             except RuntimeError as e:
@@ -622,24 +659,14 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
               f":d={frames}:s={w}x{h}:fps={fps},"
               + tail_vf)
         try:
-            _run(["ffmpeg", "-y", "-i", str(src), "-vf", vf,
-                  *venc_args(CRF_SEGMENT, PRESET_SEG),
-                  "-an", str(dest)], label=dest.stem)
+            _run_enc(lambda v: ["ffmpeg", "-y", "-i", str(src), "-vf", vf, *v,
+                                "-an", str(dest)],
+                     dest.stem, CRF_SEGMENT, PRESET_SEG)
             if not _has_video(dest):
                 raise RuntimeError("пустой результат")
         except RuntimeError as e:
             if CANCEL.is_set():
                 raise
-            if hw_encoder():          # отказал аппаратный — пробуем процессор
-                disable_hw(str(e)[:60])
-                try:
-                    _run(["ffmpeg", "-y", "-i", str(src), "-vf", vf,
-                          *venc_args(CRF_SEGMENT, PRESET_SEG),
-                          "-an", str(dest)], label=dest.stem)
-                    if _has_video(dest):
-                        return
-                except RuntimeError:
-                    pass
             _console(f"[{dest.stem}] картинка не закодировалась "
                      f"({str(e)[:80]}) — заглушка")
             _placeholder(dest, dur, w, h, fps)
@@ -682,10 +709,11 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
             v = vf
             if pad and "tpad" not in v:
                 v += "tpad=stop_mode=clone:stop=-1,"
-            _run(["ffmpeg", "-y", "-ss", f"{off:.2f}", "-i", str(src),
-                  "-t", f"{dur:.3f}", "-vf", v + tail_vf,
-                  *venc_args(CRF_SEGMENT, PRESET_SEG),
-                  "-an", str(dest)], label=dest.stem)
+            _run_enc(lambda vv: ["ffmpeg", "-y", "-ss", f"{off:.2f}",
+                                 "-i", str(src), "-t", f"{dur:.3f}",
+                                 "-vf", v + tail_vf, *vv,
+                                 "-an", str(dest)],
+                     dest.stem, CRF_SEGMENT, PRESET_SEG)
 
         try:
             enc(offset)
@@ -785,11 +813,10 @@ def render_group(seg_files: list[Path], durs: list[float],
         fc += f"{acc}rgbashift=rh=4:bv=4:enable='{enable}'[vab];"
         acc = "[vab]"
     fc = fc.rstrip(";")
-    cmd += ["-filter_complex", fc, "-map", acc,
-            *venc_args(CRF_SEGMENT, PRESET_SEG),
-            "-r", str(fps), str(dest)]
+    tail = ["-filter_complex", fc, "-map", acc]
     try:
-        _run(cmd, label=dest.stem)
+        _run_enc(lambda v: cmd + tail + list(v) + ["-r", str(fps), str(dest)],
+                 dest.stem, CRF_SEGMENT, PRESET_SEG)
     except RuntimeError as e:
         if CANCEL.is_set():
             raise
@@ -808,9 +835,9 @@ def _group_concat_fallback(seg_files: list[Path], durs: list[float],
     parts = []
     for i, (f, d) in enumerate(zip(seg_files, durs)):
         p = dest.parent / f"{dest.stem}_cut{i:02d}.mp4"
-        _run(["ffmpeg", "-y", "-i", str(f), "-t", f"{d:.3f}", "-r", str(fps),
-              *venc_args(CRF_SEGMENT, PRESET_SEG),
-              "-an", str(p)], label=p.stem)
+        _run_enc(lambda v: ["ffmpeg", "-y", "-i", str(f), "-t", f"{d:.3f}",
+                            "-r", str(fps), *v, "-an", str(p)],
+                 p.stem, CRF_SEGMENT, PRESET_SEG)
         parts.append(p)
     lst = dest.parent / f"{dest.stem}_list.txt"
     lst.write_text("\n".join(f"file '{p.resolve().as_posix()}'" for p in parts),
@@ -822,9 +849,10 @@ def _group_concat_fallback(seg_files: list[Path], durs: list[float],
     # (счётчик кадров почти не рос, а таймкод разом скакнул на 23с вперёд —
     # видно по логу finalного прохода). Перекодирование пересчитывает PTS
     # с нуля по кадрам — дороже по CPU, но без разрыва.
-    _run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-          *venc_args(CRF_SEGMENT, PRESET_SEG),
-          "-r", str(fps), "-fflags", "+genpts", str(dest)], label=dest.stem)
+    _run_enc(lambda v: ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                        "-i", str(lst), *v, "-r", str(fps),
+                        "-fflags", "+genpts", str(dest)],
+             dest.stem, CRF_SEGMENT, PRESET_SEG)
 
 
 # ---------- 4. Финальная сборка ----------
@@ -1268,8 +1296,9 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
         # ещё дважды и в итоговый файл попадают только через финальный проход.
         # Тратить на них medium/slow и CRF 14-16 бессмысленно: качество
         # определяется последним проходом, а время — всеми тремя. Держим
-        # промежуточные заведомо выше финального CRF (запас на потери при
-        # перекодировании), но на быстром пресете.
+        # промежуточные заведомо КАЧЕСТВЕННЕЕ финала (CRF меньше = лучше:
+        # 16 против 19) — запас на потери при перекодировании,
+        # но на быстром пресете.
         q = {"обычное":    ("16", "19", "superfast", "medium"),
              "высокое":    ("15", "16", "veryfast", "slow"),
              "максимум":   ("13", "14", "faster", "slow")}
