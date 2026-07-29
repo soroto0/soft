@@ -3,6 +3,8 @@
 # копии расходятся по клонам и бэкапам, а при утечке аккаунта уходит всё
 # сразу. Ключи живут только здесь и в .env.
 .env
+.env.bak
+.env.*.bak
 settings.json
 .secrets/
 client_secret*.json
