@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[
+    {"id":"content","type":"string","label":"Title text (head::sub)","default":"Sample title::and a subtitle"},
+    {"id":"dur","type":"number","label":"Duration (seconds)","default":4}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      @font-face { font-family: 'Segoe UI Black'; src: local('Segoe UI Black'); }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #slat-wrap {
+        position: absolute; left: 0; right: 0; top: 50%;
+        height: 320px; margin-top: -160px;
+      }
+      /* Ламели — только они дают затемнение. Полоса высотой 320px из
+         1080: видео сверху и снизу остаётся полностью видимым, оверлей
+         не превращается в заливку кадра. */
+      #slats { position: absolute; inset: 0; display: flex; }
+      #slats > i {
+        flex: 1 1 0; display: block;
+        background: rgba(10,12,16,0.78);
+        transform-origin: top center;
+        border-right: 1px solid rgba(255,255,255,0.06);
+      }
+      #slat-text {
+        position: absolute; inset: 0;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 18px;
+      }
+      #slat-head {
+        color: #ffffff; font-family: 'Segoe UI Black', 'Arial', sans-serif;
+        font-size: 86px; line-height: 1.04; text-transform: uppercase;
+        letter-spacing: 2px; text-align: center; white-space: nowrap;
+        text-shadow: 0 6px 26px rgba(0,0,0,0.85);
+      }
+      #slat-rule {
+        width: 220px; height: 5px; background: #d8663f;
+        transform-origin: center; box-shadow: 0 0 18px rgba(216,102,63,0.55);
+      }
+      #slat-sub {
+        color: #f0d9cb; font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 30px; letter-spacing: 6px; text-transform: uppercase;
+        text-align: center; white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Четвёртый вариант titlecard и первый для него на HyperFrames
+      (остальные — remotion/src/Overlay.tsx: TitleCard «слова наездом» и
+      variants/titlecard_ai_c4f7 «диафрагма»). Здесь техника третья:
+      подложка НАБИРАЕТСЯ ИЗ ЛАМЕЛЕЙ — восемь вертикальных полос
+      разворачиваются сверху вниз со сдвигом по времени, и только когда
+      полоса собралась, поверх неё проявляется заголовок. Уходит она
+      так же по частям, но уже снизу вверх. Ни один remotion-вариант
+      titlecard не строит фон по частям.
+    -->
+    <div id="root" data-composition-id="titlecard_slats" data-start="0" data-width="1920" data-height="1080">
+      <div id="slat-wrap" class="clip" data-start="0" data-duration="4" data-track-index="1">
+        <div id="slats">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        <div id="slat-text">
+          <div id="slat-head">Sample title</div>
+          <div id="slat-rule"></div>
+          <div id="slat-sub">and a subtitle</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const vars = window.__hyperframes.getVariables();
+      const dur = Number(vars.dur) || 4;
+      document.getElementById('slat-wrap').setAttribute('data-duration', String(dur));
+
+      // content приходит одной строкой "заголовок::подзаголовок" — тот же
+      // формат, что у remotion-титров, поэтому текст раскладываем сами, а
+      // не через data-var-text (оно умеет подставить только целиком).
+      const parts = String(vars.content == null ? '' : vars.content).split('::');
+      const head = (parts[0] || '').trim();
+      const sub = (parts[1] || '').trim();
+      document.getElementById('slat-head').textContent = head;
+      const subEl = document.getElementById('slat-sub');
+      subEl.textContent = sub;
+      // пустой подзаголовок оставлял бы дыру в 30px под чертой
+      if (!sub) subEl.style.display = 'none';
+
+      const tl = gsap.timeline({ paused: true });
+      // вход: ламели разворачиваются сверху вниз со сдвигом слева направо
+      tl.fromTo('#slats > i', { scaleY: 0 },
+        { scaleY: 1, duration: 0.42, ease: 'power3.out', stagger: 0.045 }, 0);
+      tl.fromTo('#slat-head', { opacity: 0, y: 26 },
+        { opacity: 1, y: 0, duration: 0.34, ease: 'power2.out' }, 0.42);
+      tl.fromTo('#slat-rule', { scaleX: 0 },
+        { scaleX: 1, duration: 0.34, ease: 'power2.out' }, 0.5);
+      tl.fromTo('#slat-sub', { opacity: 0 },
+        { opacity: 1, duration: 0.28 }, 0.66);
+      // Уход: тем же приёмом, но ламели складываются СНИЗУ вверх —
+      // transform-origin переставляем перед схлопыванием, иначе полоса
+      // уедет в ту же сторону, откуда пришла, и уход прочитается как
+      // перемотка входа назад.
+      //
+      // Тайминги подогнаны так, чтобы ПОСЛЕДНИЙ твин заканчивался РОВНО
+      // на dur. Длина таймлайна здесь и есть длина ролика: если уход
+      // вылезает за dur, рендерер добавляет лишние кадры уже ПОСЛЕ конца
+      // клипа (data-duration), и хвост секвенции получается пустым — а
+      // пустой хвост при сравнении с пустым первым кадром выглядит как
+      // «первый и последний кадр совпали, анимации нет». Ровно на этом
+      // здесь уже спотыкались.
+      const OUT_SPAN = 0.42;            // 0.24 твин + 7 x 0.026 stagger
+      const outAt = Math.max(dur - OUT_SPAN, 0.7);
+      tl.to('#slat-text', { opacity: 0, duration: 0.2 }, Math.max(outAt - 0.08, 0.6));
+      tl.set('#slats > i', { transformOrigin: 'bottom center' }, outAt);
+      tl.to('#slats > i', { scaleY: 0, duration: 0.24, ease: 'power2.in', stagger: 0.026 }, outAt);
+      window.__timelines['titlecard_slats'] = tl;
+    </script>
+  </body>
+</html>

@@ -55,5 +55,85 @@
     "channel": "abyss",
     "created": "2026-07-25T21:00:25",
     "theme": "Bars materialize as if being traced by a glowing, phosphorescent needle on a dark, vibrating oscilloscope screen, rendered in electric blue and deep charcoal. The lines sweep horizontally from left to"
+  },
+  "quote/ai_7c1a": {
+    "file": "quote_ai_7c1a.tsx",
+    "component": "QuoteAi7C1A",
+    "type": "quote",
+    "variant": "ai_7c1a",
+    "enabled": true,
+    "created": "2026-07-29T00:00:00",
+    "theme": "Левый кант: цитата колонкой у левого края, строки выезжают из-под маски одна за другой, вертикальная линия прочерчивается сверху вниз. Без кавычки-глифа.",
+    "note": "написан руками, не ИИ; префикс ai_ обязателен — по нему overlays.py берёт варианты из библиотеки"
+  },
+  "kinetic/ai_3e90": {
+    "file": "kinetic_ai_3e90.tsx",
+    "component": "KineticAi3E90",
+    "type": "kinetic",
+    "variant": "ai_3e90",
+    "enabled": true,
+    "created": "2026-07-29T00:00:00",
+    "theme": "По одному слову: в кадре одновременно ровно одно слово, наезд масштаба со схлопыванием трекинга, направляющие сжимаются к слову, снизу шкала прогресса фразы.",
+    "note": "написан руками, не ИИ; префикс ai_ обязателен — по нему overlays.py берёт варианты из библиотеки"
+  },
+  "stamp/ai_5b2d": {
+    "file": "stamp_ai_5b2d.tsx",
+    "component": "StampAi5B2D",
+    "type": "stamp",
+    "variant": "ai_5b2d",
+    "enabled": true,
+    "created": "2026-07-29T00:00:00",
+    "theme": "Полевой слейт в нижнем левом углу: рейка прочерчивается слева направо, текст набирается по буквам с курсором. Без наклона и без наезда масштаба.",
+    "note": "написан руками, не ИИ; префикс ai_ обязателен — по нему overlays.py берёт варианты из библиотеки"
+  },
+  "titlecard/ai_c4f7": {
+    "file": "titlecard_ai_c4f7.tsx",
+    "component": "TitlecardAiC4F7",
+    "type": "titlecard",
+    "variant": "ai_c4f7",
+    "enabled": true,
+    "created": "2026-07-29T00:00:00",
+    "theme": "Диафрагма: горизонтальная щель раскрывается по вертикали и открывает заголовок, по её краям расходятся акцентные створки. Затемняется только полоса, а не весь кадр.",
+    "note": "написан руками, не ИИ; префикс ai_ обязателен — по нему overlays.py берёт варианты из библиотеки"
+  },
+  "timeline/ai_a18e": {
+    "file": "timeline_ai_a18e.tsx",
+    "component": "TimelineAiA18E",
+    "type": "timeline",
+    "variant": "ai_a18e",
+    "enabled": true,
+    "created": "2026-07-29T00:00:00",
+    "theme": "Вертикальная лента у левого края: стержень прочерчивается сверху вниз, строки событий въезжают слева с ромбами-метками. Правые две трети кадра свободны.",
+    "note": "написан руками, не ИИ; префикс ai_ обязателен — по нему overlays.py берёт варианты из библиотеки"
+  },
+  "collage/ai_92b6": {
+    "file": "collage_ai_92b6.tsx",
+    "component": "CollageAi92B6",
+    "type": "collage",
+    "variant": "ai_92b6",
+    "enabled": true,
+    "created": "2026-07-29T00:00:00",
+    "theme": "Стопка снимков: фото падают сверху друг на друга веером с доворотом, перекрываясь, вместо ряда из трёх карточек.",
+    "note": "написан руками, не ИИ; префикс ai_ обязателен — по нему overlays.py берёт варианты из библиотеки"
+  },
+  "gallery/ai_dfc3": {
+    "file": "gallery_ai_dfc3.tsx",
+    "component": "GalleryAiDFC3",
+    "type": "gallery",
+    "variant": "ai_dfc3",
+    "enabled": true,
+    "created": "2026-07-29T00:00:00",
+    "theme": "Киноплёнка: лента с перфорацией едет вбок, кадры проезжают мимо, номера на негативе. Плоское движение по X вместо коридора по Z.",
+    "note": "написан руками, не ИИ; префикс ai_ обязателен — по нему overlays.py берёт варианты из библиотеки"
+  },
+  "marker/ai_b3d5": {
+    "file": "marker_ai_b3d5.tsx",
+    "component": "MarkerAiB3D5",
+    "type": "marker",
+    "variant": "ai_b3d5",
+    "enabled": true,
+    "created": "2026-07-29T00:00:00",
+    "theme": "Подчёркивание пером: линия прочерчивается под строкой, на её конце светящееся перо, пройденное слово подскакивает. Без заливки и без перекраски текста.",
+    "note": "написан руками, не ИИ; префикс ai_ обязателен — по нему overlays.py берёт варианты из библиотеки"
   }
 }
