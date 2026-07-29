@@ -351,7 +351,14 @@ def render_counter(content: str, dur: float, fps: int, W: int, H: int,
     if not m:
         raise ValueError(f"counter: нет числа в «{content}»")
     prefix, digits, suffix = m.group(1), m.group(2), m.group(3)
-    value = int(re.sub(r"[^\d]", "", digits) or "0")
+    # Дробную часть держим отдельно: «$3.5» после выбрасывания всего
+    # нецифрового превращалось в 35 — зритель видел число в десять раз
+    # больше того, что произносит диктор. Запятые (разряды) и пробелы
+    # выбрасываем, точка остаётся разделителем дробной части.
+    mv = re.match(r"(\d+)(?:\.(\d+))?", re.sub(r"[,\s]", "", digits))
+    frac = (mv.group(2) or "") if mv else ""
+    value = float(f"{mv.group(1)}.{frac or 0}") if mv else 0.0
+    dec = len(frac)                          # столько знаков и рисуем
     grouped = "," in digits or value >= 10000
     f = _font(int(H * 0.12) * SS)
     cw, ch = int(W * 0.62) // 2 * 2, int(H * 0.22) // 2 * 2
@@ -370,8 +377,9 @@ def render_counter(content: str, dur: float, fps: int, W: int, H: int,
     for i in range(n):
         t = i / fps
         k = _ease_out(t / t_hit)
-        cur = int(value * k)
-        s = f"{prefix}{cur:,}{suffix}" if grouped else f"{prefix}{cur}{suffix}"
+        cur = value * k
+        s = (f"{prefix}{cur:,.{dec}f}{suffix}" if grouped
+             else f"{prefix}{cur:.{dec}f}{suffix}")
         layer = Image.new("RGBA", (cw2, ch2), (0, 0, 0, 0))
         d = ImageDraw.Draw(layer)
         twd = d.textlength(s, font=f)
@@ -588,11 +596,18 @@ def _remotion_bundle(log=print) -> Path:
 
 
 def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
-                     out_dir: Path, log=print, variant: str | None = None):
+                     out_dir: Path, log=print, variant: str | None = None,
+                     frame_range: str | None = None):
     """Один оверлей через Remotion -> PNG-секвенция %04d.png с альфой.
     Кадр всегда полноэкранный (позиция задаётся внутри React). variant —
     для типов с несколькими непохожими дизайнами (пока только banner:
-    None/"classic" -> Banner, "ribbon" -> BannerRibbon, см. Overlay.tsx)."""
+    None/"classic" -> Banner, "ribbon" -> BannerRibbon, см. Overlay.tsx).
+
+    frame_range («0-20») — отрисовать не весь оверлей, а только его начало.
+    Длина композиции считается из props.dur (calculateMetadata в Root.tsx),
+    и dur мы НЕ трогаем: анимация должна считаться по настоящей длине,
+    иначе поедут и въезд, и уход. Нужно ровно оборвать рендер — этим и
+    занят --frames (см. _render_watermark)."""
     props = {"type": item["type"], "content": item["content"],
              "pos": item["pos"], "dur": item["dur"], "fps": fps,
              "width": W, "height": H, "img": ""}
@@ -637,11 +652,12 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
     props_file.write_text(json.dumps(props, ensure_ascii=False),
                           encoding="utf-8")
     build = _remotion_bundle(log)
-    r = run_tree(
-        [_npx(), "remotion", "render", str(build), "Overlay", str(dest_dir),
-         "--sequence", "--image-format=png", f"--props={props_file}",
-         "--log=error"], 900,
-        cwd=REMOTION_DIR, env=_node_env())
+    cmd = [_npx(), "remotion", "render", str(build), "Overlay", str(dest_dir),
+           "--sequence", "--image-format=png", f"--props={props_file}",
+           "--log=error"]
+    if frame_range:
+        cmd.append(f"--frames={frame_range}")
+    r = run_tree(cmd, 900, cwd=REMOTION_DIR, env=_node_env())
     if r.returncode != 0:
         raise RuntimeError(f"remotion render: {r.stderr[-300:]}")
     frames = sorted(dest_dir.glob("*.png"),
@@ -651,6 +667,75 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
     for i, f in enumerate(frames):   # element-N.png -> %04d.png для ffmpeg
         f.rename(dest_dir / f"{i:04d}.png")
     return W, H
+
+
+WM_INTRO = 0.7      # сек: за это время бейдж въезжает и окончательно замирает
+
+
+def _even_span(a: int, b: int, limit: int) -> tuple[int, int]:
+    """Границы среза с чётной длиной: на нечётной ширине или высоте оверлея
+    ffmpeg спотыкается о цветовую подвыборку yuv420."""
+    if (b - a) % 2:
+        if b < limit:
+            b += 1
+        elif a > 0:
+            a -= 1
+    return a, b
+
+
+def _render_watermark(item: dict, W: int, H: int, fps: int, dest_dir: Path,
+                      out_dir: Path, log=print, variant: str | None = None):
+    """Водяной знак — единственный оверлей длиной во ВЕСЬ ролик, и покадрово
+    рендерить его нельзя: 12 минут при 30 fps — это 21600 полноэкранных PNG,
+    десятки гигабайт временных файлов и упёртый таймаут Remotion задолго до
+    конца (то есть ролик не выходит вовсе, стоит задать каналу watermark).
+
+    Но бейдж по смыслу статичен: он один раз въезжает и дальше не меняется
+    ни на пиксель (Watermark в Overlay.tsx). Поэтому движком считаем только
+    въезд, а весь остаток секвенции — копии последнего кадра. props.dur при
+    этом остаётся полным, так что кривая появления ровно та же, что и была.
+
+    Кадры ещё и обрезаются по общей непрозрачной области: бейдж занимает
+    ~200x40 пикселей в углу, а ffmpeg иначе на КАЖДОМ кадре всего ролика
+    накладывал бы полноэкранную RGBA-картинку ради этого уголка.
+
+    Выкладывать остаток пофайлово всё равно приходится: render.py отдаёт
+    секвенцию ffmpeg как image2 (-framerate/-start_number), а туда ни видео,
+    ни одиночную картинку не подставить — эти ключи есть только у image2, и
+    на любом другом демуксере ffmpeg просто отказывается открывать вход.
+    Зато файлы теперь крохотные и физически одинаковые.
+    -> (cw, ch, x, y)"""
+    from PIL import Image
+    dest = Path(dest_dir)
+    n_intro = max(int(round(min(item["dur"], WM_INTRO) * fps)), 2)
+    _render_remotion(item, W, H, fps, dest, out_dir, log, variant=variant,
+                     frame_range=f"0-{n_intro - 1}")
+    made = sorted(dest.glob("*.png"))
+    box = None                       # объединённая рамка по всем кадрам въезда
+    for f in made:
+        with Image.open(f) as im:
+            b = im.convert("RGBA").getchannel("A").getbbox()
+        if b:
+            box = b if box is None else (min(box[0], b[0]), min(box[1], b[1]),
+                                         max(box[2], b[2]), max(box[3], b[3]))
+    if box is None:
+        raise RuntimeError("бейдж вышел полностью прозрачным — нечего "
+                           "накладывать")
+    x0, x1 = _even_span(box[0], box[2], W)
+    y0, y1 = _even_span(box[1], box[3], H)
+    for f in made:
+        with Image.open(f) as im:
+            crop = im.convert("RGBA").crop((x0, y0, x1, y1))
+        crop.save(f)
+    total = max(int(round(item["dur"] * fps)), len(made))
+    still = made[-1].read_bytes()
+    for i in range(len(made), total):
+        (dest / f"{i:04d}.png").write_bytes(still)
+    log(f"[Оверлеи] Водяной знак {x1 - x0}x{y1 - y0} в углу: движком "
+        f"{len(made)} кадр(ов) въезда, дальше {total - len(made)} копий "
+        "замершего кадра (полноэкранная секвенция на весь ролик — это "
+        "часы рендера и гигабайты)")
+    return x1 - x0, y1 - y0, x0, y0
 
 
 def render_thumbnail(headline: str, dest: Path, bg: Path | None = None,
@@ -1003,22 +1088,31 @@ def _library_variants(kind: str, engine: str | None = None,
     прошлых роликах и остались в библиотеке навсегда. Запись без файла на
     диске игнорируем. engine=None — оба движка.
 
-    channel — если задан, берутся ТОЛЬКО варианты этого канала плюс общие
-    (без метки канала). Иначе оверлей, придуманный для канала про сантехнику,
-    всплыл бы на канале про полярные экспедиции, и каналы стали бы
-    неотличимы — ровно то, ради чего профили и заводятся."""
+    channel — берутся ТОЛЬКО варианты этого канала плюс общие (без метки
+    канала). Иначе оверлей, придуманный для канала про сантехнику, всплыл бы
+    на канале про полярные экспедиции, и каналы стали бы неотличимы — ровно
+    то, ради чего профили и заводятся.
+
+    Пустой channel — это НЕ «бери любые»: у проекта, заведённого мимо
+    каналов (например «Новый проект» с вручную вставленным сценарием),
+    канала в meta.json нет, и раньше ему подходили варианты сразу всех
+    каналов — то есть утечка шла именно там, где о ней некому догадаться.
+    Теперь такому проекту достаются только общие варианты. Пока каналы не
+    заведены вовсе, метки channel нет ни у одной записи, и общими остаются
+    все — библиотека работает как раньше."""
     return tuple(
         rec["variant"] for rec in load_variants_meta().values()
         if rec.get("type") == kind and rec.get("enabled", True)
         and rec.get("variant")
         and (engine is None or rec.get("engine", "remotion") == engine)
-        and (not channel or rec.get("channel", "") in ("", channel))
+        and rec.get("channel", "") in ("", channel)
         and _variant_file(rec).exists())
 
 
 def _project_channel(out_dir) -> str:
     """К какому каналу относится проект — из его meta.json. Пусто, если
-    каналы не заведены: тогда работает вся библиотека, как раньше."""
+    проект заведён мимо каналов: тогда доступны только общие варианты
+    (см. _library_variants), а не библиотека чужих каналов."""
     try:
         meta = json.loads((Path(out_dir) / "meta.json").read_text(encoding="utf-8"))
         return str(meta.get("channel", "")).strip()
@@ -1110,12 +1204,23 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
             dest = Path(tmp) / f"ovl_{k:02d}"
             used_engine = engine
             variant_done = False
+            lib_pick = picked.get(it["type"], "")
+            # Водяной знак идёт мимо всех общих веток: у него длительность
+            # всего ролика, и покадровый рендер такой длины невозможен в
+            # принципе — почему именно, см. _render_watermark. Вариант из
+            # библиотеки он при этом уважает, просто рисует его иначе.
+            if it["type"] == "watermark" and engine == "remotion":
+                cw, ch, x, y = _render_watermark(
+                    it, W, H, fps, dest, Path(out_dir), log,
+                    variant=(lib_pick[len("remotion_"):]
+                             if lib_pick.startswith("remotion_ai_") else None))
+                used_engine = "remotion"
+                variant_done = True
             # Вариант из библиотеки ИИ — один общий путь для ЛЮБОГО типа:
             # все они рендерятся Remotion'ом, отличается только имя варианта,
             # по которому Overlay.tsx находит компонент в реестре. Не прошёл —
             # молча падаем в ручные ветки ниже, ролик не страдает.
-            lib_pick = picked.get(it["type"], "")
-            if lib_pick.startswith("remotion_ai_") and engine == "remotion":
+            elif lib_pick.startswith("remotion_ai_") and engine == "remotion":
                 try:
                     cw, ch = _render_remotion(
                         it, W, H, fps, dest, Path(out_dir), log,
