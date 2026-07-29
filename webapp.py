@@ -902,12 +902,25 @@ class Api:
                   + len(overlays._library_variants(k, None,
                                                    ch0["id"] if ch0 else ""))
                   for k in kinds}
-        kind = min(kinds, key=lambda k: (counts[k], k))
+        use_hf = (len(meta) % 2 == 1) and overlays.hyperframes_available()
+        eng = "HyperFrames" if use_hf else "Remotion"
+        # Тип с наименьшим покрытием — но НЕ тот, что стоит в паузе после
+        # серии провалов. Сама генерация такой тип уже отбивает мгновенно,
+        # но выбор всё равно упирался в него на каждом ролике: покрытие у
+        # провального типа не растёт, значит он вечно остаётся наименее
+        # покрытым, и библиотека не пополнялась вообще ничем. Берём
+        # следующего кандидата, а если в паузе оказались все — работаем как
+        # раньше, пусть отобьётся на своём уровне.
+        engine_id = "hyperframes" if use_hf else "remotion"
+        order = sorted(kinds, key=lambda k: (counts[k], k))
+        kind = next(
+            (k for k in order
+             if not gen_remotion_gemini._fail_cooldown(k, engine_id,
+                                                       lambda *_: None)),
+            order[0])
         theme = core.gen_variant_theme(topic, kind, key, self.log)
         if not theme:
             return None
-        use_hf = (len(meta) % 2 == 1) and overlays.hyperframes_available()
-        eng = "HyperFrames" if use_hf else "Remotion"
         ch = self._channel()
         cid = ch["id"] if ch else ""
         self.log(f"[Цепочка] Новый оверлей «{kind}» через {eng} "
