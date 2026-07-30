@@ -648,16 +648,29 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
         props["items"] = [{"label": lab, "img": _data_uri(rel)}
                           for lab, rel in entries[:limit]]
     dest_dir = Path(dest_dir)
-    props_file = dest_dir.parent / (dest_dir.name + "_props.json")
+    build = _remotion_bundle(log)
+    # props лежит ВНУТРИ папки вывода и удаляется в finally. Раньше он падал
+    # рядом с ней (dest_dir.parent) и не убирался вообще: в корне репозитория
+    # скопились десятки осиротевших tmp*_props.json, причём у popup/collage
+    # внутри картинки в base64 — то есть файлы жирные. Внутри папки вывода он
+    # к тому же исчезает вместе с временной папкой, даже если процесс убили.
+    # Путь при этом НЕ удлинился ни на символ: «<имя>/props.json» ровно той же
+    # длины, что «<имя>_props.json». Это важно — props уходит в командную
+    # строку remotion/ffmpeg, а она здесь уже упиралась в лимит Windows
+    # 32767 символов и рушила рендер после трёх часов работы.
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    props_file = dest_dir / "props.json"
     props_file.write_text(json.dumps(props, ensure_ascii=False),
                           encoding="utf-8")
-    build = _remotion_bundle(log)
     cmd = [_npx(), "remotion", "render", str(build), "Overlay", str(dest_dir),
            "--sequence", "--image-format=png", f"--props={props_file}",
            "--log=error"]
     if frame_range:
         cmd.append(f"--frames={frame_range}")
-    r = run_tree(cmd, 900, cwd=REMOTION_DIR, env=_node_env())
+    try:
+        r = run_tree(cmd, 900, cwd=REMOTION_DIR, env=_node_env())
+    finally:
+        props_file.unlink(missing_ok=True)
     if r.returncode != 0:
         raise RuntimeError(f"remotion render: {r.stderr[-300:]}")
     frames = sorted(dest_dir.glob("*.png"),
