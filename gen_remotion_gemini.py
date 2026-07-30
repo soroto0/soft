@@ -955,14 +955,36 @@ def _hf_lint(rel_path: str, log=print) -> str:
     npm = _ov._npm()
     if not npm:
         return ""      # npm нет — пропускаем эту ступень, не валим вариант
+
+    # Проверяем кандидата В ИЗОЛЯЦИИ, а не весь проект.
+    #
+    # Раньше запускался `npm run check` по всей папке hyperframes/, и одна
+    # сломанная композиция валила КАЖДЫЙ новый вариант — включая те, что с
+    # ней никак не связаны. Замерено: при одной битой композиции в проекте
+    # check отдаёт ok=false и код 1, то есть новые варианты не пройдут
+    # никогда, пока её не починят руками.
+    #
+    # Фильтровать вывод по sourceFile нельзя, это проверялось: у битой
+    # композиции ошибка missing_local_asset приписывается index.html, а не
+    # файлу-виновнику. По такому фильтру мы бы пропускали ошибки САМОГО
+    # кандидата.
+    #
+    # Кандидат обязан лежать именно как index.html: проект из одной
+    # compositions/x.html без index.html падает с «Command failed» — проверка
+    # не запускается вовсе.
+    src = Path(_ov.HYPERFRAMES_DIR) / rel_path
     try:
-        # без аргумента: check принимает ПАПКУ проекта, а на путь к файлу
-        # падает с «Not a directory». Кандидат уже лежит в compositions/,
-        # поэтому проверка всего проекта его и охватывает.
-        r = subprocess.run([npm, "run", "check"],
-                           cwd=_ov.HYPERFRAMES_DIR, env=_ov._node_env(),
-                           capture_output=True, text=True, timeout=300,
-                           creationflags=core.CREATE_NO_WINDOW)
+        with tempfile.TemporaryDirectory() as tmp:
+            box = Path(tmp)
+            for name in ("package.json", "hyperframes.json"):
+                s = Path(_ov.HYPERFRAMES_DIR) / name
+                if s.exists():
+                    shutil.copy(s, box / name)
+            shutil.copy(src, box / "index.html")
+            r = subprocess.run([npm, "run", "check"],
+                               cwd=box, env=_ov._node_env(),
+                               capture_output=True, text=True, timeout=300,
+                               creationflags=core.CREATE_NO_WINDOW)
     except Exception as e:
         log(f"[Варианты] HyperFrames check не запустился ({e}) — пропускаю")
         return ""
