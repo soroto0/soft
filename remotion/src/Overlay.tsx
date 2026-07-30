@@ -13,14 +13,14 @@ export type { OverlayProps };
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#4a90e2',
-  accentLight: '#87ceeb',
-  accentRgb: '74,144,226',
-  bannerFrom: '#e3f2fd',
-  bannerTo: '#bbdefb',
-  bannerText: '#0d2137',
-  kickerFrom: '#1c2e41',
-  kickerTo: '#0f1b2a',
+  accent: '#2E5A8A',
+  accentLight: '#4D7FB5',
+  accentRgb: '46,90,138',
+  bannerFrom: '#D9EDF7',
+  bannerTo: '#B8D4E6',
+  bannerText: '#1A3C5E',
+  kickerFrom: '#1A3C5E',
+  kickerTo: '#0F2A44',
 };
 
 const useExit = (dur: number) => {
@@ -40,6 +40,24 @@ const useEnter = (dur: number) => {
     extrapolateRight: 'clamp'
   });
 };
+
+// Светимость цвета вида "#rrggbb" по WCAG. Нужна там, где текст ложится НА
+// акцентный цвет: сам акцент переписывается под каждый ролик (см. THEME), и
+// то, что читалось на ярком бирюзовом, на тёмно-синем становится тёмным по
+// тёмному. Замерено: подписи выходили с контрастом 1.2:1.
+const _lum = (hex: string): number => {
+  const h = hex.replace('#', '');
+  const v = [0, 2, 4].map((i) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+};
+
+// Чернила, читаемые НА заданном фоне: тёмные на светлом, белые на тёмном.
+// Порог 0.35 — по замеру контраста против обоих вариантов.
+const inkOn = (bg: string): [number, number, number] =>
+  _lum(bg) > 0.35 ? [8, 26, 30] : [255, 255, 255];
 
 const formatCounter = (value: number) => {
   if (value < 1000) return Math.floor(value).toString();
@@ -960,8 +978,12 @@ const Marker = ({ content, exit, enter }: { content: string; exit: number; enter
           // дошёл, оно лежит на самом видео, где тонет всё тёмное. Переход
           // привязан к fill, поэтому совпадает с проходом полосы и читается
           // как часть эффекта, а не как моргание.
-          const ink = (from: number, to: number) =>
-            interpolate(fill, [0.45, 0.72], [from, to], {
+          // Конечный цвет — НЕ зашитый тёмный, а подобранный под акцент:
+          // палитра меняется на каждый ролик, и на тёмном акценте зашитый
+          // тёмный давал текст, которого не видно (замер: 1.2:1).
+          const target = inkOn(THEME.accent);
+          const ink = (from: number, ci: number) =>
+            interpolate(fill, [0.45, 0.72], [from, target[ci]], {
               extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
             });
           const halo = interpolate(fill, [0.45, 0.72], [0.8, 0], {
@@ -982,7 +1004,7 @@ const Marker = ({ content, exit, enter }: { content: string; exit: number; enter
                 position: 'relative',
                 fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
                 fontSize: 76, lineHeight: 1.24,
-                color: `rgb(${ink(255, 10)},${ink(255, 38)},${ink(255, 40)})`,
+                color: `rgb(${ink(255, 0)},${ink(255, 1)},${ink(255, 2)})`,
                 letterSpacing: '-0.01em',
                 textShadow: `0 4px 18px rgba(0,0,0,${halo})`,
               }}>{w}</span>
