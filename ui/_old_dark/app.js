@@ -12,17 +12,14 @@ const ICO = {
   render: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-4h14L20 9"/><rect x="3" y="9" width="18" height="10" rx="1.5"/><path d="M3 9l3-4M9 9l3-4M15 9l3-4"/></svg>',
   build: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5L12 12l8-4.5M12 12v9"/></svg>',
 };
-// Этапы = лента наверху. id совпадает с id секции (stage-<id>), name — то,
-// как этап называется в state.checks с бэкенда (для галочек «готово»).
 const STAGES = [
-  { id: "project",  label: "Проект",     icon: "◉", check: null },
-  { id: "script",   label: "Сценарий",   icon: "✎", check: "Сценарий" },
-  { id: "voice",    label: "Озвучка",    icon: "🎙", check: "Озвучка" },
-  { id: "subs",     label: "Субтитры",   icon: "💬", check: "Субтитры" },
-  { id: "media",    label: "Раскадровка", icon: "▦", check: "Раскадровка" },
-  { id: "overlays", label: "Оверлеи",    icon: "✦", check: "Оверлеи" },
-  { id: "render",   label: "Рендер",     icon: "▶", check: "Рендер" },
-  { id: "export",   label: "Экспорт",    icon: "⤓", check: "Premiere" },
+  [ICO.script, "Сценарий", "materials", "script"],
+  [ICO.tts, "Озвучка", "materials", "tts"],
+  [ICO.subs, "Субтитры", "materials", "subs"],
+  [ICO.media, "Раскадровка", "video", "media"],
+  [ICO.overlays, "Оверлеи", "video", "overlays"],
+  [ICO.render, "Рендер", "video", "render"],
+  [ICO.build, "Premiere", "build", null],
 ];
 
 // Edge TTS — голос должен звучать на языке сценария, иначе английская
@@ -42,18 +39,6 @@ const EDGE_VOICES_BY_LANG = {
 // Polly не умеет во все эти языки, но Matthew хотя бы не падает молча —
 // список голосов на движке "Amazon Polly" остаётся английским как был.
 const POLLY_VOICES = ["Matthew", "Joanna", "Stephen", "Ruth", "Gregory", "Danielle"];
-
-
-// Цвет канала: свой accent из профиля, иначе из палитры по порядку — чтобы
-// каналы визуально отличались и в меню, и на экране входа.
-const CH_COLORS = ["#0071e3", "#af52de", "#ff9500", "#34c759", "#ff375f"];
-function chColor(c, i) {
-  const a = (c && c.accent || "").trim();
-  return /^#[0-9a-fA-F]{6}$/.test(a) ? a : CH_COLORS[i % CH_COLORS.length];
-}
-function chLetter(c) {
-  return ((c && (c.name || c.id)) || "?").trim().charAt(0).toUpperCase();
-}
 
 /* ---------- API-мост ---------- */
 function api() { return window.pywebview ? window.pywebview.api : mockApi; }
@@ -83,24 +68,30 @@ async function rpc(method, ...args) {
   catch (e) { addLog("[ОШИБКА] " + e, "err"); return null; }
 }
 
-/* ---------- Навигация по этапам ---------- */
-let curStage = "project";
-
-function showStage(id) {
-  curStage = id;
-  document.querySelectorAll(".stage").forEach(
-    (s) => s.classList.toggle("active", s.id === "stage-" + id));
-  document.querySelectorAll(".tl-node").forEach(
-    (n) => n.classList.toggle("active", n.dataset.stage === id));
-  document.querySelectorAll(".mini-row").forEach(
-    (n) => n.classList.toggle("active", n.dataset.stage === id));
-  const s = STAGES.find((x) => x.id === id);
-  if (s && !isBusy) setStatus(s.label);
-  const sc = document.querySelector(".scroll");
-  if (sc) sc.scrollTop = 0;
+/* ---------- Навигация ---------- */
+document.querySelectorAll(".nav-item").forEach((el) => {
+  el.onclick = () => showPage(el.dataset.page);
+});
+document.querySelectorAll(".subnav").forEach((nav) => {
+  nav.querySelectorAll(".pill").forEach((btn) => {
+    btn.onclick = () => showSub(nav, btn.dataset.sub);
+  });
+});
+function showPage(name, sub) {
+  document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+  $("page-" + name).classList.add("active");
+  document.querySelector(`.nav-item[data-page="${name}"]`).classList.add("active");
+  if (sub) {
+    const nav = $("page-" + name).querySelector(".subnav");
+    if (nav) showSub(nav, sub);
+  }
 }
-// Совместимость со старыми вызовами вида showPage("video", "media")
-function showPage(_page, sub) { showStage(sub || _page); }
+function showSub(nav, sub) {
+  const page = nav.closest(".page");
+  nav.querySelectorAll(".pill").forEach((b) => b.classList.toggle("active", b.dataset.sub === sub));
+  page.querySelectorAll(".subpage").forEach((sp) => sp.classList.toggle("active", sp.id === "sub-" + sub));
+}
 
 /* ---------- Журнал / статус (вызывается и из Python) ---------- */
 function addLog(msg, cls = "") {
@@ -129,25 +120,9 @@ function openName(title, hint, value, target) {
   $("nameModal").classList.add("open");
   setTimeout(() => $("nameInput").focus(), 50);
 }
-let isBusy = false;
-
-function setStatus(text) {
-  $("status").textContent = text;
-  // «Готов» и название этапа — покой; всё остальное считаем работой
-  const busy = !!text && !/^(Готов|Проект|Сценарий|Озвучка|Субтитры|Раскадровка|Оверлеи|Рендер|Экспорт)$/.test(text);
-  isBusy = busy;
-  $("island").classList.toggle("busy", busy);
-}
+function setStatus(text) { $("status").textContent = text; }
 function setProgress(done, total) {
-  const pct = total ? Math.round(100 * done / total) : 0;
-  $("pulsePct").textContent = pct + "%";
-  if (total) setRing(pct);
-}
-// Кольцо: во время операции показывает её прогресс, в покое — готовность
-// пайплайна (сколько этапов пройдено).
-function setRing(pct) {
-  $("ring").style.setProperty("--pct", pct);
-  $("ringPct").textContent = pct + "%";
+  $("sbarFill").style.width = total ? (100 * done / total) + "%" : "0%";
 }
 function taskDone() { setStatus("Готов"); setProgress(0, 0); refresh(); }
 
@@ -195,42 +170,21 @@ async function refresh() {
 }
 
 function renderCards() {
-  if (!state) return;
-  const done = (s) => !!(s.check && state.checks && state.checks[s.check]);
-
-  const row = $("tlRow");
-  row.innerHTML = "";
-  for (const s of STAGES) {
-    const b = document.createElement("button");
-    b.className = "tl-node" + (done(s) ? " done" : "") + (s.id === curStage ? " active" : "");
-    b.dataset.stage = s.id;
-    b.onclick = () => showStage(s.id);
-    b.innerHTML = `<span class="circle">${done(s) ? "✓" : s.icon}</span>
-                   <span class="lbl">${s.label}</span>`;
-    row.appendChild(b);
-  }
-
-  const mini = $("miniRows");
-  mini.innerHTML = "";
-  for (const s of STAGES) {
-    if (!s.check) continue;      // «Проект» — не этап пайплайна
-    const b = document.createElement("button");
-    b.className = "mini-row" + (done(s) ? " done" : "") + (s.id === curStage ? " active" : "");
-    b.dataset.stage = s.id;
-    b.onclick = () => showStage(s.id);
-    b.innerHTML = `<span class="d"></span><span>${s.label}</span>`;
-    mini.appendChild(b);
-  }
-
-  // В покое кольцо = доля пройденных этапов
-  if (!isBusy) {
-    const steps = STAGES.filter((s) => s.check);
-    setRing(Math.round(100 * steps.filter(done).length / steps.length));
+  const box = $("stageCards");
+  box.innerHTML = "";
+  for (const [ico, name, page, sub] of STAGES) {
+    const ok = state.checks && state.checks[name];
+    const card = document.createElement("div");
+    card.className = "card";
+    card.onclick = () => showPage(page, sub);
+    card.innerHTML = `<div class="cico">${ico}</div>
+      <div><div class="cname">${name}</div>
+      <span class="chip ${ok ? "ok" : "wait"}">${ok ? "Готов" : "Ожидание"}</span></div>`;
+    box.appendChild(card);
   }
 }
 
 function renderProjects() {
-  if (!state) return;
   const box = $("projList");
   box.innerHTML = "";
   const projs = state.projects || [];
@@ -238,16 +192,16 @@ function renderProjects() {
   for (const p of projs) {
     const pct = Math.round(100 * p.done / (p.total || 7));
     const row = document.createElement("div");
-    row.className = "proj" + (p.current ? " current" : "");
+    row.className = "projrow" + (p.current ? " current" : "");
     row.innerHTML = `
-      <div class="popen" style="flex:1; min-width:0; cursor:pointer">
-        <div class="nm">${p.name}${p.current ? " · текущий" : ""}</div>
-        <div class="meta">${p.done}/${p.total || 7} этапов${
-          (p.tags || []).length ? " · " + p.tags.join(" · ") : ""}</div>
+      <div class="popen" style="flex:1; cursor:pointer">
+        <div class="pname">${p.name}${p.current ? " ● текущий" : ""}</div>
+        <div style="margin-top:4px">${(p.tags || []).map(t => `<span class="tag">${t}</span>`).join("")}</div>
       </div>
-      <div class="bar"><i style="width:${pct}%"></i></div>
-      <button class="btn ghost pbtn-open">Открыть</button>
-      <button class="iconbtn" title="Переименовать">✎</button>
+      <span class="hint" style="margin:0">${p.done}/${p.total || 7}</span>
+      <div class="pbar"><i style="width:${pct}%"></i></div>
+      <button class="btn gold pbtn-open">Открыть</button>
+      <button class="iconbtn" title="Переименовать">✏️</button>
       <button class="iconbtn" title="Папка в проводнике">📂</button>
       <button class="iconbtn" title="Удалить проект">🗑</button>`;
     const openIt = () => rpc("set_project", p.path).then(() => {
@@ -259,8 +213,7 @@ function renderProjects() {
     ren.onclick = () => app.renameProject(p.path, p.name);
     fold.onclick = () => rpc("open_project_folder", p.path);
     del.onclick = () => {
-      if (confirm(`Удалить проект «${p.name}» целиком?
-Все файлы будут стёрты безвозвратно.`))
+      if (confirm(`Удалить проект «${p.name}» целиком?\nВсе файлы будут стёрты безвозвратно.`))
         rpc("delete_project", p.path).then(refresh);
     };
     box.appendChild(row);
@@ -270,17 +223,18 @@ function renderProjects() {
 function renderChecklist() {
   if (!state.checks) return;
   $("checklist").innerHTML = Object.entries(state.checks)
-    .map(([k, v]) => `${v ? "✓" : "·"} ${k}`).join("<br>");
-  // Показываем только имя папки: полный путь Windows не влезает в панель
-  $("sideProject").textContent =
-    (state.project || "—").split(/[\\/]/).filter(Boolean).pop() || "—";
+    .map(([k, v]) => `${k.toLowerCase()} ${v ? "<b>✓</b>" : "<i>✗</i>"}`).join("&nbsp; ");
 }
 
 function renderSubs(rows) {
   const box = $("subsList");
-  if (!rows || !rows.length) { box.textContent = "Субтитры ещё не готовы."; return; }
-  box.textContent = rows.slice(0, 400)
-    .map(([a, , t]) => `${a}  ${t}`).join("\n");
+  box.innerHTML = "";
+  for (const [a, b, t] of rows.slice(0, 400)) {
+    const r = document.createElement("div");
+    r.className = "srow";
+    r.innerHTML = `<span class="st">${a}</span><span>${t}</span>`;
+    box.appendChild(r);
+  }
 }
 
 function updateStats() {
@@ -302,7 +256,6 @@ const app = {
     if (r.current) sel.value = r.current;
     channelsCache = r.channels || [];
     app.renderGate();
-    app.renderChannelPop();
     // Экран входа поднимаем только при старте и только если канал ещё не
     // выбран: дёргать его на каждое обновление списка — значит выбрасывать
     // пользователя из работы посреди дела.
@@ -311,58 +264,31 @@ const app = {
   renderGate() {
     const grid = $("gateGrid");
     if (!grid) return;
-    const tiles = channelsCache.map((c, i) => {
+    const tiles = channelsCache.map((c) => {
+      const letter = (c.name || c.id || "?").trim().charAt(0).toUpperCase();
       const sub = [c.lang, c.tone].filter(Boolean).join(" · ");
-      return `<button class="gate-tile" onclick="app.gatePick('${c.id}')" title="${sub}">
-        <span class="face" style="background:${chColor(c, i)}">${chLetter(c)}</span>
-        <span class="nm">${c.name || c.id}</span>
-      </button>`;
+      return `<div class="ch-tile" onclick="app.gatePick('${c.id}')">
+        <div class="ch-face"><span class="dot"></span>${letter}</div>
+        <div class="ch-name">${c.name || c.id}</div>
+        <div class="ch-sub">${sub}</div>
+      </div>`;
     });
-    tiles.push(`<button class="gate-tile" onclick="app.newChannel()">
-      <span class="face" style="background:rgba(0,0,0,.14); color:var(--ink-2)">+</span>
-      <span class="nm">Создать канал</span>
-    </button>`);
+    tiles.push(`<div class="ch-tile" onclick="app.newChannel()">
+      <div class="ch-face add">+</div>
+      <div class="ch-name">Создать канал</div>
+      <div class="ch-sub">новый</div>
+    </div>`);
     grid.innerHTML = tiles.join("");
   },
-  // Меню каналов в верхней панели + аватар текущего канала
-  renderChannelPop() {
-    const cur = $("channelSel").value;
-    const box = $("channelPopRows");
-    if (box) {
-      box.innerHTML = channelsCache.map((c, i) => `
-        <div class="pop-row${c.id === cur ? " active" : ""}" onclick="app.gatePick('${c.id}')">
-          <span class="ava" style="background:${chColor(c, i)}">${chLetter(c)}</span>
-          <span>${c.name || c.id}</span>
-        </div>`).join("") || '<div class="pop-act">нет каналов</div>';
-    }
-    const i = channelsCache.findIndex((c) => c.id === cur);
-    const c = i >= 0 ? channelsCache[i] : null;
-    const av = $("channelAvatar");
-    if (av) {
-      av.textContent = c ? chLetter(c) : "—";
-      av.style.background = c ? chColor(c, i) : "rgba(0,0,0,.2)";
-    }
-    if ($("sideChannel")) $("sideChannel").textContent = c ? (c.name || c.id) : "без канала";
-    // Акцент интерфейса = цвет активного канала: сразу видно, где работаешь
-    if (c) {
-      const col = chColor(c, i);
-      document.documentElement.style.setProperty("--accent", col);
-      document.documentElement.style.setProperty("--accent-hover", col);
-      document.documentElement.style.setProperty("--accent-soft", col + "1a");
-    }
-  },
-  toggleChannelPop() { $("channelPop").classList.toggle("open"); },
   gatePick(id) {
     $("channelSel").value = id;
     $("gate").classList.remove("open");
-    $("channelPop").classList.remove("open");
     rpc("channel_select", id).then(refresh);
   },
   skipGate() { $("gate").classList.remove("open"); },
   openGate() { app.renderGate(); $("gate").classList.add("open"); },
   selectChannel() {
     const id = $("channelSel").value;
-    app.renderChannelPop();
     if (id) rpc("channel_select", id).then(refresh);
   },
   editChannel() {
@@ -546,11 +472,11 @@ const app = {
   },
   toggleDrawer() {
     const d = $("drawer");
-    d.classList.toggle("open");
-    if (d.classList.contains("open")) {
-      const b = $("console2");
-      b.scrollTop = b.scrollHeight;
-    }
+    d.classList.toggle("collapsed");
+    try {
+      localStorage.setItem("drawer",
+        d.classList.contains("collapsed") ? "0" : "1");
+    } catch (e) { /* file:-песочница может запрещать localStorage */ }
   },
   openSettings() {
     rpc("settings_get").then(s => {
@@ -592,10 +518,13 @@ $("projPath").addEventListener("change",
 $("lang").addEventListener("change", app.fillVoices);
 
 /* ---------- Старт ---------- */
+try {
+  if (localStorage.getItem("drawer") === "0")
+    $("drawer").classList.add("collapsed");
+} catch (e) { /* file:-песочница может запрещать localStorage */ }
 app.fillVoices();
-showStage("project");
-addLog("Интерфейс загружен. Лента этапов сверху; одна кнопка "
-       + "«Генерировать видео» проходит весь путь сама.", "dim");
+addLog("Интерфейс загружен. Порядок: Сценарий → Озвучка → Транскрибация → " +
+       "Раскадровка → Рендер, или одна кнопка «Генерировать видео».", "dim");
 // Каналы грузим ТОЛЬКО когда мост pywebview поднят: вызов сразу при разборе
 // скрипта уходил в заглушку (window.pywebview ещё нет) и список оставался
 // пустым, хотя профили в channels.json были.
@@ -603,12 +532,4 @@ function boot() { refresh(); app.loadChannels(true); }
 if (window.pywebview) boot();
 else window.addEventListener("pywebviewready", boot);
 setTimeout(() => { if (!state) boot(); }, 700);   // демо-режим в браузере
-// Клик вне меню каналов закрывает его
-document.addEventListener("click", (e) => {
-  const pop = $("channelPop");
-  if (!pop || !pop.classList.contains("open")) return;
-  if (!pop.contains(e.target) && e.target.id !== "channelAvatar")
-    pop.classList.remove("open");
-});
-
 setInterval(() => rpc("noop"), 3600 * 1000);          // держим мост живым
