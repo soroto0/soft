@@ -6,6 +6,11 @@
 
 Все функции пишут прогресс через переданный log(msg) — CLI передаёт print,
 GUI передаёт свой потокобезопасный логгер.
+
+Длинные стадии прерываются флагом CANCEL (см. раздел «Отмена работы»):
+запускающая сторона зовёт reset_cancel() перед задачей и CANCEL.set() по
+кнопке «Стоп», стадия обрывается исключением Cancelled на ближайшей
+безопасной границе, а её дочерние процессы гасятся вместе с потомками.
 """
 
 import os
@@ -16,6 +21,7 @@ import random
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -35,6 +41,84 @@ MUSIC_EXTS = {".mp3", ".wav", ".m4a", ".ogg", ".flac",
               ".mp4", ".aac", ".opus", ".wma"}  # из mp4 берётся звуковая дорожка
 MAX_CLIPS_PER_SCENE = 5
 SEARCH_POOL = 15  # сколько результатов запрашивать у стоков для выбора
+
+
+# ---------- Отмена работы («Стоп») ----------
+
+# Флаг «Стоп» для стадий, которые живут ЗДЕСЬ: озвучка, Whisper, раскадровка,
+# генерация кадров, проверки зрением. Устроен как render.CANCEL и работает
+# так же, но покрывает другое: render.CANCEL знает про ffmpeg-сборку ролика и
+# только про неё, а обо всём, что делает core, он не подозревал. Из-за этого
+# «Стоп» на этих стадиях либо не действовал вовсе (Whisper — одна длинная
+# операция почти без строк в журнале), либо срабатывал случайно — на ближайшем
+# сообщении в лог, если вызывающий догадался бросать исключение из log().
+CANCEL = threading.Event()
+
+
+class Cancelled(BaseException):
+    """Работа прервана кнопкой «Стоп».
+
+    От BaseException, а не от Exception, СПЕЦИАЛЬНО (та же причина, что у
+    webapp.Stopped): в core десятки блоков `except Exception`, которые глушат
+    сбой отдельного плана, чтобы ролик не рушился из-за одной картинки, — и
+    обычное исключение отмены они проглотили бы точно так же, а «Стоп» опять
+    ничего бы не остановил.
+
+    Побочно это же спасает деньги на Veo: `except Exception` внутри veo_client
+    помечает задачу завершённой (finish_task), и после отмены следующий запуск
+    заказал бы генерацию заново вместо того, чтобы продолжить уже оплаченную.
+    Сквозь BaseException этот обработчик не срабатывает, и задача остаётся в
+    журнале как продолжаемая."""
+
+
+def reset_cancel():
+    """Снять флаг перед НОВОЙ задачей.
+
+    Сбрасывает тот, кто задачу запускает (GUI перед стартом рабочего потока,
+    CLI перед прогоном), а не сами стадии. Внутри стадии сброс был бы вреден:
+    в цепочке «сценарий -> озвучка -> субтитры -> раскадровка -> оверлеи»
+    каждый следующий шаг затирал бы «Стоп», нажатый во время предыдущего.
+    На этом уже обжигались с render.render_project: он делает CANCEL.clear()
+    на старте, и именно поэтому «Стоп», нажатый ДО рендера, рендер не
+    останавливал — тот спокойно начинался с чистым флагом."""
+    CANCEL.clear()
+
+
+def cancelled() -> bool:
+    """Взведён ли «Стоп». Для мест, где нужен аккуратный выход (дописать
+    журнал, сохранить уже сделанное), а не исключение из середины работы."""
+    return CANCEL.is_set()
+
+
+def _stop_check():
+    """Бросает Cancelled, если нажат «Стоп». Ставится только там, где обрыв
+    безопасен: между планами, между батчами LLM, перед запуском очередного
+    дочернего процесса — но не посреди записи файла."""
+    if CANCEL.is_set():
+        raise Cancelled("Остановлено пользователем")
+
+
+def _sleep_cancel(seconds: float):
+    """time.sleep, прерываемый «Стопом».
+
+    Пауз в пайплайне много и они долгие: пережидание лимитов Veo и зрения
+    доходит до двух минут суммарно, опрос задачи Veo — по 10 c. С обычным
+    sleep «Стоп» отзывался бы только после конца паузы."""
+    if CANCEL.wait(max(0.0, seconds)):
+        raise Cancelled("Остановлено пользователем")
+
+
+def _cancel_log(log):
+    """Обёртка над log для ЧУЖИХ длинных ожиданий — veo_client.wait_for_completion.
+
+    Донести отмену внутрь veo_client больше нечем: статус он опрашивает своим
+    циклом, а наружу отдаёт только строки в log — зато зовёт его на КАЖДОМ
+    опросе (раз в 10 c). Без этой обёртки «Стоп» во время генерации кадра ждал
+    бы серверного таймаута задачи, то есть до получаса."""
+    def wrapped(msg=""):
+        _stop_check()
+        log(msg)
+    return wrapped
 
 
 def _env_switch(name: str, default: bool) -> bool:
@@ -157,31 +241,117 @@ def download_file(url: str, dest: Path):
                 f.write(chunk)
 
 
-def run_tree(cmd: list, timeout: float, **kw):
-    """subprocess.run, но по таймауту убивающий ВСЁ дерево процессов.
+def _kill_tree(p: subprocess.Popen):
+    """Погасить процесс ВМЕСТЕ С ПОТОМКАМИ.
 
-    Штатный run() при таймауте гасит только прямого потомка. Для npx/npm это
-    не работает: npx — тонкая обёртка, реальную работу делает внук node, и он
-    остаётся сиротой. Реальный случай: зависший `remotion still` крутился два
-    часа и съел 6800 секунд CPU уже после того, как питон-родитель умер."""
-    kw.setdefault("creationflags", CREATE_NO_WINDOW)
-    # errors="replace" обязателен: часть windows-утилит пишет в cp866, и на
-    # первом же нерусском байте поток-читатель падал с UnicodeDecodeError,
-    # уводя за собой весь вызов (поймано на таймаут-тесте с ping)
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True, encoding="utf-8", errors="replace", **kw)
+    p.kill() гасит только прямого потомка, а реальную работу часто делает внук
+    (npx -> node, whisper -> torch), и он остаётся сиротой: зависший процесс
+    однажды намотал 26000 секунд процессорного времени за 8 часов, и снимать
+    его пришлось вручную через диспетчер."""
     try:
-        out, err = p.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
         if os.name == "nt":
             # /T — вместе с деревом потомков, /F — принудительно
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)],
                            capture_output=True, creationflags=CREATE_NO_WINDOW)
         else:
             p.kill()
-        p.communicate()
-        raise
+    except OSError:
+        pass
+
+
+def run_tree(cmd: list, timeout: float, **kw):
+    """subprocess.run, но убивающий ВСЁ дерево процессов — по таймауту и по «Стопу».
+
+    Штатный run() при таймауте гасит только прямого потомка. Для npx/npm это
+    не работает: npx — тонкая обёртка, реальную работу делает внук node, и он
+    остаётся сиротой. Реальный случай: зависший `remotion still` крутился два
+    часа и съел 6800 секунд CPU уже после того, как питон-родитель умер.
+
+    Ожидание идёт короткими шагами, а не одним communicate(timeout=...), ровно
+    чтобы между шагами смотреть на CANCEL: иначе «Стоп» на минутном ffmpeg или
+    получасовом рендере Remotion отзывался бы только после конца команды."""
+    kw.setdefault("creationflags", CREATE_NO_WINDOW)
+    _stop_check()          # на взведённом флаге новый процесс не заводим
+    # errors="replace" обязателен: часть windows-утилит пишет в cp866, и на
+    # первом же нерусском байте поток-читатель падал с UnicodeDecodeError,
+    # уводя за собой весь вызов (поймано на таймаут-тесте с ping)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, encoding="utf-8", errors="replace", **kw)
+    deadline = time.time() + timeout
+    while True:
+        try:
+            # Повторный communicate с таймаутом — штатный сценарий: потоки-
+            # читатели создаются один раз и переиспользуются, уже прочитанное
+            # не теряется.
+            out, err = p.communicate(timeout=min(0.5, max(0.05, deadline - time.time())))
+            break
+        except subprocess.TimeoutExpired:
+            if CANCEL.is_set():
+                _kill_tree(p)
+                p.communicate()
+                raise Cancelled(f"Остановлено пользователем: {cmd[0]}")
+            if time.time() >= deadline:
+                _kill_tree(p)
+                p.communicate()
+                # свой TimeoutExpired, а не проброс шагового: у шагового в
+                # .timeout стояли бы полсекунды вместо настоящего лимита
+                raise subprocess.TimeoutExpired(cmd, timeout)
     return subprocess.CompletedProcess(cmd, p.returncode, out, err)
+
+
+def _run_child(cmd: list, timeout: float = 3600, check: bool = False, **kw):
+    """subprocess.run для ДОЛГИХ дочерних процессов (ffmpeg), знающий про «Стоп».
+
+    Обычный subprocess.run ждёт конца команды, а конец — это минуты: сведение
+    звука часового ролика, Ken Burns на каждый план. По «Стопу» такой вызов
+    не прерывался, и ffmpeg доживал команду уже никому не нужным. Здесь
+    ожидание идёт через run_tree, то есть с проверкой флага и убийством дерева.
+
+    Из subprocess.run поддержан только check: вывод всегда читается в трубу
+    (без этого процесс не погасить по-человечески), поэтому stdout/stderr
+    задавать не нужно — при успехе он просто отбрасывается."""
+    r = run_tree(cmd, timeout, **kw)
+    if check and r.returncode != 0:
+        raise subprocess.CalledProcessError(r.returncode, cmd, r.stdout, r.stderr)
+    return r
+
+
+def _stream_child(cmd: list, label: str, env: dict | None = None, cwd=None) -> int:
+    """Процесс с живым выводом в «Консоль», который можно оборвать «Стопом».
+
+    Проверять флаг в цикле чтения строк НЕДОСТАТОЧНО — именно на этом «Стоп» и
+    ломался: у Whisper между строками бывают минуты (модель молчит, пока
+    считает), а первый запуск ещё и качает модель. Поэтому за флагом следит
+    отдельный сторож: по «Стопу» он гасит дерево процессов, чтение обрывается
+    на закрытой трубе, и вызов заканчивается Cancelled — вместо whisper'а,
+    молотящего в фоне до самого конца транскрипции."""
+    _stop_check()
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         text=True, encoding="utf-8", errors="replace",
+                         env=env, cwd=cwd, creationflags=CREATE_NO_WINDOW)
+    done = threading.Event()
+
+    def watchdog():
+        while not done.wait(0.5):
+            if CANCEL.is_set():
+                _kill_tree(p)
+                return
+
+    guard = threading.Thread(target=watchdog, daemon=True)
+    guard.start()
+    try:
+        for line in p.stdout:
+            line = line.strip()
+            if line:
+                _console(f"[{label}] {line}")
+        p.wait()
+    finally:
+        done.set()
+        guard.join(timeout=2)
+    # Процесс погас от сторожа — это отмена, а не сбой команды: без этой
+    # проверки вызывающий доложил бы «упал с кодом 1».
+    _stop_check()
+    return p.returncode
 
 
 def audio_duration(path: Path) -> float | None:
@@ -216,13 +386,17 @@ def enhance_voice(mp3: Path, log=print) -> Path:
         "equalizer=f=3000:t=q:w=2:g=2,"                   # presence — разборчивость
         "loudnorm=I=-16:TP=-1.5:LRA=11")                  # громкость под YouTube
     try:
-        subprocess.run(["ffmpeg", "-y", "-i", str(mp3), "-af", chain,
-                        "-c:a", "libmp3lame", "-q:a", "2", str(tmp)],
-                       check=True, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+        _run_child(["ffmpeg", "-y", "-i", str(mp3), "-af", chain,
+                    "-c:a", "libmp3lame", "-q:a", "2", str(tmp)],
+                   timeout=3600, check=True)
         tmp.replace(mp3)
         log("[Озвучка] Голос обработан: компрессия + глубина + нормализация "
             "(документальный «дикторский» звук)")
+    except Cancelled:
+        # обрывок обработки рядом с готовым файлом никому не нужен, а исходник
+        # цел — отмену пробрасываем дальше, в отличие от сбоя ffmpeg ниже
+        tmp.unlink(missing_ok=True)
+        raise
     except Exception as e:
         tmp.unlink(missing_ok=True)
         log(f"[Озвучка] Обработку голоса пропустил ({e.__class__.__name__})")
@@ -280,6 +454,9 @@ def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
             f"{len(text)} символов -> {len(paras)} абзацев с паузами...")
         parts = []
         for i, para in enumerate(paras, 1):
+            # между абзацами — единственное безопасное место обрыва: сшивка
+            # ещё не началась, готовый voiceover.mp3 не тронут
+            _stop_check()
             p = audio_dir / f"part_{i:03d}.mp3"
 
             async def run(txt=para, dest=p):
@@ -291,11 +468,10 @@ def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
             if i % 10 == 0:
                 log(f"[Озвучка] абзац {i}/{len(paras)}...")
         gap = audio_dir / "_gap.mp3"
-        subprocess.run(
+        _run_child(
             ["ffmpeg", "-y", "-f", "lavfi", "-i",
              "anullsrc=r=24000:cl=mono", "-t", "0.55", "-q:a", "9", str(gap)],
-            check=True, creationflags=CREATE_NO_WINDOW,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            timeout=120, check=True)
         seq = []
         for i, p in enumerate(parts):
             if i:
@@ -304,11 +480,9 @@ def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
         concat = audio_dir / "concat.txt"
         concat.write_text("\n".join(f"file '{p.name}'" for p in seq),
                           encoding="utf-8")
-        subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                        "-i", str(concat), str(final)],
-                       check=True, cwd=audio_dir,
-                       creationflags=CREATE_NO_WINDOW,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _run_child(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                    "-i", str(concat), str(final)],
+                   timeout=1800, check=True, cwd=audio_dir)
         for p in parts + [gap, concat]:
             p.unlink(missing_ok=True)
     if enhance:
@@ -351,6 +525,7 @@ def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
             engine = "neural"
     parts = []
     for i, chunk in enumerate(chunks, 1):
+        _stop_check()      # до склейки: куски — временные файлы, терять нечего
         log(f"[Озвучка] Кусок {i}/{len(chunks)}...")
         kwargs = dict(OutputFormat="mp3", VoiceId=voice, Engine=engine)
         resp = None
@@ -374,10 +549,9 @@ def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
     concat = audio_dir / "concat.txt"
     concat.write_text("\n".join(f"file '{p.name}'" for p in parts), encoding="utf-8")
     final = audio_dir / "voiceover.mp3"
-    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                    "-i", str(concat), "-c", "copy", str(final)],
-                   check=True, cwd=audio_dir, creationflags=CREATE_NO_WINDOW,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _run_child(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", str(concat), "-c", "copy", str(final)],
+               timeout=1800, check=True, cwd=audio_dir)
     if enhance:
         enhance_voice(final, log)
     log(f"[Озвучка] Готово: {final}")
@@ -486,11 +660,10 @@ def add_music(voice_mp3: Path, music_path, log, gain_db: int = -14) -> Path:
               "[m][0:a]sidechaincompress=threshold=0.02:ratio=12:attack=25:release=700[duck];"
               "[0:a][duck]amix=inputs=2:duration=first:normalize=0[mix]")
 
-    subprocess.run(["ffmpeg", "-y", "-i", str(voice_mp3)] + inputs
-                   + ["-filter_complex", fc, "-map", "[mix]",
-                      "-c:a", "libmp3lame", "-q:a", "2", str(dest)],
-                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                   creationflags=CREATE_NO_WINDOW)
+    _run_child(["ffmpeg", "-y", "-i", str(voice_mp3)] + inputs
+               + ["-filter_complex", fc, "-map", "[mix]",
+                  "-c:a", "libmp3lame", "-q:a", "2", str(dest)],
+               timeout=3600, check=True)
     log(f"[Музыка] Готово: {dest} (чистый голос остался в {voice_mp3.name})")
     return dest
 
@@ -530,11 +703,14 @@ def add_ambience(base_mp3: Path, sfx_path, log, gain_db: int = -19,
     log(f"[ASMR] Раскидываю {n} звуков быта каждые ~{every:.0f} c "
         f"(тихо, {gain_db} dB) — эффект присутствия")
     try:
-        subprocess.run(["ffmpeg", "-y", "-i", str(base_mp3)] + inputs
-                       + ["-filter_complex", fc, "-map", "[mix]",
-                          "-c:a", "libmp3lame", "-q:a", "2", str(dest)],
-                       check=True, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+        _run_child(["ffmpeg", "-y", "-i", str(base_mp3)] + inputs
+                   + ["-filter_complex", fc, "-map", "[mix]",
+                      "-c:a", "libmp3lame", "-q:a", "2", str(dest)],
+                   timeout=3600, check=True)
+    except Cancelled:
+        # недоделанный микс не должен подменить рабочую дорожку ниже
+        dest.unlink(missing_ok=True)
+        raise
     except Exception as e:
         log(f"[ASMR] Пропустил ({e.__class__.__name__})")
         return base_mp3
@@ -724,7 +900,7 @@ def vision_chat(prompt: str, image_bytes: bytes, api_key: str = "",
         if attempt == VISION_RATE_ATTEMPTS or not all(
                 _is_rate_limit(x) for x in errors):
             break
-        time.sleep(VISION_RATE_BACKOFF * attempt)
+        _sleep_cancel(VISION_RATE_BACKOFF * attempt)
     raise RuntimeError("; ".join(errors))
 
 
@@ -947,6 +1123,10 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
 
     parts, prev_tail = [], ""
     for i, ch in enumerate(chapters, 1):
+        # Каждая глава — отдельный запрос на минуты, а весь сценарий отдаётся
+        # вызывающему одним куском: недописанный текст возвращать НЕЛЬЗЯ, его
+        # сохранили бы как готовый. Поэтому на «Стопе» обрываемся исключением.
+        _stop_check()
         log(f"[Агент] Глава {i}/{len(chapters)}: {ch}")
         if i == 1:
             # Открытая петля задаётся ЗДЕСЬ и закрывается только в последней
@@ -1058,6 +1238,10 @@ def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
     got = 0
     effective_batch = min(batch_size, 5) if _env_switch("LOCAL_PROMPT_MODE", False) else batch_size
     for start in range(0, n, effective_batch):
+        # На границе батча ничего не записано, кроме result в памяти: обрыв
+        # здесь безопасен, а вот отдавать половину запросов дальше нельзя —
+        # раскадровка приняла бы их за полный набор и поехала по ключевым словам.
+        _stop_check()
         chunk = beats[start:start + effective_batch]
         numbered = "\n".join(f"{i}. {b['text'][:280]}"
                              for i, b in enumerate(chunk, 1))
@@ -1500,7 +1684,7 @@ def veo_image(prompt: str, dest: Path, api_key: str, log=print,
             except Exception as e:
                 last_err = e
                 if attempt == 0:
-                    time.sleep(2)
+                    _sleep_cancel(2)
         log(f"[Картинка] Апскейл до 2K не удался ({last_err}) — беру оригинал")
     download_file(media[0]["fifeUrl"], dest)
     return dest
@@ -1529,6 +1713,7 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
     # переждать его выгоднее, чем подменять картинку чужой эстетикой.
     last = None
     for attempt in range(1, VEO_IMAGE_ATTEMPTS + 1):
+        _stop_check()      # пережидание лимита не должно переживать «Стоп»
         try:
             return veo_image(prompt, dest, veo_key, log, style)
         except Exception as e:
@@ -1541,7 +1726,7 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
                 pause = VEO_IMAGE_BACKOFF * attempt
                 log(f"[Картинка] VeoNonStop занят (попытка {attempt}/"
                     f"{VEO_IMAGE_ATTEMPTS}) — жду {pause} c...")
-                time.sleep(pause)
+                _sleep_cancel(pause)
                 continue
             break
     log(f"[Картинка] VeoNonStop не справился ({last}) — этот план возьмёт "
@@ -1654,18 +1839,22 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
         соседних фразах) находились бы по первому вхождению и чинился бы
         каждый раз один и тот же клип."""
         n, i, tmp = job
+        # Задачи ставятся в пул все разом, поэтому «Стоп» проверяется здесь:
+        # ещё не начатые проверки просто ничего не делают, и пул закрывается
+        # почти сразу, а не после сотни оплаченных запросов к зрению.
+        if CANCEL.is_set():
+            return None
         b = beats[i]
         src = Path(b.get("file", ""))
         if not src.exists():
             return None
         shot = Path(tmp) / f"s{i}.jpg"
         try:
-            subprocess.run(
+            _run_child(
                 ["ffmpeg", "-y", "-ss", "0.5", "-i", str(src),
                  "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "5",
                  str(shot)],
-                capture_output=True, timeout=60, check=True,
-                creationflags=CREATE_NO_WINDOW)
+                timeout=60, check=True)
         except Exception:
             return None
         if not shot.exists():
@@ -1698,6 +1887,8 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
         done = 0
         with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
             for rec in ex.map(check, jobs):
+                if CANCEL.is_set():
+                    break
                 done += 1
                 if rec:
                     bad.append(rec)
@@ -1705,6 +1896,10 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
                         + (f" -> лучше «{rec['better']}»" if rec["better"] else ""))
                 if done % 25 == 0:
                     log(f"[Кадры] проверено {done}/{len(jobs)}, брака {len(bad)}")
+    # Вне `with`: пул уже закрыт, чужие потоки не висят. Отчёт по половине
+    # планов отдавать нельзя — вызывающий чинит ровно то, что в отчёте, и
+    # непроверенные кадры молча считались бы хорошими.
+    _stop_check()
     bad.sort(key=lambda r: r["i"])
     checked = len(idx) - len(errors)
     share = len(bad) / checked * 100 if checked else 0
@@ -1747,6 +1942,14 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
     used = _load_used()
     fixed = 0
     for rec in bad:
+        # Замена клипа — операция «удалить старый, переименовать новый»; рвать
+        # её посередине нельзя, а между планами — можно, уже заменённые файлы
+        # остаются валидными (имена не менялись, timeline.json тоже).
+        if CANCEL.is_set():
+            log(f"[Кадры] ⛔ Стоп: заменено {fixed} из {len(bad)}, остальные "
+                "остались с прежними клипами")
+            _save_used(used)
+            raise Cancelled("Остановлено пользователем")
         q = (rec.get("better") or "").strip()
         dest = Path(rec.get("file", ""))
         if not q or not dest.parent.exists():
@@ -1858,14 +2061,15 @@ def review_video(video: Path, api_key: str = "", log=print,
     issues = []
     with tempfile.TemporaryDirectory() as tmp:
         for t in points:
+            # частичный отчёт по ролику так же обманчив, как в review_storyboard
+            _stop_check()
             shot = Path(tmp) / f"f{int(t)}.jpg"
             try:
-                subprocess.run(
+                _run_child(
                     ["ffmpeg", "-y", "-ss", f"{t:.2f}", "-i", str(video),
                      "-frames:v", "1", "-vf", "scale=854:-2", "-q:v", "4",
                      str(shot)],
-                    capture_output=True, timeout=120, check=True,
-                    creationflags=CREATE_NO_WINDOW)
+                    timeout=120, check=True)
             except Exception as e:
                 log(f"[Ревью] {int(t)}с: кадр не достался ({e})")
                 continue
@@ -2182,6 +2386,9 @@ def fill_music_library_jamendo(music_dir: Path, client_id: str, log=print,
     music_dir = Path(music_dir)
     added = 0
     for mood in JAMENDO_MOOD_TAGS:
+        # скачанные треки остаются в папках — прерывать между настроениями
+        # безопасно, второй запуск просто дольёт недостающие
+        _stop_check()
         sub = music_dir / mood
         have_ids = set()
         if sub.is_dir():
@@ -2254,7 +2461,7 @@ def agnes_video(prompt: str, dest: Path, api_key: str, log=print,
     host = AGNES_BASE_URL.rsplit("/v1", 1)[0]
     t0, last_prog = time.time(), -1
     while time.time() - t0 < timeout_s:
-        time.sleep(10)
+        _sleep_cancel(10)      # опрос статуса: «Стоп» отзовётся в пределах 10 c
         g = requests.get(f"{host}/agnesapi", params={"video_id": vid},
                          headers=headers, timeout=60)
         if g.status_code != 200:
@@ -2287,8 +2494,10 @@ def veo_video(prompt: str, dest: Path, api_key: str, log=print) -> Path:
     )
     quality = "1080p с апскейлом" if upscale else "720p без апскейла"
     log(f"[Видео-ИИ] VeoNonStop ({quality}): «{prompt[:60]}» (1-3 мин)...")
+    # _cancel_log: ожидание готовности живёт внутри veo_client, и оборвать его
+    # можно только через тот log, который он зовёт на каждом опросе статуса
     veo_client.generate_video_and_wait(prompt, dest, api_key=api_key,
-                                       upscale=upscale, log=log)
+                                       upscale=upscale, log=_cancel_log(log))
     log(f"[Видео-ИИ] Готово: {dest.name}")
     return dest
 
@@ -2319,7 +2528,8 @@ def gen_video_from_image(image_path: Path, prompt: str, dest: Path,
                                             api_key=veo_key)
         veo_client.track_task(task_id, dest, "image-to-video")
     try:
-        veo_client.wait_for_completion(task_id, veo_key, log=log)
+        # _cancel_log — единственный способ прервать ожидание внутри veo_client
+        veo_client.wait_for_completion(task_id, veo_key, log=_cancel_log(log))
     except Exception:
         veo_client.finish_task(dest)
         raise
@@ -2350,7 +2560,8 @@ def gen_video_multi(prompt: str, images: list[dict], dest: Path,
                                                   api_key=veo_key)
         veo_client.track_task(task_id, dest, "multi-image-to-video")
     try:
-        veo_client.wait_for_completion(task_id, veo_key, log=log)
+        # _cancel_log — единственный способ прервать ожидание внутри veo_client
+        veo_client.wait_for_completion(task_id, veo_key, log=_cancel_log(log))
     except Exception:
         veo_client.finish_task(dest)
         raise
@@ -2379,7 +2590,8 @@ def gen_video_transition(prompt: str, start_image: Path, end_image: Path,
                                                   api_key=veo_key)
         veo_client.track_task(task_id, dest, "batch-frame-to-video")
     try:
-        veo_client.wait_for_completion(task_id, veo_key, log=log)
+        # _cancel_log — единственный способ прервать ожидание внутри veo_client
+        veo_client.wait_for_completion(task_id, veo_key, log=_cancel_log(log))
     except Exception:
         veo_client.finish_task(dest)
         raise
@@ -2425,7 +2637,7 @@ def gen_video(prompt: str, dest: Path, log=print,
         if attempt == 2:
             break
         log("[Видео-ИИ] Все ключи заняты — пауза 45 c и повтор...")
-        time.sleep(45)
+        _sleep_cancel(45)
     raise last
 
 
@@ -2470,10 +2682,11 @@ def ken_burns(image: Path, dest: Path, duration: float = 8.0, fps: int = 25):
     vf = (f"scale=3840:-2:flags=lanczos,"
           f"zoompan={random.choice(variants)}:d={frames}:s=1920x1080:fps={fps},"
           f"format=yuv420p")
-    subprocess.run(["ffmpeg", "-y", "-i", str(image), "-vf", vf,
-                    "-c:v", "libx264", "-preset", "fast", "-an", str(dest)],
-                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                   creationflags=CREATE_NO_WINDOW)
+    # через _run_child: на план это десятки секунд, и по «Стопу» ffmpeg надо
+    # гасить, а не досматривать до конца очередной уже ненужный клип
+    _run_child(["ffmpeg", "-y", "-i", str(image), "-vf", vf,
+                "-c:v", "libx264", "-preset", "fast", "-an", str(dest)],
+               timeout=900, check=True)
 
 
 # ---------- Субтитры ----------
@@ -2531,16 +2744,12 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
     # с UnicodeEncodeError на первой же нелатинской букве (é, ü, ...) —
     # транскрипция обрывается и .srt не записывается
     env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                         text=True, encoding="utf-8", errors="replace",
-                         env=env, creationflags=CREATE_NO_WINDOW)
-    for line in p.stdout:
-        line = line.strip()
-        if line:
-            _console(f"[whisper] {line}")
-    p.wait()
-    if p.returncode != 0:
-        raise RuntimeError(f"whisper упал (код {p.returncode}) — подробности "
+    # _stream_child, а не Popen напрямую: транскрипция — самая длинная операция
+    # пайплайна и при этом почти без строк в журнале, поэтому «Стоп» на ней не
+    # срабатывал ВООБЩЕ до самого конца. Сторож внутри гасит whisper деревом.
+    code = _stream_child(cmd, "whisper", env=env)
+    if code != 0:
+        raise RuntimeError(f"whisper упал (код {code}) — подробности "
                            "на странице «Консоль»")
     # Whisper может назвать файлы по-своему — приводим к стандартным именам,
     # чтобы остальные шаги их находили. .json (слова с таймкодами) —
@@ -2999,6 +3208,14 @@ def fetch_media(scenes_text: str, out_dir: Path, log,
         (", Ken Burns для картинок включён" if kenburns else ""))
     manifest = []
     for s in scenes:
+        if CANCEL.is_set():
+            # Скачанные файлы остаются, а manifest.json НЕ перезаписываем:
+            # список половины сцен затёр бы прошлый полный манифест, и
+            # следующий шаг решил бы, что материала столько и есть.
+            log(f"[Видеоматериал] ⛔ Стоп на сцене {s['n']}: скачанное "
+                f"осталось в video/ и images/, manifest.json не тронут")
+            _save_used(used)
+            raise Cancelled("Остановлено пользователем")
         safe = re.sub(r"[^\w\-]+", "_", s["keywords"])[:40]
         files = []
         try:
@@ -3416,6 +3633,12 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
 
     def run_job(job):
         i, kind, query, dest = job
+        # ThreadPoolExecutor.map ставит В ОЧЕРЕДЬ сразу все задачи, и закрытие
+        # пула честно дожидается каждой поставленной. Поэтому «Стоп» проверяем
+        # первым делом: не начатые кадры просто не начинаются (и не оплачиваются),
+        # иначе выход из раскадровки ждал бы всю очередь Veo целиком.
+        if CANCEL.is_set():
+            return (i, False, None)
         try:
             if kind == "photo":
                 gen_image(query, dest, gemini_key, log, visual_style)
@@ -3429,6 +3652,8 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
             else:
                 gen_video(_image_prompt(query, visual_style), dest, log)
             return (i, True, None)
+        except Cancelled:
+            return (i, False, None)   # прерванный кадр — не «неудача», не шумим
         except Exception as e:
             return (i, False, e)
 
@@ -3469,13 +3694,22 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
     ok = 0
     with ThreadPoolExecutor(max_workers=workers) as ex:
         for completed, (i, success, err) in enumerate(ex.map(run_job, jobs), 1):
+            if CANCEL.is_set():
+                break            # остаток очереди отработает пустышками
             if success:
                 ok += 1
-            else:
+            elif err is not None:
                 log(f"[Раскадровка] План {i}: параллельно не вышло "
                     f"({err}) - досоздастся в обычном проходе")
             log(f"[Очередь Veo] Готово {completed}/{len(jobs)}; "
                 f"успешно {ok}, в работе до {workers}")
+    # Уже вне `with`: пул закрыт, ни одного живого потока с оплаченной задачей
+    # не осталось. Готовые кадры лежат на диске под теми же именами, что ждёт
+    # основной цикл, — следующий запуск их подхватит, а не сгенерирует заново.
+    if CANCEL.is_set():
+        log(f"[Раскадровка] ⛔ Стоп во время параллельной генерации: "
+            f"успело {ok}/{len(jobs)} кадров, они сохранены в storyboard/")
+    _stop_check()
     log(f"[Раскадровка] Параллельно готово: {ok}/{len(jobs)}")
 
 
@@ -3692,6 +3926,18 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
 
     timeline, prev_query = [], "cinematic background"
     for i, b in enumerate(beats, 1):
+        if CANCEL.is_set():
+            # Обрыв РОВНО на границе плана: клипы, уже сложенные в storyboard/,
+            # остаются на месте и подхватятся следующим запуском по именам, а
+            # timeline.json и sequence.xml НЕ перезаписываем. Частичный таймлайн
+            # был бы худшим исходом: он затёр бы прошлый полный, и рендер молча
+            # собрал бы обрубок вместо ролика.
+            log(f"[Раскадровка] ⛔ Стоп на плане {i} из {len(beats)}: "
+                f"{len(timeline)} готовых клипов остались в storyboard/, "
+                "timeline.json не перезаписан (иначе рендер собрал бы обрубок)")
+            _save_used(used)   # историю использованных клипов сохраняем: она
+                               # только пополняется и защищает от повторов
+            raise Cancelled("Остановлено пользователем")
         need = b["end"] - b["start"]
         query = ((queries[i - 1] if queries else "")
                  or extract_keywords(b["text"]) or prev_query)
