@@ -1182,8 +1182,16 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
     post += _style_chain(opts, wh)
     post.append("format=yuv420p")
 
+    # АБСОЛЮТНЫЕ пути: финальный ffmpeg запускается с cwd=папка проекта
+    # (чтобы пути к PNG-секвенциям оверлеев были короткими — иначе командная
+    # строка Windows переполняется). Относительный путь к groups.txt при этом
+    # раскрывался от папки проекта, а не от рабочей папки процесса, и файл
+    # «пропадал»: ffmpeg искал estoico-es/estoico-es/render_tmp/groups.txt.
+    # Проявлялось только когда проект передан относительным путём И есть
+    # оверлеи, поэтому из интерфейса (там путь всегда абсолютный) не всплывало.
     cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-           "-i", str(concat_list), "-i", str(audio)]
+           "-i", str(Path(concat_list).resolve()),
+           "-i", str(Path(audio).resolve())]
     if ovls:
         # Пути к секвенциям — относительные, ffmpeg запускается из папки
         # проекта. Абсолютный путь тут повторяется на КАЖДЫЙ оверлей, и на
