@@ -94,6 +94,17 @@ export const GalleryAiDFC3: React.FC<VariantProps> = (p) => {
               [0.15, 1, 1, 0.15],
               { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
             );
+            // Подпись и номер были прибиты к левому краю СВОЕГО кадра, а
+            // кадр уезжает за кромку экрана: у крайнего слева кадра
+            // подпись оказывалась целиком за кадром, хотя сам снимок был
+            // виден больше чем наполовину и на полной непрозрачности —
+            // зритель видел безымянное фото. Поэтому подпись
+            // подтягивается внутрь видимой области ровно на столько, на
+            // сколько кадр вышел за кромку. Предел — половина кадра:
+            // дальше снимок и так гасится через near.
+            const hide = PHOTO_W * 0.5;
+            const capL = Math.min(Math.max(0, -x), hide);
+            const capR = Math.min(Math.max(0, x + PHOTO_W - width), hide);
             return (
               <div key={i} style={{ position: 'relative', flexShrink: 0, opacity: near }}>
                 <Img src={c.img} style={{
@@ -105,9 +116,9 @@ export const GalleryAiDFC3: React.FC<VariantProps> = (p) => {
                 }} />
                 <div style={{
                   position: 'absolute',
-                  left: 0,
+                  left: capL,
                   bottom: 0,
-                  right: 0,
+                  right: capR,
                   padding: '8px 12px',
                   background: 'linear-gradient(0deg, rgba(0,0,0,0.85), rgba(0,0,0,0))',
                   color: '#f2f2ee',
@@ -121,7 +132,7 @@ export const GalleryAiDFC3: React.FC<VariantProps> = (p) => {
                 {/* номер кадра на самой плёнке, как на негативе */}
                 <div style={{
                   position: 'absolute',
-                  left: 4,
+                  left: 4 + capL,
                   top: -Math.round(MARGIN * 0.56),
                   color: 'rgba(255,190,120,0.9)',
                   fontFamily: "'Consolas', 'Courier New', monospace",

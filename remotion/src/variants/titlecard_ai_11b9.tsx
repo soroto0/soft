@@ -88,12 +88,17 @@ export const TitlecardAi11B9: React.FC<VariantProps> = (p) => {
           backgroundImage: `radial-gradient(circle at 50% 50%, transparent 60%, rgba(0,0,0,0.05) 100%)`,
         }}
       >
-        {/* Decorative Corner Accents */}
+        {/* Decorative Corner Accents.
+            Ключи были t/l/r/b — таких свойств в CSS нет, поэтому все четыре
+            уголка теряли смещение, вставали в статическую позицию и
+            слипались в один квадратик у верхнего левого края контента,
+            перечёркнутый верхней линейкой. Нужны настоящие top/left/right/
+            bottom, и стороны рамки считаются по ним же. */}
         {[
-          { t: 10, l: 10 },
-          { t: 10, r: 10 },
-          { b: 10, l: 10 },
-          { b: 10, r: 10 },
+          { top: 10, left: 10 },
+          { top: 10, right: 10 },
+          { bottom: 10, left: 10 },
+          { bottom: 10, right: 10 },
         ].map((pos, i) => (
           <div
             key={i}
@@ -102,10 +107,10 @@ export const TitlecardAi11B9: React.FC<VariantProps> = (p) => {
               ...pos,
               width: 24,
               height: 24,
-              borderTop: pos.t ? `2px solid ${COLORS.accent}` : undefined,
-              borderBottom: pos.b ? `2px solid ${COLORS.accent}` : undefined,
-              borderLeft: pos.l ? `2px solid ${COLORS.accent}` : undefined,
-              borderRight: pos.r ? `2px solid ${COLORS.accent}` : undefined,
+              borderTop: pos.top !== undefined ? `2px solid ${COLORS.accent}` : undefined,
+              borderBottom: pos.bottom !== undefined ? `2px solid ${COLORS.accent}` : undefined,
+              borderLeft: pos.left !== undefined ? `2px solid ${COLORS.accent}` : undefined,
+              borderRight: pos.right !== undefined ? `2px solid ${COLORS.accent}` : undefined,
               opacity: panelEntrance,
             }}
           />

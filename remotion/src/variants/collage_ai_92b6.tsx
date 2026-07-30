@@ -30,10 +30,32 @@ export const CollageAi92B6: React.FC<VariantProps> = (p) => {
   const opacity = p.enter * p.exit;
   const PHOTO_W = Math.round(height * 0.42);
   const PHOTO_H = Math.round(PHOTO_W * 0.7);
+  // Поля паспарту вынесены в константы: по ним считается и ширина снимка
+  // (см. CARD_W), и центровка веера.
+  const PAD = 12;
+  const PAD_BOTTOM = 46;
+  const CARD_W = PHOTO_W + PAD * 2;
+  const CARD_H = PHOTO_H + PAD + PAD_BOTTOM;
+
+  // Веер выходит за габариты контейнера (в нём лежит один снимок, а лежат
+  // трое со разбегом), поэтому «центр по контейнеру» ставил стопку ниже и
+  // левее центра кадра. Считаем настоящую габаритную рамку веера и
+  // сдвигаем контейнер на разницу центров.
+  const spanL = Math.min(...FAN.map((f) => f.dx));
+  const spanR = Math.max(...FAN.map((f) => f.dx)) + CARD_W;
+  const spanT = Math.min(...FAN.map((f) => f.dy));
+  const spanB = Math.max(...FAN.map((f) => f.dy)) + CARD_H;
+  const fixX = Math.round((PHOTO_W - (spanL + spanR)) / 2);
+  const fixY = Math.round((PHOTO_H - (spanT + spanB)) / 2);
 
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', opacity }}>
-      <div style={{ position: 'relative', width: PHOTO_W, height: PHOTO_H }}>
+      <div style={{
+        position: 'relative',
+        width: PHOTO_W,
+        height: PHOTO_H,
+        transform: `translate(${fixX}px, ${fixY}px)`,
+      }}>
         {items.map((it, i) => {
           const f = FAN[i] ?? FAN[0];
           const t0 = i * step;
@@ -64,12 +86,21 @@ export const CollageAi92B6: React.FC<VariantProps> = (p) => {
               position: 'absolute',
               left: f.dx,
               top: f.dy,
+              // Ширина ОБЯЗАНА быть задана явно. Без неё у absolute-блока
+              // работает shrink-to-fit от «доступной» ширины (ширина
+              // контейнера минус left), а у сдвинутых вправо снимков её
+              // остаются считанные пиксели; плюс tailwind-preflight держит
+              // на img правило max-width:100%, и снимок послушно сжимался
+              // в вертикальную полоску, обрезанную object-fit'ом. Второй и
+              // третий снимок веера от этого превращались в огрызки.
+              width: CARD_W,
+              boxSizing: 'border-box',
               zIndex: i + 1,
               opacity: fade,
               transform: `translateY(${drop}px) rotate(${spin}deg) scale(${Math.max(land, 0.001)})`,
               background: '#fbf8f1',
-              padding: 12,
-              paddingBottom: 46,
+              padding: PAD,
+              paddingBottom: PAD_BOTTOM,
               boxShadow: '0 26px 54px rgba(0,0,0,0.65)',
             }}>
               <Img src={it.img} style={{

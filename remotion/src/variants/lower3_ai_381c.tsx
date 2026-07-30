@@ -26,23 +26,23 @@ export const Lower3Ai381C: React.FC<VariantProps> = (p) => {
     extrapolateRight: 'clamp',
   });
 
-  // Exit Animation handled by opacity only (p.exit), keeping the slide steady
-  // until it drops out, or we can make it slide down. Let's make it drop down
-  // slightly to feel like it's being pulled away.
-  const exitSlide = interpolate(p.exit, [0, 1], [0, -1], {
-    easing: Easing.linear,
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  });
+  // Уход вниз. Было interpolate(p.exit, [0,1], [0,-1]) * height * 0.5:
+  // p.exit почти всю жизнь оверлея равен 1, то есть множитель равнялся -1
+  // ПОСТОЯННО — плашка все три секунды висела поднятой на полкадра вверх
+  // и к нижней кромке не имела отношения. Плюс знак был обратный: уход
+  // «вниз» уезжал вверх. Считаем от (1 - p.exit): пока оверлей жив, сдвига
+  // нет, на последних кадрах плашка съезжает под кромку (на ту же
+  // дистанцию travel, что и въезд, см. ниже).
+  const dropOut = 1 - p.exit;
 
-  const totalSlideOffset = slideProgress < 1 
-    ? (height * 1.2) * (1 - slideProgress) // Enters from below
-    : (exitSlide * height * 0.5); // Exits further below
-
-  const yOffset = height + totalSlideOffset;
   const opacity = p.enter * p.exit;
-  
-  if (opacity <= 0.01 || yOffset > height + 10) return null;
+
+  // Отсечка ТОЛЬКО по прозрачности. Раньше здесь было ещё
+  // «yOffset > height + 10», где yOffset = height + totalSlideOffset, —
+  // условие срабатывало на всём въезде (сдвиг там до 1.2 высоты кадра), и
+  // выдвижение «ящика» не было видно ни на одном кадре: плашка просто
+  // возникала на месте. Уехавшую за кромку плашку и так обрезает кадр.
+  if (opacity <= 0.01) return null;
 
   // Text Wrapping Logic
   const words = (p.content || '').split(' ');
@@ -69,6 +69,16 @@ export const Lower3Ai381C: React.FC<VariantProps> = (p) => {
   const cardHeight = textHeight + (padX * 2);
   const cardWidth = (width * 0.65) - stripeWidth; // Leave margin on right
 
+  // Ход «ящика» считается от высоты САМОЙ плашки, а не от высоты кадра.
+  // Было height * 1.2 — восемь с лишним сотен пикселей на карточку в
+  // восемьдесят: почти весь въезд плашка проводила ниже кромки и
+  // выныривала в последние полтора кадра, то есть выдвижения не было
+  // видно вообще. Достаточно убрать её ровно под кромку.
+  const travel = cardHeight + 60 + 12;
+  const totalSlideOffset = slideProgress < 1
+    ? travel * (1 - slideProgress) // Enters from below
+    : travel * dropOut;
+
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
       {/* The Card Container */}
@@ -85,10 +95,17 @@ export const Lower3Ai381C: React.FC<VariantProps> = (p) => {
           pointerEvents: 'none',
         }}
       >
-        {/* Carbon Copy Shadow */}
+        {/* Carbon Copy Shadow.
+            Был position:relative, то есть ПОЛНОЦЕННЫМ элементом flex-строки
+            рядом с плашкой: две «карточки» по 0.65 ширины кадра в
+            центрированной строке — и настоящая плашка уезжала вправо,
+            вылезая за кромку кадра, а слева висел её пустой двойник.
+            Тень обязана быть absolute, вне потока. */}
         <div
           style={{
-            position: 'relative',
+            position: 'absolute',
+            left: '50%',
+            marginLeft: -cardWidth / 2,
             width: cardWidth,
             height: cardHeight,
             backgroundColor: 'transparent',

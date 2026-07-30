@@ -26,12 +26,24 @@ export const CalloutAi6CDB: React.FC<VariantProps> = (p) => {
   const tx = (targetX / 100) * width;
   const ty = (targetY / 100) * height;
 
-  // Box Placement: Anchored to the right side of the screen for this variant
-  // to contrast with a left-originating pointer.
+  // Box Placement.
+  // Раньше карточка ставилась только справа от точки и «не выезжала за
+  // кадр» через Math.min. Но точка по умолчанию стоит на 70% ширины, и
+  // ограничитель прижимал карточку ВПЛОТНУЮ к ней: выноска схлопывалась в
+  // четыре пикселя, а кружок-цель уезжал ПОД карточку — весь смысл
+  // выноски пропадал. Поэтому если справа места нет, карточка
+  // переезжает ВЛЕВО от точки, а выноска цепляется к её ближнему краю.
   const BOX_W = 340;
   const BOX_H = 140;
-  const BOX_X = Math.min(tx + 60, width - BOX_W - 40); // Don't go off screen
-  const BOX_Y = ty - (BOX_H / 2);
+  const LEAD = 90;              // минимальная длина выноски
+  const EDGE = 40;              // отступ карточки от кромки кадра
+  const onRight = tx + LEAD + BOX_W + EDGE <= width;
+  const BOX_X = onRight
+    ? tx + LEAD
+    : Math.max(EDGE, tx - LEAD - BOX_W);
+  // По вертикали тоже с ограничителем: точку в углу кадра карточка иначе
+  // догоняла верхней или нижней кромкой и обрезалась.
+  const BOX_Y = Math.min(Math.max(ty - BOX_H / 2, EDGE), height - BOX_H - EDGE);
 
   // Animation Timings
   const ANIM_DUR_IN = 15; // frames
@@ -84,8 +96,9 @@ export const CalloutAi6CDB: React.FC<VariantProps> = (p) => {
   // Pointer Geometry
   const startNodeCx = tx;
   const startNodeCy = ty;
-  const endNodeCx = BOX_X;
-  const endNodeCy = BOX_Y + (BOX_H / 2); // Connect to middle-left of box
+  // Цепляемся за тот край карточки, который смотрит на точку
+  const endNodeCx = onRight ? BOX_X : BOX_X + BOX_W;
+  const endNodeCy = BOX_Y + (BOX_H / 2);
   
   // Calculate line segment points
   // We want an "L" shaped leader or a straight angled leader? 
@@ -95,8 +108,12 @@ export const CalloutAi6CDB: React.FC<VariantProps> = (p) => {
   const linePath = `M ${startNodeCx} ${startNodeCy} L ${endNodeCx} ${endNodeCy}`;
 
   // Content Rendering
-  const mainText = p.content || "Subject Identified";
-  const subText = "Archival Reference Data"; // Hardcoded secondary context for documentary feel
+  const mainText = p.content || "Без подписи";
+  // Служебная строка-«шапка» музейной этикетки. Была захардкожена
+  // по-английски — в русском ролике латиница в кадре читается как чужой
+  // ассет. Смысла в ней нет, только ритм этикетки, поэтому просто
+  // по-русски.
+  const subText = "Архивная справка";
 
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
@@ -143,7 +160,9 @@ export const CalloutAi6CDB: React.FC<VariantProps> = (p) => {
           display: 'flex',
           flexDirection: 'column',
           transform: `scale(${easedIn})`,
-          transformOrigin: 'left center',
+          // Наезд масштаба идёт от того края, к которому пришла выноска:
+          // иначе карточка «отрывается» от линии на входе
+          transformOrigin: onRight ? 'left center' : 'right center',
         }}>
           {/* Cream Mount Background */}
           <div style={{
@@ -174,7 +193,9 @@ export const CalloutAi6CDB: React.FC<VariantProps> = (p) => {
             {/* Header / Category Kicker - subtle and technical */}
             <div style={{
               fontFamily: '"Bahnschrift", sans-serif',
-              fontSize: '10px',
+              // 10px на кадре 720p — это полтора пикселя штриха, шапка
+              // этикетки превращалась в серую царапину
+              fontSize: '13px',
               fontWeight: 'bold',
               letterSpacing: '2px',
               textTransform: 'uppercase',

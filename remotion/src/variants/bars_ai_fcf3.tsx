@@ -80,14 +80,24 @@ export const BarsAiFCF3: React.FC<VariantProps> = (p) => {
       boxShadow: '0 0 15px rgba(0, 180, 216, 0.6), inset 0 0 2px rgba(255,255,255,0.5)',
       clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 0)', // Standard rect inside clipped parent
     },
+    // Ряд «подпись слева — значение справа». Значение раньше лежало
+    // ВНУТРИ дорожки с top:-28, а у дорожки есть clipPath со скошенным
+    // углом — clip-path режет всё поддерево, и цифры не появлялись ни на
+    // одном кадре: смысл диаграммы (30 против 70) в кадр не попадал.
+    // Поэтому значение вынесено в строку подписи, наружу дорожки.
+    barHead: {
+      display: 'flex' as const,
+      alignItems: 'baseline' as const,
+      justifyContent: 'space-between' as const,
+      gap: 12,
+      marginBottom: 6,
+    },
     valueText: {
-      position: 'absolute' as const,
-      right: 12,
-      top: -28,
       fontFamily: "'Consolas', monospace",
-      fontSize: 16,
+      fontSize: 20,
       color: '#90eeff',
       textShadow: '0 0 5px #00ffff',
+      flexShrink: 0,
     },
     scanlineOverlay: {
       position: 'absolute' as const,
@@ -177,15 +187,9 @@ export const BarsAiFCF3: React.FC<VariantProps> = (p) => {
 
           return (
             <div key={i} style={{ marginBottom: 12 }}>
-              <div style={styles.barLabel}>{item.label}</div>
-              <div style={styles.barTrack}>
-                <div 
-                  style={{
-                    ...styles.barFill,
-                    width: `${currentWidth}%`,
-                  }}
-                />
-                
+              <div style={styles.barHead}>
+                <div style={{ ...styles.barLabel, marginBottom: 0 }}>{item.label}</div>
+
                 {/* Value Label appearing at the end of the sweep */}
                 {valueVisible && (
                   <div style={{
@@ -195,6 +199,14 @@ export const BarsAiFCF3: React.FC<VariantProps> = (p) => {
                     {item.value}
                   </div>
                 )}
+              </div>
+              <div style={styles.barTrack}>
+                <div
+                  style={{
+                    ...styles.barFill,
+                    width: `${currentWidth}%`,
+                  }}
+                />
               </div>
             </div>
           );
