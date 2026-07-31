@@ -1739,6 +1739,184 @@ def suggest_overlays(rows: list, manifest: list, min_gap: float = 8.0,
     return "\n".join(lines)
 
 
+# ---------- Типы оверлеев: где стоят, из чего собираются ----------
+
+# Позиция по умолчанию. Тип, которого В ЭТОМ СЛОВАРЕ НЕТ, молча становился
+# banner — так и потерялись counter, bars, timeline, popup: _type_budget их
+# честно просил у модели, а здесь их не было, и каждый такой выбор превращался
+# в ещё один баннер. Отсюда 20% баннеров и ноль инфографики в abyss.
+# Добавляешь новый вид оверлея — впиши его СЮДА, иначе он не появится в
+# роликах никогда, сколько ни описывай его в промпте.
+OVL_POS = {"titlecard": "center", "banner": "top", "lower3": "bottom",
+           "compare": "center", "callout": "point:70,40", "collage": "center",
+           "kinetic": "center", "quote": "center", "stamp": "top",
+           "redact": "center", "highlight": "point:62,45", "marker": "center",
+           "gallery": "center", "counter": "center", "bars": "center",
+           "timeline": "center", "popup": "top-right"}
+
+# Сколько слов влезает в тип, не превращаясь в кашу. Заодно это и список
+# типов, которые собираются из ЛЮБОГО текста: ими можно добивать плотность
+# и разгружать перекошенное распределение.
+OVL_WORDS = {"banner": 9, "lower3": 4, "callout": 7, "kinetic": 6,
+             "marker": 8, "highlight": 5, "titlecard": 5, "quote": 12}
+PLAIN_TYPES = tuple(OVL_WORDS)
+
+# Ни один тип не имеет права занимать больше этой доли ролика — иначе это
+# уже не «расстановка», а один и тот же элемент по кругу.
+TYPE_CAP_SHARE = 0.25
+
+
+def _pairs(text: str) -> list[tuple[str, str]]:
+    """'Found:30,Missing:70' -> [('Found','30'),('Missing','70')].
+    Ровно так же, как читают content рендереры bars и timeline."""
+    out = []
+    for chunk in text.split(","):
+        if ":" in chunk:
+            a, _, b = chunk.partition(":")
+            if a.strip() and b.strip():
+                out.append((a.strip(), b.strip()))
+    return out
+
+
+def _fits_type(otype: str, text: str) -> tuple[bool, str]:
+    """Соберётся ли этот тип из такого текста. -> (годен, текст).
+
+    Проверка ровно та, что делает рендерер: bars ищет пары label:число,
+    timeline — пары год:событие, counter — число. Не сойдётся формат —
+    рендерер бросит исключение, и оверлей пропадёт из ролика уже на сборке."""
+    if otype == "compare":
+        return ("::" in text), text
+    if otype in ("quote", "stamp", "titlecard"):
+        # вторая часть (автор, дата, подзаголовок) может быть пустой, но сам
+        # разделитель нужен — иначе компонент нарисует строку одним куском
+        return True, (text if "::" in text else text + "::")
+    if otype == "redact":
+        return ("*" in text and "::" in text), text
+    if otype in ("collage", "gallery"):
+        return (text.count(";;") >= 1 and "::" in text), text
+    if otype == "counter":
+        return bool(re.search(r"\d", text)), text
+    if otype == "bars":
+        ps = _pairs(text)
+        ok = len(ps) >= 2 and all(re.search(r"\d", v) for _, v in ps)
+        return ok, text
+    if otype == "timeline":
+        ps = _pairs(text)
+        return (len(ps) >= 2 and all(re.search(r"\d", y) for y, _ in ps)), text
+    if otype == "popup":
+        return bool(text.strip()) and len(text.split()) <= 6, text
+    return bool(text.strip()), text
+
+
+def _as_plain(text: str, otype: str) -> str:
+    """Текст структурного типа — в обычную плашку: разделители в человеческие
+    знаки, длина под тип."""
+    t = text.replace("::", " — ").replace(";;", ", ").replace("*", "")
+    t = " ".join(t.split()).strip(" —,")
+    t = " ".join(t.split()[:OVL_WORDS.get(otype, 8)])
+    return (t + "::") if otype in ("quote", "titlecard") else t
+
+
+def _spare_type(counts: dict, pool: tuple = PLAIN_TYPES) -> str:
+    """Самый недоиспользованный из обычных типов. Именно это раньше делалось
+    словом «banner»: любая неудача — ещё один баннер, отсюда и перекос."""
+    return min(pool, key=lambda k: (counts.get(k, 0), pool.index(k)))
+
+
+def _auto_moment(text: str, counts: dict) -> tuple[str, str]:
+    """Тип и содержимое для ДОБОРНОГО оверлея по одной строке субтитров.
+
+    Добор — не мелочь: на длинном ролике им ставится больше половины плашек,
+    и пока он крутил по кругу три типа (banner/lower3/callout), он один и
+    делал те самые 83% однообразия. Теперь сначала смотрим, какой материал в
+    строке ЕСТЬ (два года -> timeline, число -> counter, место и год ->
+    stamp, вопрос -> callout), и только потом берём самый редкий обычный тип.
+    Ничего не выдумываем: если в строке нет пар для bars — bars и не будет,
+    рисовать несуществующие цифры хуже, чем поставить обычную плашку."""
+    words = text.split()
+    years = [(m.start(), m.group(0)) for m in re.finditer(r"\b(19|20)\d{2}\b",
+                                                          text)]
+    if len(years) >= 2 and counts.get("timeline", 0) <= counts.get("banner", 0):
+        pts = []
+        for pos, yr in years[:3]:
+            tail = " ".join(text[pos + len(yr):].split()[:2]).strip(" ,.;:")
+            tail = tail.replace(":", " ").replace("|", " ")
+            if tail:
+                pts.append(f"{yr}:{tail}")
+        if len(pts) >= 2:
+            return "timeline", ",".join(pts)
+    m = RE_MONEY.search(text) or re.search(r"\b\d{2,}\b", text)
+    if m and counts.get("counter", 0) <= counts.get("lower3", 0):
+        return "counter", m.group(0)
+    low = text.lower()
+    place = next((p for p in KNOWN_PLACES if p in low), None)
+    if place and counts.get("stamp", 0) <= counts.get("banner", 0):
+        return "stamp", f"{place.upper()}::{years[0][1] if years else ''}"
+    if text.rstrip().endswith("?"):
+        return "callout", " ".join(words[:OVL_WORDS["callout"]])
+    otype = _spare_type(counts)
+    return otype, _as_plain(text, otype)
+
+
+def _type_counts(lines: list) -> dict:
+    """Сколько каких типов в готовых строках файла."""
+    c = {}
+    for line in lines:
+        m = re.match(r"\s*\d{2}:\d{2}:\d{2}\s*\|\s*([a-z0-9]+)\s*\|", line)
+        if m:
+            c[m.group(1)] = c.get(m.group(1), 0) + 1
+    return c
+
+
+def _rebalance_types(lines: list, log=print) -> list:
+    """Ни один тип не занимает больше четверти ролика.
+
+    Последний рубеж: и модель, и добор могут перекосить набор, а зритель
+    видит именно итог. Переводим ИЗЛИШЕК перепредставленных обычных плашек в
+    самые редкие обычные же типы — текст у них взаимозаменяем, меняется
+    подача. Структурные (counter, bars, timeline, compare, collage…) не
+    трогаем: их содержимое под другой тип не годится.
+
+    Берём излишек НЕ подряд, а через равные промежутки — иначе первые пять
+    минут ролика окажутся вылизаны, а хвост останется прежним."""
+    counts = _type_counts(lines)
+    total = sum(counts.values())
+    if total < 8:
+        return lines
+    cap = max(3, int(total * TYPE_CAP_SHARE))
+    moved = {}
+    for otype in sorted(counts, key=lambda k: -counts[k]):
+        if counts.get(otype, 0) <= cap or otype not in PLAIN_TYPES:
+            continue
+        idxs = [i for i, l in enumerate(lines)
+                if re.match(rf"\s*\d{{2}}:\d{{2}}:\d{{2}}\s*\|\s*{otype}\s*\|",
+                            l)]
+        surplus = len(idxs) - cap
+        if surplus <= 0:
+            continue
+        step = max(1, len(idxs) // surplus)
+        for i in idxs[::step][:surplus]:
+            parts = [p.strip() for p in lines[i].split("|")]
+            if len(parts) < 3:
+                continue
+            new = _spare_type(counts)
+            if new == otype:
+                break
+            text = _as_plain(parts[2], new)
+            if not text.strip(" :"):
+                continue
+            dur = parts[4] if len(parts) > 4 else "4s"
+            lines[i] = f"{parts[0]} | {new} | {text} | {OVL_POS[new]} | {dur}"
+            counts[otype] -= 1
+            counts[new] = counts.get(new, 0) + 1
+            moved[new] = moved.get(new, 0) + 1
+    if moved:
+        log("[Оверлеи] Перекос типов выровнен (потолок "
+            f"{int(TYPE_CAP_SHARE * 100)}% на тип): "
+            + ", ".join(f"+{v} {k}" for k, v in sorted(moved.items())))
+    return lines
+
+
 # Окно разбора для LLM, секунды. 8 минут — примерно 60 моментов в ответе,
 # это уверенно влезает в лимит вместе с «размышлениями» модели. Больше —
 # начинается обрыв ответа на середине JSON, меньше — модель теряет из виду
@@ -1888,8 +2066,14 @@ def _ask_span(chunk: list, api_key: str, log, min_gap: float,
 
     -> (текст плана, сколько раз пришлось переспрашивать)
     """
+    # allow_windows=False — кусок уже вырезан из окна, и делить его ещё раз
+    # тем же кодом нельзя: он режет по АБСОЛЮТНОМУ времени, поэтому кусок
+    # «8-16 минута» снова попадал сам в себя целиком и уходил в бесконечную
+    # рекурсию (RecursionError валил всю стадию оверлеев на любом ролике
+    # длиннее ~12 минут — ровно на тех, где жалуются на однообразие).
     got = suggest_overlays_llm(chunk, api_key, log, min_gap,
-                               target=None, attempts=attempts)
+                               target=None, attempts=attempts,
+                               allow_windows=False)
     span = srt_to_seconds(chunk[-1][1]) - srt_to_seconds(chunk[0][0])
     # Планка нарочно скромная — вдвое ниже рабочей плотности. Задача не
     # выжать максимум, а поймать провал: кусок, где вместо десятка моментов
@@ -1920,7 +2104,8 @@ def _ask_span(chunk: list, api_key: str, log, min_gap: float,
 
 def suggest_overlays_llm(rows: list, api_key: str, log=print,
                          min_gap: float = 8.0, target: int | None = None,
-                         attempts: int = 3) -> str | None:
+                         attempts: int = 3,
+                         allow_windows: bool = True) -> str | None:
     """ОСНОВНОЙ путь расстановки оверлеев (не только фолбэк): LLM понимает
     смысл текста целиком, поэтому расставляет оверлеи ПЛОТНЕЕ и умнее, чем
     голый regex (который зависит от явных денег/дат/имён/вопросов в тексте
@@ -1932,8 +2117,18 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
     До attempts попыток — модель не всегда с первого раза отдаёт валидный
     JSON. None, если так и не получилось — тогда используется regex-путь."""
     from core import llm_chat
-    total = srt_to_seconds(rows[-1][1]) if rows else 0
-    if not total:
+    if not rows:
+        return None
+    # Считаем по ПРОТЯЖЁННОСТИ куска, а не по абсолютному времени его конца.
+    # Разница безобидна ровно до первого разбиения на окна: у куска «40-48
+    # минута» конец равен 48 минутам, и весь счёт (сколько моментов просить,
+    # сколько обязано остаться) выходил вшестеро завышенным. Именно отсюда
+    # бралось «163 оверлея» в abyss: у ролика на 54 минуты min_required
+    # ровно 163, и хвост добивался запасным подбором из трёх типов
+    # (banner/lower3/callout) — те самые 83% однообразия.
+    t0 = srt_to_seconds(rows[0][0])
+    span = srt_to_seconds(rows[-1][1]) - t0
+    if span <= 0:
         return None
     # Длинный ролик разбираем ОКНАМИ. Число запрашиваемых моментов растёт с
     # длиной (один на 8 с), а ответ обязан уместиться в лимит токенов —
@@ -1943,10 +2138,10 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
     # хороший, а в длинных плохой. Окно фиксированной длины держит каждый
     # запрос в том размере, на котором модель отвечает уверенно, независимо
     # от того, десять минут ролик или час.
-    if total > LLM_WINDOW_S * 1.5 and target is None:
+    if span > LLM_WINDOW_S * 1.5 and target is None and allow_windows:
         parts, win, thin = [], LLM_WINDOW_S, 0
-        for k in range(0, int(total // win) + 1):
-            lo, hi = k * win, (k + 1) * win
+        for k in range(0, int(span // win) + 1):
+            lo, hi = t0 + k * win, t0 + (k + 1) * win
             chunk = [r for r in rows if lo <= srt_to_seconds(r[0]) < hi]
             if len(chunk) < 2:
                 continue
@@ -1970,13 +2165,17 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
         f"{i}. [{int(srt_to_seconds(r[0]) // 60):02d}:"
         f"{int(srt_to_seconds(r[0]) % 60):02d}] {r[2]}"
         for i, r in enumerate(rows, 1))
-    n_auto = round(total / max(min_gap, 8))
+    n_auto = round(span / max(min_gap, 8))
     n = max(3, min(target, n_auto) if target else n_auto)
     # LLM систематически отдаёт МЕНЬШЕ, чем просят (сама выбирает не все
     # моменты подходящими, плюс часть потом отсеется min_gap-фильтром из-за
     # кластеризации во времени) — просим с запасом. min_required — жёсткий
     # пол, который досыпется regex-подбором ниже, если LLM всё равно не дотянет.
-    min_required = max(15, round(total / 20))
+    # Пол «хоть сколько-то» пропорционален куску (15 штук — только для
+    # ролика целиком, а не для каждого восьмиминутного окна: семь окон по
+    # 15 — это уже сто навязанных строк).
+    min_required = round(span / 20) if not allow_windows else max(
+        15, round(span / 20))
     n = max(n, round(min_required * 1.7))
     picks = None
     for attempt in range(1, attempts + 1):
@@ -2036,9 +2235,34 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "receding into depth, formatted \"label::photo topic;;"
                   "label::photo topic\"; use it when several examples or "
                   "options are being compared in sequence\n"
+                  # Эти четыре ОПИСАНЫ и РАЗРЕШЕНЫ только сейчас. Раньше они
+                  # были в OVL_POS и умели рисоваться, но в списке типов для
+                  # модели их не было — то есть предложить их она физически
+                  # не могла. Отсюда ровно ноль штук за 54-минутный ролик, а
+                  # не «редко». Именно они несут смысл, которого не даёт
+                  # плашка с текстом: число, шкала, даты, указатель на кадре.
+                  "  'counter' — a NUMBER worth landing on: money, a count, a "
+                  "duration, a percentage. Give it exactly as spoken with its "
+                  "sign and units, e.g. \"$200,000\" or \"30,000\" or \"−30°C\""
+                  "; it animates counting up. Use it EVERY time the narration "
+                  "states a figure that matters\n"
+                  "  'bars' — comparison of quantities, formatted "
+                  "\"label:value,label:value\" e.g. \"Found:30,Missing:70\"; "
+                  "use it when two or three amounts are set against each other\n"
+                  "  'timeline' — dates in sequence, formatted "
+                  "\"year:label,year:label\" e.g. \"1959:Found,1990:Reopened\";"
+                  " use it when the narration walks through events in time\n"
+                  "  'highlight' — an annotation drawn ONTO the footage: a "
+                  "ring that draws itself around a spot, then a short caption. "
+                  "p.text is that caption (under 4 words). Use it when the "
+                  "narration points at a detail that is visible in the shot\n"
                   + _type_budget(len(rows), min_gap) +
                   f'with a JSON array of {{"line": <line number>, "type": '
+                  # popup не включён намеренно: ему нужна КАРТИНКА, которую
+                  # ещё надо найти в Wikimedia, и путь этот отдельный
+                  # (NEEDS_IMAGE). Остальные 16 модель теперь может выбрать.
                   '"titlecard|banner|lower3|compare|callout|collage|kinetic|'
+                  'counter|bars|timeline|highlight|'
                   'quote|stamp|redact|marker|gallery", "text": '
                   '"..."}, nothing else.\n\n' + numbered}],
                 # 2200 не хватало: ответ обрывался на середине JSON-массива
