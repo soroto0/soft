@@ -3,15 +3,12 @@
 
 const $ = (id) => document.getElementById(id);
 
-const ICO = {
-  script: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l5 5v13H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>',
-  tts: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3M8 21h8"/></svg>',
-  subs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>',
-  media: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="7" height="7" rx="1"/><rect x="14" y="5" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
-  overlays: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M19 15l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"/></svg>',
-  render: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-4h14L20 9"/><rect x="3" y="9" width="18" height="10" rx="1.5"/><path d="M3 9l3-4M9 9l3-4M15 9l3-4"/></svg>',
-  build: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5L12 12l8-4.5M12 12v9"/></svg>',
-};
+// Имена каналов и проектов приходят из имён папок и свободного ввода —
+// в разметку их можно вставлять только экранированными.
+const esc = (s) => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
 // Этапы = лента наверху. id совпадает с id секции (stage-<id>), name — то,
 // как этап называется в state.checks с бэкенда (для галочек «готово»).
 const STAGES = [
@@ -160,8 +157,11 @@ async function refresh() {
   const s = await rpc("get_state");
   if (!s) { if (!state) state = await mockApi.get_state(); else return; }
   else state = s;
-  if (state.pending_veo && state.pending_veo > 0) {
-    setStatus(`⏳ Сохранено задач Veo: ${state.pending_veo}. Нажми «Генерировать видео», чтобы продолжить.`);
+  if (state.pending_veo && state.pending_veo > 0 && !isBusy) {
+    // сообщение, а не операция: пишем в журнал, иначе островок навсегда
+    // остаётся «в работе» и кольцо перестаёт показывать готовность
+    addLog(`Сохранено задач Veo: ${state.pending_veo}. `
+           + "Нажми «Генерировать видео», чтобы продолжить.", "warn");
   }
   $("projPath").value = state.project || "";
   $("version").textContent = "v" + (state.version || "3.0");
@@ -268,6 +268,8 @@ function renderProjects() {
 }
 
 function renderChecklist() {
+  if (!state) return;
+  $("sideProject").textContent = (state.project || "—").split(/[\/]/).pop() || "—";
   if (!state.checks) return;
   $("checklist").innerHTML = Object.entries(state.checks)
     .map(([k, v]) => `${v ? "✓" : "·"} ${k}`).join("<br>");
@@ -297,7 +299,7 @@ const app = {
     if (!r) return;
     const sel = $("channelSel");
     sel.innerHTML = (r.channels || []).map(
-      (c) => `<option value="${c.id}">${c.name}</option>`).join("")
+      (c) => `<option value="${esc(c.id)}">${esc(c.name || c.id)}</option>`).join("")
       || '<option value="">— нет каналов —</option>';
     if (r.current) sel.value = r.current;
     channelsCache = r.channels || [];
@@ -313,16 +315,19 @@ const app = {
     if (!grid) return;
     const tiles = channelsCache.map((c, i) => {
       const sub = [c.lang, c.tone].filter(Boolean).join(" · ");
-      return `<button class="gate-tile" onclick="app.gatePick('${c.id}')" title="${sub}">
+      return `<button class="gate-tile" data-ch="${esc(c.id)}" title="${esc(sub)}">
         <span class="face" style="background:${chColor(c, i)}">${chLetter(c)}</span>
-        <span class="nm">${c.name || c.id}</span>
+        <span class="nm">${esc(c.name || c.id)}</span>
       </button>`;
     });
-    tiles.push(`<button class="gate-tile" onclick="app.newChannel()">
+    tiles.push(`<button class="gate-tile" data-ch="">
       <span class="face" style="background:rgba(0,0,0,.14); color:var(--ink-2)">+</span>
       <span class="nm">Создать канал</span>
     </button>`);
     grid.innerHTML = tiles.join("");
+    grid.querySelectorAll(".gate-tile").forEach((b) => {
+      b.onclick = () => b.dataset.ch ? app.gatePick(b.dataset.ch) : app.newChannel();
+    });
   },
   // Меню каналов в верхней панели + аватар текущего канала
   renderChannelPop() {
@@ -330,10 +335,13 @@ const app = {
     const box = $("channelPopRows");
     if (box) {
       box.innerHTML = channelsCache.map((c, i) => `
-        <div class="pop-row${c.id === cur ? " active" : ""}" onclick="app.gatePick('${c.id}')">
+        <div class="pop-row${c.id === cur ? " active" : ""}" data-ch="${esc(c.id)}">
           <span class="ava" style="background:${chColor(c, i)}">${chLetter(c)}</span>
-          <span>${c.name || c.id}</span>
+          <span>${esc(c.name || c.id)}</span>
         </div>`).join("") || '<div class="pop-act">нет каналов</div>';
+      box.querySelectorAll(".pop-row").forEach((r) => {
+        r.onclick = () => app.gatePick(r.dataset.ch);
+      });
     }
     const i = channelsCache.findIndex((c) => c.id === cur);
     const c = i >= 0 ? channelsCache[i] : null;
@@ -541,13 +549,14 @@ const app = {
   },
   clearLog() { $("console").innerHTML = ""; $("console2").innerHTML = ""; },
   copyLog() {
-    navigator.clipboard.writeText($("console").innerText);
+    navigator.clipboard.writeText($("console2").innerText);
     addLog("Журнал скопирован в буфер обмена", "dim");
   },
   toggleDrawer() {
     const d = $("drawer");
-    d.classList.toggle("open");
-    if (d.classList.contains("open")) {
+    const open = d.classList.toggle("open");
+    document.body.classList.toggle("log-open", open);
+    if (open) {
       const b = $("console2");
       b.scrollTop = b.scrollHeight;
     }

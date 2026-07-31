@@ -414,6 +414,12 @@ textarea.prose { line-height: 1.75; min-height: 280px; }
   display: none; flex-direction: column;
 }
 .logdrawer.open { display: flex; animation: cfFade .2s ease; }
+/* Пока журнал открыт, он занимает 44vh поверх окна. Без этого запаса нижняя
+   часть страницы (кнопки «Собрать видео»/«Стоп» и список готовности справа)
+   оказывалась под панелью, и докрутить до неё было нельзя: body с
+   overflow:hidden, прокрутка внутри .scroll уже закончилась. */
+body.log-open .scroll { padding-bottom: calc(44vh + 24px); }
+body.log-open .side { padding-bottom: calc(44vh + 24px); }
 .log-head {
   display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
   color: rgba(255, 255, 255, .85); font-size: 12px; font-weight: 600;
