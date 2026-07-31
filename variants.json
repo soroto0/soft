@@ -195,5 +195,16 @@
     "channel": "",
     "created": "2026-07-31T16:55:05",
     "theme": "тёмный кинематограф: глубокий уголь, тёплый янтарный свет сбоку"
+  },
+  "titlecard/ai_f0e9": {
+    "file": "compositions/titlecard_ai_f0e9.html",
+    "component": "titlecard_ai_f0e9",
+    "type": "titlecard",
+    "variant": "ai_f0e9",
+    "engine": "hyperframes",
+    "enabled": true,
+    "channel": "",
+    "created": "2026-07-31T17:05:21",
+    "theme": "чертёж инженера: синяя калька, белые тонкие линии, моноширинный шрифт"
   }
 }

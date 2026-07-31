@@ -50,3 +50,26 @@ tmpvp20qnzw/src/variants/titlecard_ai_e8ca.tsx(
 
 17:00:32 [Оверлеи] Remotion: собираю бандл (~30-60 c, один раз)...
 17:00:48 [Варианты] рендер не принял (попытка 5/8): кадр полностью прозрачный (вариант ничего не рисует)
+17:02:57     сорвалось: Gemini #1: Gemini (текст): 429: {
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a; Gemini #2: Gemini (текст): 429: {
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a; Agnes: Agnes API 401: {"error":{"code":"","message":"无效的令牌 (request id: 20260731120052638156497QoGHOyvR)","type":"AgnesAI_error"}}; Agnes: Agnes: пустой ответ (возможно, фильтр контента); Agnes: Agnes: пустой ответ (возможно, фильтр контента)
+17:02:57 [5] titlecard / HyperFrames / чертёж инженера: синяя калька, белые тон...
+17:02:57 [Варианты] Прошу ИИ придумать вариант «titlecard» для HyperFrames (ai_f0e9)...
+17:05:21 [Варианты] ✔ Новый вариант «titlecard/ai_f0e9» (HyperFrames) прошёл проверку и добавлен (попытка 1)
+17:05:21     принят: ai_f0e9
+17:05:21 [6] titlecard / Remotion / ретро-ТВ 80-х: скан-линии, хроматическая...
+17:05:21 [Варианты] Прошу ИИ придумать новый вариант «titlecard» (ai_4b35)...
+17:06:38 [Варианты] tsc ошибки (попытка 1/8):
+tmp9w162lo5/src/variants/titlecard_ai_4b35.tsx(12,63): error TS2554: Expected 3-4 arguments, but got 5.
+tmp9w162lo5/src/variants/titlecard_ai_4b35.tsx(17,66): error TS2554: Expected 3-4 arguments, but got 5.
+tmp9w162lo5/src/variants/titlecard_ai_4b35.tsx(21,9): error TS6133: 'exitProgress' is declared but its value is never read.
+tmp9w162lo5/src/variants/titlecard_ai_4b35.tsx(21,77): error TS2554:
+17:07:44 [Варианты] tsc ошибки (попытка 2/8):
+tmpigbrvspx/src/variants/titlecard_ai_4b35.tsx(12,63): error TS2554: Expected 3-4 arguments, but got 5.
+tmpigbrvspx/src/variants/titlecard_ai_4b35.tsx(17,66): error TS2554: Expected 3-4 arguments, but got 5.
+tmpigbrvspx/src/variants/titlecard_ai_4b35.tsx(53,9): error TS6133: 'staggerFrames' is declared but its value is never read.
+tmpigbrvspx/src/variants/titlecard_ai_4b35.tsx(57,92): error TS2554

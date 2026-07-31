@@ -332,9 +332,14 @@ def _has_video(path: Path) -> bool:
         r = subprocess.run(
             ["ffprobe", "-v", "quiet", "-select_streams", "v:0",
              "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+            capture_output=True, text=True, timeout=60,
+            creationflags=CREATE_NO_WINDOW)
         return Path(path).exists() and "video" in r.stdout
-    except OSError:
+    # Таймаут обязателен: на битом/недописанном mp4 (а сюда зовут именно
+    # такие — проверка стоит после отказа кодировщика) ffprobe умеет висеть
+    # вечно, и весь рендер замирает молча. «Стоп» тут тоже не поможет: он
+    # убивает только ffmpeg внутри _run, а этот процесс запущен мимо него.
+    except (OSError, subprocess.SubprocessError):
         return False
 
 
@@ -345,9 +350,13 @@ def _video_dur(path: Path) -> float | None:
         r = subprocess.run(
             ["ffprobe", "-v", "quiet", "-select_streams", "v:0",
              "-show_entries", "stream=duration", "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+            capture_output=True, text=True, timeout=60,
+            creationflags=CREATE_NO_WINDOW)
         return float(r.stdout.strip().splitlines()[0])
-    except (OSError, ValueError, IndexError):
+    # subprocess.SubprocessError — тот же зависший ffprobe, что и в
+    # _has_video: без таймаута рендер встаёт намертво без единой строки в
+    # журнале (см. комментарий там)
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
         return None
 
 
@@ -478,8 +487,14 @@ def assign_materials(scenes: list[dict], out_dir: Path,
     if tl_file.exists():
         try:
             timeline = json.loads(tl_file.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except Exception as e:
+            # Молчать тут нельзя: без раскадровки материал раскладывается
+            # случайным пулом, ролик собирается «успешно», но кадр больше не
+            # соответствует тексту — а причина (битый timeline.json) нигде не
+            # видна. Работу не прерываем, пул остаётся рабочим запасным путём.
+            log(f"[Рендер] timeline.json не прочитан "
+                f"({e.__class__.__name__}: {e}) — материал раскладывается "
+                "пулом, привязка к раскадровке потеряна")
 
     pool = []
     for d in (out_dir / "video", out_dir / "images", out_dir / "storyboard"):
@@ -827,6 +842,15 @@ def render_group(seg_files: list[Path], durs: list[float],
         _group_concat_fallback(seg_files, durs, dest, fps)
 
 
+def _concat_line(p: Path) -> str:
+    """Строка для списка concat-демуксера. Апостроф в пути закрывает кавычку
+    раньше времени, и ffmpeg получает обрезанное имя («No such file») — а
+    путь задаёт пользователь кнопкой «Обзор…», то есть в нём может быть что
+    угодно. Экранирование апострофа внутри одинарных кавычек делается только
+    так: закрыть кавычку, дать \\', открыть заново."""
+    return "file '" + str(p.resolve().as_posix()).replace("'", "'\\''") + "'"
+
+
 def _group_concat_fallback(seg_files: list[Path], durs: list[float],
                            dest: Path, fps: int):
     """Запасная склейка группы без переходов: каждый сегмент обрезается до
@@ -840,7 +864,7 @@ def _group_concat_fallback(seg_files: list[Path], durs: list[float],
                  p.stem, CRF_SEGMENT, PRESET_SEG)
         parts.append(p)
     lst = dest.parent / f"{dest.stem}_list.txt"
-    lst.write_text("\n".join(f"file '{p.resolve().as_posix()}'" for p in parts),
+    lst.write_text("\n".join(_concat_line(p) for p in parts),
                    encoding="utf-8")
     # ВАЖНО: НЕ "-c copy". Куски кодировались отдельными вызовами ffmpeg —
     # у них независимые внутренние временные метки, и потоковая склейка
@@ -1155,7 +1179,7 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
     Порядок слоёв: сцена -> цветокор -> оверлеи -> субтитры -> стиль."""
     concat_list = tmp / "groups.txt"
     concat_list.write_text(
-        "\n".join(f"file '{f.resolve().as_posix()}'" for f in group_files),
+        "\n".join(_concat_line(f) for f in group_files),
         encoding="utf-8")
     filters = []
     if look_chain:                        # цветокор до субтитров и оверлеев
@@ -1237,8 +1261,15 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                 uniq = sorted({n for n, _ in want})
                 base = 2 + len(ovls)
                 slot = {n: base + k for k, n in enumerate(uniq)}
+                # Входы копим отдельно и подмешиваем в cmd только когда вся
+                # звуковая часть собралась. Раньше -i дописывались сразу, и
+                # отказ get_sfx на втором звуке (нет прав на assets/sfx,
+                # битый wav) оставлял в команде входы, на которые уже никто
+                # не ссылается: except откатывал audio_map, а мусор в cmd —
+                # нет, и он молча ел лимит длины командной строки.
+                sfx_inputs = []
                 for n in uniq:
-                    cmd += ["-i", str(get_sfx(n))]
+                    sfx_inputs += ["-i", str(get_sfx(n))]
                 sfx_parts, sfx_labels = [], []
                 # сколько копий каждого звука нужно — столько выходов у asplit
                 need = {n: sum(1 for x, _ in want if x == n) for n in uniq}
@@ -1258,6 +1289,7 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                         "[1:a]" + "".join(f"[{l}]" for l in sfx_labels)
                         + f"amix=inputs={1 + len(sfx_labels)}:"
                           "duration=first:normalize=0[aout]")
+                    cmd += sfx_inputs
                     fc += ";" + ";".join(sfx_parts)
                     audio_map = "[aout]"
             except Exception as e:
@@ -1271,17 +1303,34 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
         # путей её не спасёт — она обязана лежать отдельно.
         fc_file = tmp / "filter_complex.txt"
         fc_file.write_text(fc, encoding="utf-8")
-        cmd += ["-filter_complex_script", str(fc_file),
+        # .resolve() по той же причине, что и у groups.txt выше: ffmpeg
+        # запускается с cwd=папка проекта, и относительный путь удваивал бы
+        # её (estoico-es/estoico-es/render_tmp/filter_complex.txt). Тогда
+        # чинили только groups.txt, а этот файл и выходной остались
+        # относительными — тот же отказ, просто на шаг позже.
+        cmd += ["-filter_complex_script", str(Path(fc_file).resolve()),
                 "-map", "[vout]", "-map", audio_map]
     else:
         cmd += ["-map", "0:v", "-map", "1:a",
                 "-vf", ",".join(filters + post)]
     cmd += ["-t", f"{total:.3f}",
             *venc_args(CRF_FINAL, PRESET_FINAL, final=True),
-            "-c:a", "aac", "-b:a", "192k", str(dest)]
+            "-c:a", "aac", "-b:a", "192k", str(Path(dest).resolve())]
     # cwd = папка проекта: относительные пути секвенций выше разрешаются
     # именно от неё
-    _run(cmd, label="финал", cwd=Path(tmp).parent)
+    try:
+        _run(cmd, label="финал", cwd=Path(tmp).parent)
+    except BaseException:
+        # Недописанный финал удаляем. Он открывается и играет, обрываясь на
+        # середине, — отличить его от готового ролика нельзя ни по имени, ни
+        # на глаз, а старый файл с этим именем к этому моменту уже удалён
+        # (см. render_project). Особенно важно на «Стоп»: _run убивает ffmpeg
+        # посреди записи, и в папке проекта остаётся именно такой огрызок.
+        try:
+            Path(dest).unlink()
+        except OSError:
+            pass
+        raise
 
 
 # ---------- Оркестратор ----------
