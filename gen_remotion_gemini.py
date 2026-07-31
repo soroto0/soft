@@ -117,6 +117,12 @@ def apply_theme_palette(theme_desc: str, agnes_key: str, log=print) -> bool:
     palette = gen_theme_palette(theme_desc, agnes_key, log)
     if palette is None:
         log("[Remotion/Тема] Не удалось получить палитру — остаюсь на текущей")
+        import quality
+        quality.degraded(
+            "Оверлеи", "плашки в цветах прошлого ролика, а не под эту тему",
+            why="ИИ не отдал палитру за отведённые попытки",
+            hint="проверь ключ Agnes в настройках и остаток квоты",
+            level="заметно")
         return False
     return apply_palette(palette, log)
 
@@ -1140,6 +1146,15 @@ def gen_variant_hyperframes(kind: str, theme: str, api_key: str, log=print,
     _note_fail(kind, "hyperframes", problem)
     log(f"[Варианты] HyperFrames: не получилось за {max_attempts} попыток — "
         "библиотека осталась как была")
+    # Ролик от этого не пострадал, но ~16 платных вызовов ИИ ушли впустую,
+    # а разнообразие плашек не выросло — это стоит видеть в итоге.
+    import quality
+    quality.degraded(
+        "Варианты оверлеев",
+        f"новый вид «{kind}» не появился — библиотека не пополнилась",
+        why=f"{max_attempts} попыток подряд не прошли проверки "
+            f"(HyperFrames): {str(problem)[:100]}",
+        level="мелочь")
     return None
 
 
@@ -1243,6 +1258,15 @@ def gen_variant(kind: str, theme: str, api_key: str, log=print,
     _note_fail(kind, "remotion", problem)
     log(f"[Варианты] Не получилось за {max_attempts} попыток — библиотека "
         "осталась как была (на рендер это не влияет)")
+    # См. gen_variant_hyperframes: ролик тот же, но время и платные вызовы
+    # ИИ потрачены, а новых видов плашек не прибавилось.
+    import quality
+    quality.degraded(
+        "Варианты оверлеев",
+        f"новый вид «{kind}» не появился — библиотека не пополнилась",
+        why=f"{max_attempts} попыток подряд не прошли проверки "
+            f"(Remotion): {str(problem)[:100]}",
+        level="мелочь")
     return None
 
 

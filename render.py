@@ -112,6 +112,15 @@ def disable_hw(reason: str = "") -> None:
     if _HW_ENCODER:
         _console(f"[Рендер] Аппаратное кодирование отключено{': ' + reason if reason else ''}"
                  " — перехожу на процессор (libx264)")
+        # Картинка от этого не портится (финал и так всегда libx264), но
+        # рендер разом становится в разы дольше — а причина терялась.
+        import quality
+        quality.degraded(
+            "Рендер", "промежуточные проходы считает процессор, а не видеокарта",
+            why=f"аппаратный кодировщик отказал{': ' + reason if reason else ''}",
+            hint="у GeForce жёсткий лимит одновременных сессий NVENC — "
+                 "закрой другие программы, которые кодируют видео",
+            level="мелочь")
     _HW_ENCODER = ""
 
 
@@ -387,6 +396,17 @@ def _run_enc(build_cmd, label: str, crf: str, preset: str, final: bool = False):
 
 def _placeholder(dest: Path, dur: float, w: int, h: int, fps: int):
     """Тёмная заглушка вместо битого сегмента — рендер продолжается."""
+    # Запись здесь, а не в каждом обработчике: заглушку зовут из всех
+    # откатов сегмента, и итог у них один — зритель несколько секунд смотрит
+    # в пустой тёмный кадр. Какой именно план осыпался, видно в журнале.
+    import quality
+    quality.degraded(
+        "Рендер", "в кадре пустая тёмная заглушка вместо материала",
+        why="сегмент не закодировался — причина выше в журнале, у метки "
+            "этого сегмента",
+        hint="чаще всего это битый или недокачанный файл в video/ images/ — "
+             "перекачай материал этого плана",
+        level="критично")
     # ВСЕГДА процессор: заглушку зовут из except-обработчиков, и если
     # аппаратный кодировщик отказал (именно это и привело сюда), попытка
     # снова через него роняет весь рендер вместо продолжения.
@@ -495,6 +515,15 @@ def assign_materials(scenes: list[dict], out_dir: Path,
             log(f"[Рендер] timeline.json не прочитан "
                 f"({e.__class__.__name__}: {e}) — материал раскладывается "
                 "пулом, привязка к раскадровке потеряна")
+            import quality
+            quality.degraded(
+                "Рендер", "кадры идут вразнобой с текстом: смысловая "
+                "привязка к раскадровке потеряна",
+                why=f"timeline.json не прочитан ({e.__class__.__name__}: "
+                    f"{str(e)[:80]})",
+                hint="перезапусти раскадровку — файл timeline.json в папке "
+                     "проекта повреждён",
+                level="критично")
 
     pool = []
     for d in (out_dir / "video", out_dir / "images", out_dir / "storyboard"):
@@ -839,6 +868,11 @@ def render_group(seg_files: list[Path], durs: list[float],
         # упал — собираем группу встык, рендер продолжается без переходов
         _console(f"[{dest.stem}] xfade-склейка не удалась "
                  f"({str(e)[:120]}) — собираю группу встык (hard cut)")
+        import quality
+        quality.degraded(
+            "Рендер", "планы склеены встык, без переходов",
+            why=f"склейка переходами не удалась: {str(e)[:100]}",
+            level="заметно")
         _group_concat_fallback(seg_files, durs, dest, fps)
 
 
@@ -1200,6 +1234,15 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                 sub_filter = _ass_filter(ass)
             else:
                 style_name = "bold_box"   # нет voiceover.json — откат
+                import quality
+                quality.degraded(
+                    "Субтитры", "субтитры обычные, без пословной подсветки "
+                                "(караоке)",
+                    why="нет пословных таймкодов: voiceover.json отсутствует "
+                        "или пуст",
+                    hint="переозвучь проект — Whisper должен отдать "
+                         "voiceover.json со словами (--word_timestamps)",
+                    level="заметно")
         if sub_filter is None:
             sub_filter = _subtitles_filter(srt, size, style_name, sub_font)
         post.append(sub_filter)
@@ -1475,6 +1518,12 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
         ovls = _ovmod.build_overlays(out_dir, w, h, fps, tmp, log)
     except Exception as e:
         log(f"[Оверлеи] Пропущены целиком ({e.__class__.__name__}: {e})")
+        import quality
+        quality.degraded(
+            "Оверлеи", "в ролике нет ни одной плашки — оверлеи пропущены "
+                       "целиком",
+            why=f"{e.__class__.__name__}: {str(e)[:100]}",
+            level="критично")
 
     # имя выходного файла настраивается (иначе output_final.mp4)
     out_name = str(opts.get("out_name") or "output_final").strip()
@@ -1521,6 +1570,16 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
                 f"{aud_len:.1f} c — разница {drift:+.1f} c. "
                 + ("Хвост звука пойдёт по застывшему кадру."
                    if drift < 0 else "В конце будет видео без звука."))
+            import quality
+            quality.degraded(
+                "Рендер",
+                "конец ролика идёт по застывшему кадру" if drift < 0
+                else "в конце ролика видео без звука",
+                why=f"видео {vid_len:.1f} c против звука {aud_len:.1f} c, "
+                    f"разница {drift:+.1f} c",
+                hint="пересобери ролик; если повторится — смотри журнал "
+                     "склейки групп, расхождение копится на переходах",
+                level="критично")
         else:
             log(f"[Рендер] Длина сходится: видео {vid_len:.1f} c, "
                 f"звук {aud_len:.1f} c ({drift:+.1f} c)")

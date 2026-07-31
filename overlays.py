@@ -1251,6 +1251,18 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                 "движок — нет питоновского запасного рендерера")
         return renderers[it["type"]](it["content"], it["dur"], fps, W, H, dest)
 
+    def _note_fallback(it: dict, design: str, err) -> None:
+        """Выбранный дизайн не отрисовался, оверлей нарисован встроенным
+        видом. Зритель видит плашку — но не ту, что задумана, и одинаковую
+        с соседними. Отдельной строкой в журнале это терялось."""
+        import quality
+        quality.degraded(
+            "Оверлеи",
+            f"оверлей «{it['type']}» нарисован встроенным видом вместо "
+            "задуманного дизайна",
+            why=f"{design} не отрисовался: {str(err)[:100]}",
+            level="заметно")
+
     out = []
     for k, it in enumerate(items):
         try:
@@ -1299,11 +1311,21 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                 except Exception as e:
                     log(f"[Оверлеи] Вариант из библиотеки {lib_pick} не "
                         f"справился ({e}) — откат на встроенный вид.")
+                    _note_fallback(it, f"вариант из библиотеки {lib_pick}", e)
                     for old in Path(dest).glob("*.png"):
                         old.unlink()
             elif lib_pick.startswith("hyperframes_ai_") and not hyperframes_available():
                 log(f"[Оверлеи] Вариант {lib_pick} требует HyperFrames, а он "
                     f"не установлен — рисую встроенным видом.")
+                import quality
+                quality.degraded(
+                    "Оверлеи",
+                    f"оверлей «{it['type']}» нарисован встроенным видом: "
+                    "вариант из библиотеки требует HyperFrames",
+                    why="HyperFrames на этой машине не установлен",
+                    hint="поставь Node.js/npm — без них варианты HyperFrames "
+                         "из библиотеки не рисуются вообще",
+                    level="мелочь")
             elif lib_pick.startswith("hyperframes_ai_"):
                 # у HyperFrames вариант — это отдельный .html, путь к нему
                 # лежит в библиотеке; движок ролика тут не важен, он умеет
@@ -1322,6 +1344,7 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                 except Exception as e:
                     log(f"[Оверлеи] Вариант из библиотеки {lib_pick} не "
                         f"справился ({e}) — откат на встроенный вид.")
+                    _note_fallback(it, f"вариант из библиотеки {lib_pick}", e)
                     for old in Path(dest).glob("*.png"):
                         old.unlink()
             if variant_done:
@@ -1336,6 +1359,7 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                     except Exception as e:
                         log(f"[Оверлеи] HyperFrames не справился ({e}) — "
                             "откат на классический banner.")
+                        _note_fallback(it, "вид hyperframes_wipe", e)
                         for old in Path(dest).glob("*.png"):
                             old.unlink()
                 elif banner_variant == "remotion_ribbon" and engine == "remotion":
@@ -1349,6 +1373,7 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                     except Exception as e:
                         log(f"[Оверлеи] Remotion (ribbon) не справился ({e}) — "
                             "откат на классический banner.")
+                        _note_fallback(it, "вид remotion_ribbon", e)
                         for old in Path(dest).glob("*.png"):
                             old.unlink()
             elif it["type"] == "lower3":
@@ -1363,6 +1388,7 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                     except Exception as e:
                         log(f"[Оверлеи] HyperFrames не справился ({e}) — "
                             "откат на классический lower3.")
+                        _note_fallback(it, "вид hyperframes_chyron", e)
                         for old in Path(dest).glob("*.png"):
                             old.unlink()
                 elif lower3_variant == "remotion_underline" and engine == "remotion":
@@ -1376,6 +1402,7 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                     except Exception as e:
                         log(f"[Оверлеи] Remotion (underline) не справился "
                             f"({e}) — откат на классический lower3.")
+                        _note_fallback(it, "вид remotion_underline", e)
                         for old in Path(dest).glob("*.png"):
                             old.unlink()
             elif it["type"] == "counter" and counter_variant == "remotion_tag" \
@@ -1389,6 +1416,7 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                 except Exception as e:
                     log(f"[Оверлеи] Remotion (tag) не справился ({e}) — "
                         "откат на классический counter.")
+                    _note_fallback(it, "вид remotion_tag", e)
                     for old in Path(dest).glob("*.png"):
                         old.unlink()
             if not variant_done and engine == "remotion":
@@ -1399,6 +1427,18 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                 except Exception as e:
                     log(f"[Оверлеи] Remotion не справился ({e}) — "
                         "этот оверлей рисует Pillow.")
+                    # Сюда же приходит и упавшая сборка бандла: она бьёт по
+                    # КАЖДОМУ оверлею, и весь ролик уезжает на Pillow. Одна
+                    # строка «×N» в итоге и покажет масштаб.
+                    import quality
+                    quality.degraded(
+                        "Оверлеи",
+                        "плашки нарисованы простым видом (Pillow) вместо "
+                        "кинематографической анимации",
+                        why=f"Remotion не отработал: {str(e)[:120]}",
+                        hint="проверь Node.js и папку remotion/node_modules "
+                             "(npm install), там же — причина в журнале",
+                        level="заметно")
                     used_engine = "pillow"
                     for old in Path(dest).glob("*.png"):
                         old.unlink()
@@ -1414,6 +1454,21 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
         except Exception as e:
             log(f"[Оверлеи] Строка {it.get('line', '?')} ({it['type']}): "
                 f"пропущен — {e}")
+            # В кадре на этом месте не появится НИЧЕГО, а «оверлеи собраны»
+            # всё равно напишется. Именно это и не отличалось на глаз от
+            # нормального ролика без просмотра целиком.
+            import quality
+            no_engine = "запасного рендерера" in str(e)
+            quality.degraded(
+                "Оверлеи",
+                f"оверлей «{it['type']}» не появился в кадре"
+                + (": такой вид умеет рисовать только Remotion"
+                   if no_engine else ""),
+                why=str(e)[:120],
+                hint=("поставь Node.js и зависимости в папке remotion/ "
+                      "(npm install) — без них типы compare/banner/collage/"
+                      "titlecard пропадают целиком") if no_engine else "",
+                level="критично")
     return out
 
 

@@ -5,6 +5,7 @@
 import React from 'react';
 import type { VariantProps } from '../types';
 import { BannerAi8804 } from './banner_ai_8804';
+import { BannerAiF3E5 } from './banner_ai_f3e5';
 import { BarsAiFCF3 } from './bars_ai_fcf3';
 import { CalloutAi6CDB } from './callout_ai_6cdb';
 import { CollageAi92B6 } from './collage_ai_92b6';
@@ -25,6 +26,7 @@ import { TitlecardAiE566 } from './titlecard_ai_e566';
 
 export const VARIANTS: Record<string, React.FC<VariantProps>> = {
   'banner/ai_8804': BannerAi8804,
+  'banner/ai_f3e5': BannerAiF3E5,
   'bars/ai_fcf3': BarsAiFCF3,
   'callout/ai_6cdb': CalloutAi6CDB,
   'collage/ai_92b6': CollageAi92B6,

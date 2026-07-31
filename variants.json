@@ -206,5 +206,15 @@
     "channel": "",
     "created": "2026-07-31T17:05:21",
     "theme": "чертёж инженера: синяя калька, белые тонкие линии, моноширинный шрифт"
+  },
+  "banner/ai_f3e5": {
+    "file": "banner_ai_f3e5.tsx",
+    "component": "BannerAiF3E5",
+    "type": "banner",
+    "variant": "ai_f3e5",
+    "enabled": true,
+    "channel": "",
+    "created": "2026-07-31T17:34:42",
+    "theme": "ретро-ТВ 80-х: скан-линии, хроматическая аберрация, пурпур и циан"
   }
 }
