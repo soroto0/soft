@@ -175,5 +175,25 @@
     "channel": "",
     "created": "2026-07-31T13:03:00",
     "theme": "ретро-ТВ 80-х: скан-линии, хроматическая аберрация, пурпур и циан"
+  },
+  "lower3/ai_ccde": {
+    "file": "lower3_ai_ccde.tsx",
+    "component": "Lower3AiCCDE",
+    "type": "lower3",
+    "variant": "ai_ccde",
+    "enabled": true,
+    "channel": "",
+    "created": "2026-07-31T16:47:59",
+    "theme": "швейцарская типографика: белый фон, чёрный гротеск, тонкая красная линия"
+  },
+  "lower3/ai_393b": {
+    "file": "lower3_ai_393b.tsx",
+    "component": "Lower3Ai393B",
+    "type": "lower3",
+    "variant": "ai_393b",
+    "enabled": true,
+    "channel": "",
+    "created": "2026-07-31T16:55:05",
+    "theme": "тёмный кинематограф: глубокий уголь, тёплый янтарный свет сбоку"
   }
 }

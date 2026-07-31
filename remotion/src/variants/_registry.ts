@@ -12,6 +12,8 @@ import { CompareAi69A7 } from './compare_ai_69a7';
 import { GalleryAiDFC3 } from './gallery_ai_dfc3';
 import { KineticAi3E90 } from './kinetic_ai_3e90';
 import { Lower3Ai0FBF } from './lower3_ai_0fbf';
+import { Lower3Ai393B } from './lower3_ai_393b';
+import { Lower3AiCCDE } from './lower3_ai_ccde';
 import { MarkerAiB3D5 } from './marker_ai_b3d5';
 import { QuoteAi7C1A } from './quote_ai_7c1a';
 import { StampAi5B2D } from './stamp_ai_5b2d';
@@ -30,6 +32,8 @@ export const VARIANTS: Record<string, React.FC<VariantProps>> = {
   'gallery/ai_dfc3': GalleryAiDFC3,
   'kinetic/ai_3e90': KineticAi3E90,
   'lower3/ai_0fbf': Lower3Ai0FBF,
+  'lower3/ai_393b': Lower3Ai393B,
+  'lower3/ai_ccde': Lower3AiCCDE,
   'marker/ai_b3d5': MarkerAiB3D5,
   'quote/ai_7c1a': QuoteAi7C1A,
   'stamp/ai_5b2d': StampAi5B2D,
