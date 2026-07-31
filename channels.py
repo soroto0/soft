@@ -11,10 +11,20 @@
 сантехнику, не должен всплыть на канале про полярные экспедиции.
 """
 import json
+import os
+import threading
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
 CHANNELS_FILE = BASE / "channels.json"
+
+# Профиль правят из двух потоков разом: пользователь сохраняет форму канала,
+# а фоновая цепочка в это же время дописывает used_topics (webapp: upsert
+# после gen_topic). Без замка обе стороны читают файл, каждая накладывает
+# СВОЮ правку на свою копию и пишет её целиком — правка, записанная первой,
+# пропадает; а без записи через временный файл падение посередине оставляло
+# обрезанный channels.json, то есть все каналы разом.
+_FILE_LOCK = threading.RLock()
 
 # Поля профиля и их значения по умолчанию. Всё, чего нет в файле, берётся
 # отсюда — чтобы добавление нового поля не ломало уже сохранённые каналы.
@@ -107,8 +117,11 @@ def load() -> list[dict]:
 
 
 def save(channels: list[dict]) -> None:
-    CHANNELS_FILE.write_text(
-        json.dumps(channels, ensure_ascii=False, indent=2), encoding="utf-8")
+    with _FILE_LOCK:
+        tmp = CHANNELS_FILE.with_name(CHANNELS_FILE.name + ".tmp")
+        tmp.write_text(
+            json.dumps(channels, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, CHANNELS_FILE)
 
 
 def get(channel_id: str) -> dict | None:
@@ -127,15 +140,32 @@ def upsert(channel: dict) -> list[dict]:
     cid = str(channel.get("id", "")).strip()
     if not cid:
         raise ValueError("у канала должен быть id")
-    chans = load()
-    for i, ch in enumerate(chans):
-        if ch["id"] == cid:
-            chans[i] = {**ch, **channel, "id": cid}
-            break
-    else:
-        chans.append({**DEFAULTS, **channel, "id": cid})
-    save(chans)
+    # Чтение и запись — под одним замком: иначе между load() и save() успевает
+    # вклиниться upsert из фонового потока, и его правка теряется целиком.
+    with _FILE_LOCK:
+        chans = load()
+        for i, ch in enumerate(chans):
+            if ch["id"] == cid:
+                chans[i] = {**ch, **channel, "id": cid}
+                break
+        else:
+            chans.append({**DEFAULTS, **channel, "id": cid})
+        save(chans)
     return chans
+
+
+def _num(value, default):
+    """Число из профиля, каким бы его ни ввели руками.
+
+    Профиль правится как СЫРОЙ JSON в окне prompt (ui/app.js, editChannel),
+    поэтому в rate/sub_width/ai_ratio легко попадает "" или "-3%" вместо
+    числа. Раньше int("") валил apply_to_params с ValueError — то есть
+    опечатка в форме канала роняла весь запуск ещё до первого кадра, и по
+    сообщению было не понять, что дело в профиле."""
+    try:
+        return type(default)(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def projects_dir(channel: dict) -> Path:
@@ -166,7 +196,12 @@ def apply_to_params(channel: dict, p: dict) -> dict:
             out[key] = channel[key]
             locked.append(key)
     if channel.get("ai_ratio"):
-        out["ai_ratio"] = float(channel["ai_ratio"])
+        # Это ДОЛЯ, от 0 до 1. В сыром JSON легко написать 85 вместо 0.85, и
+        # такое число тихо уезжало дальше по конвейеру: доля ИИ-планов
+        # считается умножением, и 85 означает «генерировать всё подряд» —
+        # безлимитный Veo это молча съест, а счёт придёт за 85 роликов.
+        ratio = _num(channel["ai_ratio"], float(DEFAULTS["ai_ratio"]))
+        out["ai_ratio"] = min(1.0, max(0.0, ratio / 100 if ratio > 1 else ratio))
     # Субтитры — единственная настройка, которую профиль раньше перебивал
     # БЕЗУСЛОВНО: человек снимал галочку «Вшить субтитры», а они всё равно
     # вжигались, потому что в профиле стоит subs_on=True по умолчанию.
@@ -175,11 +210,12 @@ def apply_to_params(channel: dict, p: dict) -> dict:
     # выключает субтитры, а канал с subs_on=False не даёт их включить.
     out["subs"] = (bool(p.get("subs", True))
                    and bool(channel.get("subs_on", True)))
-    if channel.get("sub_width"):
-        out["sub_width"] = int(channel["sub_width"])
+    # мусор в поле не должен обнулять ширину, выбранную в интерфейсе
+    if _num(channel.get("sub_width"), 0):
+        out["sub_width"] = _num(channel["sub_width"], 0)
     if channel.get("voice"):
         out["voice"] = channel["voice"]
-        out["rate"] = f"{int(channel.get('rate', 0)):+d}%"
+        out["rate"] = f"{_num(channel.get('rate', 0), 0):+d}%"
         # Здесь стояло out["randomize"] = False — «чтобы разнообразие не
         # перебило голос канала». Но тот же флаг отвечает ещё за
         # интенсивность монтажа, цветокор и эффекты, и выключение ради
@@ -188,6 +224,7 @@ def apply_to_params(channel: dict, p: dict) -> dict:
         # темп, остальное продолжает меняться от ролика к ролику.
         locked += ["voice", "rate"]
     if channel.get("minutes"):
-        out.setdefault("minutes", channel["minutes"])
+        # длина уезжает в расчёт сценария, где ждут число, а не строку "45"
+        out.setdefault("minutes", _num(channel["minutes"], DEFAULTS["minutes"]))
     out["channel_locked"] = locked
     return out

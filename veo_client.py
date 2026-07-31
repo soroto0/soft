@@ -31,7 +31,16 @@ _TASK_LOCK = threading.RLock()
 
 
 class VeoError(RuntimeError):
-    pass
+    """status — код HTTP-ответа, если ошибка пришла от сервера.
+
+    Нужен опросу готовности, чтобы отличать «сервер сейчас занят» (429, 5xx —
+    задача продолжает считаться) от «задача не существует/запрос неверный»
+    (4xx). Без этого различия любой разовый 502 обрывал ожидание, а вызывающий
+    код считал это провалом задачи."""
+
+    def __init__(self, message: str, status: int = 0):
+        super().__init__(message)
+        self.status = status
 
 
 def configure_task_store(project_dir: Path | str | None) -> None:
@@ -158,9 +167,10 @@ def _request(method: str, path: str, api_key: str = "", **kw) -> dict:
     try:
         data = r.json()
     except ValueError:
-        raise VeoError(f"VeoNonStop {r.status_code}: {r.text[:300]}")
+        raise VeoError(f"VeoNonStop {r.status_code}: {r.text[:300]}", r.status_code)
     if not data.get("success", r.status_code < 400):
-        raise VeoError(f"VeoNonStop {r.status_code}: {data.get('error', r.text[:300])}")
+        raise VeoError(f"VeoNonStop {r.status_code}: {data.get('error', r.text[:300])}",
+                       r.status_code)
     return data.get("data", data)
 
 
@@ -245,11 +255,36 @@ def download_video(task_id: str, dest: Path, video_index: int = 0, api_key: str 
                       headers=_headers(api_key), params={"video_index": video_index},
                       stream=True, timeout=300)
     if r.status_code != 200:
-        raise VeoError(f"VeoNonStop download {r.status_code}: {r.text[:300]}")
+        raise VeoError(f"VeoNonStop download {r.status_code}: {r.text[:300]}",
+                       r.status_code)
     dest = Path(dest)
-    with open(dest, "wb") as f:
-        for chunk in r.iter_content(chunk_size=1 << 16):
-            f.write(chunk)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # Качаем в .part и переименовываем в конце. Раньше писали прямо в dest, и
+    # оборванная закачка оставляла на месте готового ролика обрезанный файл:
+    # он проходил и как «файл уже есть» при возобновлении, и дальше в монтаж —
+    # ролик собирался с битым кадром без единой ошибки в журнале.
+    tmp = dest.with_name(dest.name + ".part")
+    got = 0
+    try:
+        with open(tmp, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1 << 16):
+                f.write(chunk)
+                got += len(chunk)
+        # Content-Length сверяем только без перекодировки на лету: при gzip
+        # заголовок описывает сжатый размер, а на диск лёг распакованный.
+        expected = int(r.headers.get("Content-Length") or 0)
+        if not r.headers.get("Content-Encoding") and expected and got != expected:
+            raise VeoError(f"VeoNonStop download {task_id}: скачано {got} байт "
+                           f"из {expected} — файл неполный")
+        if not got:
+            raise VeoError(f"VeoNonStop download {task_id}: пустой ответ")
+        os.replace(tmp, dest)
+    finally:
+        # недокачанный кусок не должен пережить ошибку и быть принят за ролик
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
     return dest
 
 
@@ -268,8 +303,36 @@ def wait_for_completion(task_id: str, api_key: str = "", poll_s: int = 10,
     except Exception:
         pass
     t0 = time.time()
+    errors = 0
     while time.time() - t0 < timeout_s:
-        data = get_status(task_id, api_key)
+        try:
+            data = get_status(task_id, api_key)
+        except VeoError as e:
+            # 429/5xx и обрыв связи — это «сервер занят», а НЕ провал задачи:
+            # она продолжает считаться и держать слот. Раньше такая ошибка
+            # летела наружу, вызывающий код (generate_video_and_wait, core)
+            # стирал запись из журнала — и задача оставалась висеть на сервере,
+            # но кнопка «Стоп» её уже не находила, потому что ходит по журналу.
+            # 4xx кроме 429 (нет такой задачи, неверный ключ) повторять
+            # бессмысленно — они не рассосутся.
+            if e.status and e.status != 429 and e.status < 500:
+                raise
+            errors += 1
+            if errors > 5:
+                raise
+            log(f"[VeoNonStop] {task_id}: опрос статуса не удался ({e}) — "
+                f"повтор {errors}/5")
+            time.sleep(poll_s)
+            continue
+        except requests.RequestException as e:
+            errors += 1
+            if errors > 5:
+                raise
+            log(f"[VeoNonStop] {task_id}: связь оборвалась ({e}) — "
+                f"повтор {errors}/5")
+            time.sleep(poll_s)
+            continue
+        errors = 0
         status = str(data.get("status", "")).strip().lower()
         log(f"[VeoNonStop] {task_id}: {status}")
         if status in DONE_STATES:
@@ -313,6 +376,7 @@ def generate_video_and_wait(prompt: str, dest: Path, aspect_ratio: str = "16:9",
     if upscale and videos and videos[0].get("mediaGenerationId"):
         last_err = None
         for attempt in range(2):
+            up_task = ""
             try:
                 up_task = upsample_video(
                     videos[0]["mediaGenerationId"],
@@ -329,6 +393,15 @@ def generate_video_and_wait(prompt: str, dest: Path, aspect_ratio: str = "16:9",
                 return result
             except Exception as e:
                 last_err = e
+                # Гасим апскейл сами, а не через журнал: дальше по коду идёт
+                # finish_task(dest), запись исчезает — и «Стоп» уже не найдёт
+                # эту задачу, а она может быть жива (ошибка опроса, не провал)
+                # и держать один из двух слотов Veo.
+                if up_task:
+                    try:
+                        cancel_task(up_task, api_key)
+                    except Exception:
+                        pass
                 if attempt == 0:
                     log(f"[VeoNonStop] Апскейл до 1080p не вышел с первой попытки "
                         f"({e}) — пробую ещё раз")

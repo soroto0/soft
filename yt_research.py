@@ -39,13 +39,34 @@ def _key(api_key: str = "") -> str:
     return k
 
 
+def _say(log, msg: str) -> None:
+    """Печать в консоль Windows (cp1251) не должна ронять разбор.
+
+    Названия ЧУЖИХ каналов приходят какие угодно — эмодзи, иероглифы,
+    турецкие буквы; print такого текста в cp1251-консоли падает с
+    UnicodeEncodeError и убивает весь прогон уже после того, как квота
+    на запросы потрачена."""
+    try:
+        log(msg)
+    except UnicodeEncodeError:
+        log(msg.encode("ascii", "backslashreplace").decode("ascii"))
+
+
 def _get(path: str, params: dict, api_key: str = "") -> dict:
     import requests
     p = dict(params)
     p["key"] = _key(api_key)
-    r = requests.get(f"{API}/{path}", params=p, timeout=60)
+    try:
+        r = requests.get(f"{API}/{path}", params=p, timeout=60)
+    except requests.RequestException as e:
+        # В тексте исключения requests печатает URL ЦЕЛИКОМ, вместе с
+        # ?key=AIza… — а журналы отсюда попадают в переписку и в публичный
+        # репозиторий. Наружу отдаём только имя метода и род ошибки.
+        raise RuntimeError(f"YouTube API {path}: нет связи ({type(e).__name__})")
     if r.status_code != 200:
-        raise RuntimeError(f"YouTube API {r.status_code}: {r.text[:250]}")
+        # r.text ответа Google ключ не содержит, но обрезаем и его на всякий
+        raise RuntimeError(f"YouTube API {r.status_code}: "
+                           f"{r.text[:250].replace(p['key'], '***')}")
     return r.json()
 
 
@@ -82,14 +103,23 @@ def resolve_channel(ref: str, api_key: str = "") -> dict:
         raise RuntimeError(f"Канал «{ref}» не найден")
     c = items[0]
     st = c.get("statistics", {})
+    sn = c.get("snippet", {})
+    # Части ответа необязательны: у канала со скрытой статистикой нет
+    # statistics, а без contentDetails (бывает у ответов на forHandle)
+    # прежний код падал KeyError вместо внятного «нет каталога».
+    uploads = ((c.get("contentDetails") or {}).get("relatedPlaylists")
+               or {}).get("uploads")
+    if not uploads:
+        raise RuntimeError(f"У канала «{ref}» не отдан плейлист загрузок — "
+                           "разобрать каталог нечем")
     return {
-        "id": c["id"],
-        "title": c["snippet"]["title"],
-        "published": c["snippet"].get("publishedAt", "")[:10],
+        "id": c.get("id", ""),
+        "title": sn.get("title", ""),
+        "published": sn.get("publishedAt", "")[:10],
         "subs": int(st.get("subscriberCount", 0) or 0),
         "views": int(st.get("viewCount", 0) or 0),
         "count": int(st.get("videoCount", 0) or 0),
-        "uploads": c["contentDetails"]["relatedPlaylists"]["uploads"],
+        "uploads": uploads,
     }
 
 
@@ -112,9 +142,16 @@ def channel_videos(uploads_id: str, api_key: str = "", limit: int = 200,
                     {"part": "contentDetails", "playlistId": uploads_id,
                      "maxResults": 50, **({"pageToken": token} if token else {})},
                     api_key)
-        ids += [i["contentDetails"]["videoId"] for i in page.get("items", [])]
+        # У удалённых и приватных роликов в плейлисте videoId может не быть —
+        # пустая строка дальше попадёт в id=... и испортит весь запрос из 50.
+        ids += [vid for vid in
+                ((it.get("contentDetails") or {}).get("videoId")
+                 for it in page.get("items", []))
+                if vid]
         token = page.get("nextPageToken")
-        if not token:
+        # Страница без роликов, но с токеном, крутила цикл вечно: len(ids) не
+        # растёт, значит условие выхода по limit никогда не сработает.
+        if not token or not page.get("items"):
             break
     ids = ids[:limit]
     out = []
@@ -122,17 +159,18 @@ def channel_videos(uploads_id: str, api_key: str = "", limit: int = 200,
         chunk = _get("videos", {"part": "snippet,statistics,contentDetails",
                                 "id": ",".join(ids[i:i + 50])}, api_key)
         for v in chunk.get("items", []):
-            st, sn = v.get("statistics", {}), v["snippet"]
+            st, sn = v.get("statistics", {}), v.get("snippet", {})
             out.append({
-                "id": v["id"],
+                "id": v.get("id", ""),
                 "title": sn.get("title", ""),
                 "published": sn.get("publishedAt", ""),
                 "views": int(st.get("viewCount", 0) or 0),
                 "likes": int(st.get("likeCount", 0) or 0),
                 "comments": int(st.get("commentCount", 0) or 0),
-                "seconds": _iso_seconds(v["contentDetails"].get("duration", "")),
+                "seconds": _iso_seconds(
+                    (v.get("contentDetails") or {}).get("duration", "")),
             })
-    log(f"[Разбор] Собрано роликов: {len(out)}")
+    _say(log, f"[Разбор] Собрано роликов: {len(out)}")
     return out
 
 
@@ -144,6 +182,11 @@ def analyse(channel: dict, videos: list[dict]) -> dict:
     Свежие ролики не успели набрать просмотры, поэтому в сравнение идут
     только те, что старше 30 дней — иначе последние выпуски всегда выглядят
     провальными."""
+    if not videos:
+        # statistics.median([]) бросает StatisticsError — сообщение, по
+        # которому непонятно, что каталог просто пуст (канал без публичных
+        # роликов или квота кончилась на первой же странице).
+        raise RuntimeError("Нечего разбирать: каталог канала пуст")
     now = datetime.now(timezone.utc)
 
     def age_days(v):
@@ -220,8 +263,8 @@ def report(a: dict) -> str:
 def research(ref: str, api_key: str = "", limit: int = 200, log=print) -> dict:
     """Полный проход: найти канал -> собрать каталог -> разобрать."""
     ch = resolve_channel(ref, api_key)
-    log(f"[Разбор] {ch['title']}: {ch['subs']:,} подписчиков, "
-        f"{ch['count']} роликов".replace(",", " "))
+    _say(log, f"[Разбор] {ch['title']}: {ch['subs']:,} подписчиков, "
+              f"{ch['count']} роликов".replace(",", " "))
     vids = channel_videos(ch["uploads"], api_key, limit, log)
     if not vids:
         raise RuntimeError("не удалось собрать ролики канала")
