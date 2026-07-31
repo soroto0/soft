@@ -412,6 +412,12 @@ def enhance_voice(mp3: Path, log=print) -> Path:
     except Exception as e:
         tmp.unlink(missing_ok=True)
         log(f"[Озвучка] Обработку голоса пропустил ({e.__class__.__name__})")
+        import quality
+        quality.degraded(
+            "Озвучка", "голос остался сырым: без дикторской плотности и без "
+            "нормализации громкости под YouTube",
+            why=f"обработка ffmpeg не прошла ({e.__class__.__name__})",
+            level="заметно")
     return mp3
 
 
@@ -534,6 +540,15 @@ def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
         except (BotoCoreError, ClientError) as e:
             log(f"[Озвучка] Голос {voice} не поддерживает движок "
                 f"«{engine}» ({e.__class__.__name__}) — беру neural")
+            import quality
+            quality.degraded(
+                "Озвучка", "голос звучит проще заказанного: начитка сделана "
+                "обычным движком neural",
+                why=f"голос {voice} не поддерживает движок «{engine}» "
+                    f"({e.__class__.__name__})",
+                hint="выбери голос, у которого этот движок есть, или оставь "
+                     "neural осознанно",
+                level="заметно")
             engine = "neural"
     parts = []
     for i, chunk in enumerate(chunks, 1):
@@ -551,6 +566,13 @@ def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
             except (BotoCoreError, ClientError) as e:
                 log(f"[Озвучка] Движок {engine} не принял SSML "
                     f"({e.__class__.__name__}) — перехожу на обычный текст.")
+                import quality
+                quality.degraded(
+                    "Озвучка", "речь идёт сплошным потоком: пропали паузы "
+                    "между абзацами и заданный темп",
+                    why=f"движок {engine} не принял SSML "
+                        f"({e.__class__.__name__})",
+                    level="заметно")
                 use_ssml = False
         if resp is None:
             resp = polly.synthesize_speech(Text=chunk.replace("\n", " "), **kwargs)
@@ -1260,6 +1282,15 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                 log(f"[Агент] ⚠ Глава {i} «{ch}» не сгенерировалась даже "
                     "со второй попытки — в сценарии не будет этой главы, "
                     "допиши её вручную.")
+                import quality
+                quality.degraded(
+                    "Сценарий", "в ролике не хватает целой главы — ИИ не "
+                    "вернул её текст даже со второй попытки",
+                    why="пустой ответ модели (возможно, фильтр контента на "
+                        "этой теме)",
+                    hint="перегенерируй сценарий или допиши эту главу вручную "
+                         "перед озвучкой",
+                    level="критично")
                 continue
         parts.append(part)
         prev_tail = " ".join(part.split()[-25:])
@@ -1286,6 +1317,17 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
             f"обрезаю по последнему законченному предложению до ~{limit}.")
         text = cut
         words = len(text.split())
+    if words < target_words * 0.8:
+        # ролик выйдет короче заказанного — это видно по хронометражу, и
+        # обычно означает, что часть глав вернулась куцыми или пустыми
+        import quality
+        quality.degraded(
+            "Сценарий", "ролик выйдет заметно короче заказанного — сценарий "
+            "получился короче, чем просили",
+            why=f"{words} слов вместо ~{target_words} "
+                f"(~{words // WORDS_PER_MINUTE} мин вместо {minutes})",
+            hint="перегенерируй сценарий или закажи меньшую длительность",
+            level="заметно")
     log(f"[Агент] Сценарий готов: {words} слов (~{words // WORDS_PER_MINUTE} мин). "
         "Обязательно вычитай и переработай его перед озвучкой — сырой текст "
         "нейросети это «inauthentic content».")
@@ -1386,10 +1428,26 @@ def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
                     pass
             log(f"[Агент] {label}, планы {start + 1}-{start + len(chunk)}: "
                 f"{e.__class__.__name__} — эти уйдут на ключевые слова.")
+    import quality
     if got == 0:
+        # то же, что случилось с оверлеями: основной путь молча уступил
+        # место нарезке по словам, а стадия отрапортовала об успехе
+        quality.degraded(
+            "Раскадровка", "кадры подобраны по отдельным словам текста, а не "
+            "по его смыслу",
+            why=f"{label}: ни один план не получил описания от ИИ",
+            hint="обычно это лимит квоты — добавь ещё ключ GEMINI_API_KEY в "
+                 ".env; на тяжёлой теме мог сработать фильтр безопасности",
+            level="критично")
         return None
     if got < n:
         log(f"[Агент] {label}: {got}/{n} по смыслу, остальные — по ключевым словам.")
+        quality.degraded(
+            "Раскадровка", "часть кадров подобрана по отдельным словам "
+            "текста, а не по его смыслу",
+            why=f"{label}: описания получили {got} планов из {n}",
+            hint="обычно это лимит квоты — добавь ещё ключ GEMINI_API_KEY в .env",
+            level="заметно")
     else:
         log(f"[Агент] {label}: все {n} по смыслу текста.")
     return result
@@ -1784,6 +1842,11 @@ def veo_image(prompt: str, dest: Path, api_key: str, log=print,
                 if attempt == 0:
                     _sleep_cancel(2)
         log(f"[Картинка] Апскейл до 2K не удался ({last_err}) — беру оригинал")
+        import quality
+        quality.degraded(
+            "Картинка", "кадр остался в исходном разрешении, без апскейла до 2K",
+            why=f"обе попытки апскейла не прошли ({last_err})",
+            level="мелочь")
     download_file(media[0]["fifeUrl"], dest)
     return dest
 
@@ -2012,6 +2075,15 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
         log(f"[Кадры] ⚠ ПРОВЕРКА НЕ СОСТОЯЛАСЬ на {len(errors)} из "
             f"{len(idx)} планов ({lost:.0f}%) — эти кадры НЕ проверены и "
             f"НЕ починены. Причина: {errors[0]}")
+        import quality
+        quality.degraded(
+            "Кадры", "часть кадров ушла в ролик непроверенной — за ними "
+            "никто не посмотрел, соответствуют ли они словам диктора",
+            why=f"проверка зрением не прошла на {len(errors)} из {len(idx)} "
+                f"планов ({lost:.0f}%): {errors[0]}",
+            hint="обычно это лимит квоты Gemini — добавь ещё ключ в .env и "
+                 "прогони проверку кадров заново",
+            level="критично" if lost > 50 else "заметно")
         if lost > 50:
             log("[Кадры] ⚠ Проверено меньше половины — считайте, что "
                 "проверки кадров в этом ролике не было.")
@@ -2035,6 +2107,13 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
     pixabay = KeyRotator(pixabay_keys or os.getenv("PIXABAY_API_KEY", ""))
     if not pexels.current and not pixabay.current:
         log("[Кадры] Нет ключей стоков — заменить нечем")
+        import quality
+        quality.degraded(
+            "Кадры", "кадры, не отвечающие закадровому тексту, остались в "
+            "ролике — заменить их было нечем",
+            why=f"найдено несоответствий: {len(bad)}, а ключей стоков нет",
+            hint="добавь ключ Pexels или Pixabay в «Настройки API»",
+            level="критично")
         return 0
     pexels_get, _ = _stock_getters(pexels, pixabay, log)
     used = _load_used()
@@ -2116,6 +2195,16 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
             log(f"[Кадры] план {rec['i'] + 1}: заменить не вышло ({e})")
     _save_used(used)
     log(f"[Кадры] Заменено {fixed} из {len(bad)}")
+    if fixed < len(bad):
+        # незаменённый план — это кадр не про то, о чём говорит диктор:
+        # самый заметный признак сборки «на автомате»
+        import quality
+        quality.degraded(
+            "Кадры", "кадры, не отвечающие закадровому тексту, остались в "
+            "ролике",
+            why=f"заменить удалось {fixed} из {len(bad)} забракованных",
+            hint="перезапусти проверку кадров или замени эти планы вручную",
+            level="критично" if not fixed else "заметно")
     return fixed
 
 
@@ -2376,10 +2465,23 @@ def guess_music_mood(script_text: str, fallback: str = "calm",
             return word
         log(f"[Музыка] Непонятный ответ про настроение ({out!r:.60}) — "
             f"остаюсь на «{fallback}»")
+        _mood_degraded(f"ответ модели не похож на настроение ({out!r:.40})",
+                       fallback)
     except Exception as e:
         log(f"[Музыка] Не вышло определить настроение по сценарию ({e}) — "
             f"остаюсь на «{fallback}»")
+        _mood_degraded(f"{e.__class__.__name__}", fallback)
     return fallback
+
+
+def _mood_degraded(why: str, fallback: str):
+    """Музыка под роликом осталась «по жанру канала» — то есть у всех
+    документалок одна и та же. Слышно сразу, поэтому пишем в итог."""
+    import quality
+    quality.degraded(
+        "Музыка", "музыка подобрана по жанру канала, а не по содержанию "
+        f"сценария (осталось «{fallback}»)",
+        why=why, level="заметно")
 
 
 def pick_music_by_mood(music_dir: Path, mood: str) -> Path:
@@ -2721,6 +2823,16 @@ def gen_video(prompt: str, dest: Path, log=print,
             last = e
             if keys:
                 log(f"[Видео-ИИ] VeoNonStop не справился ({e}) — пробую Agnes...")
+                # разные генераторы = разная эстетика в одном ролике, а весь
+                # смысл единого стиля в том, чтобы канал выглядел фильмом
+                import quality
+                quality.degraded(
+                    "Видео-ИИ", "кадр снят запасным генератором — его картинка "
+                    "выбивается из общего вида ролика",
+                    why=f"основной генератор (VeoNonStop) не справился: "
+                        f"{str(e)[:120]}",
+                    hint="проверь ключ VEO_API_KEY и остаток квоты",
+                    level="заметно")
     if not keys:
         raise last
     log(f"[Видео-ИИ] Клип ~{seconds:.0f} c: «{prompt[:60]}» (1-3 мин)")
@@ -3168,6 +3280,15 @@ def _vision_pick(items: list[dict], thumb_of, line: str, api_key: str,
         return NOTHING_FITS
     except Exception as e:
         log(f"[Стоки] Выбор кадра зрением не вышел ({e}) — беру как раньше")
+        # замерено: без просмотра картинки мимо текста попадают ~половина
+        # кадров — сток ранжирует по буквальному совпадению слов
+        import quality
+        quality.degraded(
+            "Стоки", "кадр взят по совпадению слов, а не выбран по картинке "
+            "под фразу диктора",
+            why=f"проверка зрением не отработала ({e.__class__.__name__})",
+            hint="обычно это лимит квоты Gemini — добавь ещё ключ в .env",
+            level="заметно")
         return None
 
 
@@ -3405,6 +3526,18 @@ def fetch_media(scenes_text: str, out_dir: Path, log,
         except Exception as e:
             log(f"[Видеоматериал] Сцена {s['n']}: ошибка {e}")
         status = f"OK ({len(files)} файл.)" if files else "НЕ НАЙДЕНО"
+        if not files:
+            # сцена без единого файла — это место в ролике, которое нечем
+            # показать; раньше об этом говорила одна строка из тысячи
+            import quality
+            quality.degraded(
+                "Видеоматериал", "сцена осталась без картинки — показать на "
+                "этом месте нечего",
+                why=f"ни стоки, ни генерация не дали материала "
+                    f"(тип «{s['type']}»)",
+                hint="переформулируй ключевые слова сцены или проверь ключи "
+                     "стоков",
+                level="критично")
         log(f"[Видеоматериал] Сцена {s['n']} ({s['type']}"
             f"{' x' + str(s['count']) if s['count'] > 1 else ''}): "
             f"{s['keywords']} -> {status}")
@@ -3872,6 +4005,17 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         script_text = (out_dir / "script.txt").read_text(encoding="utf-8")
     except OSError:
         script_text = ""
+        # без сценария плану достаётся кусок расшифровки, оборванный посреди
+        # фразы («why leave your» без «food supplies untouched?») — по такому
+        # обрывку кадр подбирается наугад
+        import quality
+        quality.degraded(
+            "Раскадровка", "кадры подбираются по обрывкам расшифровки — без "
+            "текста сценария у планов нет целых фраз",
+            why="script.txt не прочитан",
+            hint="положи текст сценария в script.txt проекта и пересобери "
+                 "раскадровку",
+            level="заметно")
     except UnicodeDecodeError:
         # Сценарий часто правят руками, и «Блокнот → сохранить как ANSI» даёт
         # cp1251. UnicodeDecodeError — это ValueError, мимо except OSError, и
@@ -3883,6 +4027,15 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     beats = build_beats(rows, min_beat, total, script_text)
     log(f"[Раскадровка] {len(rows)} фраз -> {len(beats)} планов по ~{min_beat:.0f} с, "
         f"звук: {voice.name}")
+    if not beats:
+        # Пустые субтитры -> ноль планов -> пустой timeline.json, который
+        # затёр бы прошлый рабочий, и рендер молча собрал бы ролик из ничего.
+        # Падаем ЗДЕСЬ, в настоящем месте сбоя, а не через стадию.
+        raise RuntimeError(
+            f"В субтитрах ({srt.name}) нет ни одной фразы — раскладывать "
+            "материал не по чему. Обычно это значит, что Whisper не распознал "
+            "речь: проверь, что в voiceover.mp3 действительно есть озвучка, и "
+            "прогони транскрибацию заново. timeline.json оставлен прежним.")
 
     sdir = out_dir / "storyboard"
     sdir.mkdir(parents=True, exist_ok=True)
@@ -4095,6 +4248,14 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                         except Exception as e:
                             log(f"[Раскадровка] План {i}: image-to-video не "
                                 f"вышел ({e}) — Ken Burns")
+                            import quality
+                            quality.degraded(
+                                "Раскадровка", "кадр не ожил: вместо движения "
+                                "в сцене — простой зум по неподвижной картинке",
+                                why=f"image-to-video не отработал "
+                                    f"({e.__class__.__name__})",
+                                hint="проверь остаток квоты VeoNonStop",
+                                level="заметно")
                     if animated:
                         src_dur = audio_duration(clip) or need
                     else:
@@ -4112,6 +4273,16 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             except Exception as e:
                 log(f"[Раскадровка] План {i}: генерация не удалась ({e}) — "
                     "беру сток")
+                # план был НАМЕРЕННО отдан ИИ (единый стиль ролика), а
+                # получит либо сток, либо повтор уже показанного кадра
+                import quality
+                quality.degraded(
+                    "Раскадровка", "кадр, который должен был быть "
+                    "сгенерирован под текст, заменён повтором уже показанного "
+                    "клипа или стоком",
+                    why=f"генерация не удалась: {str(e)[:120]}",
+                    hint="проверь ключ VEO_API_KEY и остаток квоты",
+                    level="критично")
                 clip = None
                 if pool:
                     clip = reuse_from_pool()
@@ -4148,6 +4319,15 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                 clip = reuse_from_pool()
                 src_dur = audio_duration(clip) or need
                 reused += 1
+                import quality
+                quality.degraded(
+                    "Раскадровка", "под этот момент ничего не нашлось — на "
+                    "экране повтор уже показанного кадра",
+                    why="стоки не дали материала по запросу (лимит ключей "
+                        "или в библиотеке нет подходящего)",
+                    hint="добавь ещё ключ Pexels/Pixabay или включи "
+                         "генерацию кадров ИИ",
+                    level="заметно")
         if clip is None and genvideo:
             # сток не нашёлся — генерируем настоящий видеоклип под длину плана
             try:
@@ -4171,6 +4351,16 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             except Exception as e:
                 log(f"[Раскадровка] План {i}: генерация не удалась ({e})")
                 clip = None
+        if clip is None:
+            # ни сток, ни генерация, ни повтор — в этом месте ролика
+            # действительно нечего показать
+            import quality
+            quality.degraded(
+                "Раскадровка", "в ролике осталась дырка — для этого куска "
+                "текста картинки нет вовсе",
+                why="не отработали ни стоки, ни генерация кадра",
+                hint="проверь ключи стоков и генерации в «Настройках API»",
+                level="критично")
         status = "OK" if clip else "НЕ НАЙДЕНО (дырка в таймлайне)"
         log(f"[Раскадровка] План {i} [{mm:02d}:{ss:02d}, {need:.0f} c] "
             f"«{query}» -> {status}")
