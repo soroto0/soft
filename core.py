@@ -16,6 +16,7 @@ GUI передаёт свой потокобезопасный логгер.
 import os
 import re
 import json
+import sys
 import time
 import random
 import shutil
@@ -29,6 +30,17 @@ from xml.sax.saxutils import escape
 # (терминал, открытый до установки; ярлык со старым окружением)
 if shutil.which("ffmpeg") is None and Path(r"C:\ffmpeg\bin\ffmpeg.exe").exists():
     os.environ["PATH"] += os.pathsep + r"C:\ffmpeg\bin"
+
+# Консоль Windows здесь в cp1251, а стадии зовут log=print (pipeline.py). Любой
+# символ вне cp1251 в строке журнала — значок «⚠»/«✔» из наших же сообщений или
+# иероглифы, пришедшие в тексте ошибки чужого API, — валил print с
+# UnicodeEncodeError и уносил с собой ВЕСЬ фоновый прогон. Потерять ролик из-за
+# значка в логе дороже, чем увидеть на его месте «?».
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
 
 # Приложение — окно pywebview без своей консоли (запуск через pythonw.exe);
 # без этого флага каждый вызов ffmpeg/ffprobe/whisper/npx мигает отдельным
@@ -732,6 +744,19 @@ GEMINI_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
 WORDS_PER_MINUTE = 150  # средний темп закадровой начитки
 
 
+def _redact(text) -> str:
+    """Вычистить ключи из текста ошибки перед тем, как он попадёт в журнал.
+
+    Ключи Gemini/Pixabay/Jamendo уходят в запрос ПАРАМЕТРОМ URL (иначе эти API
+    их не принимают), а requests кладёт полный URL в текст своего исключения.
+    Через `log(f"...({e})")` он оседает в app.log, а app.log лежит в ПУБЛИЧНОМ
+    репозитории: в текущем файле уже 115 строк с настоящими ключами. Менять
+    способ авторизации нельзя, поэтому чистим на выходе."""
+    return re.sub(
+        r"(?i)([?&](?:key|api_key|apikey|client_id|token|access_token)=)[^&\s\"')]+",
+        r"\1<ключ скрыт>", str(text))
+
+
 def _gemini_endpoints(model: str, key: str) -> list[str]:
     """Эндпоинты AI Studio (ключи AIza...) и Vertex Express (AQ....) —
     сначала тот, что соответствует типу ключа."""
@@ -758,16 +783,38 @@ def gemini_chat(messages: list[dict], api_key: str,
         body["systemInstruction"] = {"parts": [{"text": sys_text}]}
     last = "нет ответа"
     for url in _gemini_endpoints(GEMINI_TEXT_MODEL, api_key):
-        r = requests.post(url, params={"key": api_key}, json=body, timeout=300)
+        # try вокруг запроса — как в gemini_vision. Без него сетевой сбой на
+        # ПЕРВОМ эндпоинте уносил всю функцию, и второй (запасной!) даже не
+        # пробовался. Реальный случай из журнала: у ключа AQ. первым идёт
+        # aiplatform, он не резолвился — и расстановка оверлеев ушла на
+        # слабый regex, хотя generativelanguage мог ответить.
+        try:
+            r = requests.post(url, params={"key": api_key}, json=body,
+                              timeout=300)
+        except Exception as e:
+            last = _redact(e)
+            continue
         if r.status_code != 200:
             last = f"{r.status_code}: {r.text[:200]}"
             continue
-        cands = r.json().get("candidates") or []
+        try:
+            data = r.json()
+        except ValueError as e:
+            last = f"ответ не JSON: {e}"
+            continue
+        cands = data.get("candidates") or []
         parts = (cands[0].get("content") or {}).get("parts") if cands else []
         text = "".join(p.get("text", "") for p in parts or []).strip()
         if text:
             return text
-        last = "пустой ответ"
+        # Причину пустоты называем вслух: MAX_TOKENS («размышления» съели весь
+        # бюджет), SAFETY/RECITATION (фильтр), blockReason (отклонён промпт) —
+        # это разные беды с разным лечением, а «пустой ответ» их сваливал в
+        # кучу, и вызывающий три попытки подряд не понимал, что чинить.
+        block = str((data.get("promptFeedback") or {}).get("blockReason") or "")
+        reason = str(cands[0].get("finishReason") or "") if cands else "нет кандидатов"
+        last = "пустой ответ (" + (f"блокировка промпта: {block}" if block
+                                   else f"finishReason={reason or '?'}") + ")"
     raise RuntimeError(f"Gemini (текст): {last}")
 
 
@@ -800,7 +847,7 @@ def gemini_vision(prompt: str, image_bytes: bytes, api_key: str = "",
             try:
                 r = requests.post(url, params={"key": key}, json=body, timeout=180)
             except Exception as e:
-                last = str(e)
+                last = _redact(e)   # в тексте сетевой ошибки лежит URL с ключом
                 continue
             if r.status_code != 200:
                 last = f"{r.status_code}: {r.text[:200]}"
@@ -863,6 +910,21 @@ def _is_rate_limit(err: str) -> bool:
     e = err.lower()
     return ("429" in e or "rate limit" in e or "quota" in e
             or "resource_exhausted" in e)
+
+
+def _is_transient(err: str) -> bool:
+    """Сбой, который имеет смысл ПЕРЕЖДАТЬ, а не считать окончательным: лимит
+    запросов, обрыв/таймаут связи, 5xx у провайдера. Отличать нужно от
+    «неверный ключ» и «фильтр контента» — там ожидание ничего не изменит."""
+    e = str(err).lower()
+    if _is_rate_limit(e):
+        return True
+    if re.search(r"\b(500|502|503|504)\b", e):
+        return True
+    return any(x in e for x in (
+        "connection", "timed out", "timeout", "getaddrinfo",
+        "nameresolution", "max retries exceeded", "temporarily",
+        "unavailable", "reset by peer", "ssl"))
 
 
 VISION_RATE_ATTEMPTS = 4
@@ -934,28 +996,50 @@ def _gemini_keys() -> list[str]:
     return keys
 
 
+LLM_RETRY_ATTEMPTS = 3
+LLM_RETRY_BACKOFF = 15        # секунд, умножается на номер попытки
+
+
 def llm_chat(messages: list[dict], api_key: str = "",
              temperature: float = 0.7, max_tokens: int = 4096) -> str:
     """Тексты: сначала Gemini (GEMINI_API_KEY, потом GEMINI_API_KEY2... при
     429/ошибке), потом Agnes (api_key или AGNES_API_KEY). api_key — ключ
-    Agnes из «Настроек API» (для совместимости)."""
+    Agnes из «Настроек API» (для совместимости).
+
+    Когда ВСЕ провайдеры отказали по временной причине (лимит квоты, обрыв
+    сети, 5xx) — ждём и повторяем, как это давно делает vision_chat. До сих
+    пор здесь была ровно одна попытка на ключ, и минутная просадка стоила
+    целой стадии: в реальном прогоне на 429 у обоих ключей Gemini молча
+    рассыпалась расстановка оверлеев (9 штук вместо 80 на 20-минутном
+    ролике), потому что вызывающий считает исключение отсюда окончательным
+    приговором и уходит на слабый запасной путь.
+
+    Условие повтора — «хоть одна ошибка временная», а не «все»: постоянно
+    сломанный Agnes (пустой ответ на фильтре контента) иначе запрещал бы
+    переждать временный лимит Gemini — то самое сочетание, что и наблюдалось."""
     gem_keys = _gemini_keys()
     agn_keys = _agnes_keys(api_key)
     if not gem_keys and not agn_keys:
         raise RuntimeError("Нет ключей для текстов: задай GEMINI_API_KEY или "
                            "AGNES_API_KEY (.env или «Настройки API»).")
     errors = []
-    for i, key in enumerate(gem_keys, 1):
-        try:
-            return gemini_chat(messages, key, temperature, max_tokens)
-        except Exception as e:
-            errors.append(f"Gemini #{i}: {e}")
-    for key in agn_keys:
-        try:
-            return agnes_chat(messages, key, temperature, max_tokens)
-        except Exception as e:
-            errors.append(f"Agnes: {e}")
-    raise RuntimeError("; ".join(errors))
+    for attempt in range(1, LLM_RETRY_ATTEMPTS + 1):
+        errors = []
+        for i, key in enumerate(gem_keys, 1):
+            try:
+                return gemini_chat(messages, key, temperature, max_tokens)
+            except Exception as e:
+                errors.append(f"Gemini #{i}: {e}")
+        for key in agn_keys:
+            try:
+                return agnes_chat(messages, key, temperature, max_tokens)
+            except Exception as e:
+                errors.append(f"Agnes: {e}")
+        if attempt == LLM_RETRY_ATTEMPTS or not any(
+                _is_transient(x) for x in errors):
+            break
+        _sleep_cancel(LLM_RETRY_BACKOFF * attempt)
+    raise RuntimeError(_redact("; ".join(errors)))
 
 
 # Жанры/тон — под ЛЮБУЮ тему. base — общий каркас, дальше добавка тона.
@@ -1636,7 +1720,14 @@ def gemini_image(prompt: str, dest: Path, api_key: str, style: str = "") -> Path
     }
     last_err = "нет ответа"
     for url in _gemini_endpoints(GEMINI_IMAGE_MODEL, api_key):
-        r = requests.post(url, params={"key": api_key}, json=body, timeout=120)
+        # та же причина, что в gemini_chat: без try сетевой сбой на первом
+        # эндпоинте лишал нас второго, а в тексте ошибки уезжал ключ
+        try:
+            r = requests.post(url, params={"key": api_key}, json=body,
+                              timeout=120)
+        except Exception as e:
+            last_err = _redact(e)
+            continue
         if r.status_code != 200:
             last_err = f"{r.status_code}: {r.text[:200]}"
             continue
@@ -2331,12 +2422,17 @@ def jamendo_search(mood: str, client_id: str, count: int = 5) -> list[dict]:
     лицензией. Возвращает [{id, name, artist, url, ccurl}, ...]."""
     import requests
     tag = JAMENDO_MOOD_TAGS.get(mood, mood)
-    r = requests.get(
-        "https://api.jamendo.com/v3.0/tracks/",
-        params={"client_id": client_id, "format": "json", "limit": 30,
-                "tags": tag, "audioformat": "mp32", "include": "licenses",
-                "order": "popularity_total", "boost": "popularity_total"},
-        timeout=30)
+    # client_id — тоже учётка, а fill_music_library_jamendo пишет текст ошибки
+    # в журнал: без обёртки он уезжал бы в публичный app.log вместе с URL
+    try:
+        r = requests.get(
+            "https://api.jamendo.com/v3.0/tracks/",
+            params={"client_id": client_id, "format": "json", "limit": 30,
+                    "tags": tag, "audioformat": "mp32", "include": "licenses",
+                    "order": "popularity_total", "boost": "popularity_total"},
+            timeout=30)
+    except Exception as e:
+        raise RuntimeError(f"Jamendo: {_redact(e)}") from None
     if r.status_code != 200:
         raise RuntimeError(f"Jamendo API {r.status_code}: {r.text[:200]}")
     data = r.json()
@@ -3088,8 +3184,15 @@ def _stock_getters(pexels: KeyRotator, pixabay: KeyRotator, log):
 
     def pixabay_get(params):
         while pixabay.current:
-            r = requests.get("https://pixabay.com/api/",
-                             params={**params, "key": pixabay.current}, timeout=30)
+            # Ключ Pixabay уходит параметром URL (по-другому их API не умеет),
+            # а вызывающие пишут текст исключения в журнал — без этой обёртки
+            # ключ утекал бы в публичный app.log, как утекли ключи Gemini.
+            try:
+                r = requests.get("https://pixabay.com/api/",
+                                 params={**params, "key": pixabay.current},
+                                 timeout=30)
+            except Exception as e:
+                raise RuntimeError(f"Pixabay: {_redact(e)}") from None
             if r.status_code in (401, 403, 429):
                 log(f"[Ключи] Pixabay ключ #{pixabay.idx + 1} упёрся в лимит, "
                     "переключаюсь...")
@@ -3762,6 +3865,14 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         script_text = (out_dir / "script.txt").read_text(encoding="utf-8")
     except OSError:
         script_text = ""
+    except UnicodeDecodeError:
+        # Сценарий часто правят руками, и «Блокнот → сохранить как ANSI» даёт
+        # cp1251. UnicodeDecodeError — это ValueError, мимо except OSError, и
+        # раскадровка падала целиком вместо того, чтобы просто остаться без
+        # пунктуации (ради неё сценарий тут и читается — см. build_beats).
+        script_text = (out_dir / "script.txt").read_text(encoding="cp1251",
+                                                         errors="replace")
+        log("[Раскадровка] script.txt не в UTF-8 — прочитал как cp1251")
     beats = build_beats(rows, min_beat, total, script_text)
     log(f"[Раскадровка] {len(rows)} фраз -> {len(beats)} планов по ~{min_beat:.0f} с, "
         f"звук: {voice.name}")
@@ -4063,6 +4174,13 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                              "text": b["text"][:200],
                              "file": str(clip.resolve()),
                              "src_duration": src_dur})
+        # Историю использованного сбрасываем не только в самом конце: стадия
+        # идёт часами, и падение (или убитый процесс) терял её целиком — тогда
+        # следующий ролик заново качал ровно те же клипы. Заодно _save_used
+        # подмешивает сюда то, что успел занять ПАРАЛЛЕЛЬНЫЙ прогон варианта,
+        # так что дальше по циклу мы уже не выберем то же самое, что и он.
+        if i % 20 == 0:
+            _save_used(used)
 
     if reused:
         mx = max(use_count.values()) if use_count else 1
@@ -4070,6 +4188,15 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             f"{reused} (каждый клип максимум {mx} раз/ролик, с разным "
             "движением камеры) — экономия запросов к стокам")
     _save_used(used)
+    if beats and not timeline:
+        # Ни одного плана — это провал стадии, а не результат. Записать сюда
+        # пустой timeline.json значит затереть прошлый рабочий (ровно тем же
+        # рассуждением, что и при «Стопе» выше) и отправить рендер собирать
+        # ролик из ничего — сбой всплыл бы через стадию, уже без причины.
+        raise RuntimeError(
+            f"Раскадровка не собрала ни одного плана из {len(beats)}: не "
+            "отработали ни стоки, ни генерация (проверь ключи и журнал выше). "
+            "timeline.json оставлен прежним.")
     (out_dir / "timeline.json").write_text(
         json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
     xml = export_premiere_xml(timeline, voice, out_dir / "sequence.xml", fps=30)

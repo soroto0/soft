@@ -75,3 +75,4 @@ tmp*_props.json
 
 # временные папки генератора вариантов в корне
 tmp*/
+variants_run.log
