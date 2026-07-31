@@ -771,9 +771,18 @@ def _redact(text) -> str:
 
     Ключи Gemini/Pixabay/Jamendo уходят в запрос ПАРАМЕТРОМ URL (иначе эти API
     их не принимают), а requests кладёт полный URL в текст своего исключения.
-    Через `log(f"...({e})")` он оседает в app.log, а app.log лежит в ПУБЛИЧНОМ
-    репозитории: в текущем файле уже 115 строк с настоящими ключами. Менять
-    способ авторизации нельзя, поэтому чистим на выходе."""
+    Через `log(f"...({e})")` он оседает в app.log — на момент правки там
+    накопилось 416 строк с настоящим ключом Gemini.
+
+    Уточнение к прежней редакции этого комментария: app.log в ПУБЛИЧНЫЙ
+    репозиторий НЕ попадал. Проверено: файл в .gitignore, в истории git его
+    нет ни в одной версии, ни один *.log не отслеживается. Опасность в
+    другом — журнал показывают в переписке и пересылают при разборе проблем.
+
+    Менять способ авторизации нельзя, поэтому чистим на выходе. Чистить надо
+    в ДВУХ местах: и там, где исключение поднимается (вызов API), и там, где
+    его текст пишут в журнал — иначе любой новый обработчик, добавленный мимо
+    первой линии, снова потечёт."""
     return re.sub(
         r"(?i)([?&](?:key|api_key|apikey|client_id|token|access_token)=)[^&\s\"')]+",
         r"\1<ключ скрыт>", str(text))
@@ -2039,7 +2048,7 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
                     "better": str(data.get("better", "")).strip()}
         except Exception as e:
             errors.append(str(e)[:120])
-            log(f"[Кадры] план {i + 1}: проверка не прошла ({e})")
+            log(f"[Кадры] план {i + 1}: проверка не прошла ({_redact(e)})")
             return None
 
     bad = []
@@ -2166,7 +2175,7 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
                 log(f"[Кадры] план {rec['i'] + 1}: «{old_q}» -> ИИ-кадр «{q}» ✔")
                 continue
             except Exception as e:
-                log(f"[Кадры] план {rec['i'] + 1}: ИИ-кадр не вышел ({e}) "
+                log(f"[Кадры] план {rec['i'] + 1}: ИИ-кадр не вышел ({_redact(e)}) "
                     "— пробую сток")
         try:
             r = pexels_get("https://api.pexels.com/videos/search",
@@ -2192,7 +2201,7 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
             fixed += 1
             log(f"[Кадры] план {rec['i'] + 1}: «{rec['query']}» -> «{q}» ✔")
         except Exception as e:
-            log(f"[Кадры] план {rec['i'] + 1}: заменить не вышло ({e})")
+            log(f"[Кадры] план {rec['i'] + 1}: заменить не вышло ({_redact(e)})")
     _save_used(used)
     log(f"[Кадры] Заменено {fixed} из {len(bad)}")
     if fixed < len(bad):
@@ -2258,7 +2267,7 @@ def review_video(video: Path, api_key: str = "", log=print,
                      str(shot)],
                     timeout=120, check=True)
             except Exception as e:
-                log(f"[Ревью] {int(t)}с: кадр не достался ({e})")
+                log(f"[Ревью] {int(t)}с: кадр не достался ({_redact(e)})")
                 continue
             if not shot.exists():
                 continue
@@ -2279,7 +2288,7 @@ def review_video(video: Path, api_key: str = "", log=print,
                     issues.append({"t": t, "problem": problem})
                     log(f"[Ревью] {mm:02d}:{ss:02d} — {problem}", )
             except Exception as e:
-                log(f"[Ревью] {mm:02d}:{ss:02d}: проверка не прошла ({e})")
+                log(f"[Ревью] {mm:02d}:{ss:02d}: проверка не прошла ({_redact(e)})")
     if not issues:
         log("[Ревью] Замечаний нет — просмотренные кадры в порядке")
     else:
@@ -2344,7 +2353,7 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
             })
         return ideas[:count]
     except Exception as e:
-        log(f"[Обложка] Не вышло придумать концепции ({e})")
+        log(f"[Обложка] Не вышло придумать концепции ({_redact(e)})")
         return []
 
 
@@ -2387,7 +2396,7 @@ def gen_topic(channel: dict, api_key: str = "", log=print) -> str:
             return topic
         log(f"[Тема] Ответ не похож на тему ({len(topic)} симв.) — пропускаю")
     except Exception as e:
-        log(f"[Тема] Не вышло подобрать тему по формуле ниши ({e})")
+        log(f"[Тема] Не вышло подобрать тему по формуле ниши ({_redact(e)})")
     return ""
 
 
@@ -2428,7 +2437,7 @@ def gen_variant_theme(topic: str, kind: str, api_key: str = "",
             return ""
         return theme[:600]
     except Exception as e:
-        log(f"[Варианты] Не вышло придумать тему нового оверлея ({e})")
+        log(f"[Варианты] Не вышло придумать тему нового оверлея ({_redact(e)})")
         return ""
 
 
@@ -2468,7 +2477,7 @@ def guess_music_mood(script_text: str, fallback: str = "calm",
         _mood_degraded(f"ответ модели не похож на настроение ({out!r:.40})",
                        fallback)
     except Exception as e:
-        log(f"[Музыка] Не вышло определить настроение по сценарию ({e}) — "
+        log(f"[Музыка] Не вышло определить настроение по сценарию ({_redact(e)}) — "
             f"остаюсь на «{fallback}»")
         _mood_degraded(f"{e.__class__.__name__}", fallback)
     return fallback
@@ -2606,7 +2615,7 @@ def fill_music_library_jamendo(music_dir: Path, client_id: str, log=print,
         try:
             found = jamendo_search(mood, client_id, count=need + len(have_ids) + 5)
         except Exception as e:
-            log(f"[Jamendo] «{mood}»: поиск не удался ({e})")
+            log(f"[Jamendo] «{mood}»: поиск не удался ({_redact(e)})")
             continue
         fresh = [t for t in found if t["id"] not in have_ids][:need]
         if not fresh:
@@ -2617,7 +2626,7 @@ def fill_music_library_jamendo(music_dir: Path, client_id: str, log=print,
                 jamendo_download(t, sub, log)
                 added += 1
             except Exception as e:
-                log(f"[Jamendo] «{t['name']}»: скачивание не удалось ({e})")
+                log(f"[Jamendo] «{t['name']}»: скачивание не удалось ({_redact(e)})")
     log(f"[Jamendo] Готово: добавлено {added} треков в {music_dir}")
     return added
 
@@ -2822,7 +2831,7 @@ def gen_video(prompt: str, dest: Path, log=print,
         except Exception as e:
             last = e
             if keys:
-                log(f"[Видео-ИИ] VeoNonStop не справился ({e}) — пробую Agnes...")
+                log(f"[Видео-ИИ] VeoNonStop не справился ({_redact(e)}) — пробую Agnes...")
                 # разные генераторы = разная эстетика в одном ролике, а весь
                 # смысл единого стиля в том, чтобы канал выглядел фильмом
                 import quality
@@ -3279,7 +3288,7 @@ def _vision_pick(items: list[dict], thumb_of, line: str, api_key: str,
         log("[Стоки] Под эту фразу в стоке ничего нет — план уйдёт на ИИ")
         return NOTHING_FITS
     except Exception as e:
-        log(f"[Стоки] Выбор кадра зрением не вышел ({e}) — беру как раньше")
+        log(f"[Стоки] Выбор кадра зрением не вышел ({_redact(e)}) — беру как раньше")
         # замерено: без просмотра картинки мимо текста попадают ~половина
         # кадров — сток ранжирует по буквальному совпадению слов
         import quality
@@ -4247,7 +4256,7 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                             animated = True
                         except Exception as e:
                             log(f"[Раскадровка] План {i}: image-to-video не "
-                                f"вышел ({e}) — Ken Burns")
+                                f"вышел ({_redact(e)}) — Ken Burns")
                             import quality
                             quality.degraded(
                                 "Раскадровка", "кадр не ожил: вместо движения "
@@ -4271,7 +4280,7 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                 use_count[clip] = 1
                 downloaded += 1
             except Exception as e:
-                log(f"[Раскадровка] План {i}: генерация не удалась ({e}) — "
+                log(f"[Раскадровка] План {i}: генерация не удалась ({_redact(e)}) — "
                     "беру сток")
                 # план был НАМЕРЕННО отдан ИИ (единый стиль ролика), а
                 # получит либо сток, либо повтор уже показанного кадра
@@ -4336,7 +4345,7 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                 src_dur = audio_duration(clip) or need
                 log(f"[Раскадровка] План {i}: видео сгенерировано ИИ")
             except Exception as e:
-                log(f"[Раскадровка] План {i}: видео-ИИ не удалось ({e})")
+                log(f"[Раскадровка] План {i}: видео-ИИ не удалось ({_redact(e)})")
                 clip = None
         if clip is None and (gemini_key or os.getenv("GEMINI_API_KEY", "")
                              or os.getenv("AGNES_API_KEY", "")):
@@ -4349,7 +4358,7 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                 src_dur = need
                 log(f"[Раскадровка] План {i}: картинка сгенерирована ИИ")
             except Exception as e:
-                log(f"[Раскадровка] План {i}: генерация не удалась ({e})")
+                log(f"[Раскадровка] План {i}: генерация не удалась ({_redact(e)})")
                 clip = None
         if clip is None:
             # ни сток, ни генерация, ни повтор — в этом месте ролика
