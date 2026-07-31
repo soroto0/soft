@@ -47,6 +47,15 @@ HOT = ["lower3", "titlecard", "quote", "callout", "kinetic", "banner",
 PER_KIND = int(os.getenv("VARIANTS_PER_KIND", "3"))
 
 
+# Консоль Windows здесь в cp1251, а в ответах ИИ попадаются символы, которых
+# в ней нет. Без этого весь прогон падал на первой же такой строке журнала.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+
 def log(*a):
     msg = " ".join(str(x) for x in a)
     print(f"{datetime.now():%H:%M:%S} {msg}", flush=True)

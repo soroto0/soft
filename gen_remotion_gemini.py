@@ -723,9 +723,20 @@ def _contract_check_variant(code: str, component: str) -> str:
     m = _EXPORT_RE.search(code)
     if not m:
         return (f"file must export exactly `export const {component}: "
-                "React.FC<VariantProps> = ...` — that line is missing")
+                "React.FC<VariantProps> = ...` — that line is missing. "
+                f"RENAME your existing component to `{component}` and export "
+                "it there; do NOT add a second declaration of that name at the "
+                "end of the file (that is `TS2451: Cannot redeclare`, and it "
+                "is how the previous attempts failed).")
     if m.group(1) != component:
         return f"component must be named `{component}`, found `{m.group(1)}`"
+    # Одно имя — одно объявление. Получив требование «экспортируй ровно так»,
+    # модель охотно дописывала второй `const` в конец, сохраняя первый, и
+    # сжигала оставшиеся попытки на TS2451.
+    if len(re.findall(rf"\b(?:const|let|var|function|class)\s+{component}\b",
+                      code)) > 1:
+        return (f"`{component}` is declared more than once — keep exactly ONE "
+                "declaration (the exported one) and delete or rename the other")
     # Ищем в ТЕЛЕ компонента, после стрелки: props можно и деструктурировать
     # (`({ content, enter, exit }) => ...`) — это совершенно правильный код,
     # а буквальный поиск "p.enter" его заворачивал. Проверка ложно валила

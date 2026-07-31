@@ -973,8 +973,27 @@ def _project_variant(out_dir, kind: str, options: tuple[str, ...]) -> str:
     коррелировал (не оба всегда попадали на один и тот же индекс)."""
     import zlib
     import random as _random
-    seed = zlib.crc32(f"{Path(out_dir).resolve()}|{kind}".encode())
-    return _random.Random(seed).choice(options)
+    return _random.Random(_project_seed(out_dir, kind)).choice(options)
+
+
+def _project_seed(out_dir, kind: str) -> int:
+    """Зерно выбора: путь проекта ПЛЮС отпечаток сценария.
+
+    Одного пути было мало. Проект канала — это одна и та же папка для всех
+    его роликов подряд (webapp.channel_select делает рабочей папкой саму
+    папку канала), поэтому crc32(путь|тип) — величина постоянная, и канал
+    получал один и тот же дизайн навсегда. Отпечаток сценария меняется от
+    ролика к ролику и при этом одинаков при повторном рендере того же
+    ролика — то есть вид остаётся воспроизводимым, но перестаёт быть вечным.
+    """
+    import zlib
+    salt = ""
+    try:
+        salt = (Path(out_dir) / "script.txt").read_text(
+            encoding="utf-8", errors="replace")[:4000]
+    except OSError:
+        pass                # сценария ещё нет — падаем на прежнее поведение
+    return zlib.crc32(f"{Path(out_dir).resolve()}|{kind}|{salt}".encode())
 
 
 # 3 визуально непохожих дизайна banner (форма/позиция/анимация, не только
@@ -1138,6 +1157,15 @@ def _pick_variant(out_dir, kind: str) -> str:
     в одном жребии, но только те, что принадлежат каналу этого проекта.
     Чем больше библиотека, тем реже повторяется вид между роликами.
     Префикс имени говорит, чем рендерить."""
+    return _project_variant(out_dir, kind, _variant_options(out_dir, kind))
+
+
+def _variant_options(out_dir, kind: str) -> tuple[str, ...]:
+    """Все виды, доступные этому проекту для типа `kind`: ручные + принятые
+    ИИ обоих движков, отфильтрованные по каналу проекта. Вынесено отдельно,
+    потому что нужно в двух местах — для выбора одного вида и для колеса
+    чередования внутри ролика; расхождение этих двух наборов означало бы,
+    что в логе написан один вариант, а рисуется другой."""
     ch = _project_channel(out_dir)
     base = BASE_VARIANTS.get(kind, ("remotion_classic",))
     lib = tuple(f"remotion_{v}"
@@ -1145,7 +1173,7 @@ def _pick_variant(out_dir, kind: str) -> str:
     if hyperframes_available():
         lib += tuple(f"hyperframes_{v}"
                      for v in _library_variants(kind, "hyperframes", ch))
-    return _project_variant(out_dir, kind, base + lib)
+    return base + lib
 
 
 def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
@@ -1168,6 +1196,18 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
     # участвуют и ручные виды, у остальных — только накопленные ИИ (если есть)
     picked = {kind: _pick_variant(out_dir, kind)
               for kind in {it["type"] for it in items}}
+    # Одного варианта на тип на весь ролик мало: в 20-минутном ролике
+    # набирается под полтора десятка lower3, и все они выходили одним
+    # дизайном — зритель видит шаблон. Держим ВЕСЬ доступный набор на тип и
+    # прокручиваем его по ходу ролика (порядок перемешан зерном ролика,
+    # так что и последовательность у каждого видео своя).
+    import random as _rnd
+    wheel, wheel_pos = {}, {}
+    for kind in {it["type"] for it in items}:
+        opts = list(_variant_options(out_dir, kind))
+        _rnd.Random(_project_seed(out_dir, kind)).shuffle(opts)
+        wheel[kind] = opts
+        wheel_pos[kind] = 0
     banner_variant = picked.get("banner", "remotion_classic")
     lower3_variant = picked.get("lower3", "remotion_classic")
     counter_variant = picked.get("counter", "remotion_classic")
@@ -1217,7 +1257,15 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
             dest = Path(tmp) / f"ovl_{k:02d}"
             used_engine = engine
             variant_done = False
-            lib_pick = picked.get(it["type"], "")
+            # Следующий вид по колесу: повторы одного типа внутри ролика
+            # идут разными дизайнами. Водяной знак — исключение, он один на
+            # весь ролик и обязан выглядеть одинаково от начала до конца.
+            opts = wheel.get(it["type"]) or []
+            if opts and it["type"] != "watermark":
+                lib_pick = opts[wheel_pos[it["type"]] % len(opts)]
+                wheel_pos[it["type"]] += 1
+            else:
+                lib_pick = picked.get(it["type"], "")
             # Водяной знак идёт мимо всех общих веток: у него длительность
             # всего ролика, и покадровый рендер такой длины невозможен в
             # принципе — почему именно, см. _render_watermark. Вариант из
@@ -1565,8 +1613,17 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
         else:
             log(f"[Оверлеи] {tc} {kind}: фото нашлось меньше 2 — пропускаю")
     _save_used(used)
+    # Пол плотности — ЗДЕСЬ, а не внутри ИИ-пути: черновик мог прийти и от
+    # LLM, и от regex, и от локального запасного, а требование «оверлей
+    # хотя бы раз в 15 секунд» одно на всех. Пока пол стоял только в
+    # suggest_overlays_llm, отказ LLM тихо ронял плотность в пятнадцать раз.
+    total = srt_to_seconds(rows[-1][1]) if rows else 0
+    if total > 0:
+        out_lines = _topup_overlays(out_lines, rows, min_gap,
+                                    density_floor(total), log)
+        out_lines.sort(key=lambda l: (not re.match(r"\s*\d{2}:\d{2}:\d{2}", l),
+                                      l[:8]))
     if watermark.strip() and rows:
-        total = srt_to_seconds(rows[-1][1])
         if total > 0:
             out_lines.insert(0, f"00:00:00 | watermark | {watermark.strip()} "
                                 f"| bottom-right | {total:.1f}s")
@@ -1598,6 +1655,75 @@ def suggest_overlays(rows: list, manifest: list, min_gap: float = 8.0,
         d = f"{dur:g}s"
         lines = [re.sub(r"\|\s*[\d.]+s\s*$", f"| {d}", ln) for ln in lines]
     return "\n".join(lines)
+
+
+def density_floor(total: float) -> int:
+    """Сколько оверлеев обязано быть в ролике такой длины.
+
+    Один на 15 секунд — заданная планка, плюс абсолютный пол в 15 штук,
+    чтобы и пятиминутка не выходила голой. Раньше это число жило внутри
+    ИИ-пути: стоило LLM не ответить (фильтр безопасности, лимит токенов),
+    расстановка уходила на regex, у которого никакого пола не было, — и в
+    20-минутном ролике оставалось 9 оверлеев, один на две с лишним минуты.
+    """
+    return max(15, round(total / 15))
+
+
+def _topup_overlays(lines: list, rows: list, min_gap: float,
+                    need: int, log=print) -> list:
+    """Досыпать оверлеев в незанятые промежутки, пока их меньше need.
+
+    Работает с ГОТОВЫМИ строками файла, а не с планом LLM, — поэтому годится
+    и после ИИ-пути, и после regex-запасного, и после любого следующего.
+    Строки-комментарии (# NEEDS_IMAGE и подобные) в счёт не идут: картинка
+    может и не найтись, а считать её за оверлей — обманывать себя.
+    """
+    def _t(line: str) -> float:
+        m = re.match(r"\s*(\d{2}):(\d{2}):(\d{2})\s*\|", line)
+        if not m:
+            return -1.0
+        h, mi, s = (int(x) for x in m.groups())
+        return h * 3600 + mi * 60 + s
+
+    taken = [t for t in (_t(l) for l in lines) if t >= 0]
+    have = len(taken)
+    if have >= need:
+        return lines
+    # чередуем типы и ЗОНЫ ЭКРАНА: один и тот же баннер по кругу читается
+    # как шаблон — ровно та претензия, из-за которой всё это и затевалось
+    cycle = [("banner", "top", 9), ("lower3", "bottom", 4),
+             ("callout", "point:70,40", 7), ("kinetic", "center", 6),
+             ("marker", "center", 5), ("highlight", "point:62,45", 6)]
+    ki = 0
+    added = []
+    # Идём НЕ подряд от начала, а с шагом по всему таймлайну: жадный проход
+    # набирал нужное число на первых же строках и бросал хвост ролика пустым
+    # (в 20-минутном последние четыре минуты оставались без единого оверлея).
+    step = max(1, len(rows) // max(need - have, 1))
+    order = list(range(0, len(rows), step)) or [0]
+    # добор: если шаг где-то не сработал (пустые строки, min_gap), проходим
+    # остальные строки вторым кругом, а не бросаем недобор
+    order += [i for i in range(len(rows)) if i % step]
+    for i in order:
+        if have + len(added) >= need:
+            break
+        start_s, _end, text = rows[i]
+        t = srt_to_seconds(start_s)
+        if any(abs(t - ta) < min_gap for ta in taken):
+            continue
+        words = text.split()
+        if not words:
+            continue
+        otype, pos, wmax = cycle[ki % len(cycle)]
+        ki += 1
+        taken.append(t)
+        tc = f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
+        content = " ".join(words[:wmax])
+        added.append(f"{tc} | {otype} | {content} | {pos} | 4s")
+    if added:
+        log(f"[Оверлеи] Было {have}, нужно от {need} — досыпал "
+            f"{len(added)} в свободные промежутки")
+    return lines + added
 
 
 def suggest_overlays_llm(rows: list, api_key: str, log=print,

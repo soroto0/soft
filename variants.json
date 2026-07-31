@@ -135,5 +135,45 @@
     "created": "2026-07-29T00:00:00",
     "theme": "Подчёркивание пером: линия прочерчивается под строкой, на её конце светящееся перо, пройденное слово подскакивает. Без заливки и без перекраски текста.",
     "note": "написан руками, не ИИ; префикс ai_ обязателен — по нему overlays.py берёт варианты из библиотеки"
+  },
+  "lower3/ai_0fbf": {
+    "file": "lower3_ai_0fbf.tsx",
+    "component": "Lower3Ai0FBF",
+    "type": "lower3",
+    "variant": "ai_0fbf",
+    "enabled": true,
+    "channel": "",
+    "created": "2026-07-31T11:46:49",
+    "theme": "швейцарская типографика: белый фон, чёрный гротеск, тонкая красная линия"
+  },
+  "titlecard/ai_e566": {
+    "file": "titlecard_ai_e566.tsx",
+    "component": "TitlecardAiE566",
+    "type": "titlecard",
+    "variant": "ai_e566",
+    "enabled": true,
+    "channel": "",
+    "created": "2026-07-31T12:04:30",
+    "theme": "журнальный разворот: крупная засечная антиква, широкие поля, охра"
+  },
+  "titlecard/ai_1be7": {
+    "file": "titlecard_ai_1be7.tsx",
+    "component": "TitlecardAi1BE7",
+    "type": "titlecard",
+    "variant": "ai_1be7",
+    "enabled": true,
+    "channel": "",
+    "created": "2026-07-31T12:13:49",
+    "theme": "ретро-ТВ 80-х: скан-линии, хроматическая аберрация, пурпур и циан"
+  },
+  "banner/ai_8804": {
+    "file": "banner_ai_8804.tsx",
+    "component": "BannerAi8804",
+    "type": "banner",
+    "variant": "ai_8804",
+    "enabled": true,
+    "channel": "",
+    "created": "2026-07-31T13:03:00",
+    "theme": "ретро-ТВ 80-х: скан-линии, хроматическая аберрация, пурпур и циан"
   }
 }
