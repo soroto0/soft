@@ -353,6 +353,12 @@ textarea.prose { line-height: 1.75; min-height: 280px; }
 }
 .proj:hover { background: rgba(0, 0, 0, .04); }
 .proj.current { background: var(--accent-soft); }
+/* Имя проекта = имя папки, длина любая и без пробелов (тема ролика целиком).
+   Контейнер сжимаем (min-width:0), поэтому такая строка вылезала за карточку
+   и ложилась поверх кнопок «Открыть/✎/📂/🗑» — обрезаем многоточием. */
+.proj .nm, .proj .meta {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .proj .nm { font-size: 13.5px; font-weight: 500; }
 .proj .meta { font-size: 11.5px; color: var(--ink-2); }
 .proj .bar {

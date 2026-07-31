@@ -1657,6 +1657,13 @@ def suggest_overlays(rows: list, manifest: list, min_gap: float = 8.0,
     return "\n".join(lines)
 
 
+# Окно разбора для LLM, секунды. 8 минут — примерно 60 моментов в ответе,
+# это уверенно влезает в лимит вместе с «размышлениями» модели. Больше —
+# начинается обрыв ответа на середине JSON, меньше — модель теряет из виду
+# общий ход мысли ролика и хуже выбирает, где ставить заголовок раздела.
+LLM_WINDOW_S = 8 * 60
+
+
 def density_floor(total: float) -> int:
     """Сколько оверлеев обязано быть в ролике такой длины.
 
@@ -1743,6 +1750,34 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
     total = srt_to_seconds(rows[-1][1]) if rows else 0
     if not total:
         return None
+    # Длинный ролик разбираем ОКНАМИ. Число запрашиваемых моментов растёт с
+    # длиной (один на 8 с), а ответ обязан уместиться в лимит токенов —
+    # причём у gemini-2.5-flash «размышления» едят тот же бюджет. На 20-25
+    # минутах ответ обрывался на середине JSON, и расстановка молча уходила
+    # на слабый regex — отсюда и наблюдение, что в коротких роликах моушн
+    # хороший, а в длинных плохой. Окно фиксированной длины держит каждый
+    # запрос в том размере, на котором модель отвечает уверенно, независимо
+    # от того, десять минут ролик или час.
+    if total > LLM_WINDOW_S * 1.5 and target is None:
+        parts, win = [], LLM_WINDOW_S
+        for k in range(0, int(total // win) + 1):
+            lo, hi = k * win, (k + 1) * win
+            chunk = [r for r in rows if lo <= srt_to_seconds(r[0]) < hi]
+            if len(chunk) < 2:
+                continue
+            got = suggest_overlays_llm(chunk, api_key, log, min_gap,
+                                       target=None, attempts=attempts)
+            if got:
+                parts.append(got)
+            else:
+                log(f"[Оверлеи] LLM: окно {int(lo // 60)}-{int(hi // 60)} мин "
+                    "не разобрано — этот кусок дособерётся общим полом")
+        if not parts:
+            return None
+        out = "\n".join(parts)
+        log(f"[Оверлеи] LLM: собрано по окнам, всего "
+            f"{len([l for l in out.splitlines() if l.strip()])} строк")
+        return out
     numbered = "\n".join(
         f"{i}. [{int(srt_to_seconds(r[0]) // 60):02d}:"
         f"{int(srt_to_seconds(r[0]) % 60):02d}] {r[2]}"

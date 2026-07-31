@@ -51,6 +51,15 @@ function chColor(c, i) {
 function chLetter(c) {
   return ((c && (c.name || c.id)) || "?").trim().charAt(0).toUpperCase();
 }
+// Выставить значение выпадающего списка, только если такой пункт в нём есть:
+// иначе присваивание молча даёт "" и на бэкенд уходит пустой язык/жанр.
+function setSel(id, val) {
+  const el = $(id);
+  if (!el || !val) return false;
+  if (![...el.options].some((o) => o.value === val)) return false;
+  el.value = val;
+  return true;
+}
 
 /* ---------- API-мост ---------- */
 function api() { return window.pywebview ? window.pywebview.api : mockApi; }
@@ -163,7 +172,10 @@ async function refresh() {
     addLog(`Сохранено задач Veo: ${state.pending_veo}. `
            + "Нажми «Генерировать видео», чтобы продолжить.", "warn");
   }
-  $("projPath").value = state.project || "";
+  // Путь не перетираем, пока его правят руками: refresh дёргается и по
+  // taskDone, и посреди набора адрес подменялся на текущий проект
+  if (document.activeElement !== $("projPath"))
+    $("projPath").value = state.project || "";
   $("version").textContent = "v" + (state.version || "3.0");
   renderCards();
   renderProjects();
@@ -239,11 +251,14 @@ function renderProjects() {
     const pct = Math.round(100 * p.done / (p.total || 7));
     const row = document.createElement("div");
     row.className = "proj" + (p.current ? " current" : "");
+    // Имя проекта = имя папки: пришло с диска, а не из кода, поэтому в
+    // разметку — только через esc (тот же класс, что ломал onclick на
+    // апострофе). Числа и теги — оттуда же.
     row.innerHTML = `
       <div class="popen" style="flex:1; min-width:0; cursor:pointer">
-        <div class="nm">${p.name}${p.current ? " · текущий" : ""}</div>
-        <div class="meta">${p.done}/${p.total || 7} этапов${
-          (p.tags || []).length ? " · " + p.tags.join(" · ") : ""}</div>
+        <div class="nm">${esc(p.name)}${p.current ? " · текущий" : ""}</div>
+        <div class="meta">${esc(p.done)}/${esc(p.total || 7)} этапов${
+          (p.tags || []).length ? " · " + esc(p.tags.join(" · ")) : ""}</div>
       </div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <button class="btn ghost pbtn-open">Открыть</button>
@@ -269,13 +284,14 @@ function renderProjects() {
 
 function renderChecklist() {
   if (!state) return;
-  $("sideProject").textContent = (state.project || "—").split(/[\/]/).pop() || "—";
-  if (!state.checks) return;
-  $("checklist").innerHTML = Object.entries(state.checks)
-    .map(([k, v]) => `${v ? "✓" : "·"} ${k}`).join("<br>");
-  // Показываем только имя папки: полный путь Windows не влезает в панель
+  // Показываем только имя папки: полный путь Windows не влезает в панель.
+  // Делится по ОБОИМ слэшам и ДО выхода по !state.checks — иначе без
+  // чеклиста в панели оставался необрезанный путь целиком.
   $("sideProject").textContent =
     (state.project || "—").split(/[\\/]/).filter(Boolean).pop() || "—";
+  if (!state.checks) return;
+  $("checklist").innerHTML = Object.entries(state.checks)
+    .map(([k, v]) => `${esc(v ? "✓" : "·")} ${esc(k)}`).join("<br>");
 }
 
 function renderSubs(rows) {
@@ -315,8 +331,10 @@ const app = {
     if (!grid) return;
     const tiles = channelsCache.map((c, i) => {
       const sub = [c.lang, c.tone].filter(Boolean).join(" · ");
+      // chLetter — первая буква имени канала, тоже данные из профиля: без
+      // esc «&» или «<» в названии рвал бы плитку
       return `<button class="gate-tile" data-ch="${esc(c.id)}" title="${esc(sub)}">
-        <span class="face" style="background:${chColor(c, i)}">${chLetter(c)}</span>
+        <span class="face" style="background:${chColor(c, i)}">${esc(chLetter(c))}</span>
         <span class="nm">${esc(c.name || c.id)}</span>
       </button>`;
     });
@@ -336,7 +354,7 @@ const app = {
     if (box) {
       box.innerHTML = channelsCache.map((c, i) => `
         <div class="pop-row${c.id === cur ? " active" : ""}" data-ch="${esc(c.id)}">
-          <span class="ava" style="background:${chColor(c, i)}">${chLetter(c)}</span>
+          <span class="ava" style="background:${chColor(c, i)}">${esc(chLetter(c))}</span>
           <span>${esc(c.name || c.id)}</span>
         </div>`).join("") || '<div class="pop-act">нет каналов</div>';
       box.querySelectorAll(".pop-row").forEach((r) => {
@@ -351,6 +369,15 @@ const app = {
       av.style.background = c ? chColor(c, i) : "rgba(0,0,0,.2)";
     }
     if ($("sideChannel")) $("sideChannel").textContent = c ? (c.name || c.id) : "без канала";
+    // Списки «Язык/Жанр/Стиль» общие на все каналы, а канал их ЗАДАЁТ
+    // (webapp: apply_to_params). Пока списки показывали своё, они попросту
+    // врали, а кнопки отдельных шагов уходили с чужим значением — испанский
+    // канал транскрибировался как английский. Приводим их к профилю.
+    if (c) {
+      if (setSel("lang", c.lang)) app.fillVoices();
+      setSel("tone", c.tone);
+      setSel("visualStyle", c.visual_style);
+    }
     // Акцент интерфейса = цвет активного канала: сразу видно, где работаешь
     if (c) {
       const col = chColor(c, i);

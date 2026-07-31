@@ -11,6 +11,7 @@
 import os
 import re
 import json
+import hashlib
 import threading
 import traceback
 from datetime import datetime
@@ -237,6 +238,34 @@ class Api:
         self._project.mkdir(parents=True, exist_ok=True)
         (self._project / "meta.json").write_text(
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _srt_sig(self) -> str:
+        """Отпечаток текущих субтитров.
+
+        Оверлеи расставлены ПО НИМ — и таймкоды, и текст. Значит отпечаток
+        .srt — единственный надёжный признак того, к какому ролику относится
+        лежащий в папке overlays.txt: рабочая папка у канала одна на все его
+        ролики, поэтому ни по имени, ни по дате файла новый ролик от прошлого
+        не отличить."""
+        srt = self._project / "subs" / "voiceover.srt"
+        try:
+            return (hashlib.sha1(srt.read_bytes()).hexdigest()
+                    if srt.exists() else "")
+        except OSError:
+            return ""
+
+    def _reject_if_busy(self, name: str) -> bool:
+        """Проверка «занято» ДО побочных действий.
+
+        _bg проверяет то же самое, но «Рендер» и «Генерировать видео» успевают
+        до него переписать overlays.txt и settings.json — то есть входные
+        файлы УЖЕ ИДУЩЕЙ задачи. Второе нажатие не должно менять ничего."""
+        if self._busy:
+            self.log(f"[Занято] Уже идёт «{self._busy}» — «{name}» не "
+                     "запущена. Дождись завершения или останови (⛔ Стоп).",
+                     "warn")
+            return True
+        return False
 
     def _checks(self, d: Path) -> dict:
         def nonempty(p):
@@ -657,6 +686,18 @@ class Api:
 
     # ---------- субтитры / стоки / раскадровка ----------
     def subs(self, model: str, line_width: int = 42, lang: str = "английский"):
+        # Язык берём из профиля канала — так же, как озвучка (_tts_step) и
+        # рендер (_render_opts). Выпадающий список на странице общий на все
+        # каналы, и на испанском канале кнопка «Транскрибировать» форсила
+        # whisper английский (--language + модель .en): субтитры выходили
+        # мусором, а по их таймкодам режется ВЕСЬ монтаж и ставятся оверлеи.
+        ch = self._channel()
+        if ch and ch.get("lang"):
+            if ch["lang"] != lang:
+                self.log(f"[Канал] Язык субтитров «{ch['lang']}» из профиля "
+                         f"«{ch['name']}» (в списке стояло «{lang}»)")
+            lang = ch["lang"]
+
         def job():
             audio = self._project / "audio" / "voiceover.mp3"
             if not audio.exists():
@@ -726,6 +767,11 @@ class Api:
         self._project.mkdir(parents=True, exist_ok=True)
         (self._project / "overlays.txt").write_text(text.strip() + "\n",
                                                    encoding="utf-8")
+        # Запоминаем, ПОД КАКИЕ субтитры сделана эта расстановка: иначе для
+        # следующего ролика того же канала (рабочая папка одна на все) не
+        # отличить ручную правку ЭТОГО ролика от файла, оставшегося от
+        # прошлого.
+        self._write_meta(overlays_srt=self._srt_sig())
         self.log("[Оверлеи] Сохранено: overlays.txt")
 
     # ---------- рендер ----------
@@ -798,14 +844,39 @@ class Api:
         return opts
 
     def _auto_overlays(self):
-        """Если overlays.txt пуст — авто-предложить моушн-графику по субтитрам,
-        чтобы popup/счётчики/плашки появились в ролике сами."""
-        ov = self._project / "overlays.txt"
-        if ov.exists() and ov.read_text(encoding="utf-8").strip():
-            return
+        """Авто-расстановка моушн-графики по субтитрам (popup/счётчики/плашки).
+
+        Здесь стояло «если overlays.txt непуст — выйти». Рабочая папка у
+        канала ОДНА на все его ролики, и overlays.txt от прошлого ролика с
+        диска никто не удаляет (ни generate_all, ни set_project, ни
+        new_project — new_project вообще только mkdir). Поэтому каждый
+        следующий ролик тихо, без единой строки в журнале, наследовал чужую
+        расстановку: старые таймкоды, старый текст, старое количество — ровно
+        жалоба «оверлеев мало и они не по делу».
+
+        Признак «свой/чужой» — отпечаток субтитров, по которым расстановка
+        сделана: оверлеи привязаны к ним таймкодами. Совпал — файл наш, ручные
+        правки не трогаем; не совпал — переставляем заново, а прежний файл
+        кладём рядом (overlays_prev.txt), чтобы ничья работа не пропала."""
         srt = self._project / "subs" / "voiceover.srt"
         if not srt.exists():
             return
+        sig = self._srt_sig()
+        ov = self._project / "overlays.txt"
+        try:
+            old = ov.read_text(encoding="utf-8").strip() if ov.exists() else ""
+        except OSError:
+            old = ""
+        if old and self._read_meta().get("overlays_srt") == sig:
+            self.log("[Оверлеи] Расстановка в overlays.txt сделана под эти же "
+                     "субтитры — оставляю как есть (ручные правки целы)")
+            return
+        if old:
+            (self._project / "overlays_prev.txt").write_text(
+                old + "\n", encoding="utf-8")
+            self.log("[Оверлеи] В папке лежала расстановка под ДРУГИЕ "
+                     "субтитры (прошлый ролик) — переставляю заново, старое "
+                     "сохранил в overlays_prev.txt", "warn")
         manifest = []
         mf = self._project / "manifest.json"
         if mf.exists():
@@ -822,6 +893,9 @@ class Api:
             watermark=(ch or {}).get("watermark", ""))
         if text.strip():
             ov.write_text(text.strip() + "\n", encoding="utf-8")
+            # метка «эта расстановка — под эти субтитры»: по ней повторный
+            # запуск отличит её от наследства прошлого ролика
+            self._write_meta(overlays_srt=sig)
             n = len([l for l in text.splitlines()
                      if l.strip() and not l.startswith("#")])
             self.log(f"[Оверлеи] Авто-расстановка (ИИ): {n} элементов "
@@ -861,6 +935,8 @@ class Api:
                      "текущей палитре", "warn")
 
     def render(self, p: dict):
+        if self._reject_if_busy("Рендер"):
+            return
         opts = self._render_opts(p)
         opts["out_name"] = p.get("out_name", "")
         self._settings["render_opts"] = opts
@@ -1109,6 +1185,8 @@ class Api:
         return min(beat, avg)
 
     def generate_all(self, p: dict):
+        if self._reject_if_busy("Генерация видео"):
+            return
         # Профиль канала ЗАДАЁТ язык, жанр, голос и стиль — иначе достаточно
         # один раз забыть переключить выпадающий список, и ролик выйдет
         # чужим голосом на чужом языке. Проект запоминает свой канал, чтобы
@@ -1123,8 +1201,17 @@ class Api:
                      f"«{p.get('tone')}»"
                      + (f", голос {p.get('voice')}" if ch.get("voice") else ""))
         opts = self._render_opts(p)
-        if (p.get("overlays") or "").strip():
-            self.save_overlays(p["overlays"])
+        # Поле «Оверлеи» интерфейс заполняет ИЗ ФАЙЛА проекта, а файл для
+        # нового ролика остался от прошлого (папка канала одна на все ролики).
+        # Безусловное сохранение этого текста записывало старую расстановку
+        # обратно и заодно ГЛУШИЛО авто-расстановку (условие «оверлеи заданы»),
+        # так что новый ролик гарантированно ехал с чужими плашками. Считаем
+        # заданными вручную только те, что ОТЛИЧАЮТСЯ от лежащих на диске, —
+        # то есть которые пользователь действительно правил.
+        ov_in = (p.get("overlays") or "").strip()
+        manual_ov = bool(ov_in) and ov_in != self._read("overlays.txt").strip()
+        if manual_ov:
+            self.save_overlays(ov_in)
         beat = self._sync_beat_to_intensity(float(p.get("beat", 6)),
                                             opts.get("intensity", "средняя"))
 
@@ -1204,8 +1291,10 @@ class Api:
                     self._check_and_fix_shots()
                 except Exception as e:
                     self.log(f"[Цепочка] Проверка кадров пропущена: {e}", "warn")
-            if not (p.get("overlays") or "").strip():
-                self._auto_overlays()   # моушн-графика сама, если не задана
+            if not manual_ov:
+                # моушн-графика сама; _auto_overlays сам решит, годится ли
+                # лежащий в папке файл для ЭТИХ субтитров
+                self._auto_overlays()
             self._regen_overlay_theme()   # своя палитра оверлеев под это видео
             # Условия «если настроена библиотека» здесь больше нет: оно было
             # ЕДИНСТВЕННОЙ причиной, по которой музыки не было ни в одном

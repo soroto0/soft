@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[
+    {"id":"content","type":"string","label":"Text","default":"Sample"},
+    {"id":"dur","type":"number","label":"Duration (seconds)","default":4}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+
+      #blueprint-wrap {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        pointer-events: none;
+      }
+
+      /* Main translucent panel — right-biased, angled silhouette */
+      #blueprint-panel {
+        position: absolute;
+        right: -60px; top: 50%;
+        transform: translateY(-50%) rotate(-2deg);
+        width: 900px; height: 620px;
+        background: rgba(10, 35, 80, 0.72);
+        border: 1px solid rgba(180, 210, 255, 0.35);
+        overflow: hidden;
+      }
+
+      /* Blueprint grid pattern via repeating linear gradient — static, allowed */
+      #blueprint-panel::before {
+        content: '';
+        position: absolute; inset: 0;
+        background:
+          repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(180,210,255,0.07) 39px, rgba(180,210,255,0.07) 40px),
+          repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(180,210,255,0.07) 39px, rgba(180,210,255,0.07) 40px);
+        pointer-events: none;
+      }
+
+      /* Thin white rule lines — structural accents */
+      .bp-rule {
+        position: absolute;
+        background: rgba(180, 215, 255, 0.5);
+      }
+      .bp-rule-h { height: 1px; width: 100%; left: 0; }
+      .bp-rule-v { width: 1px; height: 100%; top: 0; }
+
+      /* Corner brackets — engineering drawing feel */
+      .bp-corner {
+        position: absolute;
+        width: 28px; height: 28px;
+        border-color: rgba(200, 225, 255, 0.8);
+        border-style: solid;
+      }
+      .bp-corner.tl { top: 14px; left: 14px; border-width: 2px 0 0 2px; }
+      .bp-corner.tr { top: 14px; right: 14px; border-width: 2px 2px 0 0; }
+      .bp-corner.bl { bottom: 14px; left: 14px; border-width: 0 0 2px 2px; }
+      .bp-corner.br { bottom: 14px; right: 14px; border-width: 0 2px 2px 0; }
+
+      /* Crosshair accent */
+      #bp-crosshair {
+        position: absolute;
+        width: 120px; height: 120px;
+        top: 38px; right: 38px;
+      }
+      #bp-crosshair::before,
+      #bp-crosshair::after {
+        content: '';
+        position: absolute;
+        background: rgba(200, 225, 255, 0.6);
+      }
+      #bp-crosshair::before {
+        width: 1px; height: 100%;
+        left: 50%; top: 0;
+      }
+      #bp-crosshair::after {
+        height: 1px; width: 100%;
+        top: 50%; left: 0;
+      }
+      #bp-crosshair-circle {
+        position: absolute;
+        width: 40px; height: 40px;
+        border: 1px solid rgba(200, 225, 255, 0.5);
+        border-radius: 50%;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+      }
+
+      /* Diagonal measurement line */
+      #bp-diagonal {
+        position: absolute;
+        bottom: 0; left: 0;
+        width: 100%; height: 100%;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      #bp-diagonal-line {
+        position: absolute;
+        bottom: 80px; left: 40px;
+        width: 1px; height: 200px;
+        background: rgba(200, 225, 255, 0.3);
+        transform-origin: bottom center;
+        transform: rotate(-25deg);
+      }
+
+      /* Title block — bottom right of panel, like a drawing title block */
+      #bp-titleblock {
+        position: absolute;
+        bottom: 24px; right: 28px;
+        text-align: right;
+      }
+      #bp-drawing-num {
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 11px;
+        color: rgba(180, 210, 255, 0.5);
+        letter-spacing: 2px;
+        text-transform: uppercase;
+      }
+      #bp-date-line {
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 10px;
+        color: rgba(180, 210, 255, 0.35);
+        margin-top: 4px;
+        letter-spacing: 1px;
+      }
+
+      /* Main headline area — left side of panel */
+      #bp-headline-area {
+        position: absolute;
+        top: 50%; left: 50px;
+        transform: translateY(-50%);
+        max-width: 580px;
+      }
+
+      #bp-label {
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 13px;
+        color: rgba(140, 190, 255, 0.6);
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        margin-bottom: 14px;
+        opacity: 0;
+      }
+
+      #bp-headline {
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 42px;
+        font-weight: bold;
+        color: #e8f2ff;
+        line-height: 1.15;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        text-shadow: 0 0 20px rgba(140, 190, 255, 0.3);
+        opacity: 0;
+      }
+
+      #bp-subtitle {
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 15px;
+        color: rgba(160, 200, 255, 0.65);
+        margin-top: 16px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        opacity: 0;
+      }
+
+      /* Thin separator line above headline */
+      #bp-sep {
+        position: absolute;
+        top: 170px; left: 50px;
+        width: 0; height: 1px;
+        background: rgba(200, 225, 255, 0.5);
+      }
+
+      /* Left margin line — blueprint margin */
+      #bp-margin-line {
+        position: absolute;
+        left: 36px; top: 0; bottom: 0;
+        width: 1px;
+        background: rgba(200, 225, 255, 0.15);
+      }
+
+      /* Scale bar — bottom left of panel */
+      #bp-scale {
+        position: absolute;
+        bottom: 30px; left: 44px;
+      }
+      #bp-scale-bar {
+        width: 120px; height: 2px;
+        background: rgba(200, 225, 255, 0.5);
+        position: relative;
+      }
+      #bp-scale-bar::before,
+      #bp-scale-bar::after {
+        content: '';
+        position: absolute;
+        width: 1px; height: 8px;
+        background: rgba(200, 225, 255, 0.5);
+        top: -3px;
+      }
+      #bp-scale-bar::before { left: 0; }
+      #bp-scale-bar::after { right: 0; }
+      #bp-scale-ticks {
+        position: absolute;
+        top: 2px; left: 0; right: 0;
+        height: 1px;
+        background: repeating-linear-gradient(90deg, rgba(200,225,255,0.5) 0px, rgba(200,225,255,0.5) 1px, transparent 1px, transparent 11px);
+      }
+      #bp-scale-label {
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 9px;
+        color: rgba(180, 210, 255, 0.4);
+        margin-top: 10px;
+        letter-spacing: 2px;
+      }
+
+      /* Floating dimension annotations */
+      #bp-dim-1 {
+        position: absolute;
+        top: 130px; right: 30px;
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 10px;
+        color: rgba(180, 210, 255, 0.35);
+        letter-spacing: 1px;
+        writing-mode: vertical-rl;
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="titlecard_ai_f0e9" data-start="0" data-width="1920" data-height="1080">
+      <div id="blueprint-wrap" class="clip" data-start="0" data-duration="4" data-track-index="1">
+
+        <!-- Translucent blue panel with angled silhouette -->
+        <div id="blueprint-panel">
+
+          <!-- Margin line -->
+          <div class="bp-rule bp-margin-line"></div>
+
+          <!-- Horizontal rule at headline top -->
+          <div id="bp-sep" class="bp-rule bp-rule-h"></div>
+
+          <!-- Corner brackets -->
+          <div class="bp-corner tl"></div>
+          <div class="bp-corner tr"></div>
+          <div class="bp-corner bl"></div>
+          <div class="bp-corner br"></div>
+
+          <!-- Crosshair (top right) -->
+          <div id="bp-crosshair">
+            <div id="bp-crosshair-circle"></div>
+          </div>
+
+          <!-- Diagonal accent line -->
+          <div id="bp-diagonal">
+            <div id="bp-diagonal-line"></div>
+          </div>
+
+          <!-- Horizontal rules at thirds -->
+          <div class="bp-rule bp-rule-h" style="top: 33%; opacity: 0.12;"></div>
+          <div class="bp-rule bp-rule-h" style="top: 66%; opacity: 0.12;"></div>
+          <div class="bp-rule bp-rule-v" style="left: 50%; opacity: 0.08;"></div>
+
+          <!-- Vertical rule near left -->
+          <div class="bp-rule bp-rule-v" style="left: 42px; opacity: 0.15;"></div>
+
+          <!-- Scale bar -->
+          <div id="bp-scale">
+            <div id="bp-scale-bar"><div id="bp-scale-ticks"></div></div>
+            <div id="bp-scale-label">1 : 100</div>
+          </div>
+
+          <!-- Headline area -->
+          <div id="bp-headline-area">
+            <div id="bp-label">FIG. A — SUBJECT</div>
+            <div id="bp-headline" data-var-text="content">Sample</div>
+            <div id="bp-subtitle">AN ENGINEERED PERSPECTIVE</div>
+          </div>
+
+          <!-- Drawing number & date -->
+          <div id="bp-titleblock">
+            <div id="bp-drawing-num">DRG-2025-A7 // REV.03</div>
+            <div id="bp-date-line">SCALE 1:1 &mdash; FIRST PROJECTION</div>
+          </div>
+
+          <!-- Dimension annotation -->
+          <div id="bp-dim-1">H = 420.00 mm</div>
+
+        </div>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const vars = window.__hyperframes.getVariables();
+      const dur = Number(vars.dur) || 4;
+      document.getElementById('blueprint-wrap').setAttribute('data-duration', String(dur));
+
+      // Split content on :: if present
+      const raw = (vars.content || 'Sample').toString();
+      const parts = raw.split('::');
+      const headline = parts[0] || 'Sample';
+      const subtitle = parts[1] ? parts[1].trim() : 'AN ENGINEERED PERSPECTIVE';
+
+      const headlineEl = document.getElementById('bp-headline');
+      const subtitleEl = document.getElementById('bp-subtitle');
+      headlineEl.textContent = headline;
+      subtitleEl.textContent = subtitle || '';
+
+      const tl = gsap.timeline({ paused: true });
+
+      // Panel slides in from right with slight rotation settle
+      tl.fromTo('#blueprint-panel',
+        { x: 120, rotation: 4, opacity: 0 },
+        { x: 0, rotation: -2, opacity: 1, duration: 0.6, ease: 'power3.out' },
+      0);
+
+      // Separator line draws in
+      tl.fromTo('#bp-sep',
+        { width: 0 },
+        { width: 530, duration: 0.35, ease: 'power2.inOut' },
+      0.2);
+
+      // Label fades up
+      tl.fromTo('#bp-label',
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.25, ease: 'power2.out' },
+      0.3);
+
+      // Headline: each character slides in from left with slight stagger
+      // We animate the whole element with a keyframe-like effect for impact
+      tl.fromTo('#bp-headline',
+        { opacity: 0, x: -30, scaleX: 0.92 },
+        { opacity: 1, x: 0, scaleX: 1, duration: 0.45, ease: 'back.out(1.4)' },
+      0.38);
+
+      // Subtitle slides in below
+      tl.fromTo('#bp-subtitle',
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.3, ease: 'power2.out' },
+      0.75);
+
+      // Crosshair scales in
+      tl.fromTo('#bp-crosshair',
+        { scale: 0, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.3, ease: 'back.out(2)' },
+      0.5);
+
+      // Dimension annotation fades in
+      tl.fromTo('#bp-dim-1',
+        { opacity: 0 },
+        { opacity: 1, duration: 0.3 },
+      0.9);
+
+      // Diagonal line draws
+      tl.fromTo('#bp-diagonal-line',
+        { scaleY: 0 },
+        { scaleY: 1, duration: 0.4, ease: 'power2.out' },
+      0.6);
+
+      // Scale bar fades in
+      tl.fromTo('#bp-scale',
+        { opacity: 0 },
+        { opacity: 1, duration: 0.3 },
+      1.0);
+
+      // Title block fades in
+      tl.fromTo('#bp-drawing-num',
+        { opacity: 0 },
+        { opacity: 1, duration: 0.25 },
+      1.1);
+      tl.fromTo('#bp-date-line',
+        { opacity: 0 },
+        { opacity: 1, duration: 0.25 },
+      1.15);
+
+      // Exit: panel wipes out to the right
+      tl.to('#blueprint-panel',
+        { x: 140, opacity: 0, duration: 0.35, ease: 'power2.in' },
+        Math.max(dur - 0.4, 0));
+
+      window.__timelines['titlecard_ai_f0e9'] = tl;
+    </script>
+  </body>
+</html>
