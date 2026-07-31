@@ -986,11 +986,18 @@ def agnes_chat(messages: list[dict], api_key: str,
 
 
 def _gemini_keys() -> list[str]:
-    """Все ключи Gemini для ротации при 429 — GEMINI_API_KEY, GEMINI_API_KEY2..."""
-    keys = []
-    for k in (os.getenv("GEMINI_API_KEY", ""), os.getenv("GEMINI_API_KEY2", ""),
-              os.getenv("GEMINI_API_KEY3", "")):
-        k = (k or "").strip()
+    """Все ключи Gemini для ротации при 429: GEMINI_API_KEY, GEMINI_API_KEY2,
+    GEMINI_API_KEY3, ... — сколько бы их ни было в .env.
+
+    Список был жёстко на три штуки, и четвёртый ключ молча не работал:
+    добавил в .env — а квота кончается там же, где и раньше, и понять почему
+    нельзя. Читаем всё, что подходит по имени."""
+    keys, names = [], ["GEMINI_API_KEY"]
+    names += sorted((n for n in os.environ
+                     if re.fullmatch(r"GEMINI_API_KEY\d+", n)),
+                    key=lambda n: int(n[len("GEMINI_API_KEY"):]))
+    for name in names:
+        k = (os.getenv(name, "") or "").strip()
         if k and k not in keys:
             keys.append(k)
     return keys

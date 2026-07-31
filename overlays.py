@@ -1533,15 +1533,34 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     присутствия автора."""
     from pathlib import Path as _P
     from core import fetch_wiki_images, _load_used, _save_used, veo_image
-    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    # Спрашиваем core про ВСЕ ключи, а не только про первый: llm_chat давно
+    # умеет перебирать GEMINI_API_KEY2, 3, 4… при 429, но вход в ИИ-путь был
+    # заперт на первый ключ — кончилась квота на нём, и остальные ключи уже
+    # не спасали, потому что до llm_chat дело не доходило.
+    from core import _gemini_keys
+    gemini_key = (_gemini_keys() or [""])[0]
     draft = None
     if gemini_key:
         draft = suggest_overlays_llm(rows, gemini_key, log, min_gap)
     if not draft:
         if gemini_key:
-            log("[Оверлеи] LLM недоступен для этого текста (возможно, "
-                "фильтр безопасности на тяжёлой теме) — беру моменты "
-                "по правилам (regex)")
+            # Громко и с причиной. Раньше эта подмена проходила рядовой
+            # строкой журнала, и «оверлеи расставлены» выглядело успехом —
+            # хотя вместо смысла текста работала нарезка по словам. Различить
+            # хороший ролик и деградировавший было нельзя, пока не откроешь
+            # видео. Именно так и терялись длинные ролики.
+            msg = ("[Оверлеи] ВНИМАНИЕ: расстановка по смыслу текста НЕ "
+                   "удалась — ролик получит моменты, нарезанные по правилам "
+                   "(regex), это заметно хуже. Причина выше в журнале: "
+                   "обычно это лимит квоты Gemini (добавь ещё ключ "
+                   "GEMINI_API_KEY4 в .env) или фильтр безопасности.")
+            # уровень «warn» понимает журнал приложения, но сюда передают и
+            # обычный print, и однопараметрные лямбды — падать из-за подписи
+            # логгера стадия не должна
+            try:
+                log(msg, "warn")
+            except TypeError:
+                log(msg)
         draft = suggest_overlays(rows, manifest, min_gap)
         if draft.startswith("#"):
             draft = suggest_overlays_local(rows, min_gap)
