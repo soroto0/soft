@@ -1958,6 +1958,32 @@ Reply with ONLY a JSON object, no markdown fences:
 something a camera can photograph that WOULD fit these words; empty if ok>"}"""
 
 
+class _ShotReview(list):
+    """Список забракованных планов, который помнит, скольких он вообще
+    касался. Ведёт себя как обычный список — старые вызывающие ничего не
+    замечают, — но у него есть planned/checked/failed и honest_rate().
+
+    Зачем: по голому списку брака нельзя отличить «всё хорошо» от «проверка
+    не работала». Оба случая дают len(bad) == 0. Считать долю как
+    (всего - len(bad)) / всего — самая естественная и самая неверная
+    операция над таким результатом, и она даёт 100% ровно тогда, когда
+    проверка полностью провалилась."""
+
+    def __init__(self, items, planned: int, checked: int, failed: int):
+        super().__init__(items)
+        self.planned = planned
+        self.checked = checked
+        self.failed = failed
+
+    def honest_rate(self) -> float | None:
+        """Доля совпавших ОТ РЕАЛЬНО ПРОВЕРЕННЫХ. None — если проверено
+        меньше половины: такому числу верить нельзя, и лучше не дать его
+        вовсе, чем дать красивое."""
+        if not self.checked or self.checked < self.planned / 2:
+            return None
+        return 100.0 * (self.checked - len(self)) / self.checked
+
+
 def review_storyboard(project_dir: Path, api_key: str = "", log=print,
                       limit: int = 0, every: int = 1, workers: int = 3,
                       only: list[int] | None = None) -> list[dict]:
@@ -2080,6 +2106,15 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
     _stop_check()
     bad.sort(key=lambda r: r["i"])
     checked = len(idx) - len(errors)
+    # Возвращаем список, который ЗНАЕТ свою статистику. Голый список брака
+    # принципиально не отличает «ноль несоответствий» от «никого не
+    # проверили», и любой, кто посчитает долю как (всего - len(bad))/всего,
+    # получит красивую цифру на исчерпанной квоте. Так уже случилось дважды
+    # за один день: сначала «79%», потом «100%» при двух реально проверенных
+    # планах из 52. Предупреждение в журнале от этого не спасает — его можно
+    # не прочитать, а число прочитают обязательно.
+    bad = _ShotReview(bad, planned=len(idx), checked=checked,
+                      failed=len(errors))
     share = len(bad) / checked * 100 if checked else 0
     log(f"[Кадры] Итого: {len(bad)} несоответствий из {checked} "
         f"проверенных ({share:.0f}%)")
