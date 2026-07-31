@@ -1815,6 +1815,61 @@ def _topup_overlays(lines: list, rows: list, min_gap: float,
     return lines + added
 
 
+def _plan_size(text: str) -> int:
+    """Сколько РЕАЛЬНЫХ моментов в ответе. Строки-комментарии (# NEEDS_IMAGE
+    и подобные) не считаются: картинка может и не найтись, а засчитывать её
+    за оверлей — обманывать себя ровно тем способом, из-за которого
+    деградация и оставалась незаметной."""
+    return len([l for l in (text or "").splitlines()
+                if re.match(r"\s*\d{2}:\d{2}:\d{2}\s*\|", l)])
+
+
+def _ask_span(chunk: list, api_key: str, log, min_gap: float,
+              attempts: int, depth: int = 0) -> tuple[str, int]:
+    """Спросить план на кусок и, если вышло ЖИДКО, переспросить половинами.
+
+    Это и есть то, чего софту не хватало. Раньше он спрашивал один раз и,
+    что бы ни пришло, шёл дальше: пустой ответ — на запасной regex, куцый
+    ответ — молча принимался за хороший. Человек в этом месте поступает
+    иначе — видит, что кусок разобран плохо, и переспрашивает меньшими
+    частями, где модели проще удержать внимание. Здесь то же самое.
+
+    Глубина ограничена: два деления, то есть максимум четыре подзапроса на
+    окно. Дальше упираемся не в лимит модели, а в то, что в куске просто
+    нечего показывать — бесконечно дробить бессмысленно и дорого.
+
+    -> (текст плана, сколько раз пришлось переспрашивать)
+    """
+    got = suggest_overlays_llm(chunk, api_key, log, min_gap,
+                               target=None, attempts=attempts)
+    span = srt_to_seconds(chunk[-1][1]) - srt_to_seconds(chunk[0][0])
+    # Планка нарочно скромная — вдвое ниже рабочей плотности. Задача не
+    # выжать максимум, а поймать провал: кусок, где вместо десятка моментов
+    # пришло два, разобран плохо, и это видно без тонких настроек.
+    want = max(1, int(span / max(min_gap * 2, 16)))
+    n = _plan_size(got)
+    if n >= want or depth >= 2 or len(chunk) < 6:
+        return got or "", 0
+    log(f"[Оверлеи] Кусок {int(srt_to_seconds(chunk[0][0]) // 60)}-"
+        f"{int(srt_to_seconds(chunk[-1][1]) // 60)} мин разобран жидко "
+        f"({n} из ожидаемых {want}) — переспрашиваю половинами")
+    mid = len(chunk) // 2
+    out, retried = [], 1
+    for half in (chunk[:mid], chunk[mid:]):
+        if len(half) < 2:
+            continue
+        sub, more = _ask_span(half, api_key, log, min_gap, attempts, depth + 1)
+        retried += more
+        if sub:
+            out.append(sub)
+    merged = "\n".join(out)
+    # Переспрос мог выйти и хуже (модель упёрлась в квоту на середине) —
+    # тогда оставляем прежний ответ. Иначе «улучшение» ухудшало бы результат.
+    if _plan_size(merged) <= n:
+        return got or "", retried
+    return merged, retried
+
+
 def suggest_overlays_llm(rows: list, api_key: str, log=print,
                          min_gap: float = 8.0, target: int | None = None,
                          attempts: int = 3) -> str | None:
@@ -1841,21 +1896,24 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
     # запрос в том размере, на котором модель отвечает уверенно, независимо
     # от того, десять минут ролик или час.
     if total > LLM_WINDOW_S * 1.5 and target is None:
-        parts, win = [], LLM_WINDOW_S
+        parts, win, thin = [], LLM_WINDOW_S, 0
         for k in range(0, int(total // win) + 1):
             lo, hi = k * win, (k + 1) * win
             chunk = [r for r in rows if lo <= srt_to_seconds(r[0]) < hi]
             if len(chunk) < 2:
                 continue
-            got = suggest_overlays_llm(chunk, api_key, log, min_gap,
-                                       target=None, attempts=attempts)
+            got, retried = _ask_span(chunk, api_key, log, min_gap, attempts)
+            thin += retried
             if got:
                 parts.append(got)
             else:
                 log(f"[Оверлеи] LLM: окно {int(lo // 60)}-{int(hi // 60)} мин "
-                    "не разобрано — этот кусок дособерётся общим полом")
+                    "не разобрано даже половинами — дособерётся общим полом")
         if not parts:
             return None
+        if thin:
+            log(f"[Оверлеи] LLM: {thin} кусок(ов) вышли жидкими и были "
+                "переспрошены меньшими частями")
         out = "\n".join(parts)
         log(f"[Оверлеи] LLM: собрано по окнам, всего "
             f"{len([l for l in out.splitlines() if l.strip()])} строк")
