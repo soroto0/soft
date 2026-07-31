@@ -1561,6 +1561,14 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
                 log(msg, "warn")
             except TypeError:
                 log(msg)
+            import quality
+            quality.degraded(
+                "Оверлеи", "плашки расставлены нарезкой по словам, а не по "
+                "смыслу текста",
+                why="основной путь (Gemini) не ответил — причина выше в журнале",
+                hint="добавь ещё ключ GEMINI_API_KEY4 в .env; если тема "
+                     "тяжёлая, мог сработать фильтр безопасности",
+                level="критично")
         draft = suggest_overlays(rows, manifest, min_gap)
         if draft.startswith("#"):
             draft = suggest_overlays_local(rows, min_gap)

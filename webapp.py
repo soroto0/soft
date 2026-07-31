@@ -30,6 +30,7 @@ import render
 import overlays
 import gen_remotion_gemini
 import channels as channels_mod
+import quality
 
 APP_TITLE = "Контент-фабрика"
 APP_VERSION = "3.0"
@@ -1339,9 +1340,16 @@ class Api:
             self.log("[Цепочка] Шаг 4/4 — рендер…")
             render.render_project(self._project, self.log,
                                   self._progress, opts)
+            # Итог по качеству — ПОСЛЕДНЕЙ строкой, чтобы её было видно без
+            # прокрутки журнала на тысячу строк. Иначе «готово» одинаково
+            # выглядит и когда всё отработало, и когда полролика собрано
+            # запасными путями.
+            for line in quality.report().splitlines():
+                self.log(line, "" if "без потерь" in line else "warn")
             self.log("[YouTube] Перед загрузкой отметь «Да» в поле об "
                      "ИИ-контенте, если в ролике есть реалистичные "
                      "сгенерированные сцены.", "warn")
+        quality.reset()      # список деградаций — про ЭТОТ ролик, не про прошлый
         self._bg("Генерация видео", job)
 
     # ---------- настройки ----------
