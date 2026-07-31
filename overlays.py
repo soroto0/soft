@@ -1746,6 +1746,45 @@ def suggest_overlays(rows: list, manifest: list, min_gap: float = 8.0,
 LLM_WINDOW_S = 8 * 60
 
 
+def _type_budget(n_rows: int, min_gap: float) -> str:
+    """Сколько каких типов просить — ПРОПОРЦИОНАЛЬНО длине куска.
+
+    Раньше потолки были абсолютными и на весь ролик: «не более 2 titlecard,
+    не более 1 redact, не более 1 gallery». На трёхминутке это разумно, а на
+    54-минутном ролике означает, что интересные типы не появятся почти
+    никогда. Замерено на готовом ролике abyss (163 оверлея за 54 минуты):
+
+        lower3   66 (40%)   callout 37 (23%)   banner 33 (20%)
+        kinetic  ОДИН за весь ролик
+        marker, gallery, redact, bars, timeline, counter, popup,
+        collage, highlight — НИ РАЗУ
+
+    То есть 83% ролика — три одинаковые плашки, а девять типов из
+    восемнадцати зритель не видит вообще. Это и есть «мало моушн-эффектов»:
+    дело не в числе штук, а в однообразии.
+
+    Теперь редкие типы получают долю от общего числа моментов, с порогом в
+    одну штуку — чтобы и короткий ролик не остался без них."""
+    want = max(1, int(n_rows * 0.6))          # грубая оценка числа моментов
+    def share(pct, lo=1):
+        return max(lo, round(want * pct / 100))
+    return (
+        f"Aim for roughly this MIX across this span (~{want} moments). These "
+        "are targets, not hard caps — a long video with only three kinds of "
+        "graphic looks cheap:\n"
+        f"  titlecard {share(4)}, collage {share(5)}, kinetic {share(8)}, "
+        f"marker {share(8)}, gallery {share(4)}, redact {share(3)}, "
+        f"quote {share(5)}, stamp {share(5)}, bars {share(4)}, "
+        f"timeline {share(3)}, counter {share(5)}\n"
+        "  the rest split between banner, lower3, callout, compare.\n"
+        "NEVER let one type exceed a quarter of the total. Reach for the "
+        "rarer kinds whenever the narration gives you the material for them: "
+        "a number -> counter, two dates -> timeline, two sides -> compare, "
+        "a quotation -> quote, a place or date -> stamp, a comparison of "
+        "several examples -> gallery. "
+        "Reply ")
+
+
 def density_floor(total: float) -> int:
     """Сколько оверлеев обязано быть в ролике такой длины.
 
@@ -1997,11 +2036,7 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "receding into depth, formatted \"label::photo topic;;"
                   "label::photo topic\"; use it when several examples or "
                   "options are being compared in sequence\n"
-                  "Use at most 2 titlecards and at most 2 collages total "
-                  "(only for real turning points / evidence moments), at "
-                  "most 2 'kinetic', at most 1 'redact', at most 2 'marker' "
-                  "and at most 1 'gallery', and "
-                  "roughly even amounts of the rest. Reply "
+                  + _type_budget(len(rows), min_gap) +
                   f'with a JSON array of {{"line": <line number>, "type": '
                   '"titlecard|banner|lower3|compare|callout|collage|kinetic|'
                   'quote|stamp|redact|marker|gallery", "text": '
