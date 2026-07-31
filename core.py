@@ -762,7 +762,15 @@ def add_ambience(base_mp3: Path, sfx_path, log, gain_db: int = -19,
 
 AGNES_BASE_URL = os.getenv("AGNES_BASE_URL", "https://apihub.agnes-ai.com/v1")
 AGNES_MODEL = os.getenv("AGNES_MODEL", "agnes-2.0-flash")
-GEMINI_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
+# gemini-2.5-flash больше не отдаётся НОВЫМ ключам: на свежевыпущенном ключе
+# любой запрос к ней возвращает 404 «This model is no longer available to new
+# users». Проверено на трёх только что созданных ключах, все три — 404, тогда
+# как gemini-3-flash-preview на них же отвечает нормально. Старые ключи её
+# ещё видят, поэтому вылезает это только после перевыпуска — то есть ровно
+# тогда, когда ключ меняют из-за утечки, и весь конвейер молча ложится.
+# Модели КАРТИНОК это не касается: gemini-2.5-flash-image отдаёт 429 (квота),
+# а не 404, значит доступна.
+GEMINI_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3-flash-preview")
 WORDS_PER_MINUTE = 150  # средний темп закадровой начитки
 
 
