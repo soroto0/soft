@@ -1065,36 +1065,46 @@ def gen_variant_hyperframes(kind: str, theme: str, api_key: str, log=print,
             log(f"[Варианты] контракт нарушен (попытка {attempt}/"
                 f"{max_attempts}): {problem[:150]}")
         else:
-            dest.write_text(code, encoding="utf-8")
-            problem = _hf_lint(rel, log)
-            if problem:
-                log(f"[Варианты] HyperFrames check не принял (попытка "
-                    f"{attempt}/{max_attempts}):\n{problem[:400]}")
-            else:
-                shot = dest.parent / f".preview_{variant}.png"
-                problem = _hf_smoke_test(kind, rel, log, shot)
-                if not problem and shot.exists():
-                    problem = _vision_check(kind, theme, shot, api_key, log)
-                    if problem:
-                        log(f"[Варианты] арт-директор завернул: {problem[:150]}")
+            # Кандидат ложится в ЖИВУЮ папку композиций, поэтому любой выход
+            # отсюда — включая «Стоп», который теперь бросает исключение прямо
+            # из log() внутри дым-теста, — обязан его убрать: иначе в
+            # hyperframes/ остаётся непроверенная композиция, которой нет в
+            # variants.json, и она ломает проверку следующих вариантов.
+            accepted = False
+            shot = dest.parent / f".preview_{variant}.png"
+            try:
+                dest.write_text(code, encoding="utf-8")
+                problem = _hf_lint(rel, log)
+                if problem:
+                    log(f"[Варианты] HyperFrames check не принял (попытка "
+                        f"{attempt}/{max_attempts}):\n{problem[:400]}")
+                else:
+                    problem = _hf_smoke_test(kind, rel, log, shot)
+                    if not problem and shot.exists():
+                        problem = _vision_check(kind, theme, shot, api_key, log)
+                        if problem:
+                            log(f"[Варианты] арт-директор завернул: {problem[:150]}")
+                    if not problem:
+                        meta = load_variants_meta()
+                        meta[f"{kind}/{variant}"] = {
+                            "file": rel, "component": comp_id, "type": kind,
+                            "variant": variant, "engine": "hyperframes",
+                            "enabled": True, "channel": channel,
+                            "created": datetime.now().isoformat(timespec="seconds"),
+                            "theme": theme[:200]}
+                        save_variants_meta(meta)
+                        _note_success(kind, "hyperframes")
+                        accepted = True
+                        log(f"[Варианты] ✔ Новый вариант «{kind}/{variant}» "
+                            f"(HyperFrames) прошёл проверку и добавлен "
+                            f"(попытка {attempt})")
+                        return variant
+                    log(f"[Варианты] рендер не принял (попытка {attempt}/"
+                        f"{max_attempts}): {problem}")
+            finally:
                 shot.unlink(missing_ok=True)
-                if not problem:
-                    meta = load_variants_meta()
-                    meta[f"{kind}/{variant}"] = {
-                        "file": rel, "component": comp_id, "type": kind,
-                        "variant": variant, "engine": "hyperframes",
-                        "enabled": True, "channel": channel,
-                        "created": datetime.now().isoformat(timespec="seconds"),
-                        "theme": theme[:200]}
-                    save_variants_meta(meta)
-                    _note_success(kind, "hyperframes")
-                    log(f"[Варианты] ✔ Новый вариант «{kind}/{variant}» "
-                        f"(HyperFrames) прошёл проверку и добавлен "
-                        f"(попытка {attempt})")
-                    return variant
-                log(f"[Варианты] рендер не принял (попытка {attempt}/"
-                    f"{max_attempts}): {problem}")
-            dest.unlink(missing_ok=True)
+                if not accepted:
+                    dest.unlink(missing_ok=True)
         if attempt == max_attempts:
             break
         sig = _err_signature(problem)
@@ -1168,26 +1178,35 @@ def gen_variant(kind: str, theme: str, api_key: str, log=print,
                     "created": datetime.now().isoformat(timespec="seconds"),
                     "theme": theme[:200]}
                 rebuild_registry(lambda *_: None, trial)
+                # Кандидат уже лежит в живой папке вариантов и подключён в
+                # реестр. Любой выход отсюда — включая «Стоп», который теперь
+                # бросает исключение прямо из log() внутри дым-теста, — обязан
+                # его убрать: иначе на диске остаётся непроверенный .tsx и
+                # запись в реестре, которой нет в variants.json.
+                accepted = False
                 shot = VARIANTS_DIR / f".preview_{variant}.png"
-                problem = _variant_smoke_test(kind, variant, log, shot)
-                if not problem and shot.exists():
-                    # технически кадр валиден — теперь смотрим на него глазами
-                    problem = _vision_check(kind, theme, shot, api_key, log)
-                    if problem:
-                        log(f"[Варианты] арт-директор завернул: {problem[:150]}")
-                shot.unlink(missing_ok=True)
-                if not problem:
-                    save_variants_meta(trial)
-                    _note_success(kind, "remotion")
-                    rebuild_registry(log)
-                    log(f"[Варианты] ✔ Новый вариант «{kind}/{variant}» прошёл "
-                        f"проверку и добавлен в библиотеку (попытка {attempt})")
-                    return variant
-                log(f"[Варианты] рендер не принял (попытка {attempt}/"
-                    f"{max_attempts}): {problem}")
-                # откатываем кандидата, пока думаем над следующей попыткой
-                dest.unlink(missing_ok=True)
-                rebuild_registry(lambda *_: None)
+                try:
+                    problem = _variant_smoke_test(kind, variant, log, shot)
+                    if not problem and shot.exists():
+                        # кадр валиден технически — теперь смотрим глазами
+                        problem = _vision_check(kind, theme, shot, api_key, log)
+                        if problem:
+                            log(f"[Варианты] арт-директор завернул: {problem[:150]}")
+                    if not problem:
+                        save_variants_meta(trial)
+                        _note_success(kind, "remotion")
+                        rebuild_registry(log)
+                        accepted = True
+                        log(f"[Варианты] ✔ Новый вариант «{kind}/{variant}» прошёл "
+                            f"проверку и добавлен в библиотеку (попытка {attempt})")
+                        return variant
+                    log(f"[Варианты] рендер не принял (попытка {attempt}/"
+                        f"{max_attempts}): {problem}")
+                finally:
+                    shot.unlink(missing_ok=True)
+                    if not accepted:
+                        dest.unlink(missing_ok=True)
+                        rebuild_registry(lambda *_: None)
         if attempt == max_attempts:
             break
         sig = _err_signature(problem)

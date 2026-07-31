@@ -318,6 +318,11 @@ def generate_video_and_wait(prompt: str, dest: Path, aspect_ratio: str = "16:9",
                     videos[0]["mediaGenerationId"],
                     video_url=videos[0].get("fifeUrl") or videos[0].get("servingBaseUri") or "",
                     aspect_ratio=aspect_ratio, api_key=api_key)
+                # Апскейл — такая же задача Veo, занимающая слот. Без записи в
+                # журнал «Стоп» её не отменял: cancel_pending_tasks ходит
+                # только по журналу и гасил уже завершённую text-to-video,
+                # а апскейл висел на сервере до своего таймаута.
+                track_task(up_task, dest, "text-to-video")
                 wait_for_completion(up_task, api_key, poll_s=5, timeout_s=420, log=log)
                 result = download_video(up_task, dest, api_key=api_key)
                 finish_task(dest)

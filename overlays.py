@@ -1223,6 +1223,13 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
             # принципе — почему именно, см. _render_watermark. Вариант из
             # библиотеки он при этом уважает, просто рисует его иначе.
             if it["type"] == "watermark" and engine == "remotion":
+                # Водяной знак умеет только Remotion-варианты: у HyperFrames
+                # нет позиционирования в углу, которое тут нужно. Раньше
+                # выбранный hyperframes-вариант просто обнулялся молча, и было
+                # непонятно, почему знак выглядит стандартно.
+                if lib_pick.startswith("hyperframes_ai_"):
+                    log(f"[Оверлеи] Водяной знак: вариант {lib_pick} "
+                        f"(HyperFrames) тут не применим — рисую встроенным.")
                 cw, ch, x, y = _render_watermark(
                     it, W, H, fps, dest, Path(out_dir), log,
                     variant=(lib_pick[len("remotion_"):]
@@ -1246,7 +1253,10 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                         f"справился ({e}) — откат на встроенный вид.")
                     for old in Path(dest).glob("*.png"):
                         old.unlink()
-            elif lib_pick.startswith("hyperframes_ai_") and hyperframes_available():
+            elif lib_pick.startswith("hyperframes_ai_") and not hyperframes_available():
+                log(f"[Оверлеи] Вариант {lib_pick} требует HyperFrames, а он "
+                    f"не установлен — рисую встроенным видом.")
+            elif lib_pick.startswith("hyperframes_ai_"):
                 # у HyperFrames вариант — это отдельный .html, путь к нему
                 # лежит в библиотеке; движок ролика тут не важен, он умеет
                 # рендерить альфу независимо от Remotion

@@ -170,8 +170,13 @@ def analyse(channel: dict, videos: list[dict]) -> dict:
         except Exception:
             pass
 
-    tops = ranked[:8]
-    flops = ranked[-5:]
+    # При коротком списке (меньше 13 зрелых роликов) срезы [:8] и [-5:]
+    # пересекались, и один и тот же ролик попадал разом в топ и во флоп —
+    # то есть подавался как пример и удачи, и провала. Делим пополам.
+    n_top = min(8, len(ranked) // 2)
+    n_flop = min(5, len(ranked) - n_top)
+    tops = ranked[:n_top]
+    flops = ranked[len(ranked) - n_flop:] if n_flop else []
     return {
         "channel": channel,
         "videos": len(videos),
