@@ -969,7 +969,22 @@ def _vision_check(kind: str, theme: str, frame_png: Path, api_key: str,
         data = json.loads(m.group(0))
         if data.get("ok"):
             return ""
-        return f"art director rejected the rendered frame: {data.get('problem', '')}"
+        problem = str(data.get("problem", ""))
+        # «Мне не прислали картинку» — это поломка САМОЙ проверки, а не
+        # приговор дизайну. Ответ приходит корректным JSON с ok:false, поэтому
+        # проскакивал мимо обработки сбоев: вариант заворачивался, а генератору
+        # уходило требование починить несуществующую беду — и он жёг попытку
+        # за попыткой, правя то, чего нет. Наблюдалось вживую: Agnes отдаёт
+        # запрос модели, которая картинку молча игнорирует.
+        blind = ("no image", "was provided", "please upload", "cannot see",
+                 "unable to see", "don't see any image", "не вижу изображен",
+                 "изображение не предоставлено")
+        if any(s in problem.lower() for s in blind):
+            log("[Варианты] зрение: модель не получила кадр (ответила, что "
+                "картинки нет) — это сбой проверки, а не брак дизайна; "
+                "вариант принимаю без неё")
+            return ""
+        return f"art director rejected the rendered frame: {problem}"
     except Exception as e:
         log(f"[Варианты] зрение недоступно ({e}) — пропускаю эту проверку")
         return ""
