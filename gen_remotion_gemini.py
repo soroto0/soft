@@ -319,6 +319,15 @@ API_RULES = """- If you use `spring()`, its REAL signature (do not invent other 
   Easing.spring({damping?, mass?, stiffness?, overshootClamping?, allowTail?, durationRestThreshold?})
   Easing.in(fn) Easing.out(fn) Easing.inOut(fn)
   ```
+  The `(t)` above is only the shape of the curve — you NEVER write that `t` yourself.
+  A curve is passed BY NAME, uncalled: `easing: Easing.cubic`, `easing: Easing.out(Easing.cubic)`.
+  The ONLY ones you write parentheses on are the factories that take a tuning
+  number or another curve: `Easing.poly(3)`, `Easing.elastic(1.2)`, `Easing.back(1.5)`,
+  `Easing.bezier(.2,0,.1,1)`, `Easing.in/out/inOut(<a curve>)`.
+  RIGHT: `{easing: Easing.out(Easing.cubic), extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}`
+  WRONG: `Easing.out(Easing.cubic(t))` and `Easing.out(Easing.cubic(1))` — you passed a
+  number where a curve was wanted. WRONG: `Easing.quad(t => t*t)` — you passed a curve
+  where a tuning number was wanted. Both are compile errors we see constantly.
   In particular `Easing.cubicBezier` does NOT exist (that is the CSS name) — the Remotion name is `Easing.bezier`. There is also no `Easing.easeIn`/`easeOut`/`easeInOut` — use `Easing.in(Easing.ease)` / `Easing.out(Easing.cubic)` etc."""
 
 
@@ -645,7 +654,9 @@ def _hf_check(html: str, comp_id: str) -> str:
     bad = [msg for token, msg in need if token not in html]
     # clip как ОДИН ИЗ классов, а не единственный: `class="clip strip"` —
     # совершенно корректно, а буквальный поиск 'class="clip"' его заворачивал.
-    if not re.search(r'class\s*=\s*"[^"]*\bclip\b[^"]*"', html):
+    # Кавычки — любые: модель охотно пишет class='clip strip', и требование
+    # при этом выполнено, а мы заворачивали такую композицию все 8 попыток.
+    if not re.search(r"""class\s*=\s*(["'])[^"']*\bclip\b[^"']*\1""", html):
         bad.append('at least one element must have "clip" among its classes')
     if bad:
         return ("ALL of these are broken — fix EVERY one of them in a single "
