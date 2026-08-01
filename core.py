@@ -1561,7 +1561,15 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
     """Длинный сценарий без воды на ЛЮБУЮ тему: план из глав, потом главы по
     очереди. tone — жанр/подача, lang — язык. ~150 слов на минуту."""
     target_words = minutes * WORDS_PER_MINUTE
-    n_sections = max(5, round(minutes / 4))
+    # Главу считаем от ОБЪЁМА, а не от минут. Прежняя формула minutes/4
+    # держала главу около 583 слов на любой длине — и именно такие просьбы
+    # модель проваливала: замерено на настоящем прогоне, все девять глав
+    # вернулись по 57-72 слова. Просьба на 240 слов в том же коде почти
+    # всегда выполняется с первого раза. Поэтому целимся в ~350 слов на
+    # главу: на 70 минут это тридцать глав вместо восемнадцати, зато каждая
+    # в пределах того, что модель реально пишет за один заход.
+    CHAPTER_WORDS = 350
+    n_sections = max(5, round(target_words / CHAPTER_WORDS))
     sec_words = target_words // n_sections
     lang_name = LANGS.get(lang, "English")
     system = SCRIPT_BASE.format(lang=lang_name) + TONES.get(
