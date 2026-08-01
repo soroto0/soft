@@ -3049,9 +3049,59 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
                 target.unlink()
             src.rename(target)
     srt = subs_dir / "voiceover.srt"
+    _srt_text_from_script(srt, out_dir / "script.txt", log)
     strip_srt_punctuation(srt)
     log(f"[Субтитры] Готово: {srt}")
     return srt
+
+
+def _srt_text_from_script(srt: Path, script: Path, log=print) -> None:
+    """Заменить РАСПОЗНАННЫЙ текст субтитров текстом СЦЕНАРИЯ, оставив
+    тайминги Whisper.
+
+    Диктор читает сценарий дословно, значит точный текст у нас уже есть, а
+    распознавание нужно только ради таймкодов. Whisper же ошибается тем
+    сильнее, чем меньше модель, и ошибается прямо В КАДРЕ — это единственный
+    текст, который зритель читает. Замерено на реальном ролике, модель
+    base.en из настроек:
+
+        сценарий: «any object moving within ten meters of the lens should
+                   have rendered as a blur»
+        в кадре : «Ania Viett moving wheat in ten meters off the lens saw
+                   labyrinth of razabler»
+
+    Так были испорчены все 559 строк. Причём беда пряталась: подбор кадров
+    берёт текст из сценария (см. build_beats) и работал нормально, поэтому
+    все замеры выглядели прилично, пока не посмотрели на готовый кадр.
+
+    Соответствие — пропорцией по словам, как в build_beats: расшифровка и
+    сценарий расходятся в числе слов, и посимвольное совмещение накопило бы
+    сдвиг к концу ролика. Если сценария нет (текст вставили руками, ролик
+    собран из чужой озвучки) — оставляем как было."""
+    try:
+        text = script.read_text(encoding="utf-8")
+    except OSError:
+        return
+    words = strip_cues(text)[0].split()
+    rows = parse_srt(srt)
+    if not words or not rows:
+        return
+    w_counts = [max(1, len(r[2].split())) for r in rows]
+    total_w = sum(w_counts)
+    # слов в сценарии на одно слово расшифровки
+    ratio = len(words) / total_w
+    out, seen = [], 0
+    for i, (start, end, _old) in enumerate(rows, 1):
+        a = int(round(seen * ratio))
+        seen += w_counts[i - 1]
+        b = int(round(seen * ratio))
+        chunk = " ".join(words[a:b]).strip()
+        if not chunk:                     # хвост кончился — оставляем пустым,
+            chunk = ""                    # лучше пусто, чем чужая фраза
+        out.append(f"{i}\n{start} --> {end}\n{chunk}\n")
+    srt.write_text("\n".join(out), encoding="utf-8")
+    log(f"[Субтитры] Текст взят из сценария ({len(words)} слов), "
+        f"тайминги из распознавания")
 
 
 def _delower_after_period(text: str) -> str:
