@@ -881,7 +881,9 @@ def gemini_vision(prompt: str, image_bytes: bytes, api_key: str = "",
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
     last = "нет ответа"
-    for key in keys:
+    # Тот же порядок «сначала живые», что и в llm_chat: выбранный ключ не
+    # должен собирать по 429 на каждой картинке впереди рабочих.
+    for _, key in _live_first(keys):
         for url in _gemini_endpoints(GEMINI_TEXT_MODEL, key):
             try:
                 r = requests.post(url, params={"key": key}, json=body, timeout=180)
@@ -890,6 +892,9 @@ def gemini_vision(prompt: str, image_bytes: bytes, api_key: str = "",
                 continue
             if r.status_code != 200:
                 last = f"{r.status_code}: {r.text[:200]}"
+                if _is_rate_limit(last):
+                    _cool_down(key)
+                    break        # этот ключ выбран — остальные его адреса тоже
                 continue
             cands = r.json().get("candidates") or []
             parts = (cands[0].get("content") or {}).get("parts") if cands else []
@@ -949,6 +954,37 @@ def _is_rate_limit(err: str) -> bool:
     e = err.lower()
     return ("429" in e or "rate limit" in e or "quota" in e
             or "resource_exhausted" in e)
+
+
+# Ключи, упёршиеся в суточную квоту, и до какого времени их не трогать.
+_GEM_COOLDOWN: dict[str, float] = {}
+_GEM_LOCK = threading.Lock()
+KEY_COOLDOWN_S = 600.0
+
+
+def _cool_down(key: str) -> None:
+    """Отложить ключ, который только что ответил 429."""
+    with _GEM_LOCK:
+        _GEM_COOLDOWN[key] = time.time() + KEY_COOLDOWN_S
+
+
+def _live_first(keys: list[str]) -> list[tuple[int, str]]:
+    """Ключи в порядке «сначала живые», с их исходными номерами.
+
+    Ротация всегда начинала с первого ключа. Пока он не выбран — это верно,
+    но как только его суточная квота кончается, КАЖДЫЙ следующий вызов
+    сначала впустую бьётся о него, ловит 429 и только потом идёт дальше. На
+    ролике в несколько сотен запросов это сотни заведомо провальных походов
+    в сеть — ровно та стена 429 в логе, где ошибок больше, чем работы.
+    Выбранный ключ отходит в конец очереди на десять минут; если живых не
+    осталось, порядок прежний — пробуем всё равно, вдруг квота обновилась.
+    """
+    now = time.time()
+    with _GEM_LOCK:
+        cool = dict(_GEM_COOLDOWN)
+    live = [(i, k) for i, k in enumerate(keys, 1) if cool.get(k, 0) <= now]
+    tired = [(i, k) for i, k in enumerate(keys, 1) if cool.get(k, 0) > now]
+    return (live + tired) if live else list(enumerate(keys, 1))
 
 
 def _is_transient(err: str) -> bool:
@@ -1071,10 +1107,12 @@ def llm_chat(messages: list[dict], api_key: str = "",
     errors = []
     for attempt in range(1, LLM_RETRY_ATTEMPTS + 1):
         errors = []
-        for i, key in enumerate(gem_keys, 1):
+        for i, key in _live_first(gem_keys):
             try:
                 return gemini_chat(messages, key, temperature, max_tokens)
             except Exception as e:
+                if _is_rate_limit(str(e)):
+                    _cool_down(key)
                 errors.append(f"Gemini #{i}: {e}")
         for key in agn_keys:
             try:

@@ -2067,8 +2067,64 @@ def _plan_size(text: str) -> int:
                 if re.match(r"\s*\d{2}:\d{2}:\d{2}\s*\|", l)])
 
 
+def _reten_weight(t0: float, span: float, whole: float) -> float:
+    """Насколько гуще ставить графику на этом участке против средней.
+
+    Просить у модели одинаковое количество на каждое окно — значит стереть
+    любую разметку по смыслу: сколько бы она ни выбрала, квота и нижний пол
+    добьют все окна до одного числа. Так и вышло при первом заходе — блок
+    инструкций про удержание уже стоял в промпте, а плотность по замеру
+    осталась плоской: 6.8 в минуту на первых шести минутах против 6.7 в
+    среднем по 54-минутному ролику. Разницу задаёт вес, а не текст просьбы.
+    """
+    if whole <= 0:
+        return 1.0
+    lo, hi = t0 / whole, (t0 + span) / whole
+    if lo < 0.05:
+        return 1.5   # начало: здесь уходит больше зрителей, чем везде дальше
+    if hi > 0.9:
+        return 1.15  # развязка: ради неё досмотрели, её и надо показать
+    return 0.85      # середина: разреженнее, чтобы было куда сгущать на пере-
+
+
+def _retention_note(t0: float, span: float, whole: float) -> str:
+    """Сказать модели, КАКОЙ участок ролика она размечает и что здесь важно.
+
+    Без этого планировщик видит плоский список реплик и ставит оверлеи
+    ровной сеткой — раз в восемь секунд, одинаково и на первой минуте, и на
+    сороковой. Но зритель уходит не равномерно: почти весь отвал приходится
+    на первые тридцать секунд, а дальше — на стыках частей, где обещание
+    предыдущего куска уже закрыто, а новое ещё не прозвучало. График
+    удержания у любого ролика выглядит именно так, и графика должна стоять
+    ГУЩЕ там, где он падает, а не там, где подошёл срок по сетке.
+    """
+    lo, hi = t0 / max(whole, 1.0), (t0 + span) / max(whole, 1.0)
+    head = (f"This block covers {int(t0 // 60)}:{int(t0 % 60):02d}"
+            f"-{int((t0 + span) // 60)}:{int((t0 + span) % 60):02d} of a "
+            f"{int(whole // 60)}-minute video.\n")
+    if lo < 0.05:
+        return head + (
+            "It is the OPENING, where most viewers leave. Front-load it: "
+            "put a graphic in the first 15 seconds, and keep them coming "
+            "roughly twice as often as later on. Whatever question or "
+            "promise the narration opens with, put it ON SCREEN.\n")
+    if hi > 0.9:
+        return head + (
+            "It is the ENDING, where the payoff lands. Reserve the strongest "
+            "types here — counter, bars, timeline, quote — for the figures "
+            "and conclusions the whole video was building toward. Do not "
+            "spend them on background detail.\n")
+    return head + (
+        "It is the MIDDLE, where viewers drift off between sections. Find "
+        "the moments where the narration RE-HOOKS — a contradiction, a new "
+        "piece of evidence, a question reopening, a turn to a new part — and "
+        "put the graphics THERE rather than spreading them evenly. A "
+        "stretch of plain narration is allowed to run clean.\n")
+
+
 def _ask_span(chunk: list, api_key: str, log, min_gap: float,
-              attempts: int, depth: int = 0) -> tuple[str, int]:
+              attempts: int, depth: int = 0,
+              whole: float | None = None) -> tuple[str, int]:
     """Спросить план на кусок и, если вышло ЖИДКО, переспросить половинами.
 
     Это и есть то, чего софту не хватало. Раньше он спрашивал один раз и,
@@ -2090,24 +2146,46 @@ def _ask_span(chunk: list, api_key: str, log, min_gap: float,
     # длиннее ~12 минут — ровно на тех, где жалуются на однообразие).
     got = suggest_overlays_llm(chunk, api_key, log, min_gap,
                                target=None, attempts=attempts,
-                               allow_windows=False)
+                               allow_windows=False, whole=whole)
     span = srt_to_seconds(chunk[-1][1]) - srt_to_seconds(chunk[0][0])
     # Планка нарочно скромная — вдвое ниже рабочей плотности. Задача не
     # выжать максимум, а поймать провал: кусок, где вместо десятка моментов
     # пришло два, разобран плохо, и это видно без тонких настроек.
     want = max(1, int(span / max(min_gap * 2, 16)))
     n = _plan_size(got)
-    if n >= want or depth >= 2 or len(chunk) < 6:
+    # Счёта мало: ответ, обрезанный лимитом токенов на середине JSON, из него
+    # спасается «до места обрыва», и по количеству он проходит впритык — а
+    # хвост куска остаётся вообще без графики. Замерено: окно 18-24 мин
+    # отдало 32 штуки при планке 30, проверку прошло, и шесть минут ролика
+    # получили втрое меньше остальных. Смотрим не сколько пунктов, а
+    # ДОКУДА они дотянулись: обрыв виден по голому хвосту.
+    tail_gap = 0.0
+    if got:
+        stamps = []
+        for ln in got.splitlines():
+            ln = ln.strip()
+            if ln and not ln.startswith("#"):
+                try:
+                    stamps.append(srt_to_seconds(ln.split()[0]))
+                except Exception:
+                    pass
+        if stamps:
+            tail_gap = srt_to_seconds(chunk[-1][1]) - max(stamps)
+    cut = tail_gap > max(span * 0.25, 60)
+    if (n >= want and not cut) or depth >= 2 or len(chunk) < 6:
         return got or "", 0
+    why = (f"хвост {int(tail_gap)} с остался голым — ответ обрезан"
+           if cut else f"{n} из ожидаемых {want}")
     log(f"[Оверлеи] Кусок {int(srt_to_seconds(chunk[0][0]) // 60)}-"
         f"{int(srt_to_seconds(chunk[-1][1]) // 60)} мин разобран жидко "
-        f"({n} из ожидаемых {want}) — переспрашиваю половинами")
+        f"({why}) — переспрашиваю половинами")
     mid = len(chunk) // 2
     out, retried = [], 1
     for half in (chunk[:mid], chunk[mid:]):
         if len(half) < 2:
             continue
-        sub, more = _ask_span(half, api_key, log, min_gap, attempts, depth + 1)
+        sub, more = _ask_span(half, api_key, log, min_gap, attempts,
+                              depth + 1, whole=whole)
         retried += more
         if sub:
             out.append(sub)
@@ -2122,7 +2200,8 @@ def _ask_span(chunk: list, api_key: str, log, min_gap: float,
 def suggest_overlays_llm(rows: list, api_key: str, log=print,
                          min_gap: float = 8.0, target: int | None = None,
                          attempts: int = 3,
-                         allow_windows: bool = True) -> str | None:
+                         allow_windows: bool = True,
+                         whole: float | None = None) -> str | None:
     """ОСНОВНОЙ путь расстановки оверлеев (не только фолбэк): LLM понимает
     смысл текста целиком, поэтому расставляет оверлеи ПЛОТНЕЕ и умнее, чем
     голый regex (который зависит от явных денег/дат/имён/вопросов в тексте
@@ -2162,7 +2241,8 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
             chunk = [r for r in rows if lo <= srt_to_seconds(r[0]) < hi]
             if len(chunk) < 2:
                 continue
-            got, retried = _ask_span(chunk, api_key, log, min_gap, attempts)
+            got, retried = _ask_span(chunk, api_key, log, min_gap,
+                                     attempts, whole=span)
             thin += retried
             if got:
                 parts.append(got)
@@ -2182,7 +2262,11 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
         f"{i}. [{int(srt_to_seconds(r[0]) // 60):02d}:"
         f"{int(srt_to_seconds(r[0]) % 60):02d}] {r[2]}"
         for i, r in enumerate(rows, 1))
-    n_auto = round(span / max(min_gap, 8))
+    # Вес по месту в ролике. Без него окна получают одинаковую квоту, и
+    # разметка по смыслу стирается ею же (замер: плоские 6.7-6.8 в минуту
+    # по всему 54-минутному ролику при уже написанной инструкции).
+    w = _reten_weight(t0, span, whole or span)
+    n_auto = round(span / max(min_gap, 8) * w)
     n = max(3, min(target, n_auto) if target else n_auto)
     # LLM систематически отдаёт МЕНЬШЕ, чем просят (сама выбирает не все
     # моменты подходящими, плюс часть потом отсеется min_gap-фильтром из-за
@@ -2191,8 +2275,8 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
     # Пол «хоть сколько-то» пропорционален куску (15 штук — только для
     # ролика целиком, а не для каждого восьмиминутного окна: семь окон по
     # 15 — это уже сто навязанных строк).
-    min_required = round(span / 20) if not allow_windows else max(
-        15, round(span / 20))
+    min_required = round(span / 20 * w) if not allow_windows else max(
+        round(15 * w), round(span / 20 * w))
     n = max(n, round(min_required * 1.7))
     picks = None
     for attempt in range(1, attempts + 1):
@@ -2273,7 +2357,8 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "ring that draws itself around a spot, then a short caption. "
                   "p.text is that caption (under 4 words). Use it when the "
                   "narration points at a detail that is visible in the shot\n"
-                  + _type_budget(len(rows), min_gap) +
+                  + _type_budget(len(rows), min_gap)
+                  + _retention_note(t0, span, whole or span) +
                   f'with a JSON array of {{"line": <line number>, "type": '
                   # popup не включён намеренно: ему нужна КАРТИНКА, которую
                   # ещё надо найти в Wikimedia, и путь этот отдельный
