@@ -1587,7 +1587,8 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     «inauthentic content» нужен постоянный, не эпизодический признак
     присутствия автора."""
     from pathlib import Path as _P
-    from core import fetch_wiki_images, _load_used, _save_used, veo_image
+    from core import (fetch_wiki_images, _load_used, _save_used, veo_image,
+                      openverse_search, download_file)
     # Спрашиваем core про ВСЕ ключи, а не только про первый: llm_chat давно
     # умеет перебирать GEMINI_API_KEY2, 3, 4… при 429, но вход в ИИ-путь был
     # заперт на первый ключ — кончилась квота на нём, и остальные ключи уже
@@ -1653,6 +1654,22 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
                 return f"images/{got[0].name}", False
         except Exception as e:
             log(f"[Оверлеи] Wikimedia для «{name}»: не вышло ({e})")
+        # Третий источник. Раньше их было два: генерация Veo и Wikimedia —
+        # первая упирается в лимит, вторая знает только известных персон и
+        # объекты. Под обычную тему вроде «походные ботинки» не находилось
+        # ничего, и collage/gallery молча превращались в banner: замерено на
+        # готовом 54-минутном ролике — эти два типа не появились НИ РАЗУ, при
+        # том что оба умеют рисоваться. Openverse ключа не требует и покрывает
+        # ровно этот пробел — обычные предметы и сцены.
+        try:
+            url = openverse_search(name, used, log)
+            if url:
+                dest = idir / f"ovl_{tag}_{safe}_ov.jpg"
+                download_file(url, dest)
+                if dest.exists() and dest.stat().st_size > 2048:
+                    return f"images/{dest.name}", False
+        except Exception as e:
+            log(f"[Оверлеи] Openverse для «{name}»: не вышло ({e})")
         return None, False
 
     out_lines = []
