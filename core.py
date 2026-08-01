@@ -1628,16 +1628,38 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                 return part[cut:].lstrip() if cut else part
         return part
 
-    def _gen_chapter(i, ch, flow, sec_words):
+    def _gen_chapter(i, ch, flow, sec_words, too_short: str = ""):
+        """too_short — текст ПРЕДЫДУЩЕЙ, куцей попытки.
+
+        Без него повтор был буквально тем же запросом: тот же промпт — тот
+        же ответ. Замерено на настоящем прогоне: все девять глав вернулись
+        по 57-72 слова вместо 583, девять раз прозвучало «прошу расширить»,
+        и в сценарий попали ровно те же куцые главы — 9 x 70 = 633 слова,
+        ролик на 3 минуты вместо заказанных 35. Повтор обязан ОТЛИЧАТЬСЯ от
+        первой попытки, иначе он бесполезен."""
+        if too_short:
+            got = max(1, len(too_short.split()))
+            ask = (f"Video about: {topic}.\n"
+                   f"Chapter {i} of {len(chapters)}: {ch}.\n"
+                   f"Below is a DRAFT of this chapter. It is far too short: "
+                   f"{got} words, but this chapter needs at least "
+                   f"{sec_words}. Rewrite it about {max(2, sec_words // got)} "
+                   f"times longer in {lang_name}, keeping everything it "
+                   "already says and adding concrete specifics, a named "
+                   "example, the mechanism behind each claim, and what it "
+                   "looks like in practice. Do NOT summarise, do NOT add "
+                   "headings, do NOT comment on the task — output only the "
+                   f"expanded narration.\n\nDRAFT:\n{too_short}\n\n" + flow)
+        else:
+            ask = (f"Video about: {topic}.\n"
+                   f"Chapter {i} of {len(chapters)}: {ch}.\n"
+                   f"Write AT LEAST {sec_words} words of narration in "
+                   f"{lang_name} for this chapter — {sec_words} is a hard "
+                   "minimum, do not stop early, expand with concrete detail "
+                   "if needed. " + flow)
         return llm_chat(
             [{"role": "system", "content": system},
-             {"role": "user", "content":
-              f"Video about: {topic}.\n"
-              f"Chapter {i} of {len(chapters)}: {ch}.\n"
-              f"Write AT LEAST {sec_words} words of narration in {lang_name} "
-              f"for this chapter — {sec_words} is a hard minimum, do not "
-              "stop early, expand with concrete detail if needed. "
-              + flow}],
+             {"role": "user", "content": ask}],
             api_key, 0.75, min(max(sec_words * 4, 1500), 8000))
 
     parts, prev_tail = [], ""
@@ -1681,9 +1703,21 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
         if len(part.split()) < sec_words * 0.6:   # заметно короче заказа — один повтор
             log(f"[Агент] Глава {i}: {len(part.split())} слов вместо "
                 f"~{sec_words} — прошу расширить...")
-            part2 = _strip_echo(_gen_chapter(i, ch, flow, sec_words), prev_tail)
+            part2 = _strip_echo(
+                _gen_chapter(i, ch, flow, sec_words, too_short=part),
+                prev_tail)
+            # Итог повтора НАЗЫВАЕМ ВСЛУХ. Раньше о нём не было ни строчки, и
+            # девять подряд провалившихся расширений выглядели в журнале как
+            # девять обычных сообщений «прошу расширить»; понять, что не
+            # сработало ни одно, можно было только сложив слова в готовом
+            # сценарии.
             if len(part2.split()) > len(part.split()):
+                log(f"[Агент] Глава {i}: расширена до {len(part2.split())} слов")
                 part = part2
+            else:
+                log(f"[Агент] ⚠ Глава {i}: расширить НЕ вышло "
+                    f"({len(part2.split())} слов против {len(part.split())}) "
+                    "— остаётся короткой")
             if not part.strip():
                 log(f"[Агент] ⚠ Глава {i} «{ch}» не сгенерировалась даже "
                     "со второй попытки — в сценарии не будет этой главы, "
