@@ -2070,7 +2070,14 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
                     .replace("__QUERY__", str(b.get("query", ""))),
                 shot.read_bytes(), api_key,
                 system="You are a documentary editor checking shot choices.",
-                max_tokens=300)
+                # Бюджет щедрый не по объёму ответа (он короткий, одна
+                # строка JSON), а потому что у моделей со «размышлениями»
+                # они тратят ТОТ ЖЕ лимит. Замерено на Agnes: при 30 и при
+                # 300 токенах ответ приходил ПУСТОЙ с finish_reason=length —
+                # всё уходило в reasoning_content, — и мы засчитывали это
+                # как сбой зрения. При 1500 отвечает нормально. То есть
+                # запасное зрение было живо, а мы считали его мёртвым.
+                max_tokens=1500)
             m = re.search(r"\{.*\}", out, re.S)
             if not m:
                 return None
@@ -2321,7 +2328,14 @@ def review_video(video: Path, api_key: str = "", log=print,
                                        .replace("__LINE__", line_at(t)),
                     shot.read_bytes(), api_key,
                     system="You are a meticulous documentary editor.",
-                    max_tokens=300)
+                    # Бюджет щедрый не по объёму ответа (он короткий, одна
+                # строка JSON), а потому что у моделей со «размышлениями»
+                # они тратят ТОТ ЖЕ лимит. Замерено на Agnes: при 30 и при
+                # 300 токенах ответ приходил ПУСТОЙ с finish_reason=length —
+                # всё уходило в reasoning_content, — и мы засчитывали это
+                # как сбой зрения. При 1500 отвечает нормально. То есть
+                # запасное зрение было живо, а мы считали его мёртвым.
+                max_tokens=1500)
                 m = re.search(r"\{.*\}", out, re.S)
                 if not m:
                     continue
