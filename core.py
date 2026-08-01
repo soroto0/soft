@@ -1503,6 +1503,16 @@ SCRIPT_SHAPES = {
         "it costs, and how to tell it worked. Never withhold the answer to "
         "create suspense - the viewer came for it, and hiding it is why "
         "they leave.",
+    "disaster":
+        "SHAPE - RECONSTRUCTION. The title already says something went "
+        "wrong, so withholding it is pointless. Open on the ordinary day "
+        "and the ordinary people, named and specific. Build the chain of "
+        "small decisions that made the outcome inevitable - each one "
+        "reasonable on its own. Then the failure itself, minute by minute, "
+        "in plain language. Then the aftermath: the count, the inquiry, "
+        "what was found, what was changed, and what was not. Never "
+        "sensationalise and never speculate about what victims felt - the "
+        "restraint IS the tone.",
     "argument":
         "SHAPE - TWO SIDES. Put a claim and its strongest opposition "
         "against each other. Give the opposing side its best case honestly "
