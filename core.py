@@ -1607,7 +1607,16 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
     system = SCRIPT_BASE.format(lang=lang_name) + TONES.get(
         tone, TONES["документальный"])
     if shape and shape in SCRIPT_SHAPES:
-        system += "\n\n" + SCRIPT_SHAPES[shape]
+        # Каркас идёт ПОСЛЕ общих правил и прямо объявлен главнее их. Без
+        # этой оговорки выходило противоречие: SCRIPT_BASE требует «подними
+        # вопрос и не отвечай до последней трети», а каркасы biography и
+        # howto требуют обратного — там удержание держится на судьбе или на
+        # обещанном ответе, а спрятанная развязка только злит. Модель
+        # получала оба указания разом и выполняла их вперемешку.
+        system += ("\n\nSHAPE OVERRIDE — the following overrides the "
+                   "STRUCTURE rules above wherever they disagree, "
+                   "including the open loop and withholding the best "
+                   "material.\n" + SCRIPT_SHAPES[shape])
         log(f"[Агент] Каркас сценария: {shape}")
     if (extra or "").strip():
         # указания канала идут ПОСЛЕДНИМИ и потому перевешивают общие:
