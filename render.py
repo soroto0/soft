@@ -155,6 +155,15 @@ SFX_FOR_TYPE = {
     "banner": "whoosh", "titlecard": "whoosh", "lower3": "whoosh",
     "compare": "whoosh", "collage": "whoosh",
     "bars": "ding", "timeline": "ding", "infographic": "whoosh",
+    # Эти семь появились позже таблицы и остались НЕМЫМИ: тип рисуется, а
+    # звука под ним нет. На замеренном плане (378 оверлеев на 54 минуты)
+    # они составляют заметную долю, то есть беззвучным выходил каждый
+    # третий-четвёртый появляющийся элемент — при включённой галке «звуки».
+    # Звук подобран по характеру движения: выезжает — whoosh, щёлкает или
+    # ставится на место — pop, встаёт число или итог — ding.
+    "kinetic": "whoosh", "quote": "whoosh", "gallery": "whoosh",
+    "stamp": "pop", "redact": "pop", "marker": "pop",
+    "highlight": "pop",
 }
 
 

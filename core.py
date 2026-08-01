@@ -3024,6 +3024,105 @@ def jamendo_search(mood: str, client_id: str, count: int = 5) -> list[dict]:
     return out
 
 
+# Настроение -> что искать в Openverse. Слова подобраны под музыкальные
+# подложки, а не под звуковые эффекты: «loop», «ambient», «underscore».
+OPENVERSE_MOOD_Q = {
+    "calm": ["calm ambient", "peaceful drone", "soft pad music"],
+    "dark": ["dark ambient", "horror ambience", "ominous drone"],
+    "tense": ["suspense music", "tension drone", "unsettling ambient"],
+    "sad": ["melancholy piano", "sad ambient", "sorrow strings"],
+    "epic": ["cinematic music", "epic orchestral", "dramatic score"],
+    "upbeat": ["upbeat background music", "light acoustic loop", "positive music"],
+    "hopeful": ["hopeful ambient", "warm pad music", "uplifting drone"],
+}
+
+
+def openverse_music(mood: str, dest_dir: Path, log=print,
+                    min_seconds: float = 30.0) -> Path:
+    """Скачать музыкальную подложку под настроение — БЕЗ КЛЮЧА.
+
+    Третий источник музыки. Первые два оба оказались мертвы: локальная
+    библиотека пуста, а client_id Jamendo не авторизован — проверено
+    напрямую, API отвечает «Your credential is not authorized». В итоге
+    подбор музыки падал КАЖДЫЙ раз, ошибка гасилась в warn, а рендер молча
+    брал голый голос: пользователь заметил пропажу музыки только по
+    готовому ролику. Openverse ключа не требует и отдаёт CC0 — замерено,
+    240 треков на один запрос «dark ambient».
+
+    Берём только лицензии, разрешающие коммерческое использование, и рядом
+    кладём .license.txt: для CC-BY атрибуция обязательна.
+    """
+    import requests
+    import re as _re
+    # НЕСКОЛЬКО формулировок на настроение, и собираем со всех. С одной
+    # выходило пусто: замерено — при запросе одной строкой нашлось лишь
+    # одно настроение из трёх («dark»), а «calm» и «tense» не дали ничего
+    # длиннее тридцати секунд. Дело не в отсутствии музыки, а в том, что
+    # у Openverse ищется по описанию загрузившего.
+    queries = OPENVERSE_MOOD_Q.get(mood) or [f"{mood} ambient", f"{mood} music"]
+    items, errs = [], []
+    for q in queries:
+        # Openverse без ключа лимитирован, и на частых запросах отвечает 429
+        # заглушкой Cloudflare. Ключ здесь не завести — регистрация требует
+        # заводить учётку. Поэтому ждём и пробуем ещё раз, а не считаем
+        # источник мёртвым: библиотеку достаточно наполнить ОДИН раз, дальше
+        # трек берётся с диска.
+        for attempt in range(3):
+            try:
+                r = requests.get("https://api.openverse.org/v1/audio/",
+                                 params={"q": q, "license_type": "commercial",
+                                         "page_size": 40},
+                                 headers={"User-Agent": "ContentFactory/1.0"},
+                                 timeout=60)
+            except Exception as e:
+                errs.append(f"{q}: {type(e).__name__}")
+                break
+            if r.status_code == 429:
+                if attempt == 2:
+                    errs.append(f"{q}: лимит запросов Openverse")
+                    break
+                _sleep_cancel(10 * (attempt + 1))
+                continue
+            if r.status_code != 200:
+                errs.append(f"{q}: HTTP {r.status_code}")
+                break
+            items += r.json().get("results") or []
+            break
+        # Хватит и одного удачного запроса: лишние жгут общий лимит впустую.
+        if sum(1 for it in items
+               if (it.get("duration") or 0) >= min_seconds * 1000) >= 3:
+            break
+    # Короткие «звуки» под подложку не годятся: они зациклятся в стук.
+    # Длинные вперёд.
+    good = [it for it in items
+            if (it.get("duration") or 0) >= min_seconds * 1000
+            and (it.get("url") or "").lower().endswith((".mp3", ".wav", ".ogg"))]
+    good.sort(key=lambda it: -(it.get("duration") or 0))
+    if not good:
+        raise RuntimeError(
+            f"Openverse не нашёл подложку под «{mood}» длиннее "
+            f"{min_seconds:.0f} с (запросов: {len(queries)}"
+            + (f", сбои: {'; '.join(errs)}" if errs else "") + ")")
+    it = good[0]
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    title = (it.get("title") or it.get("id") or "track")
+    safe = _re.sub(r"[^\w\- ]+", "_", title).strip()[:60] or "track"
+    ext = Path(it["url"]).suffix.lower() or ".mp3"
+    dest = dest_dir / f"{safe}_{str(it.get('id'))[:8]}{ext}"
+    download_file(it["url"], dest)
+    if not dest.exists() or dest.stat().st_size < 8192:
+        raise RuntimeError(f"Openverse: файл не скачался ({title})")
+    dest.with_suffix(".license.txt").write_text(
+        f"{title} — {it.get('creator') or 'неизвестен'}\n"
+        f"Openverse, license: {it.get('license', '?')} "
+        f"{it.get('license_version', '')}\n{it.get('foreign_landing_url', '')}\n",
+        encoding="utf-8")
+    log(f"[Openverse] Подложка: {title} "
+        f"({(it.get('duration') or 0) / 1000:.0f} с, "
+        f"лицензия {it.get('license', '?')})")
+    return dest
+
+
 def jamendo_download(track: dict, dest_dir: Path, log=print) -> Path:
     """Качает трек + кладёт рядом .license.txt с автором/лицензией — чтобы
     при необходимости атрибуции в описании ролика было что скопировать."""

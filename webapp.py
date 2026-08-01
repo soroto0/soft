@@ -618,20 +618,36 @@ class Api:
         try:
             track = core.pick_music_by_mood(Path(lib), mood)
         except FileNotFoundError:
+            # Источников теперь ТРИ, и последний не требует ключа. Раньше их
+            # было два, и оба молча оказались мертвы: библиотека пуста, а
+            # client_id Jamendo не авторизован (проверено — API отвечает
+            # «Your credential is not authorized»). Музыка не появлялась НИ В
+            # ОДНОМ ролике, ошибка гасилась в warn, рендер брал голый голос.
+            track, why = None, []
             jkey = self._jamendo_key()
-            if not jkey:
+            if jkey:
+                self.log(f"[Музыка] Локально нет «{mood}» — качаю с Jamendo...")
+                try:
+                    found = core.jamendo_search(mood, jkey, count=1)
+                    if found:
+                        track = core.jamendo_download(found[0],
+                                                      Path(lib) / mood, self.log)
+                    else:
+                        why.append("Jamendo: нет трека с коммерческой лицензией")
+                except Exception as e:
+                    why.append(f"Jamendo: {e}")
+            else:
+                why.append("Jamendo: ключ не указан")
+            if track is None:
+                self.log(f"[Музыка] Пробую Openverse (без ключа)...")
+                try:
+                    track = core.openverse_music(mood, Path(lib) / mood, self.log)
+                except Exception as e:
+                    why.append(f"Openverse: {e}")
+            if track is None:
                 raise RuntimeError(
-                    f"Нет треков настроения «{mood}» в библиотеке, и не "
-                    "указан Jamendo API Key в Настройках, чтобы скачать "
-                    "автоматически. Либо положи mp3 в "
-                    f"{Path(lib) / mood} сам, либо укажи ключ.")
-            self.log(f"[Музыка] Локально нет «{mood}» — качаю с Jamendo...")
-            found = core.jamendo_search(mood, jkey, count=1)
-            if not found:
-                raise RuntimeError(
-                    f"Jamendo не нашёл трек под «{mood}» с коммерческой "
-                    "лицензией — попробуй позже или положи трек вручную.")
-            track = core.jamendo_download(found[0], Path(lib) / mood, self.log)
+                    f"Нет треков настроения «{mood}»: " + "; ".join(why)
+                    + f". Положи mp3 в {Path(lib) / mood} вручную.")
         self.log(f"[Музыка] Жанр «{tone}» -> настроение «{mood}» -> "
                  f"{track.name}")
         core.add_music(voice, track, self.log, int(gain))
