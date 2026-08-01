@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+from itertools import zip_longest
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -773,6 +774,38 @@ AGNES_MODEL = os.getenv("AGNES_MODEL", "agnes-2.0-flash")
 GEMINI_TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3-flash-preview")
 WORDS_PER_MINUTE = 150  # средний темп закадровой начитки
 
+# Запасные модели для ЗРЕНИЯ. Бесплатная квота Gemini считается не на ключ, а
+# на пару «проект + МОДЕЛЬ»: в теле 429 это видно дословно —
+# quotaId=GenerateRequestsPerDayPerProjectPerModel-FreeTier, а для
+# gemini-3-flash quotaValue=20 В СУТКИ. Десять ключей на одной модели дают
+# 200 проверок в день на весь конвейер, и этого не хватает даже на один
+# ролик: только раскадровка test_shots (52 плана) тратит 52 на выбор кадра
+# плюс 52 на review_storyboard. Дальше зрение отваливается по 429, _vision_pick
+# возвращает None — и кадр берётся «как раньше», случайным из совпавших по
+# словам. Замерено: так попадают 48%, что и даёт половину брака в ролике.
+# Перебор моделей умножает суточный бюджет на их число. Проверено на живом
+# ключе 2026-08-01: при выбранной gemini-3-flash отвечали gemini-flash-latest,
+# gemini-3.5-flash и gemini-3.1-flash-lite; gemini-2.5-flash* отдают 404 «no
+# longer available to new users», gemini-2.0-flash* — квота 0.
+GEMINI_VISION_MODELS = [
+    m.strip() for m in os.getenv(
+        "GEMINI_VISION_MODELS",
+        "gemini-flash-latest,gemini-3.5-flash,gemini-3.1-flash-lite").split(",")
+    if m.strip()
+]
+
+
+def _gemini_vision_models() -> list[str]:
+    """Модели зрения по порядку: сначала основная, потом запасные.
+
+    Первой идёт GEMINI_TEXT_MODEL, чтобы поведение при живой квоте не
+    менялось; остальные подхватываются ровно тогда, когда основная выбрана."""
+    out = []
+    for m in [GEMINI_TEXT_MODEL] + GEMINI_VISION_MODELS:
+        if m and m not in out:
+            out.append(m)
+    return out
+
 
 def _redact(text) -> str:
     """Вычистить ключи из текста ошибки перед тем, как он попадёт в журнал.
@@ -863,7 +896,12 @@ def gemini_vision(prompt: str, image_bytes: bytes, api_key: str = "",
     """Отдать Gemini КАРТИНКУ вместе с вопросом. Нужно там, где текстовой
     проверки принципиально мало: код может быть валидным, а кадр — уродливым
     или с обрезанным текстом. Перебирает ключи так же, как llm_chat: у
-    Gemini первым кончается лимит, а фолбэка на Agnes здесь нет — тот текстовый."""
+    Gemini первым кончается лимит, а фолбэка на Agnes здесь нет — тот текстовый.
+
+    Перебирает не только ключи, но и МОДЕЛИ: суточная квота бесплатного
+    тарифа считается на пару «проект + модель», поэтому упёршийся ключ на
+    другой модели снова живой. Без этого зрение выключалось посреди ролика
+    и кадры добирались случайно (см. GEMINI_VISION_MODELS)."""
     import base64
     import requests
     keys = [k for k in ([api_key] if api_key else []) + _gemini_keys() if k]
@@ -881,27 +919,39 @@ def gemini_vision(prompt: str, image_bytes: bytes, api_key: str = "",
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
     last = "нет ответа"
-    # Тот же порядок «сначала живые», что и в llm_chat: выбранный ключ не
-    # должен собирать по 429 на каждой картинке впереди рабочих.
-    for _, key in _live_first(keys):
-        for url in _gemini_endpoints(GEMINI_TEXT_MODEL, key):
-            try:
-                r = requests.post(url, params={"key": key}, json=body, timeout=180)
-            except Exception as e:
-                last = _redact(e)   # в тексте сетевой ошибки лежит URL с ключом
-                continue
-            if r.status_code != 200:
-                last = f"{r.status_code}: {r.text[:200]}"
-                if _is_rate_limit(last):
-                    _cool_down(key)
-                    break        # этот ключ выбран — остальные его адреса тоже
-                continue
-            cands = r.json().get("candidates") or []
-            parts = (cands[0].get("content") or {}).get("parts") if cands else []
-            text = "".join(p.get("text", "") for p in parts or []).strip()
-            if text:
-                return text
-            last = "пустой ответ"
+    # Модель — ВНЕШНИЙ цикл, ключи — внутренний: пока на текущей модели есть
+    # хоть один непросевший ключ, на запасную не переходим. Наоборот было бы
+    # хуже — каждый кадр начинал бы с модели послабее.
+    for model in _gemini_vision_models():
+        # Тот же порядок «сначала живые», что и в llm_chat: выбранный ключ не
+        # должен собирать по 429 на каждой картинке впереди рабочих.
+        for _, key in _live_first(keys, model):
+            for url in _gemini_endpoints(model, key):
+                try:
+                    r = requests.post(url, params={"key": key}, json=body,
+                                      timeout=180)
+                except Exception as e:
+                    last = _redact(e)  # в тексте сетевой ошибки лежит URL с ключом
+                    continue
+                if r.status_code != 200:
+                    last = f"{model}: {r.status_code}: {r.text[:200]}"
+                    if _is_rate_limit(last):
+                        _cool_down(key, model, last)
+                        break    # этот ключ выбран — остальные его адреса тоже
+                    # 404 «no longer available to new users» — модель этому
+                    # ключу недоступна навсегда, ждать нечего. Отводим её
+                    # надолго, иначе каждый кадр снова стучится впустую.
+                    if r.status_code == 404:
+                        # не лимит, а недоступность — отводим на сутки
+                        _cool_down(key, model, "perDay")
+                        break
+                    continue
+                cands = r.json().get("candidates") or []
+                parts = (cands[0].get("content") or {}).get("parts") if cands else []
+                text = "".join(p.get("text", "") for p in parts or []).strip()
+                if text:
+                    return text
+                last = f"{model}: пустой ответ"
     raise RuntimeError(f"Gemini (зрение): {last}")
 
 
@@ -962,13 +1012,38 @@ _GEM_LOCK = threading.Lock()
 KEY_COOLDOWN_S = 600.0
 
 
-def _cool_down(key: str) -> None:
-    """Отложить ключ, который только что ответил 429."""
+KEY_COOLDOWN_DAY_S = 6 * 3600.0
+KEY_COOLDOWN_MIN_S = 65.0
+
+
+def _cool_down(key: str, model: str = "", err: str = "") -> None:
+    """Отложить ключ, который только что ответил 429, НА СРОК ЕГО ЛИМИТА.
+
+    Отмечаем пару «ключ+модель», а не один ключ: суточная квота у Gemini
+    считается ОТДЕЛЬНО на каждую модель (см. _gemini_vision_models). Один
+    общий отвод откладывал бы ключ целиком из-за модели, которая у него
+    кончилась, — при живых остальных.
+
+    Срок берём из самой ошибки. Все 429 выглядят одинаково, а означают
+    разное: замерено на десяти ключах, каждый из своего аккаунта, одним и
+    тем же запросом — пять упёрлись в TokensPerModelPerMinute (отпустит
+    через минуту), пять в RequestsPerDayPerProject (до завтра). Единая
+    пауза неверна в обе стороны сразу: живые ключи простаивают впустую, а
+    исчерпанные до утра всё равно перебираются каждые десять минут и
+    собирают отказы до конца суток.
+    """
+    e = (err or "").lower().replace("_", "")
+    if "perday" in e:
+        wait = KEY_COOLDOWN_DAY_S
+    elif "perminute" in e:
+        wait = KEY_COOLDOWN_MIN_S
+    else:
+        wait = KEY_COOLDOWN_S
     with _GEM_LOCK:
-        _GEM_COOLDOWN[key] = time.time() + KEY_COOLDOWN_S
+        _GEM_COOLDOWN[f"{model}\n{key}"] = time.time() + wait
 
 
-def _live_first(keys: list[str]) -> list[tuple[int, str]]:
+def _live_first(keys: list[str], model: str = "") -> list[tuple[int, str]]:
     """Ключи в порядке «сначала живые», с их исходными номерами.
 
     Ротация всегда начинала с первого ключа. Пока он не выбран — это верно,
@@ -982,8 +1057,10 @@ def _live_first(keys: list[str]) -> list[tuple[int, str]]:
     now = time.time()
     with _GEM_LOCK:
         cool = dict(_GEM_COOLDOWN)
-    live = [(i, k) for i, k in enumerate(keys, 1) if cool.get(k, 0) <= now]
-    tired = [(i, k) for i, k in enumerate(keys, 1) if cool.get(k, 0) > now]
+    def _hot(k: str) -> bool:
+        return cool.get(f"{model}\n{k}", 0) > now
+    live = [(i, k) for i, k in enumerate(keys, 1) if not _hot(k)]
+    tired = [(i, k) for i, k in enumerate(keys, 1) if _hot(k)]
     return (live + tired) if live else list(enumerate(keys, 1))
 
 
@@ -1128,12 +1205,12 @@ def llm_chat(messages: list[dict], api_key: str = "",
     errors = []
     for attempt in range(1, LLM_RETRY_ATTEMPTS + 1):
         errors = []
-        for i, key in _live_first(gem_keys):
+        for i, key in _live_first(gem_keys, GEMINI_TEXT_MODEL):
             try:
                 return gemini_chat(messages, key, temperature, max_tokens)
             except Exception as e:
                 if _is_rate_limit(str(e)):
-                    _cool_down(key)
+                    _cool_down(key, GEMINI_TEXT_MODEL, str(e))
                 errors.append(f"Gemini #{i}: {e}")
         for key in agn_keys:
             try:
@@ -2423,7 +2500,7 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
             hint="добавь ключ Pexels или Pixabay в «Настройки API»",
             level="критично")
         return 0
-    pexels_get, _ = _stock_getters(pexels, pixabay, log)
+    pexels_get, pixabay_get = _stock_getters(pexels, pixabay, log)
     used = _load_used()
     fixed = 0
     for rec in bad:
@@ -2477,22 +2554,38 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
                 log(f"[Кадры] план {rec['i'] + 1}: ИИ-кадр не вышел ({_redact(e)}) "
                     "— пробую сток")
         try:
+            # Обе видео-библиотеки, а не одна: до этой правки pixabay_get
+            # здесь создавался и тут же выбрасывался (`pexels_get, _ = ...`),
+            # так что проверка «нет ключей стоков» пропускала прогон с одним
+            # только ключом Pixabay — и заменять было нечем по-настоящему.
             r = pexels_get("https://api.pexels.com/videos/search",
                            {"query": q, "per_page": SEARCH_POOL,
                             "orientation": "landscape"})
-            vids = (r.json().get("videos")
-                    if r is not None and r.status_code == 200 else None)
-            if not vids:
-                log(f"[Кадры] план {rec['i'] + 1}: по «{q}» ничего не нашлось")
-                continue
+            vids = (r.json().get("videos") or []
+                    if r is not None and r.status_code == 200 else [])
             long_enough = [v for v in vids if (v.get("duration") or 0) >= need]
             picked = _pick_unused(long_enough or vids, "pexels_video",
-                                  used, 1, log)
-            if not picked:
+                                  used, 1, log) if vids else []
+            link = (pick_video_file(picked[0]["video_files"])["link"]
+                    if picked else None)
+            if link is None:
+                r = pixabay_get({"q": q, "per_page": SEARCH_POOL,
+                                 "video_type": "all"}, videos=True)
+                hits = (r.json().get("hits") or []
+                        if r is not None and r.status_code == 200 else [])
+                long_enough = [v for v in hits
+                               if (v.get("duration") or 0) >= need]
+                picked = _pick_unused(long_enough or hits, "pixabay_video",
+                                      used, 1, log) if hits else []
+                if picked:
+                    vv = (picked[0].get("videos") or {})
+                    f = vv.get("medium") or vv.get("large") or vv.get("small")
+                    link = (f or {}).get("url")
+            if link is None:
+                log(f"[Кадры] план {rec['i'] + 1}: по «{q}» ничего не нашлось")
                 continue
             tmp_dest = dest.with_suffix(".new.mp4")
-            download_file(pick_video_file(picked[0]["video_files"])["link"],
-                          tmp_dest)
+            download_file(link, tmp_dest)
             # заменяем только после УСПЕШНОЙ загрузки: иначе при обрыве сети
             # останется ни старого клипа, ни нового, и рендер упадёт
             dest.unlink(missing_ok=True)
@@ -3486,6 +3579,20 @@ def parse_scenes(scenes_text: str) -> list[dict]:
     return scenes
 
 
+def _interleave(*groups: list) -> list:
+    """Слить списки кандидатов «по очереди», а не встык.
+
+    Зрению показывается только верхушка объединённого списка (см. top в
+    _vision_pick), и при склейке встык весь лист занимала бы первая
+    библиотека — вторую никто бы не увидел, то есть добавлять источник было
+    бы бессмысленно. Поочерёдный порядок сохраняет ранг внутри каждой
+    библиотеки и даёт обеим попасть на лист."""
+    out = []
+    for row in zip_longest(*groups):
+        out.extend(x for x in row if x is not None)
+    return out
+
+
 def pick_video_file(files: list[dict]) -> dict:
     """Файл ближе к 1080p: среди >=1080 берём минимальный по высоте
     (чтобы не тащить 4K-исходники), иначе — самый крупный из доступных."""
@@ -3613,7 +3720,7 @@ def _contact_sheet(images: list[bytes], cols: int = 3, cell: int = 320) -> bytes
 
 
 def _vision_pick(items: list[dict], thumb_of, line: str, api_key: str,
-                 log, top: int = 6):
+                 log, top: int = 9):
     """Выбрать из кандидатов тот, что отвечает ФРАЗЕ ДИКТОРА, а не совпал по
     словам. Возвращает элемент или None (тогда решает вызывающий).
 
@@ -3622,6 +3729,10 @@ def _vision_pick(items: list[dict], thumb_of, line: str, api_key: str,
     смотрел. Замерено, что так попадают 48% кадров. Один запрос к зрению
     здесь заменяет такой же запрос в review_storyboard ПОСЛЕ скачивания:
     бюджет тот же, но кадр выбирается верно сразу, без перекачки.
+
+    top=9, а не 6: контактный лист стоит РОВНО ОДИН запрос независимо от
+    числа ячеек, а вызывающие теперь сливают в него две библиотеки — при
+    шести ячейках вторая почти не попадала бы на лист. Сетка 3x3 без остатка.
 
     Любой сбой — не ошибка: возвращаем None и работаем как раньше."""
     import requests
@@ -3735,13 +3846,18 @@ def _stock_getters(pexels: KeyRotator, pixabay: KeyRotator, log):
             return r
         return None
 
-    def pixabay_get(params):
+    def pixabay_get(params, videos: bool = False):
+        # videos=True — вторая, ВИДЕО-библиотека Pixabay. Отдельный адрес, тот
+        # же ключ; до этого не опрашивалась вовсе, хотя на реальных запросах
+        # даёт столько же кандидатов, сколько Pexels.
+        url = ("https://pixabay.com/api/videos/" if videos
+               else "https://pixabay.com/api/")
         while pixabay.current:
             # Ключ Pixabay уходит параметром URL (по-другому их API не умеет),
             # а вызывающие пишут текст исключения в журнал — без этой обёртки
             # ключ утекал бы в публичный app.log, как утекли ключи Gemini.
             try:
-                r = requests.get("https://pixabay.com/api/",
+                r = requests.get(url,
                                  params={**params, "key": pixabay.current},
                                  timeout=30)
             except Exception as e:
@@ -4482,63 +4598,142 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         queries = smart_queries(beats, agnes_key, log)
 
     def fetch_video(query, need, dest, line=""):
+        """Клип под план из ВСЕХ доступных видео-библиотек сразу.
+
+        Раньше спрашивался только Pexels. Замерено на test_shots: из 22
+        планов, закрытых стоковым ВИДЕО, тексту отвечали 5 — 23%, худшая
+        ветка конвейера (у фото 61%, у сгенерированных кадров 75%). Дело не
+        в формулировке запроса: на тех же 52 запросах Pexels и Pixabay
+        отдают по 15 результатов каждый (779 и 780 кандидатов), то есть
+        половина полки просто не открывалась. Оба источника сливаются в ОДИН
+        контактный лист — запрос к зрению остаётся один, а выбирать есть из
+        чего."""
+        groups, dur = [], {}
+
         r = pexels_get("https://api.pexels.com/videos/search",
                        {"query": query, "per_page": SEARCH_POOL,
                         "orientation": "landscape"})
-        vids = r.json().get("videos") if r is not None and r.status_code == 200 else None
-        if not vids:
+        pex = (r.json().get("videos") or []
+               if r is not None and r.status_code == 200 else [])
+        g = []
+        for v in pex:
+            try:
+                link = pick_video_file(v["video_files"])["link"]
+            except Exception:
+                continue
+            key = ("pexels_video", str(v["id"]))
+            dur[key] = v.get("duration") or 0
+            g.append({"id": key, "thumb": v.get("image"), "link": link})
+        groups.append(g)
+
+        r = pixabay_get({"q": query, "per_page": SEARCH_POOL,
+                         "video_type": "all"}, videos=True)
+        pix = (r.json().get("hits") or []
+               if r is not None and r.status_code == 200 else [])
+        g = []
+        for v in pix:
+            vids = v.get("videos") or {}
+            # medium ~1080p, large бывает 4K — тащить исходник незачем
+            f = vids.get("medium") or vids.get("large") or vids.get("small")
+            if not f or not f.get("url"):
+                continue
+            key = ("pixabay_video", str(v["id"]))
+            dur[key] = v.get("duration") or 0
+            g.append({"id": key, "thumb": f.get("thumbnail"),
+                      "link": f["url"]})
+        groups.append(g)
+
+        pool = _interleave(*groups)
+        if not pool:
             return None
-        long_enough = [v for v in vids if (v.get("duration") or 0) >= need]
-        pool = long_enough or vids
+        # Длина по-прежнему в приоритете, но теперь среди кандидатов ОБЕИХ
+        # библиотек — и порядок «по очереди» внутри отбора сохраняется.
+        long_enough = [c for c in pool if dur.get(c["id"], 0) >= need]
+        pool = long_enough or pool
+
         # Сначала пробуем ВЫБРАТЬ по картинке под фразу диктора, и только
         # если это не вышло — как раньше, случайным из совпавших по словам.
         v = None
         if line and (gemini_key or os.getenv("GEMINI_API_KEY", "")):
-            seen = set(map(str, used.get("pexels_video", [])))
-            fresh = [x for x in pool if str(x["id"]) not in seen] or pool
-            v = _vision_pick(fresh, lambda x: x.get("image"), line,
+            fresh = [c for c in pool
+                     if str(c["id"][1]) not in set(map(str, used.get(c["id"][0], [])))] or pool
+            v = _vision_pick(fresh, lambda x: x.get("thumb"), line,
                              gemini_key, log)
             if v is NOTHING_FITS:
                 return None      # пусть вызывающий сгенерирует кадр
             if v is not None:
-                used.setdefault("pexels_video", []).append(str(v["id"]))
+                used.setdefault(v["id"][0], []).append(str(v["id"][1]))
         if v is None:
-            picked = _pick_unused(pool, "pexels_video", used, 1, log)
+            # _pick_unused ждёт "id" скаляром и ведёт историю по одному
+            # источнику, поэтому случайный запасной путь берём внутри той
+            # библиотеки, что дала больше кандидатов.
+            best = max(groups, key=len)
+            if not best:
+                return None
+            kind = best[0]["id"][0]
+            flat = [{"id": c["id"][1], "_c": c} for c in best]
+            picked = _pick_unused(flat, kind, used, 1, log)
             if not picked:
                 return None
-            v = picked[0]
-        download_file(pick_video_file(v["video_files"])["link"], dest)
-        return v.get("duration") or audio_duration(dest) or need
+            v = picked[0]["_c"]
+        download_file(v["link"], dest)
+        return dur.get(v["id"], 0) or audio_duration(dest) or need
 
     def fetch_photo(query, need, dest, line=""):
-        # источники по очереди: Pexels -> Pixabay -> Openverse -> Wikimedia
+        """Фото под план. Pexels и Pixabay спрашиваются ВСЕГДА и оба, их
+        кандидаты идут зрению одним контактным листом; Openverse и Wikimedia
+        остаются запасом на случай, когда стоки пусты.
+
+        Раньше источники шли строго по очереди и обрывались на первом, что
+        хоть что-то вернул, а зрение смотрело только на кандидатов Pexels.
+        Хуже того, ответ «ни один не подходит» приводил к выходу из функции —
+        Pixabay/Openverse/Wikimedia не спрашивались ВООБЩЕ именно в том
+        случае, ради которого их и держат."""
         url = None
+        groups = []
+
         r = pexels_get("https://api.pexels.com/v1/search",
                        {"query": query, "per_page": SEARCH_POOL,
                         "orientation": "landscape"})
-        photos = r.json().get("photos") if r is not None and r.status_code == 200 else None
-        # то же, что у видео: сначала выбрать по картинке под фразу
-        if photos and line and (gemini_key or os.getenv("GEMINI_API_KEY", "")):
-            seen = set(map(str, used.get("pexels_photo", [])))
-            fresh = [x for x in photos if str(x["id"]) not in seen] or photos
-            got = _vision_pick(fresh, lambda x: (x.get("src") or {}).get("medium"),
-                               line, gemini_key, log)
+        photos = (r.json().get("photos") or []
+                  if r is not None and r.status_code == 200 else [])
+        groups.append([{"id": ("pexels_photo", str(p["id"])),
+                        "thumb": (p.get("src") or {}).get("medium"),
+                        "link": (p.get("src") or {}).get("original")}
+                       for p in photos if (p.get("src") or {}).get("original")])
+
+        r = pixabay_get({"q": query, "per_page": SEARCH_POOL,
+                         "orientation": "horizontal", "image_type": "photo"})
+        hits = (r.json().get("hits") or []
+                if r is not None and r.status_code == 200 else [])
+        groups.append([{"id": ("pixabay", str(h["id"])),
+                        "thumb": h.get("webformatURL"),
+                        "link": h.get("largeImageURL")}
+                       for h in hits if h.get("largeImageURL")])
+
+        pool = _interleave(*groups)
+        nothing_fits = False
+        if pool and line and (gemini_key or os.getenv("GEMINI_API_KEY", "")):
+            fresh = [c for c in pool
+                     if str(c["id"][1]) not in set(map(str, used.get(c["id"][0], [])))] or pool
+            got = _vision_pick(fresh, lambda x: x.get("thumb"), line,
+                               gemini_key, log)
             if got is NOTHING_FITS:
-                return None      # пусть вызывающий сгенерирует кадр
-            if got is not None:
-                used.setdefault("pexels_photo", []).append(str(got["id"]))
-                url = got["src"]["original"]
-        if url is None:
-            picked = _pick_unused(photos or [], "pexels_photo", used, 1, log)
-            if picked:
-                url = picked[0]["src"]["original"]
-        if url is None:
-            r = pixabay_get({"q": query, "per_page": SEARCH_POOL,
-                             "orientation": "horizontal", "image_type": "photo"})
-            hits = r.json().get("hits") if r is not None and r.status_code == 200 else None
-            picked = _pick_unused(hits or [], "pixabay", used, 1, log)
-            if picked:
-                url = picked[0]["largeImageURL"]
+                # НЕ выходим: под фразу может не быть СТОКОВОГО кадра, но
+                # найтись документальный у Openverse/Wikimedia — там снимки
+                # реальных мест и событий, которых на стоках нет в принципе.
+                nothing_fits = True
+            elif got is not None:
+                used.setdefault(got["id"][0], []).append(str(got["id"][1]))
+                url = got["link"]
+        if url is None and not nothing_fits:
+            best = max(groups, key=len) if any(groups) else []
+            if best:
+                kind = best[0]["id"][0]
+                flat = [{"id": c["id"][1], "_c": c} for c in best]
+                picked = _pick_unused(flat, kind, used, 1, log)
+                if picked:
+                    url = picked[0]["_c"]["link"]
         if url is None:
             url = openverse_search(query, used, log)
         if url is None:                         # реальные люди/места
@@ -4739,20 +4934,15 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             except Exception as e:
                 log(f"[Раскадровка] План {i}: ошибка {e}")
                 clip = None
-            # стоки не дали (лимит/не нашлось), но пул есть — переиспользуем
-            if clip is None and pool:
-                clip = reuse_from_pool()
-                src_dur = audio_duration(clip) or need
-                reused += 1
-                import quality
-                quality.degraded(
-                    "Раскадровка", "под этот момент ничего не нашлось — на "
-                    "экране повтор уже показанного кадра",
-                    why="стоки не дали материала по запросу (лимит ключей "
-                        "или в библиотеке нет подходящего)",
-                    hint="добавь ещё ключ Pexels/Pixabay или включи "
-                         "генерацию кадров ИИ",
-                    level="заметно")
+            # Стоки не дали. ПОВТОР ИЗ ПУЛА — последнее средство, а не первое:
+            # он ставит кадр, отобранный под ДРУГУЮ фразу, то есть заведомо
+            # мимо текста. Раньше эта ветка стояла до генерации и перехватывала
+            # ровно те планы, которые зрение отправило на ИИ словами «под эту
+            # фразу в стоке ничего нет» — сентинел NOTHING_FITS вёл не к
+            # сгенерированному кадру, а к случайному повтору. Замерено на
+            # test_shots: сгенерированные кадры отвечают тексту в 75% случаев,
+            # стоковое видео — в 23%, так что подмена била по самому больному.
+            # Порядок теперь: сгенерировать -> и только если нечем, повторить.
         if clip is None and genvideo:
             # сток не нашёлся — генерируем настоящий видеоклип под длину плана
             try:
@@ -4776,6 +4966,20 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             except Exception as e:
                 log(f"[Раскадровка] План {i}: генерация не удалась ({_redact(e)})")
                 clip = None
+        if clip is None and pool:
+            # Ни стоки, ни генерация. Повтор уже показанного кадра — плохо
+            # (он подбирался под другую фразу), но дырка в монтаже хуже.
+            clip = reuse_from_pool()
+            src_dur = audio_duration(clip) or need
+            reused += 1
+            import quality
+            quality.degraded(
+                "Раскадровка", "под этот момент ничего не нашлось — на "
+                "экране повтор уже показанного кадра",
+                why="ни стоки, ни генерация не дали кадра под этот текст",
+                hint="добавь ещё ключ Pexels/Pixabay или проверь квоту "
+                     "генерации кадров",
+                level="заметно")
         if clip is None:
             # ни сток, ни генерация, ни повтор — в этом месте ролика
             # действительно нечего показать
