@@ -826,10 +826,16 @@ class Api:
                 "vhs": bool(p.get("vhs")),
                 "chromab": bool(p.get("chromab")),
                 "chapters_grade": bool(p.get("chapters")),  # render.py читает chapters_grade
-                "bloom": bool(p.get("bloom")),
-                "light_leak": bool(p.get("light_leak")),
+                # Пылинки в луче света — ВСЕГДА, на любом канале и любой
+                # длине. Это то, что отличает кадр «из стока» от кадра «из
+                # фильма»: воздух перестаёт быть пустым. Эффекты в рендере
+                # были давно, но по умолчанию выключены, и включить их можно
+                # было только галкой на конкретный прогон — то есть почти
+                # никогда. Явное False в параметрах по-прежнему выключает.
+                "bloom": p.get("bloom", True) is not False,
+                "light_leak": p.get("light_leak", True) is not False,
                 "dust": bool(p.get("dust")),
-                "sand": bool(p.get("sand")),
+                "sand": p.get("sand", True) is not False,
                 "stars": bool(p.get("stars")),
                 "embers": bool(p.get("embers")),
                 "flicker": bool(p.get("flicker")),

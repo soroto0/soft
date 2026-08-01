@@ -197,7 +197,14 @@ def apply_to_params(channel: dict, p: dict) -> dict:
     # субтитры, голос и палитра.
     for key in ("lang", "tone", "visual_style", "sub_style", "sub_size",
                 "sub_font", "intensity", "look", "min_gap", "sfx",
-                "script_shape"):
+                "script_shape",
+                # Плёночные эффекты — тоже признак канала, а не разовая
+                # галка. В рендере они давно есть (sand — пыльная взвесь в
+                # луче, stars — искры, light_leak — засветка, bloom —
+                # свечение), но в профиль не проходили, и канал не мог их
+                # закрепить за собой.
+                "sand", "stars", "dust", "flicker", "bloom", "light_leak",
+                "grain", "vignette", "letterbox"):
         v = channel.get(key)
         # Отбрасываем ПУСТОТУ, а не «ложь». Проверка на истинность съедала
         # осмысленные значения: sfx=False (канал сознательно без звуков)

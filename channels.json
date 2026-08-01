@@ -35,7 +35,14 @@
     "min_gap": 5.0,
     "sfx": true,
     "script_shape": "mystery",
-    "reference": ""
+    "reference": "",
+    "grain": true,
+    "vignette": true,
+    "sand": true,
+    "light_leak": true,
+    "bloom": true,
+    "stars": false,
+    "flicker": false
   },
   {
     "name": "The Home Vault",
@@ -73,7 +80,14 @@
     "min_gap": 7.0,
     "sfx": true,
     "script_shape": "howto",
-    "reference": "https://www.youtube.com/@EliasYoderAmish"
+    "reference": "https://www.youtube.com/@EliasYoderAmish",
+    "grain": false,
+    "vignette": false,
+    "sand": true,
+    "light_leak": true,
+    "bloom": true,
+    "stars": false,
+    "flicker": false
   },
   {
     "name": "Pensamiento Estoico - ES",
@@ -111,6 +125,13 @@
     "min_gap": 11.0,
     "sfx": false,
     "script_shape": "biography",
-    "reference": "https://www.youtube.com/@PhilosophyOriginsEspanol"
+    "reference": "https://www.youtube.com/@PhilosophyOriginsEspanol",
+    "sand": true,
+    "light_leak": true,
+    "bloom": true,
+    "stars": false,
+    "grain": false,
+    "flicker": false,
+    "vignette": true
   }
 ]
