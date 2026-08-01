@@ -1226,10 +1226,28 @@ def _style_chain(opts: dict, wh: tuple[int, int] = (1920, 1080)) -> list[str]:
     return chain
 
 
+# Атмосферный звук ИИ-клипов: громкость и потолок числа дорожек.
+AMB_GAIN = 0.28
+AMB_MAX_CLIPS = 40
+
+
+def _has_audio(path: Path) -> bool:
+    """Есть ли в файле звуковая дорожка (ffprobe)."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, timeout=60)
+        return bool(r.stdout.strip())
+    except Exception:
+        return False
+
+
 def assemble(group_files: list[Path], audio: Path, srt: Path | None,
              dest: Path, fps: int, total: float, opts: dict, tmp: Path,
              look_chain: str = "", ovls: list[dict] | None = None,
-             wh: tuple[int, int] = (1920, 1080), log=print):
+             wh: tuple[int, int] = (1920, 1080), log=print,
+             scenes: list[dict] | None = None):
     """Финал: конкат групп + оверлеи + звук + субтитры + цветокор + стиль.
     Порядок слоёв: сцена -> цветокор -> оверлеи -> субтитры -> стиль."""
     concat_list = tmp / "groups.txt"
@@ -1359,6 +1377,74 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
             except Exception as e:
                 log(f"[Рендер] SFX пропущены ({e.__class__.__name__}: {e})")
                 audio_map = "1:a"
+        # Атмосферный звук ИИ-клипов. Veo отдаёт ролик СО ЗВУКОМ — замерено
+        # ffprobe на свежесгенерированном клипе: дорожки h264 + aac. Дождь по
+        # крыше, ветер, шаги приходят вместе с картинкой бесплатно, а
+        # конвейер срезал их четырьмя «-an» и оставлял голый голос под
+        # музыкой.
+        #
+        # Только ИИ-клипы (суффикс _ai). У стокового материала своя звуковая
+        # дорожка — чужая музыка, речь, хлопки микрофона; подмешать её значит
+        # испортить ролик, а не оживить.
+        #
+        # Приглушение под голосом обязательно: sidechaincompress, как у
+        # музыки. Без него дождь забивает диктора.
+        # ВНИМАНИЕ: блок живёт внутри «if ovls» — при ПУСТОМ списке оверлеев
+        # assemble идёт коротким путём и сюда не заходит. На настоящем ролике
+        # оверлеев сотни, так что путь рабочий, но ролик совсем без
+        # моушн-графики атмосферы не получит. Вынести отсюда — отдельная
+        # правка, требующая перетряхнуть построение fc/cmd целиком.
+        if opts.get("clip_audio", True) and scenes:
+            try:
+                amb = []
+                for sc in scenes:
+                    f, k = sc.get("file"), sc.get("kind")
+                    if not f or k != "video":
+                        continue
+                    p = Path(f)
+                    if "_ai" not in p.stem or not _has_audio(p):
+                        continue
+                    dur = float(sc["end"]) - float(sc["start"])
+                    if dur > 0.4:
+                        amb.append((p, float(sc["start"]), dur))
+                # Потолок: каждая дорожка — отдельный «-i», а длина команды
+                # Windows уже однажды рушила рендер после трёх часов работы.
+                if len(amb) > AMB_MAX_CLIPS:
+                    amb.sort(key=lambda x: -x[2])
+                    amb = amb[:AMB_MAX_CLIPS]
+                    amb.sort(key=lambda x: x[1])
+                if amb:
+                    # Номер входа в ffmpeg = порядок его «-i» в команде.
+                    base = sum(1 for a in cmd if a == "-i")
+                    parts, labels, ins = [], [], []
+                    for k2, (p, t0, dur) in enumerate(amb):
+                        ins += ["-i", str(p)]
+                        lbl = f"amb{k2}"
+                        parts.append(
+                            f"[{base + k2}:a]atrim=0:{dur:.3f},"
+                            f"asetpts=PTS-STARTPTS,"
+                            f"adelay={int(t0 * 1000)}:all=1,"
+                            f"volume={AMB_GAIN}[{lbl}]")
+                        labels.append(lbl)
+                    voice = (audio_map if audio_map.startswith("[")
+                             else f"[{audio_map}]")
+                    parts.append(f"{voice}asplit=2[vA][vB]")
+                    parts.append("".join(f"[{l}]" for l in labels)
+                                 + f"amix=inputs={len(labels)}:"
+                                   "duration=longest:normalize=0[ambmix]")
+                    parts.append(
+                        "[ambmix][vB]sidechaincompress=threshold=0.03:"
+                        "ratio=9:attack=25:release=600[ambduck]")
+                    parts.append("[vA][ambduck]amix=inputs=2:"
+                                 "duration=first:normalize=0[ambout]")
+                    cmd += ins
+                    fc += ";" + ";".join(parts)
+                    audio_map = "[ambout]"
+                    log(f"[Рендер] Атмосфера ИИ-клипов: {len(amb)} дорожек "
+                        "подмешано под голос")
+            except Exception as e:
+                log(f"[Рендер] Атмосфера пропущена "
+                    f"({e.__class__.__name__}: {e})")
         # filter_complex УХОДИТ В ФАЙЛ. На 54-минутном ролике со 163
         # оверлеями команда превысила лимит Windows (~32000 символов) и
         # рендер упал в самом конце, после трёх часов работы, с
@@ -1569,7 +1655,7 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
                     break
     log("[Рендер] Финальный проход: звук + оверлеи + субтитры + цветокор...")
     assemble(group_files, audio, srt, final, fps, total, opts, tmp,
-             look_chain, ovls, (w, h), log)
+             look_chain, ovls, (w, h), log, scenes)
     tick()
     size_mb = final.stat().st_size / 1e6
 
