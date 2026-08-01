@@ -1478,6 +1478,38 @@ def check_llm_keys_once(log=print, agnes_key: str = "") -> dict | None:
 
 
 # Жанры/тон — под ЛЮБУЮ тему. base — общий каркас, дальше добавка тона.
+# Каркас сценария — СВОЙ на каждый канал. SCRIPT_BASE один на всех задаёт
+# «холодное открытие + петля до последней трети», и для крайма это верно, а
+# для остальных нет: разбор философа не держится на загадке, а починка крана
+# ею только раздражает — зрителю нужен ответ, а не интрига. Три канала с
+# одним каркасом дают ощущение одного конвейера даже при разных голосах.
+SCRIPT_SHAPES = {
+    "mystery":
+        "SHAPE - INVESTIGATION. Open inside the unexplained moment. "
+        "Lay out what is known as evidence, in the order an investigator "
+        "would meet it, and let contradictions surface on their own. Keep "
+        "ONE central question unanswered until the final third. Name dates, "
+        "places, sums and sources out loud - they are the spine here.",
+    "biography":
+        "SHAPE - LIFE AND IDEA. Follow one mind through time: what "
+        "happened to this person, and what it made them think. Alternate "
+        "between the life and the idea it produced, so neither runs dry. No "
+        "withheld mystery - the pull is watching a worldview being forged "
+        "and what it cost. End where the idea outlives the person.",
+    "howto":
+        "SHAPE - PROBLEM AND FIX. State the problem plainly in the "
+        "first thirty seconds and promise the fix. Then: why it happens, "
+        "what most people try and why it fails, the fix step by step, what "
+        "it costs, and how to tell it worked. Never withhold the answer to "
+        "create suspense - the viewer came for it, and hiding it is why "
+        "they leave.",
+    "argument":
+        "SHAPE - TWO SIDES. Put a claim and its strongest opposition "
+        "against each other. Give the opposing side its best case honestly "
+        "before answering it. The tension is the disagreement itself, not a "
+        "hidden fact.",
+}
+
 SCRIPT_BASE = (
     "You write long-form YouTube voice-over narration in {lang}. "
     "Style: tight, specific, zero filler. Every sentence carries a fact, an "
@@ -1557,7 +1589,7 @@ LANGS = {"английский": "English", "русский": "Russian", "исп
 
 def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                tone: str = "документальный", lang: str = "английский",
-               extra: str = "") -> str:
+               extra: str = "", shape: str = "") -> str:
     """Длинный сценарий без воды на ЛЮБУЮ тему: план из глав, потом главы по
     очереди. tone — жанр/подача, lang — язык. ~150 слов на минуту."""
     target_words = minutes * WORDS_PER_MINUTE
@@ -1574,6 +1606,9 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
     lang_name = LANGS.get(lang, "English")
     system = SCRIPT_BASE.format(lang=lang_name) + TONES.get(
         tone, TONES["документальный"])
+    if shape and shape in SCRIPT_SHAPES:
+        system += "\n\n" + SCRIPT_SHAPES[shape]
+        log(f"[Агент] Каркас сценария: {shape}")
     if (extra or "").strip():
         # указания канала идут ПОСЛЕДНИМИ и потому перевешивают общие:
         # это голос конкретного канала, а не ещё один совет вообще

@@ -29,7 +29,12 @@
     "series_next": 3,
     "youtube_url": "",
     "notes": "True crime. Конвейерная модель ниши: Abyssal Detective 475k, 56 мин, раз в 3 дня, медиана 253k. Решает ШИРОТА предмета: широкие визуальные темы x6-11, узкие бытовые x0.17.",
-    "id": "abyss"
+    "id": "abyss",
+    "intensity": "сильная",
+    "look": "холодный",
+    "min_gap": 5.0,
+    "sfx": true,
+    "script_shape": "mystery"
   },
   {
     "name": "The Home Vault",
@@ -61,7 +66,12 @@
     "series_next": 1,
     "youtube_url": "",
     "notes": "Бережливые домашние решения. Образец: Elias Yoder 302k, медиана 96k, 21 мин. Решают три элемента: цена в долларах, обещание постоянства, скрытое знание. Нумерованные списки проваливаются в 250 раз.",
-    "id": "home-vault"
+    "id": "home-vault",
+    "intensity": "средняя",
+    "look": "тёплый",
+    "min_gap": 7.0,
+    "sfx": true,
+    "script_shape": "howto"
   },
   {
     "name": "Pensamiento Estoico - ES",
@@ -93,6 +103,11 @@
     "series_next": 1,
     "youtube_url": "",
     "notes": "Психология отношений через Юнга, испанский. Образец: @LaPsicologiadeCarlJung — 18.8k за 5.5 мес, ежедневно, 38 мин. Решает наличие ДРУГОГО человека с тайными чувствами: x10-32 против x0.02 у роликов про работу над собой.",
-    "id": "estoico-es"
+    "id": "estoico-es",
+    "intensity": "слабая",
+    "look": "кинематографичный",
+    "min_gap": 11.0,
+    "sfx": false,
+    "script_shape": "biography"
   }
 ]
