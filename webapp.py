@@ -639,7 +639,13 @@ class Api:
             else:
                 why.append("Jamendo: ключ не указан")
             if track is None:
-                self.log(f"[Музыка] Пробую Openverse (без ключа)...")
+                self.log("[Музыка] Пробую Internet Archive (без ключа)...")
+                try:
+                    track = core.archive_music(mood, Path(lib) / mood, self.log)
+                except Exception as e:
+                    why.append(f"Архив: {e}")
+            if track is None:
+                self.log("[Музыка] Пробую Openverse (без ключа)...")
                 try:
                     track = core.openverse_music(mood, Path(lib) / mood, self.log)
                 except Exception as e:

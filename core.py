@@ -3037,6 +3037,107 @@ OPENVERSE_MOOD_Q = {
 }
 
 
+ARCHIVE_MOOD_Q = {
+    "calm": "calm ambient", "dark": "dark ambient", "tense": "suspense drone",
+    "sad": "melancholy ambient", "epic": "cinematic orchestral",
+    "upbeat": "upbeat instrumental", "hopeful": "uplifting ambient",
+}
+
+
+def _archive_secs(v) -> float:
+    """Длительность из метаданных архива: бывает «317.5», бывает «88:25»."""
+    s = str(v or "").strip()
+    if not s:
+        return 0.0
+    if ":" in s:
+        out = 0.0
+        try:
+            for part in s.split(":"):
+                out = out * 60 + float(part)
+        except ValueError:
+            return 0.0
+        return out
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def archive_music(mood: str, dest_dir: Path, log=print,
+                  min_seconds: float = 120.0) -> Path:
+    """Музыкальная подложка из Internet Archive — БЕЗ КЛЮЧА и без лимита.
+
+    Основной бесплатный источник музыки. Openverse, добавленный сюда же,
+    для анонимных жёстко лимитирован: после десятка запросов отвечает 429
+    заглушкой Cloudflare и держит блокировку — поймано на своих же
+    проверках, ни одно из семи настроений так и не закрылось. Ключ там не
+    завести, регистрация требует учётки. Архив таких ограничений не имеет
+    и отдаёт 69 503 записи под лицензией Creative Commons.
+
+    Отдельная выгода для длинных роликов: тут лежат целые альбомы и
+    радиосессии. Замерено — 88 минут и 42 минуты одним файлом, то есть под
+    часовой ролик подложка не зацикливается вовсе.
+    """
+    import requests
+    import re as _re
+    ua = {"User-Agent": "ContentFactory/1.0"}
+    q = ARCHIVE_MOOD_Q.get(mood, f"{mood} ambient")
+    r = requests.get(
+        "https://archive.org/advancedsearch.php",
+        params={"q": f"mediatype:(audio) AND licenseurl:(*creativecommons*) "
+                     f"AND {q}",
+                "fl[]": ["identifier", "title", "licenseurl", "creator"],
+                "rows": 12, "output": "json"},
+        headers=ua, timeout=90)
+    if r.status_code != 200:
+        raise RuntimeError(f"Internet Archive: поиск {r.status_code}")
+    docs = (r.json().get("response") or {}).get("docs") or []
+    if not docs:
+        raise RuntimeError(f"Internet Archive: ничего под «{mood}»")
+    random.shuffle(docs)   # иначе все ролики канала получат один и тот же трек
+    last = "нет подходящих файлов"
+    for it in docs[:6]:
+        ident = it.get("identifier")
+        if not ident:
+            continue
+        try:
+            meta = requests.get(f"https://archive.org/metadata/{ident}",
+                                headers=ua, timeout=90).json()
+        except Exception as e:
+            last = f"{ident}: {type(e).__name__}"
+            continue
+        files = [f for f in (meta.get("files") or [])
+                 if str(f.get("name", "")).lower().endswith(".mp3")
+                 and _archive_secs(f.get("length")) >= min_seconds]
+        if not files:
+            continue
+        # Не самый длинный: восьмидесятиминутный файл качать незачем, под
+        # подложку хватит десяти минут, а вес меньше в разы.
+        files.sort(key=lambda f: abs(_archive_secs(f.get("length")) - 600))
+        f = files[0]
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        safe = _re.sub(r"[^\w\- ]+", "_", str(it.get("title") or ident)
+                       ).strip()[:60] or ident
+        dest = dest_dir / f"{safe}.mp3"
+        url = f"https://archive.org/download/{ident}/{f['name']}"
+        try:
+            download_file(url, dest)
+        except Exception as e:
+            last = f"{ident}: скачивание {type(e).__name__}"
+            continue
+        if not dest.exists() or dest.stat().st_size < 32768:
+            last = f"{ident}: файл пустой"
+            continue
+        dest.with_suffix(".license.txt").write_text(
+            f"{it.get('title') or ident} — {it.get('creator') or 'неизвестен'}\n"
+            f"Internet Archive, license: {it.get('licenseurl') or '?'}\n"
+            f"https://archive.org/details/{ident}\n", encoding="utf-8")
+        log(f"[Архив] Подложка: {it.get('title') or ident} "
+            f"({_archive_secs(f.get('length')) / 60:.0f} мин)")
+        return dest
+    raise RuntimeError(f"Internet Archive: {last}")
+
+
 def openverse_music(mood: str, dest_dir: Path, log=print,
                     min_seconds: float = 30.0) -> Path:
     """Скачать музыкальную подложку под настроение — БЕЗ КЛЮЧА.
