@@ -1207,6 +1207,60 @@ class Api:
               + (1 - cfg["short_prob"]) * sum(cfg["long"]) / 2)
         return min(beat, avg)
 
+    def _niche_brief(self, ch: dict) -> str:
+        """Свежий разбор ниши под ЭТОТ ролик — не текст, вписанный однажды.
+
+        yt_research в проекте был, но его никто не вызывал: формулы тем в
+        профилях каналов кто-то вывел вручную один раз и вписал строкой.
+        Анализ существовал и был мёртвым — не обновлялся и не влиял на
+        конкретный ролик. Отсюда и ощущение конвейера: канал живёт по
+        снимку ниши неизвестной давности.
+
+        Кэш на сутки: ниша за час не меняется, а квота YouTube API
+        конечна. Любой сбой — молча возвращаем пустое: без свежих данных
+        ролик сделать можно, а вот падать на этом шаге нельзя.
+        """
+        ref = (ch.get("reference") or "").strip()
+        if not ref:
+            return ""
+        import time as _t
+        cache = BASE / ".niche_cache" / f"{ch['id']}.json"
+        try:
+            if cache.exists() and _t.time() - cache.stat().st_mtime < 86400:
+                data = json.loads(cache.read_text(encoding="utf-8"))
+            else:
+                import yt_research
+                data = yt_research.research(ref, log=lambda *_: None)
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                cache.write_text(json.dumps(data, ensure_ascii=False),
+                                 encoding="utf-8")
+        except Exception as e:
+            self.log(f"[Ниша] Свежий разбор не вышел ({e}) — иду на "
+                     "формуле из профиля", "warn")
+            return ""
+        med = data.get("median_views") or 0
+        top = data.get("top") or []
+        flop = data.get("flop") or []
+        if not top or not flop:
+            return ""
+        def _lines(vs):
+            return "\n".join(
+                f"  {v.get('views', 0):>8} | {v.get('seconds', 0) // 60:>3}m | "
+                f"{v.get('title', '')[:80]}" for v in vs[:8])
+        self.log(f"[Ниша] Разбор {ref}: медиана {med}, "
+                 f"топов {len(top)}, провалов {len(flop)} — "
+                 "тема подбирается по свежим данным")
+        return (
+            "\n\nFRESH NICHE DATA — measured on the reference channel today, "
+            f"median {med} views. These are REAL results, not guesses.\n"
+            f"BEAT THE MEDIAN:\n{_lines(top)}\n"
+            f"FAILED:\n{_lines(flop)}\n"
+            "Work out what the winners PROMISE that the losers do not — it is "
+            "usually not the subject but the kind of promise. Then pick a "
+            "topic that makes that same kind of promise about something NOT "
+            "already in the winning list above. Never repeat a subject that "
+            "already appears there.")
+
     def generate_all(self, p: dict):
         if self._reject_if_busy("Генерация видео"):
             return
@@ -1223,6 +1277,10 @@ class Api:
             self.log(f"[Канал] «{ch['name']}»: {p.get('lang')}, "
                      f"«{p.get('tone')}»"
                      + (f", голос {p.get('voice')}" if ch.get("voice") else ""))
+            # Разбор ниши НА КАЖДЫЙ ролик, а не однажды вписанной строкой.
+            brief = self._niche_brief(ch)
+            if brief:
+                p["topic_formula"] = (p.get("topic_formula") or "") + brief
         opts = self._render_opts(p)
         # Поле «Оверлеи» интерфейс заполняет ИЗ ФАЙЛА проекта, а файл для
         # нового ролика остался от прошлого (папка канала одна на все ролики).
