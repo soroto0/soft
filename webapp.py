@@ -1369,7 +1369,39 @@ class Api:
         self._save_settings_file()
         self._apply_env()
         self.log("[Настройки] Сохранено в settings.json")
+        # Ключ сохранили — тут же и проверяем: иначе про опечатку в нём
+        # узнаешь через полтора часа, посреди прогона (см. core.check_llm_keys).
+        self._check_keys_bg()
         return True
+
+    def check_keys(self):
+        """Кнопка «Проверить ключи» в «Настройках API»."""
+        self._check_keys_bg()
+        return True
+
+    def check_keys_startup(self):
+        """Вызывается фронтендом один раз при загрузке интерфейса.
+
+        Именно на СТАРТЕ, а не по кнопке, потому что беда, ради которой это
+        сделано, тихая: пока Gemini отвечает, мёртвый Agnes ничем себя не
+        выдаёт — и обнаруживается в тот момент, когда дневная квота Gemini
+        кончилась на середине ролика и падать уже некуда. Проверять надо
+        ДО того, как человек нажал «Генерировать видео» и ушёл."""
+        self._check_keys_bg(startup=True)
+        return True
+
+    def _check_keys_bg(self, startup: bool = False):
+        """Отдельным потоком, а не через _bg: проверка ключей не занимает
+        приложение (иначе «Занято» блокировало бы генерацию из-за фоновой
+        проверки) и не должна прерываться «Стопом» — она секундная."""
+        def job():
+            try:
+                agnes = self._settings.get("agnes_key", "")
+                fn = (core.check_llm_keys_once if startup else core.check_llm_keys)
+                fn(lambda m, c="": self._log_raw(m, c), agnes)
+            except Exception as e:
+                self._log_raw(f"[Ключи] Проверка не удалась: {e}", "warn")
+        threading.Thread(target=job, daemon=True).start()
 
 
 def main():

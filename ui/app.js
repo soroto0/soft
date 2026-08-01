@@ -621,6 +621,10 @@ const app = {
     rpc("settings_save", app._settingsPayload())
       .then(() => { app.closeSettings(); addLog("Настройки сохранены", "ok"); });
   },
+  checkKeys() {
+    addLog("Проверяю ключи Gemini и Agnes — по одному короткому запросу…", "dim");
+    rpc("check_keys");
+  },
 };
 
 $("projPath").addEventListener("change",
@@ -635,7 +639,11 @@ addLog("Интерфейс загружен. Лента этапов сверх�
 // Каналы грузим ТОЛЬКО когда мост pywebview поднят: вызов сразу при разборе
 // скрипта уходил в заглушку (window.pywebview ещё нет) и список оставался
 // пустым, хотя профили в channels.json были.
-function boot() { refresh(); app.loadChannels(true); }
+// check_keys_startup — не косметика: мёртвый ЗАПАСНОЙ ключ (Agnes) ничем
+// себя не выдаёт, пока отвечает основной (Gemini), и вылезает ровно тогда,
+// когда дневная квота Gemini кончилась на середине ролика. Спрашиваем на
+// старте; сам вызов защищён от повторного захода (boot() зовётся дважды).
+function boot() { refresh(); app.loadChannels(true); rpc("check_keys_startup"); }
 if (window.pywebview) boot();
 else window.addEventListener("pywebviewready", boot);
 setTimeout(() => { if (!state) boot(); }, 700);   // демо-режим в браузере

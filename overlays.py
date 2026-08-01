@@ -2247,22 +2247,42 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
     # запрос в том размере, на котором модель отвечает уверенно, независимо
     # от того, десять минут ролик или час.
     if span > LLM_WINDOW_S * 1.5 and target is None and allow_windows:
-        parts, win, thin = [], LLM_WINDOW_S, 0
+        parts, win, thin, asked, failed = [], LLM_WINDOW_S, 0, 0, 0
         for k in range(0, int(span // win) + 1):
             lo, hi = t0 + k * win, t0 + (k + 1) * win
             chunk = [r for r in rows if lo <= srt_to_seconds(r[0]) < hi]
             if len(chunk) < 2:
                 continue
+            asked += 1
             got, retried = _ask_span(chunk, api_key, log, min_gap,
                                      attempts, whole=span)
             thin += retried
             if got:
                 parts.append(got)
             else:
+                failed += 1
                 log(f"[Оверлеи] LLM: окно {int(lo // 60)}-{int(hi // 60)} мин "
                     "не разобрано даже половинами — дособерётся общим полом")
         if not parts:
             return None
+        if failed:
+            # ЧАСТИЧНЫЙ отказ был самым тихим из всех: хоть одно окно
+            # ответило — функция возвращает строку, вызывающий видит успех и
+            # ничего в итог не пишет. А в ролике при этом целые минуты без
+            # разметки по смыслу: в прогоне 2026-08-01 на 429 у всех ключей
+            # Gemini так «удалась» расстановка, где половина ролика собрана
+            # общим полом. Отказ обоих провайдеров на куске — это дырка в
+            # ролике, и её надо назвать вслух наравне с полным провалом.
+            import quality
+            quality.degraded(
+                "Оверлеи", f"{failed} из {asked} кусков ролика (по "
+                f"{int(win // 60)} мин) остались без разметки по смыслу — "
+                "там плашки досыпаны общим правилом",
+                why="ИИ не ответил на этих кусках — причина выше в журнале "
+                    "(обычно лимит квоты Gemini и неработающий запасной Agnes)",
+                hint="проверь ключи кнопкой «Проверить ключи» в «Настройках "
+                     "API» — запасной путь мог быть мёртв ещё до прогона",
+                level="критично" if failed * 2 >= asked else "заметно")
         if thin:
             log(f"[Оверлеи] LLM: {thin} кусок(ов) вышли жидкими и были "
                 "переспрошены меньшими частями")

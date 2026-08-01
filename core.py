@@ -1051,12 +1051,33 @@ def agnes_chat(messages: list[dict], api_key: str,
                       timeout=300)
     if r.status_code != 200:
         raise RuntimeError(f"Agnes API {r.status_code}: {r.text[:300]}")
-    text = r.json()["choices"][0]["message"]["content"].strip()
+    data = r.json()
+    choice = (data.get("choices") or [{}])[0]
+    text = ((choice.get("message") or {}).get("content") or "").strip()
     if not text:
         # как в gemini_chat: HTTP 200 с пустым содержимым (модерация/сбой) —
         # это ОШИБКА, а не результат. Иначе пустая строка тихо утекает в
         # gen_script -> пустой сценарий -> невнятный краш уже на озвучке.
-        raise RuntimeError("Agnes: пустой ответ (возможно, фильтр контента)")
+        #
+        # Но НАЗЫВАТЬ причину «фильтр контента» было враньём, и оно дорого
+        # стоило. У agnes-2.0-flash «размышления» тратят ТОТ ЖЕ лимит
+        # токенов, и когда они его выбирают, приходит 200 с пустым content,
+        # finish_reason=length и всем текстом в reasoning_content. Ровно это
+        # уже описано у vision-вызовов (см. STORYBOARD_REVIEW_PROMPT: при 30
+        # и 300 токенах пусто, при 1500 отвечает), но текстовый путь всё
+        # равно рапортовал про фильтр — и в журнале прогона 2026-08-01 рядом
+        # с мёртвым ключом стояло «возможно, фильтр контента», уводя разбор
+        # в сторону тяжёлой темы вместо лимита токенов.
+        fin = str(choice.get("finish_reason") or "?")
+        det = (data.get("usage") or {}).get("completion_tokens_details") or {}
+        think = det.get("reasoning_tokens")
+        if fin == "length":
+            raise RuntimeError(
+                f"Agnes: пустой ответ — упёрся в лимит max_tokens={max_tokens}"
+                + (f", из них {think} ушло на «размышления»" if think else "")
+                + " (не фильтр контента: подними лимит)")
+        raise RuntimeError(f"Agnes: пустой ответ (finish_reason={fin}; "
+                           "похоже на фильтр контента)")
     return text
 
 
@@ -1124,6 +1145,196 @@ def llm_chat(messages: list[dict], api_key: str = "",
             break
         _sleep_cancel(LLM_RETRY_BACKOFF * attempt)
     raise RuntimeError(_redact("; ".join(errors)))
+
+
+# ---------- Проверка ключей ДО прогона ----------
+# Мёртвый запасной ключ обнаруживался ровно одним способом: строкой в
+# журнале посреди прогона. Настоящий случай 2026-08-01 — все ключи Gemini
+# ответили 429 «You exceeded your current quota», llm_chat честно ушёл на
+# Agnes, а тот ответил 401 «无效的令牌» (недействительный токен). То есть
+# подстраховки не было ВООБЩЕ, и узналось это на стадии оверлеев, через
+# полтора часа работы: расстановка ушла на слабый regex-путь.
+#
+# Ключ при этом лежал в .env и выглядел нормально — отличить живой от
+# мёртвого, не потеряв прогон, было НЕЧЕМ. Один дешёвый запрос на ключ
+# отвечает на это за несколько секунд и до начала работы.
+#
+# Отдельная причина проверять именно НА СТАРТЕ приложения: os.environ
+# читается один раз при запуске pythonw, и .env, поправленный на живом
+# приложении, ни на что не влияет. В том же прогоне это видно прямо в
+# журнале: ключей Gemini в .env было десять, а перебирались три — процесс
+# помнил старый файл. Проверка на старте показывает то, с чем приложение
+# РАБОТАЕТ, а не то, что записано на диске.
+
+KEY_PROBE_TIMEOUT = 30
+_KEYS_CHECKED = False       # проверка на старте — один раз за жизнь процесса
+
+
+def _probe_verdict(status: int, body: str) -> tuple[str, str]:
+    """HTTP-ответ пробы -> (состояние, короткая причина).
+
+    Состояний четыре, и путать их нельзя: «лимит» лечится ожиданием и
+    другими ключами, «мёртв» — только заменой ключа, «не спросил» (сеть
+    легла) вообще ничего не говорит о ключе и поднимать тревогу не должен."""
+    if status == 200:
+        return "ok", ""
+    detail = _redact(re.sub(r"\s+", " ", body)[:140])
+    if _is_rate_limit(f"{status}: {body}"):
+        return "лимит", f"{status}: {detail}"
+    if _is_transient(f"{status}: {body}"):
+        return "не спросил", f"{status}: {detail}"
+    return "мёртв", f"{status}: {detail}"
+
+
+def _probe_gemini(key: str) -> tuple[str, str]:
+    """Живым считаем ЛЮБОЙ ответ 200, а не непустой текст: на лимите в
+    несколько токенов модель со «размышлениями» отдаёт пустой content
+    (см. agnes_chat) — для проверки САМОГО КЛЮЧА это не отказ."""
+    import requests
+    body = {"contents": [{"role": "user", "parts": [{"text": "ping"}]}],
+            "generationConfig": {"maxOutputTokens": 8}}
+    state, why = "не спросил", "нет ответа"
+    for url in _gemini_endpoints(GEMINI_TEXT_MODEL, key):
+        try:
+            r = requests.post(url, params={"key": key}, json=body,
+                              timeout=KEY_PROBE_TIMEOUT)
+        except Exception as e:
+            state, why = "не спросил", _redact(e)   # в тексте лежит URL с ключом
+            continue
+        state, why = _probe_verdict(r.status_code, r.text)
+        if state != "мёртв":
+            return state, why
+        # «мёртв» на одном адресе — не приговор: у ключей AI Studio второй
+        # эндпоинт отвечает 401 «API keys are not supported by this API»
+        # всегда, это свойство адреса, а не ключа (видно в журнале).
+    return state, why
+
+
+def _probe_agnes(key: str) -> tuple[str, str]:
+    import requests
+    try:
+        r = requests.post(f"{AGNES_BASE_URL}/chat/completions",
+                          headers={"Authorization": f"Bearer {key}"},
+                          json={"model": AGNES_MODEL, "max_tokens": 8,
+                                "messages": [{"role": "user", "content": "ping"}]},
+                          timeout=KEY_PROBE_TIMEOUT)
+    except Exception as e:
+        return "не спросил", str(e)
+    state, why = _probe_verdict(r.status_code, r.text)
+    # Хаб отвечает по-китайски, и в журнале это выглядит нечитаемой строкой —
+    # именно из-за неё настоящая причина потерянного прогона 2026-08-01
+    # («недействительный токен») читалась как непонятный сбой.
+    if "无效的令牌" in why:
+        why = "недействительный токен (ключ не принят хабом). " + why
+    return state, why
+
+
+def _say(log, msg: str, cls: str = "warn") -> None:
+    """Журнал приложения понимает уровень вторым параметром, а в core
+    передают и обычный print, и однопараметрные лямбды — падать из-за
+    подписи логгера проверка ключей не должна (тот же приём, что в
+    overlays.suggest_overlays_auto).
+
+    print отсекаем отдельно: он принимает сколько угодно аргументов, TypeError
+    не бросит — и в консоль печаталось бы «...сообщение warn»."""
+    if log is print:
+        print(msg)
+        return
+    try:
+        log(msg, cls)
+    except TypeError:
+        log(msg)
+
+
+def check_llm_keys(log=print, agnes_key: str = "") -> dict:
+    """Опросить ВСЕ текстовые ключи одним дешёвым запросом на ключ и сказать
+    вслух, если запасного пути на самом деле нет.
+
+    Ключи не печатаются нигде — только их номера в очереди: репозиторий
+    публичный, а журнал показывают в переписке (см. _redact).
+
+    Возвращает {"gemini": [(номер, состояние, причина)...], "agnes": [...],
+    "alarm": "" | текст тревоги} — чтобы вызывающий мог не только напечатать,
+    но и, например, не начинать длинный прогон."""
+    from concurrent.futures import ThreadPoolExecutor
+    gem, agn = _gemini_keys(), _agnes_keys(agnes_key)
+    res = {"gemini": [], "agnes": [], "alarm": ""}
+    if not gem and not agn:
+        res["alarm"] = ("[Ключи] ⚠ КЛЮЧЕЙ ДЛЯ ТЕКСТА НЕТ ВООБЩЕ: сценарий, "
+                        "запросы для стоков и расстановка оверлеев работать "
+                        "не будут. Добавь GEMINI_API_KEY или AGNES_API_KEY "
+                        "в .env и ПЕРЕЗАПУСТИ приложение.")
+        _say(log, res["alarm"])
+        return res
+    # Параллельно: десять ключей по 30 с таймаута — это до пяти минут ожидания
+    # на старте, ради проверки, которая должна быть незаметной.
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        gem_r = list(pool.map(_probe_gemini, gem))
+        agn_r = list(pool.map(_probe_agnes, agn))
+    res["gemini"] = [(i, s, w) for i, (s, w) in enumerate(gem_r, 1)]
+    res["agnes"] = [(i, s, w) for i, (s, w) in enumerate(agn_r, 1)]
+
+    def _tally(rows, name):
+        if not rows:
+            log(f"[Ключи] {name}: ключей нет")
+            return 0, 0
+        ok = sum(1 for _, s, _ in rows if s == "ok")
+        limit = sum(1 for _, s, _ in rows if s == "лимит")
+        dead = sum(1 for _, s, _ in rows if s == "мёртв")
+        log(f"[Ключи] {name}: отвечают {ok} из {len(rows)}"
+            + (f", в лимите {limit}" if limit else "")
+            + (f", МЁРТВЫХ {dead}" if dead else ""))
+        for i, s, why in rows:
+            if s in ("мёртв", "не спросил"):
+                _say(log, f"[Ключи] {name} #{i}: {s} — {why}",
+                     "warn" if s == "мёртв" else "")
+        return ok, limit
+
+    gem_ok, gem_lim = _tally(res["gemini"], "Gemini")
+    agn_ok, agn_lim = _tally(res["agnes"], "Agnes (запасной путь)")
+
+    if not gem_ok and not agn_ok:
+        res["alarm"] = (
+            "[Ключи] ⚠⚠ НИ ОДИН текстовый ключ не отвечает. Прогон сейчас "
+            "потеряет сценарий, описания кадров и расстановку оверлеев — "
+            "начинать его бессмысленно. "
+            + ("Все ключи в лимите: подожди сброса квоты. "
+               if (gem_lim or agn_lim) else "Проверь ключи в .env. ")
+            + "После правки .env ПЕРЕЗАПУСТИ приложение — оно читает файл "
+              "только при старте.")
+    elif gem_ok and not agn_ok:
+        # Ровно та беда, из-за которой это написано: Gemini жив, значит
+        # прогон начнётся бодро, а квота у него дневная и кончается к
+        # середине ролика — и вот тогда выясняется, что падать некуда.
+        res["alarm"] = (
+            "[Ключи] ⚠ ЗАПАСНОГО ПУТИ НЕТ: Gemini отвечает, но Agnes — "
+            + ("не задан" if not res["agnes"] else "не отвечает")
+            + ". Дневная квота Gemini кончается ПОСРЕДИ прогона, и тогда "
+              "сценарий/кадры/оверлеи молча уедут на запасные правила "
+              "(regex). Почини AGNES_API_KEY в .env и перезапусти "
+              "приложение — или будь готов потерять ролик.")
+    elif agn_ok and not gem_ok:
+        res["alarm"] = (
+            "[Ключи] ⚠ Основной путь недоступен: Gemini "
+            + (f"весь в лимите квоты ({gem_lim} ключ(ей))"
+               if gem_lim else "не отвечает")
+            + " — всё поедет на Agnes. Сейчас он живой, но он ОДИН: если "
+              "отвалится и он, прогон уедет на запасные правила целиком.")
+    if res["alarm"]:
+        _say(log, res["alarm"])
+    else:
+        log("[Ключи] Основной путь (Gemini) и запасной (Agnes) — оба живы.")
+    return res
+
+
+def check_llm_keys_once(log=print, agnes_key: str = "") -> dict | None:
+    """То же, но не чаще раза за жизнь процесса — для вызова при старте
+    приложения, куда фронтенд может постучаться дважды."""
+    global _KEYS_CHECKED
+    if _KEYS_CHECKED:
+        return None
+    _KEYS_CHECKED = True
+    return check_llm_keys(log, agnes_key)
 
 
 # Жанры/тон — под ЛЮБУЮ тему. base — общий каркас, дальше добавка тона.

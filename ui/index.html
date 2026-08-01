@@ -660,6 +660,9 @@
     <textarea id="sPixabay" spellcheck="false"></textarea>
 
     <div class="modal-foot">
+      <!-- Проверка ключей вынесена кнопкой, потому что мёртвый ключ иначе
+           обнаруживается только посреди прогона (см. core.check_llm_keys). -->
+      <button class="btn ghost" onclick="app.checkKeys()">Проверить ключи</button>
       <button class="btn ghost" onclick="app.closeSettings()">Отмена</button>
       <button class="btn primary" onclick="app.saveSettings()">Сохранить</button>
     </div>

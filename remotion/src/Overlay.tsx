@@ -335,6 +335,7 @@ const Timeline = ({ content, exit, enter }: { content: string; exit: number; ent
 
   const opacity = enter * exit;
   const scale = interpolate(enter, [0, 1], [0.9, 1]);
+  const DOT = 16;
 
   return (
     <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'center', paddingBottom: '150px' }}>
@@ -357,16 +358,27 @@ const Timeline = ({ content, exit, enter }: { content: string; exit: number; ent
           });
 
           return (
-            <div key={idx} style={{ position: 'absolute', top: '50%', left: `${xPos}%`, transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+            // Сдвиг вверх ровно на половину точки: её центр ложится на ось,
+            // а год с подписью уходят ниже линии — иначе ось режет цифры года.
+            // Колонка с alignItems:center — чтобы точка встала над годом, а не
+            // прижалась к левому краю блока (textAlign не центрирует блоки).
+            <div key={idx} style={{
+              position: 'absolute', top: '50%', left: `${xPos}%`,
+              transform: `translate(-50%, -${DOT / 2}px)`,
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              textAlign: 'center'
+            }}>
               <div style={{
-                width: '16px', height: '16px', borderRadius: '50%',
+                width: `${DOT}px`, height: `${DOT}px`, borderRadius: '50%',
                 background: THEME.accent,
                 boxShadow: `0 0 10px ${THEME.accent}`,
                 transform: `scale(${dotAnim})`,
                 marginBottom: '10px'
               }} />
-              <div style={{ color: '#fff', fontFamily: "'Segoe UI Black', sans-serif", fontSize: '20px' }}>{evt.year}</div>
-              <div style={{ color: '#aaa', fontFamily: "'Segoe UI', sans-serif", fontSize: '14px', marginTop: '4px' }}>{evt.label}</div>
+              <div style={{ color: '#fff', fontFamily: "'Segoe UI Black', sans-serif", fontSize: '20px', textShadow: '0 2px 8px rgba(0,0,0,0.85)' }}>{evt.year}</div>
+              {/* #e8edf2 даёт 5.07:1 против серого (96,100,104) — выше порога 4.5:1;
+                  тень держит читаемость и на светлом кадре */}
+              <div style={{ color: '#e8edf2', fontFamily: "'Segoe UI', sans-serif", fontSize: '14px', marginTop: '4px', textShadow: '0 2px 8px rgba(0,0,0,0.85)' }}>{evt.label}</div>
             </div>
           );
         })}
