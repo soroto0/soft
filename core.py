@@ -795,6 +795,18 @@ GEMINI_VISION_MODELS = [
 ]
 
 
+def _gemini_text_models() -> list[str]:
+    """Модели для текстов: сначала настроенная, потом запасные.
+
+    Список тот же, что у зрения: квота считается на пару «проект + модель»,
+    поэтому выбранный на одной модели ключ на другой снова живой."""
+    out = []
+    for m in [GEMINI_TEXT_MODEL] + GEMINI_VISION_MODELS:
+        if m and m not in out:
+            out.append(m)
+    return out
+
+
 def _gemini_vision_models() -> list[str]:
     """Модели зрения по порядку: сначала основная, потом запасные.
 
@@ -854,39 +866,57 @@ def gemini_chat(messages: list[dict], api_key: str,
     if sys_text:
         body["systemInstruction"] = {"parts": [{"text": sys_text}]}
     last = "нет ответа"
-    for url in _gemini_endpoints(GEMINI_TEXT_MODEL, api_key):
-        # try вокруг запроса — как в gemini_vision. Без него сетевой сбой на
-        # ПЕРВОМ эндпоинте уносил всю функцию, и второй (запасной!) даже не
-        # пробовался. Реальный случай из журнала: у ключа AQ. первым идёт
-        # aiplatform, он не резолвился — и расстановка оверлеев ушла на
-        # слабый regex, хотя generativelanguage мог ответить.
-        try:
-            r = requests.post(url, params={"key": api_key}, json=body,
-                              timeout=300)
-        except Exception as e:
-            last = _redact(e)
-            continue
-        if r.status_code != 200:
-            last = f"{r.status_code}: {r.text[:200]}"
-            continue
-        try:
-            data = r.json()
-        except ValueError as e:
-            last = f"ответ не JSON: {e}"
-            continue
-        cands = data.get("candidates") or []
-        parts = (cands[0].get("content") or {}).get("parts") if cands else []
-        text = "".join(p.get("text", "") for p in parts or []).strip()
-        if text:
-            return text
-        # Причину пустоты называем вслух: MAX_TOKENS («размышления» съели весь
-        # бюджет), SAFETY/RECITATION (фильтр), blockReason (отклонён промпт) —
-        # это разные беды с разным лечением, а «пустой ответ» их сваливал в
-        # кучу, и вызывающий три попытки подряд не понимал, что чинить.
-        block = str((data.get("promptFeedback") or {}).get("blockReason") or "")
-        reason = str(cands[0].get("finishReason") or "") if cands else "нет кандидатов"
-        last = "пустой ответ (" + (f"блокировка промпта: {block}" if block
-                                   else f"finishReason={reason or '?'}") + ")"
+    # Перебираем не только адреса, но и МОДЕЛИ — по той же причине, что и
+    # зрение. Суточная квота бесплатного тарифа считается на пару «проект +
+    # модель» и равна двадцати запросам: замерено по телу самой ошибки,
+    # GenerateRequestsPerDayPerProjectPerModel-FreeTier = 20. Ключ здесь —
+    # свой проект, значит десять ключей дают 200 запросов на ОДНУ модель и
+    # ещё по 200 на каждую следующую. Ходить в одну модель означает
+    # выбрасывать две трети доступного: замерено — у gemini-3-flash-preview
+    # ноль живых ключей из десяти, а у gemini-flash-latest в ту же минуту
+    # восемь живых.
+    for model in _gemini_text_models():
+        for url in _gemini_endpoints(model, api_key):
+            # try вокруг запроса — как в gemini_vision. Без него сетевой сбой
+            # на ПЕРВОМ эндпоинте уносил всю функцию, и второй (запасной!)
+            # даже не пробовался. Реальный случай из журнала: у ключа AQ.
+            # первым идёт aiplatform, он не резолвился — и расстановка
+            # оверлеев ушла на слабый regex, хотя generativelanguage мог
+            # ответить.
+            try:
+                r = requests.post(url, params={"key": api_key}, json=body,
+                                  timeout=300)
+            except Exception as e:
+                last = _redact(e)
+                continue
+            if r.status_code != 200:
+                last = f"{model}: {r.status_code}: {r.text[:200]}"
+                # Выбранная квота или недоступная модель — остальные адреса
+                # этой же модели ответят тем же самым, идём к следующей.
+                if _is_rate_limit(last) or r.status_code == 404:
+                    _cool_down(api_key, model, last)
+                    break
+                continue
+            try:
+                data = r.json()
+            except ValueError as e:
+                last = f"ответ не JSON: {e}"
+                continue
+            cands = data.get("candidates") or []
+            parts = (cands[0].get("content") or {}).get("parts") if cands else []
+            text = "".join(p.get("text", "") for p in parts or []).strip()
+            if text:
+                return text
+            # Причину пустоты называем вслух: MAX_TOKENS («размышления» съели
+            # весь бюджет), SAFETY/RECITATION (фильтр), blockReason (отклонён
+            # промпт) — это разные беды с разным лечением, а «пустой ответ» их
+            # сваливал в кучу, и вызывающий три попытки подряд не понимал, что
+            # чинить.
+            block = str((data.get("promptFeedback") or {}).get("blockReason") or "")
+            reason = (str(cands[0].get("finishReason") or "") if cands
+                      else "нет кандидатов")
+            last = "пустой ответ (" + (f"блокировка промпта: {block}" if block
+                                       else f"finishReason={reason or '?'}") + ")"
     raise RuntimeError(f"Gemini (текст): {last}")
 
 
