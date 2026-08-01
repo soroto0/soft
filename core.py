@@ -3260,8 +3260,16 @@ Prefer 0 over a picture that would look absurd in a documentary about this
 subject (a costumed model, a staged studio scene, an unrelated sport), and
 over one that merely shares a word with the narration.
 
+Work in this order, and do NOT skip the first step:
+1. "shows" — name in a few words what your best candidate actually depicts.
+   Describe the PICTURE, not the narration and not the search words.
+2. "fits" — true only if that description could honestly caption this
+   moment of the narration. If you had to stretch, it is false.
+3. "pick" — the number, or 0 when "fits" is false.
+
 Reply with ONLY a JSON object, no markdown:
-{"pick": <number, or 0 if none fit>}"""
+{"shows": "<what the best candidate depicts>", "fits": true|false,
+ "pick": <number, or 0>}"""
 
 
 def _contact_sheet(images: list[bytes], cols: int = 3, cell: int = 320) -> bytes:
@@ -3325,16 +3333,56 @@ def _vision_pick(items: list[dict], thumb_of, line: str, api_key: str,
     if len(keep) < 2:
         return keep[0] if keep else None
     try:
-        sheet = _contact_sheet(thumbs)
-        out = vision_chat(
-            PICK_PROMPT.replace("__LINE__", str(line)[:250].replace("\n", " ")),
-            sheet, api_key,
-            system="You are a documentary editor choosing a shot.",
-            max_tokens=120)
-        m = re.search(r"\{.*\}", out, re.S)
-        if not m:
+        # Лист САМОУРЕЗАЕТСЯ, если модель не осилила. Замерено на запасном
+        # зрении (Agnes): шесть кандидатов и даже три дают пустой ответ с
+        # finish_reason=length — размышления съедают весь бюджет и до ответа
+        # не доходят, сколько его ни поднимай (пробовал 1500 и 4000, а
+        # reasoning_effort/thinking провайдер игнорирует). На ДВУХ отвечает
+        # нормально и по делу. Gemini при этом спокойно разбирает шесть.
+        # Поэтому не выбираем движок руками, а просто сужаем выбор, пока
+        # ответ не разберётся: лучше выбрать из двух, чем не выбирать вовсе.
+        ans = None
+        last_err = None
+        for take in (len(keep), 3, 2):
+            if take > len(keep):
+                continue
+            try:
+                sheet = _contact_sheet(thumbs[:take])
+                out = vision_chat(
+                    PICK_PROMPT.replace("__LINE__",
+                                        str(line)[:250].replace("\n", " ")),
+                    sheet, api_key,
+                    system="You are a documentary editor choosing a shot.",
+                    # Не 120: у моделей со «размышлениями» они тратят ТОТ ЖЕ
+                    # бюджет, и ответ приходит пустым. Замерено на Agnes: 30
+                    # и 300 дают пустоту, 1500 — нормальный ответ.
+                    max_tokens=1500)
+            except Exception as e:
+                # Перехватываем ЗДЕСЬ, а не общим except ниже: пустой ответ
+                # прилетает исключением, и внешний обработчик оборвал бы
+                # попытки раньше, чем лист успеет ужаться. Сам же на это и
+                # напоролся, когда добавлял сужение.
+                last_err = e
+                continue
+            m = re.search(r"\{.*\}", out, re.S)
+            if m:
+                ans = json.loads(m.group(0))
+                keep = keep[:take]
+                break
+        if ans is None:
+            if last_err is not None:
+                raise last_err
             return None
-        n = int(json.loads(m.group(0)).get("pick", 0))
+        n = int(ans.get("pick", 0))
+        # "fits" весомее "pick": модель охотно называет номер даже когда сама
+        # только что описала картинку не про то. Замерено на прогоне из 40
+        # стоковых планов: отказ «ни один не подходит» не прозвучал НИ РАЗУ,
+        # при том что 19 клипов оказались мимо — она каждый раз выбирала
+        # наименее плохой. Поэтому сначала просим описать, ЧТО на картинке,
+        # потом ответить, годится ли, и только потом номер; при "fits": false
+        # номер игнорируем.
+        if ans.get("fits") is False:
+            n = 0
         if 1 <= n <= len(keep):
             return keep[n - 1]
         # 0 — осознанный ответ «в стоке под эту фразу ничего нет», а не сбой.
