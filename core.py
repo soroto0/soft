@@ -1242,11 +1242,16 @@ def llm_chat(messages: list[dict], api_key: str = "",
                 if _is_rate_limit(str(e)):
                     _cool_down(key, GEMINI_TEXT_MODEL, str(e))
                 errors.append(f"Gemini #{i}: {e}")
-        for key in agn_keys:
+        # Отвод действует и здесь. Раньше ключи Agnes перебирались всегда в
+        # одном порядке и без отвода: выбранный собирал отказ первым на
+        # КАЖДОМ вызове — та же трата впустую, что чинилась у Gemini.
+        for i, key in _live_first(agn_keys, "agnes"):
             try:
                 return agnes_chat(messages, key, temperature, max_tokens)
             except Exception as e:
-                errors.append(f"Agnes: {e}")
+                if _is_rate_limit(str(e)):
+                    _cool_down(key, "agnes", str(e))
+                errors.append(f"Agnes #{i}: {e}")
         if attempt == LLM_RETRY_ATTEMPTS or not any(
                 _is_transient(x) for x in errors):
             break
@@ -3066,11 +3071,19 @@ AGNES_VIDEO_MODEL = os.getenv("AGNES_VIDEO_MODEL", "agnes-video-v2.0")
 
 
 def _agnes_keys(extra: str = "") -> list[str]:
-    """Все ключи Agnes для ротации: параметр, AGNES_API_KEY, AGNES_API_KEY2..."""
+    """Все ключи Agnes для ротации: параметр, AGNES_API_KEY, AGNES_API_KEY2,
+    AGNES_API_KEY3, ... — сколько бы их ни было в .env.
+
+    Список был жёстко на три штуки, и четвёртый ключ молча не работал:
+    добавил в .env — а лимит кончается там же, где и раньше. Та же поломка,
+    что уже чинилась у Gemini (_gemini_keys); здесь она осталась. Читаем
+    всё, что подходит по имени."""
+    names = ["AGNES_API_KEY"]
+    names += sorted((n for n in os.environ
+                     if re.fullmatch(r"AGNES_API_KEY\d+", n)),
+                    key=lambda n: int(n[len("AGNES_API_KEY"):]))
     keys = []
-    for k in (extra, os.getenv("AGNES_API_KEY", ""),
-              os.getenv("AGNES_API_KEY2", ""),
-              os.getenv("AGNES_API_KEY3", "")):
+    for k in [extra] + [os.getenv(n, "") for n in names]:
         k = (k or "").strip()
         if k and k not in keys:
             keys.append(k)
