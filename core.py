@@ -1301,24 +1301,39 @@ def _probe_verdict(status: int, body: str) -> tuple[str, str]:
 def _probe_gemini(key: str) -> tuple[str, str]:
     """Живым считаем ЛЮБОЙ ответ 200, а не непустой текст: на лимите в
     несколько токенов модель со «размышлениями» отдаёт пустой content
-    (см. agnes_chat) — для проверки САМОГО КЛЮЧА это не отказ."""
+    (см. agnes_chat) — для проверки САМОГО КЛЮЧА это не отказ.
+
+    Спрашиваем по ВСЕМ моделям, а не по одной настроенной. Квота считается
+    на пару «проект + модель» (замерено по телу ошибки: quotaId
+    GenerateRequestsPerDayPerProjectPerModel-FreeTier = 20), и gemini_chat
+    теперь перебирает модели. Проба по одной модели кричала бы «0 живых из
+    10» ровно тогда, когда конвейер прекрасно работает на запасной, — а
+    ложная тревога хуже отсутствия тревоги. Замерено в одну минуту:
+    gemini-3-flash-preview 0 живых, gemini-flash-latest 8 живых.
+    """
     import requests
     body = {"contents": [{"role": "user", "parts": [{"text": "ping"}]}],
             "generationConfig": {"maxOutputTokens": 8}}
     state, why = "не спросил", "нет ответа"
-    for url in _gemini_endpoints(GEMINI_TEXT_MODEL, key):
-        try:
-            r = requests.post(url, params={"key": key}, json=body,
-                              timeout=KEY_PROBE_TIMEOUT)
-        except Exception as e:
-            state, why = "не спросил", _redact(e)   # в тексте лежит URL с ключом
-            continue
-        state, why = _probe_verdict(r.status_code, r.text)
-        if state != "мёртв":
-            return state, why
-        # «мёртв» на одном адресе — не приговор: у ключей AI Studio второй
-        # эндпоинт отвечает 401 «API keys are not supported by this API»
-        # всегда, это свойство адреса, а не ключа (видно в журнале).
+    for model in _gemini_text_models():
+        for url in _gemini_endpoints(model, key):
+            try:
+                r = requests.post(url, params={"key": key}, json=body,
+                                  timeout=KEY_PROBE_TIMEOUT)
+            except Exception as e:
+                # в тексте сетевой ошибки лежит URL с ключом
+                state, why = "не спросил", _redact(e)
+                continue
+            st, w = _probe_verdict(r.status_code, r.text)
+            if st == "ok":
+                return st, w
+            # Худшую новость не запоминаем поверх лучшей: «мёртв» на одном
+            # адресе — не приговор (у ключей AI Studio второй эндпоинт
+            # отвечает 401 «API keys are not supported by this API» всегда,
+            # это свойство адреса, а не ключа), а «лимит» на одной модели
+            # ничего не говорит о следующей.
+            if state != "лимит" or st == "лимит":
+                state, why = st, w
     return state, why
 
 
@@ -1430,8 +1445,11 @@ def check_llm_keys(log=print, agnes_key: str = "") -> dict:
             "[Ключи] ⚠ Основной путь недоступен: Gemini "
             + (f"весь в лимите квоты ({gem_lim} ключ(ей))"
                if gem_lim else "не отвечает")
-            + " — всё поедет на Agnes. Сейчас он живой, но он ОДИН: если "
-              "отвалится и он, прогон уедет на запасные правила целиком.")
+            + f" — всё поедет на Agnes, живых ключей там {agn_ok}."
+            + (" Он ОДИН: если отвалится и он, прогон уедет на запасные "
+               "правила целиком." if agn_ok == 1 else
+               " Запас есть, но следи за ним: как кончится, прогон уедет "
+               "на запасные правила целиком."))
     if res["alarm"]:
         _say(log, res["alarm"])
     else:
