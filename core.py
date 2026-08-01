@@ -245,9 +245,19 @@ class KeyRotator:
         return False
 
 
+# Wikimedia отклоняет запросы без опознавательного User-Agent (403), а её
+# файлы приходят и напрямую, и через Openverse — поэтому один на всех.
+WIKI_UA = "ContentFactory/2.0 (YouTube pipeline; personal use)"
+
+
 def download_file(url: str, dest: Path):
     import requests
-    with requests.get(url, stream=True, timeout=120) as r:
+    # User-Agent обязателен: Wikimedia (а через Openverse её файлы приходят
+    # постоянно) отдаёт голому requests 403 Forbidden. Раньше этот путь почти
+    # не использовался и обрыв был незаметен; теперь на Openverse уходят
+    # планы, которым не нашлось стока, и 403 превращал такой план в ДЫРКУ.
+    with requests.get(url, stream=True, timeout=120,
+                      headers={"User-Agent": WIKI_UA}) as r:
         r.raise_for_status()
         with open(dest, "wb") as f:
             for chunk in r.iter_content(chunk_size=1 << 16):
@@ -2253,6 +2263,44 @@ def veo_image(prompt: str, dest: Path, api_key: str, log=print,
 VEO_IMAGE_ATTEMPTS = 4
 VEO_IMAGE_BACKOFF = 6      # секунд; умножается на номер попытки
 
+# До какого времени не трогать VeoNonStop: у него лежит собственный сервис
+# проверки ключей.
+_VEO_DOWN_UNTIL = 0.0
+VEO_DOWN_S = 900.0
+
+
+def _veo_is_outage(msg: str) -> bool:
+    """Отличить «лёг сервис» от «занят» и от «плохой ключ».
+
+    Наблюдалось вживую: на все адреса приходит 503 «API key validation
+    service unavailable». Это не лимит и не наш ключ — тот же ответ
+    получает ВЫДУМАННЫЙ ключ верного формата, который никогда не
+    существовал (проверено). Значит у них лежит проверка ключей целиком,
+    и ждать её в цикле по каждому кадру бессмысленно.
+    """
+    m = msg.lower()
+    return "503" in m and ("validation service" in m or "unavailable" in m)
+
+
+def _veo_down() -> bool:
+    return time.time() < _VEO_DOWN_UNTIL
+
+
+def _veo_mark_down(log=print) -> None:
+    """Отметить простой сервиса — один раз на пятнадцать минут.
+
+    Без этого каждый план ходит в лежащий сервис сам: на ролике в сто
+    с лишним ИИ-кадров это сотня заведомо провальных запросов и сотня
+    одинаковых строк в журнале, из-за которых настоящие ошибки не видно.
+    """
+    global _VEO_DOWN_UNTIL
+    if not _veo_down():
+        log("[Картинка] У VeoNonStop лёг сервис проверки ключей (503) — "
+            "это на ИХ стороне, ключ ни при чём: тот же ответ получает "
+            f"выдуманный ключ. Не трогаю его {VEO_DOWN_S / 60:.0f} мин, "
+            "кадры пойдут со стока.")
+    _VEO_DOWN_UNTIL = time.time() + VEO_DOWN_S
+
 
 def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
               style: str = "") -> Path:
@@ -2268,6 +2316,10 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
     # кадры — а весь смысл в том, чтобы канал выглядел одним фильмом, а не
     # нарезкой. Вместо смены генератора ЖДЁМ: RATE_LIMIT у Veo временный,
     # переждать его выгоднее, чем подменять картинку чужой эстетикой.
+    if _veo_down():
+        raise RuntimeError(
+            "VeoNonStop недоступен (503 у их проверки ключей) — "
+            "этот план возьмёт сток/Ken Burns")
     last = None
     for attempt in range(1, VEO_IMAGE_ATTEMPTS + 1):
         _stop_check()      # пережидание лимита не должно переживать «Стоп»
@@ -2276,6 +2328,9 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
         except Exception as e:
             last = e
             msg = str(e)
+            if _veo_is_outage(msg):
+                _veo_mark_down(log)
+                raise
             if attempt == VEO_IMAGE_ATTEMPTS:
                 break
             # лимит — ждём с нарастанием; прочие ошибки повторять смысла мало
@@ -4186,10 +4241,19 @@ def fetch_wiki_images(query: str, count: int, dest_dir: Path, prefix: str,
     return out
 
 
-def openverse_search(query: str, used: dict, log=print) -> str | None:
+def openverse_search(query: str, used: dict, log=print, line: str = "",
+                     api_key: str = "") -> str | None:
     """URL одной свежей CC-картинки из Openverse (агрегатор ~800 млн
     свободных изображений: Flickr CC, музеи, Wikimedia). Ключ не нужен.
-    None, если ничего нового не нашлось."""
+    None, если ничего нового не нашлось.
+
+    line — фраза диктора; если задана, кандидат ВЫБИРАЕТСЯ зрением, как и на
+    стоках. Раньше сюда попадали редко, и картинка бралась вслепую первой
+    подходящей по словам. Теперь Openverse — это ещё и запасной путь для
+    планов, которым на стоках ничего не подошло, и брать вслепую стало
+    прямо вредно: на «blurry dark shape photo» первым же ответом пришли
+    «золотистые эмпанады на решётке». Возвращаем None вместо заведомо чужого
+    кадра — пусть план уйдёт на генерацию."""
     import requests
     try:
         r = requests.get(
@@ -4197,17 +4261,30 @@ def openverse_search(query: str, used: dict, log=print) -> str | None:
             params={"q": query, "page_size": SEARCH_POOL,
                     "license_type": "all-cc", "aspect_ratio": "wide",
                     "mature": "false"},
-            headers={"User-Agent": "ContentFactory/2.0 (personal use)"},
+            headers={"User-Agent": WIKI_UA},
             timeout=30)
         if r.status_code != 200:
             return None
         items = [{"id": it["id"], "url": it.get("url"),
+                  "thumb": it.get("thumbnail") or it.get("url"),
                   "license": it.get("license", ""), "author": it.get("creator", "")}
                  for it in r.json().get("results", []) if it.get("url")]
-        picked = _pick_unused(items, "openverse", used, 1, log)
-        if not picked:
-            return None
-        p = picked[0]
+        p = None
+        if items and line and (api_key or os.getenv("GEMINI_API_KEY", "")):
+            seen = set(map(str, used.get("openverse", [])))
+            fresh = [x for x in items if str(x["id"]) not in seen] or items
+            got = _vision_pick(fresh, lambda x: x.get("thumb"), line,
+                               api_key, log)
+            if got is NOTHING_FITS:
+                return None
+            if got is not None:
+                used.setdefault("openverse", []).append(str(got["id"]))
+                p = got
+        if p is None:
+            picked = _pick_unused(items, "openverse", used, 1, log)
+            if not picked:
+                return None
+            p = picked[0]
         if p.get("license"):
             log(f"[Openverse] лицензия {p['license'].upper()}, автор "
                 f"{p.get('author') or '?'} — укажи атрибуцию в описании")
@@ -4996,7 +5073,7 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                 if picked:
                     url = picked[0]["_c"]["link"]
         if url is None:
-            url = openverse_search(query, used, log)
+            url = openverse_search(query, used, log, line, gemini_key)
         if url is None:                         # реальные люди/места
             try:
                 wiki = fetch_wiki_images(query, 1, sdir, dest.stem, used, log)
@@ -5007,7 +5084,15 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                 pass
             return None
         jpg = dest.with_suffix(".jpg")
-        download_file(url, jpg)
+        try:
+            download_file(url, jpg)
+        except Exception as e:
+            # Не даём сорвавшейся загрузке унести весь план: у вызывающего
+            # дальше есть генерация и повтор, а исключение отсюда делало из
+            # плана ДЫРКУ в таймлайне. Реальный случай: Openverse отдал файл
+            # с upload.wikimedia.org, тот ответил 403 — и плана не стало.
+            log(f"[Стоки] Картинка не скачалась ({_redact(e)}) — план дальше")
+            return None
         ken_burns(jpg, dest, duration=need)   # фото оживает зумом/панорамой
         return need
 
