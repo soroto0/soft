@@ -1,6 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
-import { VARIANTS } from './variants/_registry';
+import { VARIANTS, DECOR } from './variants/_registry';
 import type { OverlayProps } from './types';
 
 // тип переехал в types.ts (варианты не могут тянуть его отсюда — вышел бы
@@ -1091,7 +1091,12 @@ const Gallery = ({ items, exit, enter }: { items: { label: string; img: string }
   );
 };
 
-export const Overlay: React.FC<OverlayProps> = (p) => {
+// Фоновый слой: анимация рисуется ПОД встроенным видом, а не вместо него.
+// Нужен типам, у которых движение неотделимо от данных — bars, infographic,
+// compare, timeline, counter. Скачанная анимация не знает ни твоих значений,
+// ни числа колонок, поэтому заменить их собой не может; а вот лечь фоном под
+// настоящие цифры — вполне. Без этого Lottie расширяла только половину типов.
+const OverlayCore: React.FC<OverlayProps> = (p) => {
   const exit = useExit(p.dur);
   const enter = useEnter(p.dur);
 
@@ -1155,4 +1160,22 @@ export const Overlay: React.FC<OverlayProps> = (p) => {
     default:
       return <AbsoluteFill />;
   }
+};
+
+export const Overlay: React.FC<OverlayProps> = (p) => {
+  // Декоративный слой ищем ОТДЕЛЬНО от заменяющих вариантов: у DECOR та же
+  // ключевая схема "тип/вариант", но найденный здесь компонент не отменяет
+  // встроенный вид, а подкладывается под него. variant у ядра гасим, иначе
+  // оно полезло бы искать тот же ключ в VARIANTS и ничего не нашло бы.
+  const exit = useExit(p.dur);
+  const enter = useEnter(p.dur);
+  const Decor = p.variant ? DECOR[`${p.type}/${p.variant}`] : undefined;
+  if (!Decor) return <OverlayCore {...p} />;
+  const core = { ...p, variant: undefined };
+  return (
+    <AbsoluteFill>
+      <Decor {...p} exit={exit} enter={enter} />
+      <OverlayCore {...core} />
+    </AbsoluteFill>
+  );
 };

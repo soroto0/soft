@@ -86,6 +86,15 @@ class Api:
         self._cancel = threading.Event()
         self._worker = None      # поток текущей задачи, см. _stop_check
         self._win = None
+        # Канал и рабочая папка обязаны совпадать. Поймано вживую 2026-08-03:
+        # в настройках стоял канал abyss, а last_project указывал на папку
+        # home-vault — и весь ролик про обрушение моста (тема abyss) уехал
+        # в чужой канал: там оказались и script.txt, и meta.json с меткой
+        # «home-vault». Разойтись они могут запросто: last_project пишется
+        # при любом выборе папки, а current_channel — только при выборе
+        # канала, и никто их не сверял. Сверяем на старте — но ПОСЛЕ _win,
+        # иначе предупреждение уходит в журнал, которого ещё нет.
+        self._sync_project_to_channel()
         self._configure_veo_store()
         # Живой вывод дочерних процессов идёт мимо проверки «Стопа»
         # (_log_raw, а не log): в него льётся ffmpeg строка за строкой прямо
@@ -182,6 +191,10 @@ class Api:
         # которой CANCEL.clear() внутри render_project не давал остановить
         # рендер до его старта. Сбрасываем здесь, на запуске задачи.
         core.reset_cancel()
+        # Бюджет ожидания лимита Veo — на ЭТУ задачу, а не на всё время жизни
+        # приложения. Иначе второй ролик за ночь начинал бы с уже исчерпанным
+        # бюджетом и уходил на сток с первого кадра.
+        core.reset_veo_limit()
 
         def wrap():
             t0 = datetime.now()
@@ -367,6 +380,38 @@ class Api:
     def _channel(self) -> dict | None:
         return channels_mod.get(self._settings.get("current_channel", ""))
 
+    def _sync_project_to_channel(self, log=None) -> bool:
+        """Рабочая папка должна лежать ВНУТРИ папки выбранного канала.
+
+        Если нет — чиним и говорим вслух. Молчать тут нельзя: расхождение
+        стоит целого ролика, причём заметить его можно только постфактум,
+        найдя чужой сценарий в чужой папке.
+        """
+        ch = self._channel()
+        if not ch:
+            return False
+        root = channels_mod.projects_dir(ch)
+        if not root.is_absolute():
+            root = BASE / root
+        try:
+            cur = self._project.resolve()
+            if cur == root.resolve() or root.resolve() in cur.parents:
+                return False               # всё на месте
+        except OSError:
+            pass
+        msg = (f"[Канал] Рабочая папка «{self._project}» не принадлежит каналу "
+               f"«{ch['name']}» — переключаю на «{root}». Иначе ролик этого "
+               "канала записался бы в чужой.")
+        root.mkdir(parents=True, exist_ok=True)
+        self._project = root
+        self._settings["last_project"] = str(root)
+        try:
+            self._save_settings_file()
+        except OSError:
+            pass
+        (log or getattr(self, "_log_raw", print))(msg, "warn")
+        return True
+
     # ---------- проект ----------
     def set_project(self, path: str):
         if path:
@@ -551,7 +596,10 @@ class Api:
                 self.log(f"[Разнообразие] Голос {voice}, темп {rate:+d}% "
                          "(случайно под этот проект)")
         enh = bool(p.get("enhance"))
-        if "Edge" in p.get("engine", "Edge"):
+        # Регистр не важен: «edge» строчными раньше означало Polly, и вызов
+        # без ключей AWS валил весь ролик уже после готового сценария.
+        # Пустое значение — тоже Edge: это бесплатный путь, к нему и падаем.
+        if "edge" in str(p.get("engine") or "Edge").lower():
             core.tts_edge(text, voice, self._project, self.log, rate, enh,
                           bool(p.get("pauses", True)))
         else:
@@ -818,6 +866,11 @@ class Api:
                 # меняться от ролика к ролику
                 "sub_font": p.get("sub_font", ""),
                 "look": p.get("look", "нет"),
+                # Палитра — почерк канала: какими переходами он говорит и как
+                # двигает камеру. Берётся ТОЛЬКО из профиля и «Разнообразием»
+                # не перебивается: разнообразие меняет ролики внутри канала,
+                # а палитра отличает каналы друг от друга.
+                "palette": (ch or {}).get("palette", ""),
                 "subs": bool(p.get("subs", True)),
                 "sfx": bool(p.get("sfx", True)),
                 "grain": bool(p.get("grain")),
@@ -841,7 +894,10 @@ class Api:
                 "flicker": bool(p.get("flicker")),
                 "draft": bool(p.get("draft"))}
         if p.get("randomize"):   # свой «почерк» на каждый проект
-            st = core.project_style(self._project)
+            # Палитра канала задаёт, КАКАЯ атмосфера ему свойственна: у одного
+            # свечение редкость, у другого подпись. Без неё все три канала
+            # крутили эффекты с одними вероятностями и пахли одинаково.
+            st = core.project_style(self._project, opts.get("palette", ""))
             upd = {"intensity": st["intensity"], "sub_style": st["sub_style"],
                    "sub_size": st["sub_size"], "look": st["look"],
                    "bloom": st["bloom"], "light_leak": st["light_leak"],
@@ -1278,10 +1334,28 @@ class Api:
     def generate_all(self, p: dict):
         if self._reject_if_busy("Генерация видео"):
             return
+        job = self._generate_job(p)
+        quality.reset()   # список деградаций — про ЭТОТ ролик, не про прошлый
+        self._bg("Генерация видео", job)
+
+    def _generate_job(self, p: dict):
+        """Собрать цепочку ролика и вернуть её ОДНОЙ функцией.
+
+        Отделено от generate_all ради ночного автопилота: ему нужно прогнать
+        ту же самую цепочку подряд по каналам внутри ОДНОЙ фоновой задачи.
+        Через generate_all он бы этого не смог — она отдаёт работу в _bg, а
+        _bg отказывается стартовать, пока занята другая задача, то есть сам
+        автопилот. Копировать цепочку в автопилот нельзя: копия разъедется с
+        оригиналом, и шаг, добавленный в приложении, ночью молча не сделается.
+        """
         # Профиль канала ЗАДАЁТ язык, жанр, голос и стиль — иначе достаточно
         # один раз забыть переключить выпадающий список, и ролик выйдет
         # чужим голосом на чужом языке. Проект запоминает свой канал, чтобы
         # библиотека оверлеев потом отфильтровалась по нему.
+        # Сверяем ПЕРЕД записью meta.json: иначе метка канала легла бы в чужую
+        # папку и ролик считался бы принадлежащим не тому каналу — со всеми
+        # последствиями для библиотеки оверлеев, которая фильтруется по ней.
+        self._sync_project_to_channel(self.log)
         ch = self._channel()
         if ch:
             p = channels_mod.apply_to_params(ch, p)
@@ -1443,8 +1517,99 @@ class Api:
             self.log("[YouTube] Перед загрузкой отметь «Да» в поле об "
                      "ИИ-контенте, если в ролике есть реалистичные "
                      "сгенерированные сцены.", "warn")
-        quality.reset()      # список деградаций — про ЭТОТ ролик, не про прошлый
-        self._bg("Генерация видео", job)
+        return job
+
+    def autopilot(self, p: dict):
+        """Ночной прогон: по ролику на каждый канал, одной фоновой задачей.
+
+        Работает той же цепочкой, что и кнопка «Генерировать видео», — просто
+        подряд по каналам. «Стоп» гасит её целиком, как любую другую задачу.
+        """
+        if self._reject_if_busy("Автопилот"):
+            return
+        import autopilot as ap
+        chans = channels_mod.load()
+        if not chans:
+            self.log("[Автопилот] Нет ни одного канала — сначала заведи "
+                     "профиль канала", "err")
+            return
+        per = max(1, int(p.get("videos", 1) or 1))
+        base = dict(p)
+        # Тема и сценарий у каждого канала СВОИ — берутся по его нише. Если
+        # пустить сюда текст из поля сценария, ночь выдаст три копии одного
+        # ролика под разными названиями. Чистим здесь, а не только в интерфейсе:
+        # это свойство автопилота, а не поведение конкретной кнопки.
+        base["script"] = ""
+        base["topic"] = ""
+
+        def job():
+            started = datetime.now()
+            results = []
+            for ch in chans:
+                for _ in range(per):
+                    nm = ch.get("name") or ch.get("id")
+                    try:
+                        self._stop_check()
+                        self.channel_select(ch["id"])
+                        d = ap.project_dir_for_night(ch)
+                        self.set_project(str(d))
+                        budget = ap._budget_for(ch)
+                        self.log(f"[Автопилот] «{nm}» -> {d.name} "
+                                 f"({ch.get('minutes', '?')} мин); "
+                                 f"на этот ролик отвожу {budget / 3600:.1f} ч")
+                        quality.reset()
+                        # Сторожевой таймер. Цепочка здесь идёт СИНХРОННО, и без
+                        # него зависший канал съел бы всю ночь: следующие просто
+                        # не начались бы. Взводим тот же флаг, что и кнопка
+                        # «Стоп», — его видит log() внутри всех стадий.
+                        hit = threading.Event()   # взвёл таймер, а не человек
+
+                        def _fire():
+                            hit.set()
+                            self._cancel.set()
+
+                        watchdog = threading.Timer(budget, _fire)
+                        watchdog.daemon = True
+                        watchdog.start()
+                        try:
+                            self._generate_job(dict(base))()
+                        except (Stopped, core.Cancelled):
+                            # Отличать обязательно: тот же флаг взводит и кнопка
+                            # «Стоп». Нажал человек — гасим ночь целиком; сработал
+                            # таймер — это всего лишь один затянувшийся канал.
+                            if not hit.is_set():
+                                raise
+                            self._cancel.clear()   # снимаем СВОЙ флаг сразу:
+                            # пока он взведён, любая запись в журнал через log()
+                            # бросит Stopped ПОВТОРНО — уже из обработчика, мимо
+                            # этого except, и ночь оборвётся на первом же канале.
+                            # Ровно это и случилось на проверке.
+                            self._log_raw(f"[Автопилот] «{nm}»: не уложился в "
+                                          f"{budget / 3600:.1f} ч — перехожу "
+                                          "к следующему каналу", "warn")
+                        finally:
+                            watchdog.cancel()
+                            if hit.is_set():
+                                self._cancel.clear()
+                        out = d / "output_final.mp4"
+                        sz = out.stat().st_size if out.exists() else 0
+                        results.append((nm, out if sz else None, sz))
+                    except (Stopped, core.Cancelled):
+                        raise          # «Стоп» гасит всю ночь, а не один канал
+                    except Exception as e:
+                        # Один канал не уносит с собой остальные: ночь из трёх
+                        # каналов не должна пропадать целиком из-за одного.
+                        self.log(f"[Автопилот] «{nm}» упал: {e}", "err")
+                        results.append((nm, None, 0))
+            ok = [r for r in results if r[1]]
+            self.log(f"[Автопилот] Ночь закончена: готово {len(ok)} из "
+                     f"{len(results)}, {(datetime.now() - started)}")
+            for nm, out, sz in results:
+                self.log(f"   {'✔' if out else '✖'} {nm}"
+                         + (f": {out} ({sz / 2**20:.0f} МБ)" if out
+                            else ": не вышло — ищи причину выше"))
+
+        self._bg("Автопилот", job)
 
     # ---------- настройки ----------
     def settings_get(self):

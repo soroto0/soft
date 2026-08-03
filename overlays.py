@@ -583,8 +583,13 @@ def _remotion_bundle(log=print) -> Path:
     исходники в src/ новее готового бандла."""
     build = REMOTION_DIR / "build"
     marker = build / "index.html"
-    newest = max((p.stat().st_mtime for p in (REMOTION_DIR / "src").glob("*")),
-                 default=0)
+    # public/ смотрим наравне с src/: бандл снимает с этой папки «снимок» при
+    # сборке, а Lottie-анимации лежат именно там. Замена одного .json не
+    # трогает src/, и без этой строки рендер молча брал бы старый бандл —
+    # то есть анимацию, которую уже заменили.
+    watched = list((REMOTION_DIR / "src").glob("*"))
+    watched += list((REMOTION_DIR / "public").glob("*"))
+    newest = max((p.stat().st_mtime for p in watched), default=0)
     if marker.exists() and marker.stat().st_mtime >= newest:
         return build
     log("[Оверлеи] Remotion: собираю бандл (~30-60 c, один раз)...")
@@ -971,9 +976,65 @@ def _project_variant(out_dir, kind: str, options: tuple[str, ...]) -> str:
     каждый отдельный оверлей. `kind` солится в seed отдельно от пути,
     чтобы выбор для banner и для lower3 в одном и том же проекте не
     коррелировал (не оба всегда попадали на один и тот же индекс)."""
+    import random as _random
+    if not options:
+        return "remotion_classic"
+    # ГЛАВНЫЙ вид типа закреплён за КАНАЛОМ, а не пересчитывается на каждый
+    # ролик. Это не потеря разнообразия: внутри ролика по всем доступным видам
+    # прокручивается колесо (см. build_overlays), и на длинном видео зритель
+    # увидит их все. А вот между каналами постоянство — это узнаваемость: у
+    # abyss своя плашка, у home-vault своя, и они не меняются местами.
+    #
+    # Порядок канонический (алфавитный) и ОДИН для всех каналов, различается
+    # только смещение по номеру канала. Только так три канала гарантированно
+    # получают разные виды, когда вариантов хватает. Пробовал разводить
+    # взвешенным выбором и перестановками — совпадений оставалось 15-18 из 18:
+    # независимый выбор из общего мешка развести каналы не может в принципе.
+    order = sorted(options)
+    return order[_channel_index(out_dir) % len(order)]
+
+
+def _channel_index(out_dir) -> int:
+    """Порядковый номер канала среди всех. Нужен, чтобы разные каналы брали
+    РАЗНЫЕ варианты, а не спорили за один. Проект вне каналов — 0."""
+    ch = _project_channel(out_dir)
+    if not ch:
+        return 0
+    try:
+        import channels as _ch_mod
+        ids = [c.get("id", "") for c in _ch_mod.load()]
+        return ids.index(ch) if ch in ids else 0
+    except Exception:
+        return 0
+
+
+# Насколько канал «любит» вариант. Как и палитра монтажа, это АКЦЕНТ, а не
+# запрет: вес никогда не ноль, любой вариант может достаться любому каналу.
+# Без этого три канала тянули из общего мешка с равными шансами, и при двух
+# вариантах на тип совпадение было делом арифметики, а не вкуса (замер: 16
+# типов из 18 доставались двум и более каналам сразу).
+VARIANT_BIAS_STRENGTH = 6.0
+
+
+def _variant_weights(out_dir, options: tuple[str, ...]) -> list[float]:
+    """Вес каждого варианта для КАНАЛА этого проекта.
+
+    Канал получает свой стабильный порядок предпочтений: одному и тому же
+    каналу один и тот же вариант всегда нравится одинаково, а разным каналам —
+    по-разному. Реализовано хешем «канал+вариант», поэтому ни списков вручную,
+    ни правки при добавлении нового варианта не нужно: новый вариант сразу
+    получает своё место в предпочтениях каждого канала.
+    """
     import zlib
     import random as _random
-    return _random.Random(_project_seed(out_dir, kind)).choice(options)
+    ch = _project_channel(out_dir) or "_"
+    out = []
+    for v in options:
+        seed = zlib.crc32(f"{ch}|{v}".encode())
+        # ранг 0..1 -> вес от 1 до VARIANT_BIAS_STRENGTH
+        rank = _random.Random(seed).random()
+        out.append(1.0 + rank * (VARIANT_BIAS_STRENGTH - 1.0))
+    return out
 
 
 def _project_seed(out_dir, kind: str) -> int:
@@ -1069,8 +1130,16 @@ def rebuild_registry(log=print, meta: dict | None = None) -> int:
     imports = "".join(
         f"import {{ {rec['component']} }} from './{Path(rec['file']).stem}';\n"
         for rec in live.values())
+    # Две карты, а не одна. VARIANTS заменяет встроенный вид, DECOR
+    # подкладывается ПОД него: у типов, где движение неотделимо от данных
+    # (bars, infographic, compare, timeline, counter), заменять нечем —
+    # скачанная анимация не знает ни значений, ни числа колонок.
     entries = "".join(f"  '{key}': {rec['component']},\n"
-                      for key, rec in live.items())
+                      for key, rec in live.items()
+                      if rec.get("mode", "replace") != "decor")
+    decor = "".join(f"  '{key}': {rec['component']},\n"
+                    for key, rec in live.items()
+                    if rec.get("mode", "replace") == "decor")
     VARIANTS_DIR.mkdir(parents=True, exist_ok=True)
     (VARIANTS_DIR / "_registry.ts").write_text(
         "// АВТОГЕНЕРИРУЕМЫЙ ФАЙЛ — не редактировать руками.\n"
@@ -1081,7 +1150,10 @@ def rebuild_registry(log=print, meta: dict | None = None) -> int:
         "import type { VariantProps } from '../types';\n"
         f"{imports}\n"
         "export const VARIANTS: Record<string, React.FC<VariantProps>> = {\n"
-        f"{entries}}};\n",
+        f"{entries}}};\n\n"
+        "// Фоновые слои: рисуются ПОД встроенным видом, не вместо него.\n"
+        "export const DECOR: Record<string, React.FC<VariantProps>> = {\n"
+        f"{decor}}};\n",
         encoding="utf-8")
     return len(live)
 
@@ -1106,12 +1178,251 @@ def _registry_is_stale() -> bool:
     return text.count("':") != expected
 
 
+              # префиксы имён вариантов в библиотеке: ai_ — сгенерированные и
+              # написанные руками компоненты, lot_ — обёртки над Lottie
+_LIB_PREFIXES = ("remotion_ai_", "remotion_lot_")
+
+
+def _is_lib_pick(pick: str) -> bool:
+    """Это вариант ИЗ БИБЛИОТЕКИ, а не встроенный вид?
+
+    Проверка была захардкожена на «remotion_ai_», и добавление Lottie
+    (префикс lot_) молча ломалось: ветка рендера не срабатывала, вариант
+    падал на встроенный вид, и в журнале об этом не было ни строки. Держим
+    список префиксов в одном месте, чтобы следующий вид не повторил это.
+    """
+    return pick.startswith(_LIB_PREFIXES)
+
+
 def _variant_file(rec: dict) -> Path:
     """Где лежит файл варианта — зависит от движка: у Remotion это .tsx в
     remotion/src/variants/, у HyperFrames — .html в hyperframes/."""
     if rec.get("engine", "remotion") == "hyperframes":
         return HYPERFRAMES_DIR / rec.get("file", "")
     return VARIANTS_DIR / rec.get("file", "")
+
+
+
+# ---------- Lottie: чужая анимация как вариант оверлея ----------
+
+# public/, а не src/: отсюда файл читает staticFile во время рендера, и
+# анимация НЕ попадает в бандл Remotion (он пересобирается перед каждым
+# роликом, и вшитые мегабайты пережёвывались бы заново каждый раз).
+LOTTIE_DIR = VARIANTS_DIR.parent.parent / "public" / "lottie"
+
+_LOTTIE_TSX = """import React, {{ useEffect, useState }} from 'react';
+import {{
+  AbsoluteFill, useCurrentFrame, interpolate, Easing,
+  staticFile, delayRender, continueRender, cancelRender,
+}} from 'remotion';
+import {{ Lottie, type LottieAnimationData }} from '@remotion/lottie';
+import type {{ VariantProps }} from '../types';
+
+// СГЕНЕРИРОВАНО overlays.add_lottie_variant() из файла {json_name}.
+// Править руками смысла нет — перезапишется при повторном добавлении.
+// Источник анимации: {source}
+// Режим: {mode_note}
+//
+// JSON НЕ импортируется статически, а грузится из public/ через staticFile.
+// Причина в весе: статический импорт вшивает анимацию в бандл Remotion, а он
+// пересобирается перед КАЖДЫМ рендером. Десяток анимаций по мегабайту — это
+// десяток мегабайт, которые заново прожёвываются на каждом ролике. Здесь же
+// файл лежит рядом и читается только когда действительно нужен.
+// delayRender/continueRender обязательны: без них рендер снимет кадр раньше,
+// чем анимация загрузится, и в ролике окажется пустое место.
+export const {component}: React.FC<VariantProps> = (p) => {{
+  const frame = useCurrentFrame();
+  const [data, setData] = useState<LottieAnimationData | null>(null);
+  const [handle] = useState(() => delayRender('lottie {json_name}'));
+
+  useEffect(() => {{
+    fetch(staticFile('lottie/{json_name}'))
+      .then((r) => r.json())
+      .then((d: LottieAnimationData) => {{
+        setData(d);
+        continueRender(handle);
+      }})
+      .catch((e) => cancelRender(e));
+  }}, [handle]);
+
+  const opacity = p.enter * p.exit;
+  const text = (p.content || '').trim();
+
+  const capIn = interpolate(frame, [4, 18], [0, 1], {{
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  }});
+
+  if (!data) return <AbsoluteFill />;
+  // Явная привязка после проверки: вывод типов не доносит сужение до JSX
+  // ниже, и <Lottie animationData> получал бы «LottieAnimationData | null».
+  const anim: LottieAnimationData = data;
+
+  // Сколько длится сама анимация и сколько ей отведено в ролике.
+  const srcFps = (anim as {{ fr?: number }}).fr ?? 30;
+  const srcFrames = Math.max(
+    1,
+    ((anim as {{ op?: number }}).op ?? srcFps) - ((anim as {{ ip?: number }}).ip ?? 0)
+  );
+  const srcDur = srcFrames / srcFps;
+  const slot = Math.max(0.2, p.dur || srcDur);
+  // loop=false — растягиваем анимацию ровно на слот, чтобы жест закончился
+  // вместе с оверлеем, а не оборвался на середине.
+  const rate = {loop_js} ? 1 : srcDur / slot;
+
+  if ({decor_js}) {{
+    // ФОНОВЫЙ СЛОЙ. Текст не рисуем — его нарисует встроенный вид, который
+    // ляжет сверху. Приглушаем и растягиваем на кадр: задача слоя — дать
+    // движение под данными, а не спорить с ними за внимание.
+    return (
+      <AbsoluteFill style={{{{ opacity: opacity * {decor_opacity} }}}}>
+        <Lottie
+          animationData={{anim}}
+          loop={{{loop_js}}}
+          playbackRate={{rate}}
+          style={{{{ width: '100%', height: '100%' }}}}
+        />
+      </AbsoluteFill>
+    );
+  }}
+
+  return (
+    <AbsoluteFill style={{{{ justifyContent: 'center', alignItems: 'center' }}}}>
+      <div style={{{{ opacity, display: 'flex', flexDirection: 'column',
+                   alignItems: 'center', gap: 18 }}}}>
+        <Lottie
+          animationData={{anim}}
+          loop={{{loop_js}}}
+          playbackRate={{rate}}
+          style={{{{ width: {size}, height: {size} }}}}
+        />
+        {{text ? (
+          <div style={{{{
+            opacity: capIn,
+            transform: `translateY(${{(1 - capIn) * 10}}px)`,
+            fontFamily: "'Segoe UI', Arial, sans-serif",
+            fontSize: 34,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            color: '#ffffff',
+            textShadow: '0 2px 12px rgba(0,0,0,0.95), 0 0 30px rgba(0,0,0,0.8)',
+            whiteSpace: 'nowrap',
+          }}}}>{{text}}</div>
+        ) : null}}
+      </div>
+    </AbsoluteFill>
+  );
+}};
+"""
+
+
+def _lottie_is_opaque(data: dict) -> bool:
+    """Есть ли в анимации сплошная заливка кадра.
+
+    Оверлей ложится ПОВЕРХ видео. Скачанная анимация часто нарисована на белом
+    или чёрном прямоугольнике во весь холст — такая закрасит кадр целиком, и
+    ролик превратится в слайд-шоу с картинкой вместо съёмки. Ищем слой-заливку
+    (ty=1, solid) размером с холст: это самый частый вид непрозрачного фона.
+    """
+    w, h = data.get("w", 0), data.get("h", 0)
+    for layer in data.get("layers", []):
+        if layer.get("ty") == 1:                      # solid color layer
+            if layer.get("sw", 0) >= w and layer.get("sh", 0) >= h:
+                return True
+    return False
+
+
+# Типы, у которых движение НЕОТДЕЛИМО от данных: рисунок задаётся значениями,
+# числом колонок, списком событий, парой сравниваемых сторон. Заменить их
+# скачанной анимацией нельзя — она не знает ни значений, ни их количества.
+# Но подложить её ПОД настоящие цифры можно, поэтому такие типы получают
+# режим decor автоматически. Так Lottie подходит ВСЕМ 18 типам, а не половине.
+DATA_DRIVEN_TYPES = ("bars", "infographic", "compare", "timeline", "counter",
+                     "collage", "gallery", "redact")
+
+
+def lottie_mode_for(kind: str, mode: str = "auto") -> str:
+    """Каким режимом подключать анимацию к этому типу.
+
+    auto — сам решает: где рисунок задан данными, там фон; где оверлей это
+    «картинка с подписью», там анимация может встать вместо встроенного вида.
+    """
+    if mode in ("replace", "decor"):
+        return mode
+    return "decor" if kind in DATA_DRIVEN_TYPES else "replace"
+
+
+def add_lottie_variant(json_path, kind: str, variant: str = "",
+                       source: str = "", size: int = 420,
+                       loop: bool = False, channel: str = "",
+                       mode: str = "auto", decor_opacity: float = 0.5,
+                       log=print) -> str:
+    """Сделать из .json-анимации Lottie полноценный вариант оверлея.
+
+    Смысл: библиотека растёт СКАЧИВАНИЕМ ФАЙЛА, а не написанием компонента.
+    Внутри всё равно Remotion (@remotion/lottie), поэтому запись движка —
+    'remotion': её подхватывает существующий реестр, и ничего в конвейере
+    рендера трогать не нужно.
+
+    mode: 'replace' — анимация вместо встроенного вида; 'decor' — под ним;
+    'auto' — по типу оверлея (см. lottie_mode_for).
+
+    Возвращает ключ записи в variants.json.
+    """
+    from datetime import datetime
+    src = Path(json_path)
+    data = json.loads(src.read_text(encoding="utf-8"))
+    if not data.get("layers"):
+        raise ValueError(f"{src.name}: в файле нет слоёв — это не Lottie")
+    if _lottie_is_opaque(data):
+        raise ValueError(
+            f"{src.name}: анимация нарисована на сплошной подложке во весь "
+            "холст — поверх видео она закрасит кадр. Возьми версию с "
+            "прозрачным фоном.")
+
+    variant = variant or f"lot_{src.stem.lower()}"
+    if not variant.startswith(("ai_", "lot_")):
+        variant = f"lot_{variant}"
+    stem = f"{kind}_{variant}"
+    comp = "".join(w.capitalize() for w in re.split(r"[_\-]+", stem) if w)
+
+    mode = lottie_mode_for(kind, mode)
+    # Файл кладём в public/, а НЕ рядом с компонентом: оттуда его читает
+    # staticFile во время рендера, и он не попадает в бандл. Иначе каждая
+    # анимация утяжеляла бы сборку, которая идёт перед каждым роликом.
+    LOTTIE_DIR.mkdir(parents=True, exist_ok=True)
+    json_name = f"{stem}.json"
+    (LOTTIE_DIR / json_name).write_text(
+        json.dumps(data, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8")
+
+    (VARIANTS_DIR / f"{stem}.tsx").write_text(
+        _LOTTIE_TSX.format(
+            json_name=json_name, component=comp, size=size,
+            loop_js="true" if loop else "false",
+            decor_js="true" if mode == "decor" else "false",
+            decor_opacity=f"{max(0.05, min(1.0, decor_opacity)):.2f}",
+            mode_note=("фоновый слой под встроенным видом"
+                       if mode == "decor" else "вместо встроенного вида"),
+            source=source or "не указан"),
+        encoding="utf-8")
+
+    meta = load_variants_meta()
+    key = f"{kind}/{variant}"
+    meta[key] = {
+        "file": f"{stem}.tsx", "component": comp, "type": kind,
+        "variant": variant, "enabled": True, "channel": channel,
+        "engine": "remotion", "source": "lottie", "mode": mode,
+        "lottie": json_name,
+        "created": datetime.now().isoformat(timespec="seconds"),
+        "theme": f"Lottie-анимация из {source or 'локального файла'} "
+                 f"({'фон' if mode == 'decor' else 'основной вид'})",
+    }
+    save_variants_meta(meta)
+    rebuild_registry(log, meta)
+    log(f"[Варианты] Lottie добавлена: {key} ({json_name})")
+    return key
 
 
 def _library_variants(kind: str, engine: str | None = None,
@@ -1205,7 +1516,18 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
     wheel, wheel_pos = {}, {}
     for kind in {it["type"] for it in items}:
         opts = list(_variant_options(out_dir, kind))
-        _rnd.Random(_project_seed(out_dir, kind)).shuffle(opts)
+        # Колесо тасуется С УЧЁТОМ вкуса канала: любимые виды встают ближе к
+        # началу и потому встречаются в ролике чаще. Из колеса ничего не
+        # выбрасывается — редкий для этого канала вид всё равно появится,
+        # просто ближе к концу и реже.
+        if len(opts) > 1:
+            w = _variant_weights(out_dir, tuple(opts))
+            r = _rnd.Random(_project_seed(out_dir, kind))
+            # взвешенная перестановка: чем больше вес, тем выше ключ
+            opts.sort(key=lambda v, _w=dict(zip(opts, w)):
+                      -r.random() ** (1.0 / _w[v]))
+        else:
+            _rnd.Random(_project_seed(out_dir, kind)).shuffle(opts)
         wheel[kind] = opts
         wheel_pos[kind] = 0
     banner_variant = picked.get("banner", "remotion_classic")
@@ -1293,14 +1615,14 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                 cw, ch, x, y = _render_watermark(
                     it, W, H, fps, dest, Path(out_dir), log,
                     variant=(lib_pick[len("remotion_"):]
-                             if lib_pick.startswith("remotion_ai_") else None))
+                             if _is_lib_pick(lib_pick) else None))
                 used_engine = "remotion"
                 variant_done = True
             # Вариант из библиотеки ИИ — один общий путь для ЛЮБОГО типа:
             # все они рендерятся Remotion'ом, отличается только имя варианта,
             # по которому Overlay.tsx находит компонент в реестре. Не прошёл —
             # молча падаем в ручные ветки ниже, ролик не страдает.
-            elif lib_pick.startswith("remotion_ai_") and engine == "remotion":
+            elif _is_lib_pick(lib_pick) and engine == "remotion":
                 try:
                     cw, ch = _render_remotion(
                         it, W, H, fps, dest, Path(out_dir), log,

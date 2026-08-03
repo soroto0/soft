@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Идёт ли сейчас задача в приложении. Спрашивать ПЕРЕД перезапуском.
+
+    python is_busy.py        # печатает состояние, код 1 = занято
+
+Почему не по времени последней записи в журнале: целые стадии молчат минутами.
+Whisper распознаёт речь без единой строки, ffmpeg склеивает группы, LLM пишет
+главу — журнал в это время не растёт. Дважды на этом обжёгся: увидел «тишина
+3 минуты», перезапустил, а цепочка шла на шаге 2/4.
+
+Правильный признак — незакрытая задача: в журнале есть «▶ имя: запущено»,
+а «✔ имя: …» или «✖ имя: …» после него ещё нет.
+"""
+import re
+import sys
+import time
+from pathlib import Path
+
+LOG = Path(__file__).resolve().parent / "app.log"
+START = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\s+▶ (.+?): запущено")
+END = re.compile(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\s+[✔✖] (.+?): (завершено|остановлено|прервано)")
+STAGE = re.compile(r"\[Цепочка\] Шаг (\d)/(\d)")
+
+
+# Сколько журнал может молчать, а задача при этом идти. Самая долгая тихая
+# стадия — распознавание речи Whisper, около пяти минут на длинном ролике.
+# Пятнадцать берём с тройным запасом: ошибиться в сторону «занято» безвредно,
+# в другую — стоит оборванного прогона.
+QUIET_LIMIT_S = 15 * 60
+
+
+def main() -> int:
+    if not LOG.exists():
+        print("журнала нет — считаю, что ничего не идёт")
+        return 0
+    # хвоста в 4000 строк с запасом хватает на любую задачу
+    lines = LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-4000:]
+    open_task = None
+    last_stage = ""
+    for ln in lines:
+        m = START.match(ln)
+        if m:
+            open_task = m.group(1)
+            last_stage = ""
+            continue
+        m = END.match(ln)
+        if m and open_task == m.group(1):
+            open_task = None
+        s = STAGE.search(ln)
+        if s:
+            last_stage = f"шаг {s.group(1)}/{s.group(2)}"
+
+    quiet = time.time() - LOG.stat().st_mtime
+    # Незакрытая метка сама по себе ничего не доказывает: если приложение
+    # убили, строка «✖ … прервано» из finally уже не запишется, и метка
+    # висит вечно. Задача может идти только пока жив процесс приложения.
+    if open_task and quiet > QUIET_LIMIT_S:
+        print(f"метка «{open_task}» осталась от оборванного прогона "
+              f"(журнал молчит {quiet / 60:.0f} мин) — перезапуск безопасен")
+        return 0
+    if open_task:
+        print(f"ЗАНЯТО: «{open_task}»"
+              + (f", {last_stage}" if last_stage else "")
+              + f"; журнал молчит {quiet / 60:.0f} мин")
+        print("Перезапускать НЕЛЬЗЯ — оборвёшь работу.")
+        return 1
+    print(f"свободно (журнал молчит {quiet / 60:.0f} мин) — перезапуск безопасен")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

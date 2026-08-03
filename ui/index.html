@@ -98,6 +98,21 @@
           </div>
         </div>
 
+        <div class="card" style="text-align:center">
+          <button class="btn big" id="autoBtn" onclick="app.autopilot()">🌙&nbsp; Автопилот на ночь</button>
+          <div class="field" style="justify-content:center; margin-top:14px">
+            <label>Роликов на канал</label>
+            <input type="number" id="autoVideos" value="1" min="1" max="5"
+                   style="width:70px">
+          </div>
+          <div class="hint" style="margin-top:8px">
+            Пройдёт по всем каналам и соберёт ролик на каждый — той же цепочкой,
+            что и кнопка выше. Тема берётся по нише канала, каждый ролик уходит
+            в свою папку с датой. Упавший канал не останавливает остальные;
+            итог — последними строками журнала. Оставь ноутбук включённым.
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-head">
             Проекты <span class="hint" id="projCount">0</span>

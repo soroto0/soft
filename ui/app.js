@@ -162,6 +162,12 @@ let state = null;
 let lastProject = null;
 let channelsCache = [];
 
+// Смена КАНАЛА перезагружает поля жёстче, чем смена проекта: даже если курсор
+// стоит в поле, даже если новое значение пустое. Иначе сценарий прошлого канала
+// переживал переключение и уезжал в новый — так 3-минутный тестовый текст попал
+// в 20-минутный «The Home Vault» и ролик вышел на 3 минуты вместо 20.
+let forceReload = false;
+
 async function refresh() {
   const s = await rpc("get_state");
   if (!s) { if (!state) state = await mockApi.get_state(); else return; }
@@ -186,10 +192,12 @@ async function refresh() {
   // английское видео получало русские оверлеи от прошлого проекта). При
   // обычном refresh (тот же проект) — не трогаем непустое поле, чтобы не
   // затирать несохранённый ввод пользователя.
-  const projectChanged = state.project !== lastProject;
+  const projectChanged = state.project !== lastProject || forceReload;
   lastProject = state.project;
+  const hard = forceReload;
+  forceReload = false;
   const setField = (id, val) => {
-    if (document.activeElement === $(id)) return;
+    if (!hard && document.activeElement === $(id)) return;
     if (projectChanged) $(id).value = val || "";
     else if (val) $(id).value = val;
   };
@@ -391,6 +399,7 @@ const app = {
     $("channelSel").value = id;
     $("gate").classList.remove("open");
     $("channelPop").classList.remove("open");
+    forceReload = true;
     rpc("channel_select", id).then(refresh);
   },
   skipGate() { $("gate").classList.remove("open"); },
@@ -398,7 +407,7 @@ const app = {
   selectChannel() {
     const id = $("channelSel").value;
     app.renderChannelPop();
-    if (id) rpc("channel_select", id).then(refresh);
+    if (id) { forceReload = true; rpc("channel_select", id).then(refresh); }
   },
   editChannel() {
     const id = $("channelSel").value;
@@ -548,8 +557,22 @@ const app = {
   openFolder: () => rpc("open_folder"),
   runSeo: () => rpc("seo").then(r => { if (r) $("seoOut").textContent = r; }),
   makeThumbs: () => rpc("make_thumbnails", 3),
-  generateAll() {
-    rpc("generate_all", {
+  generateAll() { rpc("generate_all", app.genParams()); },
+  // Ночной прогон идёт РОВНО с теми же настройками, что и кнопка рядом:
+  // отдельный набор параметров разъехался бы с ней при первой же правке.
+  autopilot() {
+    const n = parseInt($("autoVideos").value) || 1;
+    const chn = channelsCache.length || 0;
+    if (!confirm(`Автопилот соберёт ${chn * n} ролик(ов): ${chn} канал(ов) × ${n}. `
+                 + "Это часы работы — ноутбук должен остаться включённым. Запускать?"))
+      return;
+    // script/topic — намеренно пустые: иначе текст, лежащий в поле сценария,
+    // уехал бы во ВСЕ каналы разом, и ночь дала бы три копии одного ролика.
+    rpc("autopilot", Object.assign(app.genParams(),
+                                   { videos: n, script: "", topic: "" }));
+  },
+  genParams() {
+    return {
       lang: $("lang").value, tone: $("tone").value,
       visual_mode: $("visualMode").value, visual_style: $("visualStyle").value,
       ai_ratio: parseFloat($("aiRatio").value),
@@ -572,7 +595,7 @@ const app = {
       grow_variants: $("rGrow") ? $("rGrow").checked : true,
       check_shots: $("rShots") ? $("rShots").checked : true,
       topic: $("topic") ? $("topic").value : "",
-    });
+    };
   },
   clearLog() { $("console").innerHTML = ""; $("console2").innerHTML = ""; },
   copyLog() {

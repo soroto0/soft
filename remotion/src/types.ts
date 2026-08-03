@@ -36,3 +36,21 @@ export type ThumbnailProps = {
   accent?: string;
   layout?: string;
 };
+
+// СЦЕНА — не оверлей. Занимает кадр целиком и заменяет собой съёмку там,
+// где снимать нечего: планета, карта, схема узла, ход процесса. Оверлеи
+// ложатся поверх видео, сцена сама и есть видео этого плана.
+//   kind   — какую сцену рисовать (globe, map, ...)
+//   title  — подпись в кадре, обычно ключевая фраза из закадрового текста
+//   lat/lon — точка, если сцена про место
+//   items  — данные сцены: этапы, узлы, значения
+export type SceneProps = {
+  kind: string;
+  title?: string;
+  lat?: number;
+  lon?: number;
+  items?: string[];
+  dur: number;
+  exit: number;
+  enter: number;
+};

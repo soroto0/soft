@@ -1719,10 +1719,24 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                    f"{lang_name} for this chapter — {sec_words} is a hard "
                    "minimum, do not stop early, expand with concrete detail "
                    "if needed. " + flow)
+        # Бюджет с БОЛЬШИМ запасом, и это не расточительность. У думающих
+        # моделей (gemini-3-flash-preview и родня) «размышления» тратят ТОТ ЖЕ
+        # maxOutputTokens, что и видимый текст. При 1500 на главу в 325 слов
+        # думанье съедало почти весь бюджет, и глава возвращалась обрубком на
+        # 45 слов, оборванным на полуслове.
+        #
+        # Замер 2026-08-03, по три главы на бюджет:
+        #   1500 -> 371, 45, 51 слов  (до заказа дотянула 1 из 3)
+        #   6000 -> 579, 487, 552     (3 из 3)
+        # Именно отсюда брались ролики на 5 минут вместо 13: повторы не
+        # помогали, потому что упирались в тот же потолок.
+        #
+        # То же самое уже описано в проекте для SEO и для описаний оверлеев —
+        # там бюджет подняли до 8000 по этой же причине.
         return llm_chat(
             [{"role": "system", "content": system},
              {"role": "user", "content": ask}],
-            api_key, 0.75, min(max(sec_words * 4, 1500), 8000))
+            api_key, 0.75, min(max(sec_words * 10, 6000), 12000))
 
     parts, prev_tail = [], ""
     for i, ch in enumerate(chapters, 1):
@@ -1762,24 +1776,31 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                 "— never cut off mid-clause, since the next chapter is a "
                 "separate paragraph and cannot finish your sentence for you. ")
         part = _strip_echo(_gen_chapter(i, ch, flow, sec_words), prev_tail)
-        if len(part.split()) < sec_words * 0.6:   # заметно короче заказа — один повтор
-            log(f"[Агент] Глава {i}: {len(part.split())} слов вместо "
-                f"~{sec_words} — прошу расширить...")
-            part2 = _strip_echo(
-                _gen_chapter(i, ch, flow, sec_words, too_short=part),
-                prev_tail)
-            # Итог повтора НАЗЫВАЕМ ВСЛУХ. Раньше о нём не было ни строчки, и
-            # девять подряд провалившихся расширений выглядели в журнале как
-            # девять обычных сообщений «прошу расширить»; понять, что не
-            # сработало ни одно, можно было только сложив слова в готовом
-            # сценарии.
-            if len(part2.split()) > len(part.split()):
-                log(f"[Агент] Глава {i}: расширена до {len(part2.split())} слов")
-                part = part2
+        # Повтор не ОДИН, и удачным считается не «стало длиннее», а «дошло до
+        # заказа». Замер 2026-08-03: модель вернула 25 слов вместо 325, повтор
+        # дал 29 — на слово больше, и это записывалось как «расширена». Так
+        # четыре главы из шести остались по сорок слов, а ролик вышел на 875
+        # слов вместо 1950, то есть впятеро короче задуманного. При этом две
+        # главы модель написала целиком (413 и 308 слов) — значит она УМЕЕТ,
+        # просто срывается через раз, и лечится это повторами, а не промптом.
+        GOOD = sec_words * 0.75
+        if len(part.split()) < sec_words * 0.6:
+            for attempt in (1, 2, 3):
+                log(f"[Агент] Глава {i}: {len(part.split())} слов вместо "
+                    f"~{sec_words} — прошу расширить (попытка {attempt}/3)...")
+                cand = _strip_echo(
+                    _gen_chapter(i, ch, flow, sec_words, too_short=part),
+                    prev_tail)
+                if len(cand.split()) > len(part.split()):
+                    part = cand           # держим самый длинный из полученных
+                if len(part.split()) >= GOOD:
+                    log(f"[Агент] Глава {i}: расширена до "
+                        f"{len(part.split())} слов")
+                    break
             else:
-                log(f"[Агент] ⚠ Глава {i}: расширить НЕ вышло "
-                    f"({len(part2.split())} слов против {len(part.split())}) "
-                    "— остаётся короткой")
+                log(f"[Агент] ⚠ Глава {i}: за три попытки набралось только "
+                    f"{len(part.split())} слов вместо ~{sec_words} — "
+                    "ролик выйдет короче задуманного", "warn")
             if not part.strip():
                 log(f"[Агент] ⚠ Глава {i} «{ch}» не сгенерировалась даже "
                     "со второй попытки — в сценарии не будет этой главы, "
@@ -2309,8 +2330,36 @@ def gemini_image(prompt: str, dest: Path, api_key: str, style: str = "") -> Path
     raise RuntimeError(f"Gemini не сгенерировал изображение: {last_err}")
 
 
+# Апскейл — украшение, а не необходимость: при отказе кадр просто остаётся в
+# исходном разрешении. Поэтому если он не работает, дешевле перестать его
+# пробовать, чем платить двумя вызовами за каждую картинку. Замер по журналу
+# прогона: 527 отказов подряд, все с одинаковым BAD_REQUEST.
+_UPSCALE_FAILS = 0
+UPSCALE_GIVE_UP_AFTER = 5
+
+
+def _upscale_off() -> bool:
+    return _UPSCALE_FAILS >= UPSCALE_GIVE_UP_AFTER
+
+
+def _upscale_ok() -> None:
+    """Успех сбрасывает счёт: значит отказы были временными."""
+    global _UPSCALE_FAILS
+    _UPSCALE_FAILS = 0
+
+
+def _upscale_failed(log=print) -> None:
+    global _UPSCALE_FAILS
+    _UPSCALE_FAILS += 1
+    if _UPSCALE_FAILS == UPSCALE_GIVE_UP_AFTER:
+        log(f"[Картинка] Апскейл не сработал {UPSCALE_GIVE_UP_AFTER} раз "
+            "подряд — выключаю его до конца прогона. Кадры пойдут в исходном "
+            "разрешении, зато без лишнего вызова на каждый.", "warn")
+
+
 def veo_image(prompt: str, dest: Path, api_key: str, log=print,
-              style: str = "", upscale: bool | None = None) -> Path:
+              style: str = "", upscale: bool | None = None,
+              model_key: str = "") -> Path:
     """Картинка через VeoNonStop (Banana Pro), синхронно. upscale —
     дополнительно апскейлит результат до 2K через banana_upscale (1 повтор
     при транзиентной ошибке); апскейл не критичен для результата, поэтому
@@ -2326,11 +2375,13 @@ def veo_image(prompt: str, dest: Path, api_key: str, log=print,
     if upscale is None:
         upscale = os.getenv("VEO_UPSCALE", "1").strip().lower() not in (
             "0", "false", "no", "off")
-    data = veo_client.banana_generate(_image_prompt(prompt, style), api_key=api_key)
+    kw = {"model_key": model_key} if model_key else {}
+    data = veo_client.banana_generate(_image_prompt(prompt, style),
+                                      api_key=api_key, **kw)
     media = data.get("media") or []
     if not media:
         raise RuntimeError("VeoNonStop Banana: ответ без картинки")
-    if upscale:
+    if upscale and not _upscale_off():
         last_err = None
         for attempt in range(2):
             try:
@@ -2338,16 +2389,25 @@ def veo_image(prompt: str, dest: Path, api_key: str, log=print,
                     media[0]["mediaGenerationId"], data.get("project_id", ""),
                     api_key=api_key)
                 dest.write_bytes(jpg_bytes)
+                _upscale_ok()
                 return dest
             except Exception as e:
                 last_err = e
+                # Повторять есть смысл только транзиентную ошибку. BAD_REQUEST
+                # (400/500 с «invalid argument») — это про сам запрос: со
+                # второго раза он не станет верным. Замер по журналу: 527
+                # провалов апскейла за прогон, и КАЖДЫЙ делался дважды с
+                # паузой — чистая потеря больше тысячи вызовов.
+                if "BAD_REQUEST" in str(e) or "invalid argument" in str(e).lower():
+                    break
                 if attempt == 0:
                     _sleep_cancel(2)
         log(f"[Картинка] Апскейл до 2K не удался ({last_err}) — беру оригинал")
+        _upscale_failed(log)
         import quality
         quality.degraded(
             "Картинка", "кадр остался в исходном разрешении, без апскейла до 2K",
-            why=f"обе попытки апскейла не прошли ({last_err})",
+            why=f"апскейл не прошёл ({last_err})",
             level="мелочь")
     download_file(media[0]["fifeUrl"], dest)
     return dest
@@ -2364,6 +2424,102 @@ VEO_IMAGE_BACKOFF = 6      # секунд; умножается на номер 
 _VEO_DOWN_UNTIL = 0.0
 VEO_DOWN_S = 900.0
 
+# Отдельно от простоя: суточный лимит на генерацию картинок, выданный на ВЕСЬ
+# аккаунт. Его НЕ обходят стоком — ролик, собранный из стоков вместо ИИ-кадров,
+# теряет единый вид, ради которого всё и делается (так уже было: при лимите
+# каждый план молча уходил на сток, и ролик получался целиком стоковым).
+# Правильных выходов два, и делаются они по очереди:
+#   1) сменить модель генерации — лимит считается на пару «аккаунт+модель»;
+#   2) если заняты все модели — отключиться и переждать 15-20 минут.
+_VEO_LIMIT_UNTIL = 0.0
+# 20 минут — нижняя граница того, что советует сам сервер в тексте ошибки:
+# «Смени модель или подожди 20-30 минут».
+VEO_LIMIT_S = float(os.getenv("VEO_LIMIT_WAIT_S", "1200"))
+# Сколько всего можно потратить за прогон на пережидание, прежде чем всё-таки
+# сдаться на сток. Без потолка один залипший аккаунт держал бы ночной прогон
+# бесконечно.
+VEO_LIMIT_BUDGET_S = float(os.getenv("VEO_LIMIT_BUDGET_S", "5400"))  # 1.5 ч
+_VEO_LIMIT_SPENT = 0.0
+# Момент, когда лимит начался. Бюджет считается от него по стенным часам,
+# а не суммой снов: под лимитом время уходит в основном на сами запросы.
+_VEO_LIMIT_SINCE = 0.0
+# Как часто щупать, отпустило ли. Глухой сон на всё окно — плохая идея: слоты
+# могут освободиться через минуту, а мы проспим семнадцать, и в журнале на это
+# время тишина, неотличимая от зависания.
+VEO_PROBE_S = float(os.getenv("VEO_PROBE_S", "60"))
+
+
+def _veo_image_models() -> list[str]:
+    """Модели генерации картинок по порядку предпочтения.
+
+    Лимит выдаётся на пару «аккаунт+модель», поэтому упёршись в одну можно
+    сразу пробовать следующую — это дешевле, чем ждать. Список правится в
+    .env через VEO_IMAGE_MODELS без правки кода: набор моделей на стороне
+    VeoNonStop меняется чаще, чем этот файл.
+    """
+    raw = os.getenv("VEO_IMAGE_MODELS", "").strip()
+    models = [m.strip() for m in raw.split(",") if m.strip()]
+    return models or ["GEM_PIX_2"]
+
+
+def _veo_keys() -> list[str]:
+    """Все ключи VeoNonStop для ротации: VEO_API_KEY, VEO_API_KEY2, ...
+
+    У Gemini и Agnes ротация была давно, а у Veo её не было вообще — при том
+    что упирается прогон именно в него: лимит считается на аккаунт, и один
+    ключ = один cookie-слот = потолок всей генерации кадров. Десять ключей
+    Gemini этому не помогают ничем, они про тексты.
+
+    Второй ключ Veo удваивает пропускную способность кадров, третий утраивает.
+    Достаточно вписать в .env VEO_API_KEY2=... — код подхватит сам.
+    """
+    names = ["VEO_API_KEY"]
+    names += sorted((n for n in os.environ
+                     if re.fullmatch(r"VEO_API_KEY\d+", n)),
+                    key=lambda n: int(n[len("VEO_API_KEY"):]))
+    keys = []
+    for name in names:
+        k = (os.getenv(name, "") or "").strip()
+        if k and k not in keys:
+            keys.append(k)
+    return keys
+
+
+# Ключ, упёршийся в лимит, откладываем и берём следующий. Время отвода —
+# то же окно, что и у ожидания: раньше него он всё равно не оживёт.
+_VEO_KEY_BENCH: dict[str, float] = {}
+
+
+def veo_key_now() -> str:
+    """Ключ, которым работать сейчас: первый не отведённый по лимиту.
+
+    Если отведены все — возвращаем тот, чей отвод кончится раньше: ждать
+    его осмысленнее, чем заведомо мёртвый.
+    """
+    keys = _veo_keys()
+    if not keys:
+        return ""
+    now = time.time()
+    free = [k for k in keys if _VEO_KEY_BENCH.get(k, 0.0) <= now]
+    if free:
+        return free[0]
+    return min(keys, key=lambda k: _VEO_KEY_BENCH.get(k, 0.0))
+
+
+def veo_bench_key(key: str, log=print) -> bool:
+    """Отвести ключ, упёршийся в лимит. True — есть на что переключиться."""
+    if not key:
+        return False
+    _VEO_KEY_BENCH[key] = time.time() + VEO_LIMIT_S
+    keys = _veo_keys()
+    now = time.time()
+    free = [k for k in keys if _VEO_KEY_BENCH.get(k, 0.0) <= now]
+    if free:
+        log(f"[Картинка] Ключ Veo упёрся в лимит — перехожу на следующий "
+            f"({len(free)} из {len(keys)} свободны)")
+        return True
+    return False
+
 
 def _veo_is_outage(msg: str) -> bool:
     """Отличить «лёг сервис» от «занят» и от «плохой ключ».
@@ -2378,8 +2534,95 @@ def _veo_is_outage(msg: str) -> bool:
     return "503" in m and ("validation service" in m or "unavailable" in m)
 
 
+def _veo_is_account_limit(err: Exception) -> bool:
+    """Кончился суточный лимит картинок на аккаунте, а не «слот занят».
+
+    Опознаём по КОДУ ответа (429), а не по тексту: формулировка у сервера
+    меняется — «All cookie slots are currently rate-limited» приходит уже
+    обёрнутой клиентом, а чистая ошибка выглядит иначе. Код 429 остаётся
+    кодом 429 при любой формулировке, поэтому он и есть признак.
+    """
+    if getattr(err, "status", 0) == 429:
+        return True
+    m = str(err).lower()
+    return "429" in m or "rate_limit" in m or "rate-limited" in m
+
+
 def _veo_down() -> bool:
     return time.time() < _VEO_DOWN_UNTIL
+
+
+def _limit_elapsed() -> float:
+    """Сколько ВРЕМЕНИ прошло с начала лимита — по стенным часам.
+
+    Раньше бюджет считался суммой снов, и это оказалось грубой ошибкой:
+    большая часть времени под лимитом уходит не на сон, а на САМИ ЗАПРОСЫ —
+    каждая проваленная задача Veo занимает 30-60 секунд. Замер на живом
+    прогоне: 95 минут работы, 38 проваленных задач, 103 отказа по лимиту и
+    всего 7 готовых кадров — а «бюджет» при этом почти не был потрачен, и
+    откат на запасной путь не включался. Ролик просто стоял.
+
+    Считаем от момента, когда лимит начался: тогда потолок означает то, что
+    и должен — «сколько прогон готов простоять из-за лимита».
+    """
+    if not _VEO_LIMIT_SINCE:
+        return 0.0
+    return time.time() - _VEO_LIMIT_SINCE
+
+
+def _veo_wait_out_limit(log=print) -> bool:
+    """Переждать лимит аккаунта — короткими шагами, а не одним глухим сном.
+
+    Раньше здесь стоял сон на все VEO_LIMIT_S сразу. Это плохо по двум
+    причинам: если слоты освободились через три минуты, мы всё равно спали
+    семнадцать; и в журнале на эти минуты наступала тишина, по которой не
+    отличить ожидание от зависания. Теперь спим VEO_PROBE_S и возвращаем
+    управление — вызывающий сам сходит в Veo, и это единственная честная
+    проверка «отпустило или нет». Отпустило — работа продолжается сразу.
+
+    Общий срок всё равно ограничен: ждать дольше VEO_LIMIT_S подряд смысла
+    нет (лимит суточный, а не минутный), а суммарно за прогон — не дольше
+    VEO_LIMIT_BUDGET_S. Только после этого сток.
+
+    Возвращает True — «пробуй снова»; False — бюджет исчерпан.
+    """
+    global _VEO_LIMIT_UNTIL, _VEO_LIMIT_SPENT, _VEO_LIMIT_SINCE
+    now = time.time()
+    if now >= _VEO_LIMIT_UNTIL:
+        if _limit_elapsed() >= VEO_LIMIT_BUDGET_S:
+            return False
+        _VEO_LIMIT_UNTIL = now + VEO_LIMIT_S
+        if not _VEO_LIMIT_SINCE:
+            _VEO_LIMIT_SINCE = now
+        log(f"[Картинка] VeoNonStop: кончился лимит картинок на аккаунте. "
+            f"Проверяю каждые {VEO_PROBE_S:.0f} c и продолжу, как только "
+            "отпустит — кадры останутся ИИ-шными, а не стоковыми.")
+    if _limit_elapsed() >= VEO_LIMIT_BUDGET_S:
+        log(f"[Картинка] Лимит держится дольше, чем отведено на прогон "
+            f"({VEO_LIMIT_BUDGET_S / 60:.0f} мин) — дальше кадры идут со стока.",
+            "warn")
+        return False
+    step = min(VEO_PROBE_S,
+               max(0.0, _VEO_LIMIT_UNTIL - time.time()),
+               VEO_LIMIT_BUDGET_S - _limit_elapsed())
+    if step <= 0:
+        # окно ожидания вышло — начнём новое, если бюджет ещё позволяет
+        _VEO_LIMIT_UNTIL = 0.0
+        return _VEO_LIMIT_SPENT < VEO_LIMIT_BUDGET_S
+    _sleep_cancel(step)          # «Стоп» прерывает ожидание
+    _VEO_LIMIT_SPENT += step
+    return True
+
+
+def reset_veo_limit() -> None:
+    """Забыть лимит: новый прогон начинает счёт заново.
+
+    Без этого второй ролик за ночь унаследовал бы исчерпанный бюджет первого
+    и ушёл бы на сток с первого же кадра, даже если лимит давно отпустил."""
+    global _VEO_LIMIT_UNTIL, _VEO_LIMIT_SPENT, _VEO_LIMIT_SINCE
+    _VEO_LIMIT_UNTIL = 0.0
+    _VEO_LIMIT_SPENT = 0.0
+    _VEO_LIMIT_SINCE = 0.0
 
 
 def _veo_mark_down(log=print) -> None:
@@ -2403,8 +2646,7 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
     """Картинка: VeoNonStop (Banana, ОСНОВНОЙ) -> Agnes -> Gemini (фолбэки,
     если Veo недоступен/ключ истёк/упал). style — единый визуальный стиль
     проекта (VISUAL_STYLES), добавляется к промпту."""
-    veo_key = os.getenv("VEO_API_KEY", "").strip()
-    if not veo_key:
+    if not _veo_keys():
         raise RuntimeError("Нет VEO_API_KEY — картинки генерирует только "
                            "VeoNonStop (.env или «Настройки API»).")
     # ТОЛЬКО VeoNonStop. Раньше при его отказе шли фолбэки на Agnes и Gemini,
@@ -2417,26 +2659,52 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
             "VeoNonStop недоступен (503 у их проверки ключей) — "
             "этот план возьмёт сток/Ken Burns")
     last = None
-    for attempt in range(1, VEO_IMAGE_ATTEMPTS + 1):
+    # Попытки считаем ОТДЕЛЬНО: обычные ошибки повторяем VEO_IMAGE_ATTEMPTS раз,
+    # а лимит аккаунта — сколько позволит бюджет ожидания. Общий счётчик означал
+    # бы, что при пробах раз в минуту мы сдаёмся через четыре минуты, хотя
+    # готовы ждать полтора часа.
+    attempt = 0
+    while True:
         _stop_check()      # пережидание лимита не должно переживать «Стоп»
-        try:
-            return veo_image(prompt, dest, veo_key, log, style)
-        except Exception as e:
-            last = e
-            msg = str(e)
-            if _veo_is_outage(msg):
-                _veo_mark_down(log)
-                raise
-            if attempt == VEO_IMAGE_ATTEMPTS:
+        limited_all = True
+        # Ключ берём АКТУАЛЬНЫЙ на каждой попытке: упёршийся в лимит уже
+        # отведён, и мы автоматически работаем следующим.
+        veo_key = veo_key_now()
+        for model in _veo_image_models():
+            _stop_check()
+            try:
+                return veo_image(prompt, dest, veo_key, log, style,
+                                 model_key=model)
+            except Exception as e:
+                last = e
+                if _veo_is_outage(str(e)):
+                    _veo_mark_down(log)
+                    raise
+                if not _veo_is_account_limit(e):
+                    limited_all = False
+                    break          # настоящая ошибка — модель ни при чём
+                log(f"[Картинка] Модель {model}: лимит исчерпан — пробую "
+                    "следующую")
+        if not limited_all:
+            # обычная ошибка: короткая пауза и повтор, как раньше
+            attempt += 1
+            if attempt >= VEO_IMAGE_ATTEMPTS:
                 break
-            # лимит — ждём с нарастанием; прочие ошибки повторять смысла мало
-            if "RATE_LIMIT" in msg or "429" in msg or "500" in msg:
+            msg = str(last)
+            if "500" in msg or "503" in msg:
                 pause = VEO_IMAGE_BACKOFF * attempt
                 log(f"[Картинка] VeoNonStop занят (попытка {attempt}/"
                     f"{VEO_IMAGE_ATTEMPTS}) — жду {pause} c...")
                 _sleep_cancel(pause)
                 continue
             break
+        # Лимит на всех моделях этого КЛЮЧА. Сначала пробуем другой ключ —
+        # лимит считается на аккаунт, поэтому соседний может быть свободен.
+        # И только когда упёрлись все — ждём.
+        if veo_bench_key(veo_key, log):
+            continue
+        if not _veo_wait_out_limit(log):
+            break              # бюджет прогона исчерпан — только теперь сток
     log(f"[Картинка] VeoNonStop не справился ({last}) — этот план возьмёт "
         "сток/Ken Burns")
     raise last
@@ -3630,19 +3898,37 @@ def gen_video(prompt: str, dest: Path, log=print,
               seconds: float = 5.0) -> Path:
     """Генерация видеоклипа ИИ: VeoNonStop (ОСНОВНОЙ) -> Agnes (ротация
     ключей, фолбэк если Veo недоступен/ключ истёк/упал)."""
-    veo_key = os.getenv("VEO_API_KEY", "").strip()
+    veo_key = veo_key_now()
     keys = _agnes_keys()
     if not veo_key and not keys:
         raise RuntimeError("Нет ключа для видеогенерации: задай VEO_API_KEY "
                            "или AGNES_API_KEY (.env или «Настройки API»).")
     last = None
     if veo_key:
-        try:
-            return veo_video(prompt, dest, veo_key, log)
-        except Exception as e:
-            last = e
+        # Лимит — НЕ повод менять генератор. Agnes рисует иначе, и клип от неё
+        # виден в ролике как чужой кадр. Замер 2026-08-03: 120 клипов из 198
+        # (61%) сняты Agnes, потому что при 429 сюда шёл мгновенный переход —
+        # то есть большая часть «единого ИИ-вида» канала была подделкой.
+        # Ведём себя как gen_image: ждём короткими шагами и пробуем снова,
+        # пока позволяет общий на прогон бюджет ожидания.
+        while True:
+            _stop_check()
+            veo_key = veo_key_now()    # упёршийся ключ уже отведён
+            try:
+                return veo_video(prompt, dest, veo_key, log)
+            except Exception as e:
+                last = e
+                if not _veo_is_account_limit(e) or _veo_is_outage(str(e)):
+                    break              # настоящая ошибка — Veo тут не поможет
+                # Сначала соседний ключ (лимит считается на аккаунт), и только
+                # когда упёрлись все — ожидание, и лишь потом чужой генератор.
+                if veo_bench_key(veo_key, log):
+                    continue
+                if not _veo_wait_out_limit(log):
+                    break              # бюджет исчерпан — вот теперь запасной
+        if last is not None:
             if keys:
-                log(f"[Видео-ИИ] VeoNonStop не справился ({_redact(e)}) — пробую Agnes...")
+                log(f"[Видео-ИИ] VeoNonStop не справился ({_redact(last)}) — пробую Agnes...")
                 # разные генераторы = разная эстетика в одном ролике, а весь
                 # смысл единого стиля в том, чтобы канал выглядел фильмом
                 import quality
@@ -3650,7 +3936,7 @@ def gen_video(prompt: str, dest: Path, log=print,
                     "Видео-ИИ", "кадр снят запасным генератором — его картинка "
                     "выбивается из общего вида ролика",
                     why=f"основной генератор (VeoNonStop) не справился: "
-                        f"{str(e)[:120]}",
+                        f"{str(last)[:120]}",
                     hint="проверь ключ VEO_API_KEY и остаток квоты",
                     level="заметно")
     if not keys:
@@ -3774,6 +4060,26 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
            "--output_format", "all", "--word_timestamps", "True",
            "--max_line_width", str(max_line_width), "--max_line_count", "2",
            "--output_dir", str(subs_dir)]
+    # --device cpu — НЕ оптимизация, а защита от падения процесса.
+    # Системный журнал Windows, 2026-08-03 20:47:14: сбойный модуль
+    # nvcuda64.dll, код исключения 0xc0000409 — рушится драйвер NVIDIA, а не
+    # Python. Секунда в секунду с «whisper упал (код 3221226505)», то есть
+    # это и была причина потери целого ролика после восьми минут работы.
+    # На машине стоит GT 730 (Kepler): современный PyTorch такие карты уже
+    # не поддерживает, но whisper всё равно лезет в CUDA и утаскивает
+    # процесс за собой.
+    #
+    # Прятать карту через CUDA_VISIBLE_DEVICES="" НЕ РАБОТАЕТ (проверено):
+    # на Windows пустое значение видеокарту не скрывает, whisper всё равно
+    # грузит модель на CUDA и падает уже иначе — «Attempting to deserialize
+    # object on CUDA device 0 but torch.cuda.device_count() is 0».
+    # Помогает только явный флаг устройства.
+    #
+    # Снимать можно на машине с поддерживаемой картой (ноутбук с RTX 4050),
+    # и тогда — с проверкой на настоящем прогоне: WHISPER_DEVICE=cuda.
+    dev = os.getenv("WHISPER_DEVICE", "cpu").strip() or "cpu"
+    if dev:
+        cmd += ["--device", dev]
     _console("[whisper] $ " + " ".join(cmd))
     # PYTHONUTF8: без него whisper на Windows печатает в cp1251 и падает
     # с UnicodeEncodeError на первой же нелатинской букве (é, ü, ...) —
@@ -3783,6 +4089,31 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
     # пайплайна и при этом почти без строк в журнале, поэтому «Стоп» на ней не
     # срабатывал ВООБЩЕ до самого конца. Сторож внутри гасит whisper деревом.
     code = _stream_child(cmd, "whisper", env=env)
+    # 0xC0000005 (3221226505) — нарушение доступа к памяти, то есть падение
+    # НАТИВНОГО кода, а не ошибка Python. Ловится вживую на выравнивании по
+    # словам: --word_timestamps включает DTW, а он без Triton уходит на
+    # медленную реализацию (её предупреждения видны в журнале выше) и на
+    # Windows иногда рушит процесс. Терять из-за этого ВЕСЬ ролик нельзя:
+    # пословные тайминги нужны только караоке-субтитрам, обычные .srt
+    # получаются и без них.
+    if code in (3221226505, -1073741819) and "--word_timestamps" in cmd:
+        log("[Субтитры] Whisper упал на выравнивании по словам "
+            "(нарушение доступа к памяти). Повторяю без пословных таймингов "
+            "— субтитры будут, караоке-подсветки не будет.", "warn")
+        i = cmd.index("--word_timestamps")
+        cmd2 = cmd[:i] + cmd[i + 2:]
+        _console("[whisper] $ " + " ".join(cmd2))
+        code = _stream_child(cmd2, "whisper", env=env)
+        if code == 0:
+            import quality
+            quality.degraded(
+                "Субтитры", "нет пословных таймкодов — караоке-субтитры "
+                            "недоступны, строки подсвечиваются целиком",
+                why="whisper падает с нарушением доступа при "
+                    "--word_timestamps (DTW без Triton)",
+                hint="переустанови openai-whisper и совместимый numpy, "
+                     "либо оставь как есть — на обычные субтитры не влияет",
+                level="заметно")
     if code != 0:
         raise RuntimeError(f"whisper упал (код {code}) — подробности "
                            "на странице «Консоль»")
@@ -4553,13 +4884,41 @@ RANDOM_VOICES = ["en-US-GuyNeural", "en-US-ChristopherNeural",
                  "en-US-JennyNeural", "en-US-AriaNeural", "en-US-MichelleNeural"]
 
 
-def project_style(project_dir) -> dict:
+# Атмосфера — тоже признак канала, а не общая настройка. Вероятности, а не
+# запреты: ноль и единица здесь не используются, любой эффект возможен на любом
+# канале, просто с разной частотой.
+ATMOSPHERE = {
+    # Хроника: сухой воздух, почти без свечения, зато плёночное мерцание и
+    # пыль — так выглядит архивная съёмка, а не глянец.
+    "harsh":         {"bloom": 0.15, "light_leak": 0.10,
+                      "dust": 0.55, "flicker": 0.45},
+    # Тёплый рассказ: мягкое свечение и солнечные засветки — его подпись.
+    "warm":          {"bloom": 0.80, "light_leak": 0.70,
+                      "dust": 0.20, "flicker": 0.05},
+    # Созерцание: плотный воздух, умеренное свечение, ровный кадр.
+    "contemplative": {"bloom": 0.45, "light_leak": 0.25,
+                      "dust": 0.65, "flicker": 0.10},
+}
+# Если палитры нет — прежние вероятности, одни на всех.
+ATMOSPHERE_DEFAULT = {"bloom": 0.5, "light_leak": 0.4,
+                      "dust": 0.35, "flicker": 0.25}
+
+
+def project_style(project_dir, palette: str = "") -> dict:
     """«Почерк» проекта — детерминированно от его пути: разные проекты дают
     разные голос/темп/субтитры/цветокор/интенсивность. Против шаблонности
     (YouTube «inauthentic content»): ролики канала не похожи друг на друга,
-    но один проект всегда рендерится одинаково (стабильность)."""
+    но один проект всегда рендерится одинаково (стабильность).
+
+    palette — почерк КАНАЛА поверх почерка проекта. Меняет вероятности
+    атмосферных эффектов, а не их доступность: у abyss свечение редкое, но
+    возможное, у home-vault частое, но не обязательное. Раньше вероятности
+    были одни на все каналы, и атмосфера у трёх каналов выходила одинаковой —
+    ровно то, из-за чего ролики читались как один конвейер.
+    """
     import zlib
     r = random.Random(zlib.crc32(str(Path(project_dir).resolve()).encode()))
+    atm = ATMOSPHERE.get((palette or "").strip().lower(), ATMOSPHERE_DEFAULT)
     return {
         "voice": r.choice(RANDOM_VOICES),
         "rate": r.choice([-8, -5, -3, 0, 0, 3, 5]),
@@ -4572,11 +4931,12 @@ def project_style(project_dir) -> dict:
         "intensity": r.choice(["документальная 5с", "документальная 5с",
                                "сильная", "средняя"]),
         "look": "случайный",
-        # 1-2 случайных эффекта поверх кадра — добавляют «плёночности»
-        "bloom": r.random() < 0.5,
-        "light_leak": r.random() < 0.4,
-        "dust": r.random() < 0.35,
-        "flicker": r.random() < 0.25,
+        # 1-2 случайных эффекта поверх кадра — добавляют «плёночности».
+        # Вероятности берутся из палитры канала: см. ATMOSPHERE.
+        "bloom": r.random() < atm["bloom"],
+        "light_leak": r.random() < atm["light_leak"],
+        "dust": r.random() < atm["dust"],
+        "flicker": r.random() < atm["flicker"],
     }
 
 
@@ -4825,6 +5185,7 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
     генерацию; план, который префетч не осилил, основной цикл досоздаст сам."""
     from concurrent.futures import ThreadPoolExecutor
     jobs = []
+    ready = 0          # сколько кадров нашлось готовыми с прошлого прогона
     prev_query = "cinematic background"
     for i, b in enumerate(beats, 1):
         query = ((queries[i - 1] if queries else "")
@@ -4834,11 +5195,31 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
             continue
         safe = re.sub(r"[^\w\-]+", "_", query)[:40]
         want_photo = plan_kinds[i - 1] == "photo"
+        # ГОТОВОЕ НЕ ПЕРЕГЕНЕРИРУЕМ. Основной цикл проверяет exists() и
+        # пропускает такие планы, а предзагрузка — нет: при повторном запуске
+        # проекта (возобновили оборванный прогон, добавили пару планов) она
+        # заново оплачивала КАЖДЫЙ уже готовый кадр, и только потом основной
+        # цикл находил их на диске. Час работы и квота на то, что уже лежит.
         if want_photo:
-            jobs.append((i, "photo", query, sdir / f"beat_{i:03d}_{safe}_ai.jpg"))
+            jpg = sdir / f"beat_{i:03d}_{safe}_ai.jpg"
+            kb = jpg.with_name(jpg.stem + "_kb.mp4")
+            # фото готово и уже ожило (или оживление выключено) — делать нечего
+            if jpg.exists() and (kb.exists()
+                                 or not _env_switch("VEO_ANIMATE_PHOTOS", True)):
+                ready += 1
+                continue
+            jobs.append((i, "photo", query, jpg))
         else:
-            jobs.append((i, "video", query, sdir / f"beat_{i:03d}_{safe}_ai.mp4"))
+            mp4 = sdir / f"beat_{i:03d}_{safe}_ai.mp4"
+            if mp4.exists():
+                ready += 1
+                continue
+            jobs.append((i, "video", query, mp4))
+    if ready:
+        log(f"[Раскадровка] Уже готово с прошлого прогона: {ready} кадр(ов) — "
+            "не перегенерирую, беру с диска")
     if not jobs:
+        log("[Раскадровка] Все ИИ-кадры уже на диске — генерировать нечего")
         return
 
     veo_key = os.getenv("VEO_API_KEY", "").strip()
@@ -4859,15 +5240,20 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
             return (i, False, None)
         try:
             if kind == "photo":
-                gen_image(query, dest, gemini_key, log, visual_style)
-                if veo_key and _env_switch("VEO_ANIMATE_PHOTOS", True):
-                    clip = dest.with_name(dest.stem + "_kb.mp4")   # параллельно с остальными —
-                    try:                                            # иначе это ~1-3 мин НА КАЖДЫЙ
+                # Фото могло появиться уже после сборки очереди — например его
+                # успел сделать предыдущий, оборванный прогон. Второй раз за то
+                # же самое не платим.
+                if not dest.exists():
+                    gen_image(query, dest, gemini_key, log, visual_style)
+                clip = dest.with_name(dest.stem + "_kb.mp4")
+                if (veo_key and _env_switch("VEO_ANIMATE_PHOTOS", True)
+                        and not clip.exists()):   # параллельно с остальными —
+                    try:                          # иначе это ~1-3 мин НА КАЖДЫЙ
                         gen_video_from_image(dest, query, clip, veo_key, log,
                                              visual_style)
                     except Exception:
                         pass   # не страшно — основной цикл сделает Ken Burns
-            else:
+            elif not dest.exists():
                 gen_video(_image_prompt(query, visual_style), dest, log)
             return (i, True, None)
         except Cancelled:
@@ -4893,6 +5279,22 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
             if limit <= 0:      # info недоступен — падаем обратно на usage
                 limit = int(usage.get("max_concurrent_tasks", 0))
             limit = max(1, limit or workers)
+            # ПОТОЛОК НЕ ТОЛЬКО В ТАРИФЕ. Кадры генерируются через cookie-слоты,
+            # и их у аккаунта бывает МЕНЬШЕ, чем разрешённых задач: замерено
+            # вживую — concurrent_tasks=4 при cookies_allocated=1. Четыре потока
+            # в один слот дают не ускорение, а шторм RATE_LIMIT: 26 планов из 60
+            # (43%) отлетали и создавались ЗАНОВО в обычном проходе — ровно та
+            # «двойная работа», из-за которой прогон и тянулся.
+            cookies = 0
+            try:
+                cookies = int(usage.get("cookies_allocated", 0))
+            except (TypeError, ValueError):
+                pass
+            if cookies > 0 and cookies < limit:
+                log(f"[Раскадровка] VeoNonStop: тариф разрешает {limit} задач, "
+                    f"но cookie-слотов всего {cookies} — держу {cookies}, "
+                    "иначе половина задач уйдёт в лимит и будет создана дважды")
+                limit = cookies
             active = max(0, int(usage.get("active_tasks", 0)))
             free = max(0, limit - active)
             # В run_job фото и image-to-video идут последовательно: сначала
@@ -4936,7 +5338,8 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     gemini_key: str = "", agnes_key: str = "",
                     genvideo: bool = False, max_unique: int = 200,
                     visual_mode: str = "stock", visual_style: str = "",
-                    ai_ratio: float = 0.85, queries: list[str] | None = None):
+                    ai_ratio: float = 0.85, queries: list[str] | None = None,
+                    channel: dict | None = None, scenes: int = 0):
     """Подбирает материал по таймлайну озвучки: субтитры -> планы по min_beat
     секунд -> ключевые слова из текста каждого плана -> сток под план
     (видео нужной длины; если нет — фото + Ken Burns ровно на длину плана;
@@ -5195,23 +5598,38 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     # Чередуем видео и фото: раньше фото попадали только когда видео не
     # нашлось — ролик выходил «чисто из видео». Первые два плана — живое
     # видео (хук), дальше через один фото с Ken Burns (документальный вид).
-    if _env_switch("VEO_FAST_MODE", False):
-        try:
-            video_ratio = float(os.getenv("VEO_VIDEO_RATIO", "0.25"))
-        except ValueError:
-            video_ratio = 0.25
-        video_ratio = min(1.0, max(0.0, video_ratio))
+    # Доля ЖИВОГО видео задаётся VEO_VIDEO_RATIO и работает ВСЕГДА, а не
+    # только в «быстром режиме». Раньше вне быстрого режима она игнорировалась,
+    # и доля была намертво ~0.5 (через один) — поднять её было нечем.
+    #
+    # Считать, что живое видео «дороже» фото, — ошибка, которая и держала эту
+    # настройку низкой. Замер 2026-08-03: план-видео это ОДИН запрос к Veo
+    # (текст→видео, ~55 c) плюс апскейл; план-фото — ДВА (картинка ~52 c, потом
+    # оживление ~68 c). Больше живого видео = меньше запросов, быстрее прогон
+    # и настоящее движение в кадре вместо зума по неподвижной картинке.
+    default_ratio = "0.25" if _env_switch("VEO_FAST_MODE", False) else "0.5"
+    try:
+        video_ratio = float(os.getenv("VEO_VIDEO_RATIO", default_ratio))
+    except ValueError:
+        video_ratio = float(default_ratio)
+    video_ratio = min(1.0, max(0.0, video_ratio))
+    if video_ratio >= 0.999:
+        plan_kinds = ["video"] * len(beats)
+        log(f"[Раскадровка] Все {len(beats)} планов — живое видео Veo "
+            "(VEO_VIDEO_RATIO=1)")
+    else:
         video_count = min(len(beats), max(1, round(len(beats) * video_ratio)))
         step = len(beats) / video_count
+        # первые два плана — всегда живое видео: это хук, статикой его губить
+        # нельзя, чем бы ни была задана доля
         video_indices = {min(int(n * step), len(beats) - 1)
-                         for n in range(video_count)}
+                         for n in range(video_count)} | {0, 1}
         plan_kinds = ["video" if i in video_indices else "photo"
                       for i in range(len(beats))]
-        log(f"[Раскадровка] Быстрый Veo-режим: {video_count}/{len(beats)} "
-            f"ключевых сцен — Veo-видео, остальные — фото с Ken Burns")
-    else:
-        plan_kinds = ["video" if i < 2 or i % 2 == 0 else "photo"
-                      for i in range(len(beats))]
+        log(f"[Раскадровка] Живого видео Veo: "
+            f"{sum(1 for k in plan_kinds if k == 'video')}/{len(beats)} планов, "
+            f"остальные — фото с оживлением/Ken Burns "
+            f"(VEO_VIDEO_RATIO={video_ratio})")
 
     # mixed: заранее фиксируем, какие планы будут ИИ-кадрами — РАВНОМЕРНО
     # по всему ролику (не случайным разбросом, чтобы не было ни скоплений,
@@ -5280,8 +5698,32 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         clip, src_dur = None, None
         want_photo = plan_kinds[i - 1] == "photo"
 
+        # СЦЕНА вместо съёмки. Идёт ПЕРВОЙ проверкой: если под эту фразу
+        # заготовлена нарисованная сцена, снимать нечего и искать нечего —
+        # «вес перешёл на три оставшиеся опоры» не найти ни на стоках, ни
+        # у генератора видео. Не вышло отрисовать — молча падаем в обычные
+        # ветки ниже, план получит съёмку, а ролик не пострадает.
+        if scene_plan and (i - 1) in scene_plan:
+            sc = scene_plan[i - 1]
+            try:
+                import gen_scenes
+                dest_sc = sdir / f"beat_{i:03d}_scene_{sc['kind']}.mp4"
+                if not dest_sc.exists():
+                    gen_scenes.render_scene(
+                        sc["kind"], dest_sc, need, title=sc.get("title", ""),
+                        items=sc.get("items"), lat=sc.get("lat"),
+                        lon=sc.get("lon"), log=log)
+                clip, src_dur = dest_sc, need
+                log(f"[Раскадровка] План {i} [{mm:02d}:{ss:02d}, {need:.0f} c] "
+                    f"СЦЕНА «{sc['kind']}» -> OK")
+            except Exception as e:
+                log(f"[Раскадровка] План {i}: сцена «{sc['kind']}» не "
+                    f"отрисовалась ({_redact(e)}) — беру обычный кадр", "warn")
+
         # лимит уникальных достигнут — берём наименее показанный из пула
-        if downloaded >= max_unique and pool:
+        if clip is not None:
+            pass                       # сцена уже дала кадр
+        elif downloaded >= max_unique and pool:
             clip = reuse_from_pool()
             src_dur = audio_duration(clip) or need
             reused += 1

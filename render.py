@@ -218,9 +218,46 @@ def _sfx_ding(dur: float = 0.8, sr: int = SFX_SR) -> list[float]:
     return out
 
 
+def sfx_pool(role: str) -> list[Path]:
+    """Готовые эффекты этой роли из библиотеки (assets/sfx/ready).
+
+    Пусто — значит библиотека не скачана, и всё работает как раньше, на
+    трёх синтезированных звуках. Наполняется через sfx_library.py.
+    """
+    d = SFX_DIR / "ready"
+    if not d.is_dir():
+        return []
+    return sorted(p for p in d.glob(f"{role}_*.wav") if p.stat().st_size > 2000)
+
+
+def pick_sfx(role: str, index: int) -> str:
+    """Какой именно звук роли поставить на этот по счёту оверлей.
+
+    Раньше на роль был ОДИН файл, и замер по готовому ролику показал:
+    «вжух» звучал 59 раз за 13.6 минуты, каждые 14 секунд. Самая частая
+    КАРТИНКА повторялась 6.5 раз — то есть на слух ролик бил в одну ноту
+    в девять раз назойливее, чем на глаз.
+
+    Идём по пулу по кругу со сдвигом, а не случайно: случайный выбор даёт
+    повторы подряд («вжух-вжух» на соседних плашках слышно сразу), а ровный
+    круг гарантирует, что вернёмся к звуку только пройдя все остальные.
+    """
+    pool = sfx_pool(role)
+    if not pool:
+        return role                        # библиотеки нет — старое поведение
+    return f"{role}#{index % len(pool)}"
+
+
 def get_sfx(name: str) -> Path:
     """Путь к WAV файлу SFX; синтезирует и кэширует в assets/sfx/ при первом
     обращении (дальше просто отдаёт готовый файл)."""
+    # «роль#номер» — выбранный вариант из библиотеки (см. pick_sfx).
+    if "_v" in name and name.rsplit("_v", 1)[-1].isdigit():
+        role, _, idx = name.rpartition("_v")
+        pool = sfx_pool(role)
+        if pool:
+            return pool[int(idx) % len(pool)]
+        name = role                        # библиотеку удалили — на синтез
     path = SFX_DIR / f"{name}.wav"
     if path.exists():
         return path
@@ -679,16 +716,105 @@ VIDEO_MOTIONS = ["static", "static", "static", "static",
                  "v_zoom_in", "v_zoom_out"]
 
 
+# ---------- Палитра канала: свой язык монтажа у каждого ----------
+#
+# До этого все каналы тянули из ОДНОГО пула переходов с одними весами и из
+# одного списка движений; отличалось только зерно случайности. Значит и
+# распределение приёмов выходило одинаковым — зритель видит один почерк на
+# трёх разных каналах. Замер: из 18 типов оверлеев 16 доставались двум и более
+# каналам одновременно, а грамматика монтажа совпадала полностью.
+#
+# Палитра — это ХАРАКТЕР канала, а не забор вокруг него. Ключевое решение:
+# палитра НИЧЕГО НЕ ЗАПРЕЩАЕТ. Каналу доступны все переходы и все движения;
+# палитра лишь говорит, что он любит, а что использует изредка. Первая версия
+# была списками разрешённого — и урезала канал с 25 движений до шести. Канал
+# от этого становится не уникальным, а бедным: узнаваемым по нищете приёмов.
+#
+# Числа — множители к базовому весу. 6 = «фирменный приём», 1 = «как у всех»,
+# 0.15 = «редкая краска, но она есть». Ноля здесь не бывает.
+BASE_EMPHASIS = 1.0
+PALETTES = {
+    # Хроника. Рубит склейками, камера почти не живёт — так снимают репортаж,
+    # а не рекламу. Но плавный переход всё же случается: раз в двадцать сцен
+    # он читается как приём, а не как чужой почерк.
+    "harsh": {
+        "transitions": {"cut": 6, "fadeblack": 2.5, "fadefast": 1.6,
+                        "fade": 0.25, "dissolve": 0.3, "zoomin": 0.2,
+                        "pixelize": 0.5, "fadegrays": 0.4},
+        "image_motions": {"hold": 5, "push_in": 3, "drift": 2.5, "zoom_in": 2,
+                          "pulse": 0.2, "arc_r": 0.2, "arc_l": 0.2,
+                          "zoompan_r": 0.3, "zoompan_l": 0.3},
+        "video_motions": {"static": 5, "v_drift": 2, "v_zoom_in": 0.4,
+                          "v_pan_r": 0.4, "v_pan_l": 0.4},
+    },
+    # Тёплый рассказ: мягкие растворения, живая подвижная камера.
+    "warm": {
+        "transitions": {"fade": 4, "fadefast": 3, "zoomin": 2.5,
+                        "dissolve": 1.5, "cut": 0.7, "fadeblack": 0.4,
+                        "fadegrays": 0.2},
+        "image_motions": {"pan_right": 3, "pan_left": 3, "zoompan_r": 2.5,
+                          "zoompan_l": 2.5, "arc_r": 2, "arc_l": 2,
+                          "pulse": 2, "diag_tl": 1.6, "diag_br": 1.6,
+                          "hold": 0.3},
+        "video_motions": {"v_pan_r": 2.5, "v_pan_l": 2.5, "v_zoom_in": 2,
+                          "static": 0.6},
+    },
+    # Созерцание: время течёт, а не режется. Долгие растворения, медленный
+    # дрейф, глубина кадра.
+    "contemplative": {
+        "transitions": {"dissolve": 5, "fade": 3.5, "fadegrays": 3,
+                        "fadeblack": 2, "distance": 1.5, "cut": 0.35,
+                        "fadefast": 0.3, "fadewhite": 0.3},
+        "image_motions": {"drift": 5, "push_in": 3, "push_out": 3,
+                          "parallax": 2.5, "zoom_out": 2, "hold": 1.5,
+                          "zoom_in_fast": 0.15, "drift_fast": 0.2,
+                          "pulse": 0.2},
+        "video_motions": {"v_drift": 3, "static": 2, "v_zoom_out": 2,
+                          "v_zoom_in": 0.5},
+    },
+}
+
+
+def palette_of(name: str) -> dict | None:
+    """Палитра по имени; None — общий пул с общими весами, как было."""
+    return PALETTES.get((name or "").strip().lower())
+
+
+def _weighted(pool, emphasis: dict | None, base_weights=None):
+    """Веса по всему пулу: каждый элемент доступен, множитель меняет частоту.
+
+    Возвращает (имена, веса). Элемент, не упомянутый в палитре, получает
+    базовый вес — то есть остаётся возможным. Именно это отличает акцент от
+    запрета: канал звучит по-своему, но ничего не теряет.
+    """
+    names = list(dict.fromkeys(pool))          # порядок сохраняем, дубли убираем
+    if base_weights:
+        base = [float(base_weights.get(n, BASE_EMPHASIS)) for n in names]
+    else:
+        # дубли в исходном списке — это и есть вес (VIDEO_MOTIONS так устроен)
+        counts = {n: list(pool).count(n) for n in names}
+        base = [float(counts[n]) for n in names]
+    emphasis = emphasis or {}
+    return names, [b * float(emphasis.get(n, BASE_EMPHASIS))
+                   for n, b in zip(names, base)]
+
+
 def render_segment(src: Path, kind: str, dur: float, dest: Path,
                    w: int, h: int, fps: int, rng: random.Random,
-                   motion: str | None = None, extra_vf: str = ""):
+                   motion: str | None = None, extra_vf: str = "",
+                   palette: dict | None = None):
     """Один сегмент: картинка с движением или обрезанное видео. Без звука.
     extra_vf — доп. фильтр (например, цветокор по главам)."""
     dur = max(dur, 0.2)
     tail_vf = (extra_vf + "," if extra_vf else "") + "format=yuv420p,setsar=1"
     if kind == "image":
         frames = max(int(round(dur * fps)), 2)
-        motion = motion or rng.choice(IMAGE_MOTIONS)
+        # Движения — почерк канала, но доступны ВСЕ: палитра меняет частоту,
+        # а не состав. Иначе канал отличался бы бедностью приёмов.
+        if motion is None:
+            _n, _w = _weighted(IMAGE_MOTIONS,
+                               (palette or {}).get("image_motions"))
+            motion = rng.choices(_n, weights=_w)[0]
         if motion == "parallax":
             # передний план поверх своей размытой тёмной копии,
             # слои движутся с разной скоростью — псевдо-3D
@@ -738,7 +864,10 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
     else:
         src_dur = _video_dur(src) or audio_duration(src) or dur
         offset = rng.uniform(0, src_dur - dur) if src_dur > dur + 0.5 else 0
-        motion = motion or rng.choice(VIDEO_MOTIONS)
+        if motion is None:
+            _n, _w = _weighted(VIDEO_MOTIONS,
+                               (palette or {}).get("video_motions"))
+            motion = rng.choices(_n, weights=_w)[0]
         D = max(dur, 0.5)
         if motion in ("v_pan_r", "v_pan_l", "v_drift", "v_shake"):
             # запас 8% и окно постоянного размера w x h с анимированным x/y
@@ -806,11 +935,22 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
 
 # ---------- 3. Переходы ----------
 
-def pick_transitions(n: int, rng: random.Random) -> list[tuple[str, float]]:
-    """n-1 переходов из пула, взвешенно, без повторов подряд."""
-    names = [t[0] for t in TRANSITIONS]
+def pick_transitions(n: int, rng: random.Random,
+                     palette: dict | None = None) -> list[tuple[str, float]]:
+    """n-1 переходов из пула, взвешенно, без повторов подряд.
+
+    palette задаёт СВОИ веса каналу: длительности берутся из общего
+    TRANSITIONS (они привязаны к самому переходу), а вот какими приёмами
+    канал пользуется и как часто — его собственное дело. Без палитры
+    поведение прежнее: общий пул с общими весами.
+    """
     durs = {t[0]: t[1] for t in TRANSITIONS}
-    weights = [t[2] for t in TRANSITIONS]
+    # Палитра меняет ЧАСТОТУ, а не состав: ни один переход не исключается,
+    # иначе канал беднеет вместо того, чтобы отличаться.
+    names, weights = _weighted(
+        [t[0] for t in TRANSITIONS],
+        (palette or {}).get("transitions"),
+        {t[0]: t[2] for t in TRANSITIONS})
     out, prev = [], None
     for _ in range(max(n - 1, 0)):
         for _try in range(10):
@@ -1336,10 +1476,19 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                 # главным вкладом в переполнение длины командной строки
                 # Windows (см. ниже про filter_complex_script).
                 want = []
+                # Счётчик СВОЙ на каждую роль: иначе whoosh, которых 59 из 98,
+                # прокручивал бы пул рывками через общий индекс и повторялся
+                # чаще, чем нужно.
+                seen_role: dict[str, int] = {}
                 for ov in ovls:
-                    name = SFX_FOR_TYPE.get(ov.get("type", ""))
-                    if name:
-                        want.append((name, max(0, round(ov["t0"] * 1000))))
+                    role = SFX_FOR_TYPE.get(ov.get("type", ""))
+                    if not role:
+                        continue
+                    k = seen_role.get(role, 0)
+                    seen_role[role] = k + 1
+                    # «#» в имя метки ffmpeg не годится — заменяем на «_v»
+                    want.append((pick_sfx(role, k).replace("#", "_v"),
+                                 max(0, round(ov["t0"] * 1000))))
                 uniq = sorted({n for n, _ in want})
                 base = 2 + len(ovls)
                 slot = {n: base + k for k, n in enumerate(uniq)}
@@ -1533,12 +1682,22 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
     if look == "случайный":
         look = rng.choice(sorted(LOOKS))
     look_chain = LOOKS.get(look, "")
+    # Палитра канала: свой словарь переходов и движений. Пусто = общий пул,
+    # как было до появления палитр (и как ведёт себя проект вне каналов).
+    pal = palette_of(opts.get("palette", ""))
     log(f"[Рендер] {w}x{h}@{fps}, интенсивность: {intensity}, seed {seed}, "
         f"звук {audio.name} ({total:.0f} c)")
-    log(f"[Рендер] Палитра: {len(TRANSITIONS)} переходов, "
-        f"{len(IMAGE_MOTIONS)} движений картинки, "
-        f"{len(set(VIDEO_MOTIONS))} движений видео, "
-        f"цветокор: {look if look_chain else 'нет'}")
+    if pal:
+        log(f"[Рендер] Почерк канала «{opts.get('palette')}»: доступны все "
+            f"{len(TRANSITIONS)} переходов и {len(set(IMAGE_MOTIONS))} движений, "
+            f"акценты расставлены на {len(pal['transitions'])} и "
+            f"{len(pal['image_motions'])} из них; "
+            f"цветокор: {look if look_chain else 'нет'}")
+    else:
+        log(f"[Рендер] Палитра: {len(TRANSITIONS)} переходов, "
+            f"{len(IMAGE_MOTIONS)} движений картинки, "
+            f"{len(set(VIDEO_MOTIONS))} движений видео, "
+            f"цветокор: {look if look_chain else 'нет'}")
 
     scenes = build_render_plan(parse_srt(srt), total, rng, intensity)
     assign_materials(scenes, out_dir, rng, log)
@@ -1547,7 +1706,7 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
 
     tmp = out_dir / "render_tmp"
     tmp.mkdir(parents=True, exist_ok=True)
-    trans = pick_transitions(len(scenes), rng)
+    trans = pick_transitions(len(scenes), rng, pal)
 
     # шаги прогресса: сегменты + группы + финал
     n_groups = (len(scenes) + GROUP_SIZE - 1) // GROUP_SIZE
@@ -1598,7 +1757,7 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
         extra = (_chapter_grade(sc["start"] / total)
                  if opts.get("chapters_grade") else "")
         render_segment(sc["file"], sc["kind"], dur + tail, dest, w, h, fps,
-                       rng, extra_vf=extra)
+                       rng, extra_vf=extra, palette=pal)
         seg_files.append(dest)
         seg_durs.append(dur)
         log(f"[Рендер] Сегмент {i + 1}/{len(scenes)}: "
@@ -1695,3 +1854,38 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
     log(f"[Рендер] ГОТОВО: {final} ({size_mb:.0f} МБ). Временные файлы "
         "удалены. Это черновик — доведи в Premiere перед публикацией.")
     return final
+
+
+# ---------- Звук СЦЕН ----------
+
+# Сцены — отдельные планы, а не плашки поверх кадра, и звук оверлеев до них
+# не доходил: сцена выходила немой. Между тем именно ей звук нужен сильнее
+# всего — отказ опоры без удара выглядит мультиком, а не разрушением.
+#
+# Роль подбирается по СМЫСЛУ сцены, а не по её названию: у разрушения тяжёлый
+# удар, у разреза мелкая механика зонда, у планеты и кривой — движение.
+SFX_FOR_SCENE = {
+    "globe": "whoosh",
+    "map": "whoosh",
+    "chart": "tick",
+    "layers": "tick",
+    "forces": "thud",
+    "collapse": "thud",
+    "sequence": "pop",
+    "steps": "pop",
+    "exploded": "pop",
+    "scale": "whoosh",
+}
+
+
+def scene_sfx(kind: str, index: int = 0) -> Path | None:
+    """Звук под сцену: путь к файлу или None, если роли нет в библиотеке.
+
+    None — это нормально и НЕ повод падать: сцена просто выйдет со своим
+    голосом и музыкой, как было до библиотеки звуков.
+    """
+    role = SFX_FOR_SCENE.get(kind, "whoosh")
+    pool = sfx_pool(role)
+    if not pool:
+        return None
+    return pool[index % len(pool)]

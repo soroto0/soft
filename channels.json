@@ -23,7 +23,12 @@
     "topic_formula": "English-language documentary reconstructions of ENGINEERING AND STRUCTURAL FAILURES. This is a SUB-NICHE, deliberately narrower than 'disasters in general': dam breaks, bridge and building collapses, tunnel and mine failures, industrial plant accidents, crowd-crush at structures. Not aviation, not shipwrecks, not natural disasters — those are the crowded centre of the niche where 1.4M-subscriber channels already sit.\n\nMEASURED on the reference niche (Fascinating Horror: 1.44M subs, median 349,559 views, 11 min; Plainly Difficult: 1.1M subs, median 238,032, 13 min). Even their weakest videos clear 37,000. Both publish every 6 days.\n\nWHY THIS SUB-NICHE: the material is finite for any one channel but enormous in total, every case has an official inquiry report to work from (so the facts are checkable, not invented), and the visuals are structures and archive — no living faces required.\n\nA title works when it names the STRUCTURE and the SCALE of what happened: 'The Dam That Failed Twice', 'The Bridge That Fell While Being Inspected'. It fails when it is a generic mystery hook with no named object.\n\nHARD RULE: real people died in these events. Never speculate about what victims felt, never invent dialogue, never use a death toll as a hook in the title. State what the inquiry established and stop there. The restraint is the tone of this niche, and audiences punish channels that break it.",
     "used_topics": [
       "Footage of the Dyatlov Pass incident",
-      "Mysterious disappearances at national parks"
+      "Mysterious disappearances at national parks",
+      "The Bridge That Collapsed Twice During Construction",
+      "The Hotel Walkways That Collapsed From a Simple Sketch Revision",
+      "The Mine Shaft That Collapsed During Routine Maintenance",
+      "The Stadium Roof That Collapsed Under Winter Snow",
+      "The Dam That Failed Due To A Forgotten Drainage Pipe"
     ],
     "series": "Findings",
     "series_next": 3,
@@ -42,7 +47,8 @@
     "light_leak": true,
     "bloom": true,
     "stars": false,
-    "flicker": false
+    "flicker": false,
+    "palette": "harsh"
   },
   {
     "name": "The Home Vault",
@@ -68,7 +74,8 @@
     "topic_formula": "Frugal home fixes: professional-grade results with cheap materials\nand no specialist.\n\nMEASURED on a 302k-subscriber channel in exactly this niche, median 96k views.\nSame channel, same audience, 250x spread between best and worst:\n\n  WON x4-20:\n    \"KILL EVERY Mosquito The AMISH Way. SAFE For Honey Bees & Pets\"  1.9M\n    \"The $4 Amish Fix for a Deadly Hot House (Save $3000 This Summer)\"  1.65M\n    \"Cool a Room for $7 FOREVER... No Electricity, No AC\"  737k\n    \"Stop Buying Laundry Detergent - This Cheap $6 Recipe (Lasts a Year)\"  589k\n    \"The $3 Trick That Makes Any Metal Rust-Proof Forever... They Never\n     Taught You This\"  542k\n    \"The Ancient Powder That Kills Any Bug... And Why Pest Control\n     Companies Hate It\"  610k\n\n  LOST x0.03-0.12:\n    \"5 Things to NEVER Pour Down Your Kitchen Drain\"  7.6k\n    \"15 Plumbing SECRETS to Save You From Ever Calling a Plumber\"  6.9k\n    \"AVOID These 7 Dethatching Mistakes That RUIN Your Lawn\"  3.4k\n    \"3 GENIUS New Pallet Ideas Everyone's Copying this SUMMER\"  11k\n\nTHE THREE ELEMENTS EVERY WINNING TOPIC HAS. Aim for all three:\n\n  1. A SPECIFIC PRICE. \"$4\", \"$7\", \"$6\", \"$3\", \"$20\", \"$300\". Not \"cheap\",\n     not \"budget\" — an actual number. Often paired with the money saved:\n     \"(Save $3000 This Summer)\".\n\n  2. A PERMANENCE CLAIM. \"FOREVER\", \"Lasts a Year\", \"50 Years\",\n     \"Rust-Proof Forever\". The viewer is buying an end to a recurring\n     problem, not a tip.\n\n  3. WITHHELD KNOWLEDGE. \"Why Pest Control Companies Hate It\", \"They Never\n     Taught You This\", \"The Paint Industry Hopes You Never Learn\". Someone\n     profits from you not knowing — name them.\n\nWHAT KILLS A TOPIC HERE: numbered lists. Every single flop was a list —\n\"5 Things\", \"15 Secrets\", \"7 Mistakes\", \"3 Ideas\". A list promises browsing;\nthese viewers want ONE solution to ONE expensive problem. Never write a\nnumbered-list topic for this channel.\n\nONE problem, ONE cheap fix, one video. The problem must be one people\ncurrently pay money to solve — pest control, cooling, detergent, rust,\nplumbing call-outs. That is where the price comparison bites.",
     "used_topics": [
       "How to caulk a bathtub",
-      "Stop Paying $100 for Drain Cleaners — This $2 Fix Works FOREVER (They Don't Tell You This)"
+      "Stop Paying $100 for Drain Cleaners — This $2 Fix Works FOREVER (They Don't Tell You This)",
+      "The $5 Secret That Stops Bathroom Mold FOREVER (The Restoration Industry Hates This)"
     ],
     "series": "",
     "series_next": 1,
@@ -87,14 +94,15 @@
     "light_leak": true,
     "bloom": true,
     "stars": false,
-    "flicker": false
+    "flicker": false,
+    "palette": "warm"
   },
   {
     "name": "Pensamiento Estoico - ES",
     "folder": "",
     "lang": "испанский",
     "tone": "документальный",
-    "minutes": 70,
+    "minutes": 35,
     "voice": "es-ES-AlvaroNeural",
     "rate": -5,
     "visual_style": "кинематографичный",
@@ -110,15 +118,12 @@
     "thumb_ref": "",
     "avoid": "Никаких приветствий. Не утверждать, что чувствует конкретный человек зрителя — только закономерности. Без лозунгов и самопомощи «выбери себя» — в этой нише такое проваливается в 100 раз.",
     "script_extra": "Spanish-language documentary about a philosopher or a single work.\n\nSHAPE: follow one mind through time. What happened to this person, and what it made them think. Alternate between the life and the idea it produced, so neither runs dry. There is no withheld mystery here — the pull is watching a worldview being forged and what it cost the person who forged it.\n\nNEVER address the viewer's own life. No 'you', no advice, no lessons to apply. This is measured, not taste: on the reference channel the same author scored 199,346 views when the subject was his ordeal and 538 when the subject was the viewer's demons.\n\nName dates, places, correspondents, book titles and the year of publication out loud — they are the spine of a documentary.\n\nSTYLE: calm, unhurried, Castilian Spanish. The tone of someone recounting a life they have studied for years, not selling insight. End where the idea outlives the person.\n\nVISUAL CUES: directing notes in SQUARE BRACKETS — period, location, where archive material belongs. They are stripped before the voice-over.",
-    "topic_formula": "Spanish-language long-form documentaries about philosophers, their lives and the ideas those lives produced.\n\nMEASURED on the reference channel (54 videos, median 19,738 views, spread 17x between best and worst):\n  WON  330k-166k : why intelligence leads to loneliness (Schopenhauer); the philosopher who reinvented God (Spinoza); the genius who descended into the darkness of the human soul (Dostoyevsky); the book that drove Jung to the edge of the abyss; the warning the world refused to hear (Orwell)\n  LOST 1.7k-538  : existentialist philosophy explained; HOW TO BECOME the man Nietzsche admired; HOW TO BUILD a just society (Rousseau); the book that reveals YOUR inner demons (Jung)\n\nThe distinguishing variable is exact, and it is NOT the thinker's name: Jung appears in both halves — 199,346 views for 'the book that drove HIM to the abyss' and 538 for 'the book that reveals YOUR demons'. Same author, same length, same format.\n\nA video WINS when the promise is about what happened TO THE THINKER or TO THE WORLD — third person, past tense, a catastrophe or a cost.\nA video FAILS when the promise is about what the VIEWER should do or get — 'how to become', 'how to build', 'your demons'. Never write a title in the second person.\n\nAlready covered on the reference channel, do NOT repeat: Schopenhauer, Spinoza, Dostoyevsky, Nietzsche, Jung's Red Book, Orwell's 1984, Musashi.\n\nLength is table stakes, not an advantage: the failures run 52-86 minutes too. Target 70-80 minutes because the niche does, but win on the promise.",
-    "used_topics": [
-      "Por qué te mira en silencio pero no se acerca",
-      "Por qué una persona se aleja de ti cuando empieza a sentir algo profundo"
-    ],
+    "topic_formula": "Spanish-language long-form documentaries about philosophers, their lives and the ideas those lives produced.\n\nMEASURED on the reference channel (54 videos, median 19,738 views, spread 17x between best and worst):\n  WON  330k-166k : why intelligence leads to loneliness (Schopenhauer); the philosopher who reinvented God (Spinoza); the genius who descended into the darkness of the human soul (Dostoyevsky); the book that drove Jung to the edge of the abyss; the warning the world refused to hear (Orwell)\n  LOST 1.7k-538  : existentialist philosophy explained; HOW TO BECOME the man Nietzsche admired; HOW TO BUILD a just society (Rousseau); the book that reveals YOUR inner demons (Jung)\n\nThe distinguishing variable is exact, and it is NOT the thinker's name: Jung appears in both halves — 199,346 views for 'the book that drove HIM to the abyss' and 538 for 'the book that reveals YOUR demons'. Same author, same length, same format.\n\nA video WINS when the promise is about what happened TO THE THINKER or TO THE WORLD — third person, past tense, a catastrophe or a cost.\nA video FAILS when the promise is about what the VIEWER should do or get — 'how to become', 'how to build', 'your demons'. Never write a title in the second person.\n\nAlready covered on the reference channel, do NOT repeat: Schopenhauer, Spinoza, Dostoyevsky, Nietzsche, Jung's Red Book, Orwell's 1984, Musashi.\n\nLength is table stakes, not an advantage: the failures run 52-86 minutes too. Target 45 minutes — the short edge of this niche (reference channel runs 43-109 min). Do NOT pad to reach length: a tight 45 beats a padded 70. Win on the promise, not the runtime.",
+    "used_topics": [],
     "series": "",
     "series_next": 1,
     "youtube_url": "",
-    "notes": "Психология отношений через Юнга, испанский. Образец: @LaPsicologiadeCarlJung — 18.8k за 5.5 мес, ежедневно, 38 мин. Решает наличие ДРУГОГО человека с тайными чувствами: x10-32 против x0.02 у роликов про работу над собой.",
+    "notes": "Документалки о философах на испанском. Образец: @PhilosophyOriginsEspanol — 54 ролика, медиана 19.8k, длина медиана 60 мин; длинные собирают 5.2x от коротких, ниша идёт 43-109 мин; выбрано 45 — короткий край ниши, ради времени генерации (70 мин = 12 ч, 45 мин = 7.8 ч). Прежняя настройка под психологию отношений через Юнга ОТМЕНЕНА (см. коммит dbf0e2f).",
     "id": "estoico-es",
     "intensity": "слабая",
     "look": "кинематографичный",
@@ -132,6 +137,7 @@
     "stars": false,
     "grain": false,
     "flicker": false,
-    "vignette": true
+    "vignette": true,
+    "palette": "contemplative"
   }
 ]
