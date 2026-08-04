@@ -1886,11 +1886,18 @@ class Api:
         base["topic"] = ""
         night_h = float(p.get("night_h") or np.NIGHT_H)
         fit_only = bool(p.get("fit_only"))
+        # По умолчанию КАЖДЫЙ прогон — новый ролик. Докрутка брошенного
+        # осталась, но стала отдельной просьбой: владелец каналов выбрал
+        # предсказуемость («запустил — получил новое видео») вместо
+        # разгребания старого. Брошенное при этом не пропадает: оно лежит
+        # на диске, и его можно доделать ключом resume.
+        force_new = not bool(p.get("resume"))
 
         def job():
             started = datetime.now()
             results = []
-            plan = np.dry_run(chans, night_h, per, fit_only)
+            plan = np.dry_run(chans, night_h, per, fit_only,
+                              force_new=force_new)
             self.log(f"[Автопилот] Ночь началась: {len(chans)} канал(ов) x "
                      f"{per}, в ночи {night_h:.0f} ч. План:")
             for line in np.format_plan(plan).splitlines():
@@ -1912,7 +1919,8 @@ class Api:
                 # плана: пока шли предыдущие каналы, ролик мог доделаться
                 # другим путём, а дата могла смениться — ночь переходит через
                 # полночь, и план строился ещё вчерашним числом.
-                pick = np.pick_project(ch, taken, quota=step.get("n", 0) + 1)
+                pick = np.pick_project(ch, taken, quota=step.get("n", 0) + 1,
+                                       force_new=force_new)
                 d = pick["dir"]
                 if pick["mode"] == "done":
                     self.log(f"[Автопилот] «{nm}» пропущен: {pick['why']}",

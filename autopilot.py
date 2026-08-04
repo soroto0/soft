@@ -7,6 +7,7 @@
     python autopilot.py --channel abyss  # только этот канал
     python autopilot.py --draft          # черновое качество (быстрее)
     python autopilot.py --plan           # только показать план, ничего не делать
+    python autopilot.py --resume         # доделать брошенное, а не начинать новое
     python autopilot.py --fit            # старое поведение: пропускать каналы,
                                          # которые точно не успеют до утра
 
@@ -112,6 +113,8 @@ def main() -> int:
     # ценой обрыва: пока прерванный ролик означал переделку с нуля, начинать
     # то, что не успеешь, было чистым убытком; теперь он доделывается
     # следующей ночью за минуты, и убыток — наоборот, пропущенный канал.
+    ap.add_argument("--resume", action="store_true",
+                    help="доделать брошенные ролики вместо новых")
     ap.add_argument("--fit", action="store_true",
                     help="пропускать каналы, которые точно не успеют до утра "
                          "(прежнее поведение по умолчанию)")
@@ -129,7 +132,8 @@ def main() -> int:
             print(f"Канал «{args.channel}» не найден", file=sys.stderr)
             return 2
 
-    plan = night_plan.dry_run(chans, args.night, args.videos, args.fit)
+    plan = night_plan.dry_run(chans, args.night, args.videos, args.fit,
+                              force_new=not args.resume)
     print(f"План ночи ({len(chans)} канал(ов) x {args.videos}, "
           f"в ночи {args.night:.0f} ч):")
     print(night_plan.format_plan(plan))
@@ -144,7 +148,11 @@ def main() -> int:
 
     p = _params(args.draft)
     p.update({"videos": args.videos, "night_h": args.night,
-              "fit_only": args.fit, "channel": args.channel or ""})
+              "fit_only": args.fit, "channel": args.channel or "",
+              # Без этой строки сухой прогон показывал бы одно, а ночь делала
+              # другое: план строится здесь, а сама работа идёт в webapp, и
+              # ключ должен доехать до неё.
+              "resume": args.resume})
     t_start = time.time()
     api.autopilot(p)
     if api._busy is None:

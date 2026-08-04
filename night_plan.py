@@ -190,21 +190,76 @@ def is_finished(d: Path) -> bool:
         return False
 
 
-def stage_of(d: Path) -> str:
+def stage_of(d: Path, channel: dict | None = None) -> str:
     """На чём остановился незаконченный ролик — словами для утренней сводки.
 
     Утром по папке видно только «файла нет». Разница между «умер на сценарии»
     (значит, беда с ключами LLM) и «стоит перед рендером» (значит, доделается
     за двадцать минут) решает, что человеку делать дальше.
     """
+    short = script_too_short(d, channel) if channel is not None else ""
+    if short:
+        # Не перечисляем «сделано: сценарий, озвучка, раскадровка» про работу,
+        # которая через минуту после старта станет чужой — иначе сводка врёт
+        # человеку ровно там, где он по ней принимает решение.
+        return short
     done = [name for rel, name, _ in STAGES if _has(d, rel)]
     if not done:
         return "пусто — не начинался"
     return "сделано: " + ", ".join(done)
 
 
-def done_fraction(d: Path) -> float:
-    """Какая доля работы по ролику уже лежит на диске, от 0 до 1."""
+# Сколько слов сценария приходится на минуту готового ролика. Замер, а не
+# оценка: у собранного abyss/2026-08-04 сценарий 2320 слов при видео 14.3 мин.
+WORDS_PER_MINUTE = 162
+# Ниже какой доли от нужного объёма сценарий считается чужим. 0.6 — с запасом
+# вниз: настоящий сценарий abyss дал 110% от расчёта, а найденные обрезки — 27%
+# (home-vault) и 11% (estoico-es). Между группами огромный зазор.
+SCRIPT_MIN_RATIO = 0.6
+
+
+def script_too_short(d: Path, channel: dict | None) -> str:
+    """Сценарий в папке заведомо не для этого канала — короче, чем нужно.
+
+    Пустая строка — сценарий годится.
+
+    Зачем в ПЛАНИРОВЩИКЕ, а не только в цепочке. Цепочка такой сценарий
+    отвергает и пишет новый (webapp._stale_script), но происходит это уже в
+    прогоне. Планировщик же считает бюджет ДО старта — и, глядя на короткий
+    сценарий и собранные по нему озвучку с раскадровкой, честно решал, что
+    работы осталось на полтора часа. На деле после замены сценария вся эта
+    работа становится чужой, и ролик идёт почти с нуля.
+    Замер на настоящих данных: estoico-es с 633 словами при заявленных 35
+    минутах оценивался в 1.7 ч вместо ~8.8 ч, и ночь распределялась по этой
+    выдумке — короткий канал шёл первым и съедал время того, который реально
+    мог успеть.
+    """
+    mins = int((channel or {}).get("minutes") or 0)
+    if not mins:
+        return ""
+    try:
+        words = len((d / "script.txt").read_text(
+            encoding="utf-8", errors="ignore").split())
+    except OSError:
+        return ""
+    if not words:
+        return ""
+    need = mins * WORDS_PER_MINUTE
+    if words >= need * SCRIPT_MIN_RATIO:
+        return ""
+    return (f"сценарий в папке на {words / WORDS_PER_MINUTE:.0f} мин, "
+            f"а канал на {mins} мин — цепочка перепишет его, и всё "
+            f"сделанное по нему станет чужим")
+
+
+def done_fraction(d: Path, channel: dict | None = None) -> float:
+    """Какая доля работы по ролику уже лежит на диске, от 0 до 1.
+
+    channel нужен, чтобы отличить «работа сделана» от «работа сделана по
+    сценарию, который сейчас же будет выброшен» — см. script_too_short.
+    """
+    if channel is not None and script_too_short(d, channel):
+        return 0.0
     return sum(w for rel, _, w in STAGES if _has(d, rel))
 
 
@@ -218,7 +273,7 @@ def estimate_s(channel: dict, project: Path | None = None) -> float:
     full = float(channel.get("minutes") or 12) * SEC_PER_VIDEO_MINUTE
     if project is None:
         return full
-    return full * max(0.05, 1.0 - done_fraction(project))
+    return full * max(0.05, 1.0 - done_fraction(project, channel))
 
 
 def fits(channel: dict, left_s: float, project: Path | None = None) -> bool:
@@ -322,7 +377,8 @@ def _new_dir(root: Path, stamp: str, taken: set) -> Path:
 
 
 def pick_project(channel: dict, taken: set | None = None,
-                 now: datetime | None = None, quota: int = 1) -> dict:
+                 now: datetime | None = None, quota: int = 1,
+                 force_new: bool = False) -> dict:
     """Куда писать очередной ролик канала: доделать начатый или начать новый.
 
     Возвращает {"dir", "mode", "why"}, где mode:
@@ -396,7 +452,10 @@ def pick_project(channel: dict, taken: set | None = None,
             continue
         if fresh == stamp:
             made.append(p)
-    if len(made) >= max(1, quota):
+    # Пропуск «сегодня уже сделан» защищает от СЛУЧАЙНОГО дубля: вторая кнопка
+    # за ночь, перезапуск приложения. Явную просьбу «сделай новый» он перебивать
+    # не должен — иначе защита превращается в запрет делать то, о чём попросили.
+    if not force_new and len(made) >= max(1, quota):
         return {"dir": made[0], "mode": "done",
                 "why": (f"сегодня уже сделан ({', '.join(p.name for p in made)})"
                         if len(made) == 1 else
@@ -404,6 +463,16 @@ def pick_project(channel: dict, taken: set | None = None,
                         f"({', '.join(p.name for p in made)})")}
 
     ref = (now or datetime.now()).timestamp()
+    # force_new — человек ЯВНО просит новый ролик, а не докрутку начатого.
+    # Докрутка появилась потому, что брошенный на 53% ролик лежал мёртвым
+    # грузом, и по умолчанию она правильна. Но она же означает «доделываю
+    # старую тему», а иногда нужна именно новая — и тогда навязывать докрутку
+    # значит не давать сделать то, о чём попросили. Незаконченное при этом не
+    # теряется: оно остаётся на диске и будет доделано в обычном режиме.
+    if force_new:
+        d = _new_dir(root, stamp, taken)
+        return {"dir": d, "mode": "new", "why": f"новый ролик ({d.name})"}
+
     for p in projects:
         if p in taken or is_finished(p):
             continue
@@ -416,7 +485,7 @@ def pick_project(channel: dict, taken: set | None = None,
         return {"dir": p, "mode": "resume",
                 "why": (f"доделываю начатое ({p.name}, попытка {n + 1} из "
                         f"{MAX_RESUME}, брошен {age_d:.1f} сут назад; "
-                        f"{stage_of(p)})")}
+                        f"{stage_of(p, channel)})")}
 
     d = _new_dir(root, stamp, taken)
     return {"dir": d, "mode": "new", "why": f"новый ролик ({d.name})"}
@@ -438,7 +507,8 @@ def order(channels: list[dict], projects: dict | None = None) -> list[dict]:
 
 
 def dry_run(channels: list[dict], night_h: float = NIGHT_H, videos: int = 1,
-            fit_only: bool = False, now: datetime | None = None) -> list[dict]:
+            fit_only: bool = False, now: datetime | None = None,
+            force_new: bool = False) -> list[dict]:
     """Что автопилот СОБИРАЕТСЯ делать — без единого побочного действия.
 
     Ничего не создаёт и не пишет: pick_project возвращает путь, а папку заводит
@@ -448,7 +518,8 @@ def dry_run(channels: list[dict], night_h: float = NIGHT_H, videos: int = 1,
     # Порядок считаем ПО ТОМУ ЖЕ разбору папок, каким пойдёт сам прогон:
     # канал с почти готовым роликом должен идти первым, даже если ролик у него
     # самый длинный.
-    first = {ch.get("id"): pick_project(ch, None, now) for ch in channels}
+    first = {ch.get("id"): pick_project(ch, None, now, force_new=force_new)
+             for ch in channels}
     chans = order(channels, {k: v["dir"] for k, v in first.items()
                              if v["mode"] == "resume"})
 
@@ -458,7 +529,7 @@ def dry_run(channels: list[dict], night_h: float = NIGHT_H, videos: int = 1,
     taken: set = set()
     for pos, (ch, i) in enumerate(todo):
         nm = ch.get("name") or ch.get("id")
-        pick = pick_project(ch, taken, now, quota=i + 1)
+        pick = pick_project(ch, taken, now, quota=i + 1, force_new=force_new)
         proj = pick["dir"] if pick["mode"] == "resume" else None
         est = estimate_s(ch, proj)
         row = {"id": ch.get("id"), "channel": nm, "dir": pick["dir"], "n": i,
