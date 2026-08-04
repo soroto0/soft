@@ -713,6 +713,42 @@ def add_music(voice_mp3: Path, music_path, log, gain_db: int = -14) -> Path:
     return dest
 
 
+def voice_track(out_dir: Path, log=None, no_music: bool = False) -> Path:
+    """Какая дорожка озвучивает ЭТОТ ролик: голос с музыкой или чистый голос.
+
+    ЕДИНСТВЕННОЕ место, где этот выбор делается. Раньше его повторяли трижды
+    (раскадровка, рендер, ASMR) одной и той же строкой «есть
+    voiceover_music.mp3 — берём его», и все три брали чужое.
+
+    Дело в том, что рабочая папка у канала ОДНА на все его ролики, а
+    voiceover_music.mp3 переписывается только при УДАЧНОМ шаге музыки — а он
+    падает регулярно (в app.log три раза: недоступен Jamendo, неавторизован
+    client_id). Тогда в папке остаётся микс ПРОШЛОГО ролика, и рендер вшивает
+    в новое видео чужую начитку целиком. На настоящих данных 2026-08-05 в
+    abyss/audio так и лежало: voiceover.mp3 нового ролика на 14.9 мин от
+    04.08 и voiceover_music.mp3 от 03.08 на 83 минуты — то есть и звук
+    чужой, и раскадровка с монтажом растянулись бы на 83 минуты вместо 15.
+
+    Признак «свой/чужой» здесь точный и не требует отдельного отпечатка: микс
+    ДЕЛАЕТСЯ ИЗ voiceover.mp3, значит не может быть старше него. Старше —
+    значит от прошлой озвучки.
+    """
+    a = Path(out_dir) / "audio"
+    voice, mixed = a / "voiceover.mp3", a / "voiceover_music.mp3"
+    if no_music or not mixed.exists():
+        return voice
+    if not voice.exists():
+        return mixed          # чистого голоса нет — судить не по чему
+    try:
+        stale = mixed.stat().st_mtime < voice.stat().st_mtime
+    except OSError:
+        stale = False
+    if stale and log:
+        log(f"[Звук] {mixed.name} старше озвучки — это микс ПРОШЛОГО ролика; "
+            "беру чистый голос, иначе в видео попала бы чужая начитка", "warn")
+    return voice if stale else mixed
+
+
 def add_ambience(base_mp3: Path, sfx_path, log, gain_db: int = -19,
                  every: float = 22.0, palette: str = "") -> Path:
     """Сам раскидывает ASMR-звуки быта (шорох, звон ложки, вода) по дорожке:
@@ -5737,9 +5773,10 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     Результат: storyboard/ с клипами, timeline.json и sequence.xml
     (Premiere Pro: File > Import). Требует voiceover.mp3 и voiceover.srt."""
     srt = out_dir / "subs" / "voiceover.srt"
-    voice = out_dir / "audio" / "voiceover_music.mp3"
-    if not voice.exists():
-        voice = out_dir / "audio" / "voiceover.mp3"
+    # Через voice_track, а не «есть микс — берём микс»: микс от ПРОШЛОГО
+    # ролика задавал бы длину таймлайна (см. total ниже), и материал
+    # раскладывался бы на 83 минуты вместо 15 — замер на abyss 2026-08-05.
+    voice = voice_track(out_dir, log)
     if not srt.exists():
         raise FileNotFoundError("Нет субтитров — сначала прогони Whisper (они "
                                 "дают таймкоды для привязки материала).")

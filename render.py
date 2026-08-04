@@ -32,7 +32,7 @@ from collections import deque
 from pathlib import Path
 
 from core import (srt_to_seconds, parse_srt, load_whisper_words, audio_duration,
-                  CREATE_NO_WINDOW, sound_palette_of)
+                  CREATE_NO_WINDOW, sound_palette_of, voice_track)
 
 CONSOLE = None  # хук GUI: сюда льётся живой вывод ffmpeg (кадр/время/скорость)
 CANCEL = threading.Event()  # кнопка «Стоп»: убивает текущий ffmpeg и рендер
@@ -614,11 +614,41 @@ def assign_materials(scenes: list[dict], out_dir: Path,
                      "проекта повреждён",
                 level="критично")
 
+    # ЗАПАСНОЙ ПУЛ — ТОЛЬКО ИЗ МАТЕРИАЛА ЭТОГО РОЛИКА.
+    #
+    # Здесь пул собирался обходом папок video/, images/ и storyboard/ целиком.
+    # Рабочая папка у канала ОДНА на все его ролики, кадры прошлых с диска
+    # никто не убирает — и всё это шло в пул наравне со своим. Дальше пул
+    # используется не в крайнем случае, а постоянно: MAX_ONSCREEN=2 отправляет
+    # в него каждую сцену, чей кадр из раскадровки уже был на экране дважды.
+    #
+    # Замер 2026-08-05 на настоящих папках: в home-vault/storyboard 439
+    # файлов, а timeline.json нового ролика ссылается на 61 — треть сцен
+    # (43 из 132) ролика про обрушение моста бралась из прошлого ролика про
+    # починку крана (beat_009_faucet_handle_repair, beat_012_plumber_van...).
+    # В abyss то же самое: 170 сцен из 512, включая горные пейзажи в ролике
+    # про обрушение переходов отеля.
+    #
+    # Свой материал перечислен в timeline.json — раскадровка пишет его под
+    # ЭТОТ сценарий. Обход папок остаётся только там, где timeline.json нет
+    # вовсе: это ручной режим, когда человек сам кладёт файлы в video/ и
+    # images/, и тогда чужому взяться неоткуда.
     pool = []
-    for d in (out_dir / "video", out_dir / "images", out_dir / "storyboard"):
-        if d.exists():
-            pool += [p for p in sorted(d.iterdir())
-                     if p.suffix.lower() in IMAGE_EXTS | VIDEO_EXTS]
+    if timeline:
+        seen = set()
+        for item in timeline:
+            if not item.get("file"):
+                continue
+            p = Path(item["file"])
+            if p.suffix.lower() in IMAGE_EXTS | VIDEO_EXTS and p.exists():
+                if str(p) not in seen:
+                    seen.add(str(p))
+                    pool.append(p)
+    else:
+        for d in (out_dir / "video", out_dir / "images", out_dir / "storyboard"):
+            if d.exists():
+                pool += [p for p in sorted(d.iterdir())
+                         if p.suffix.lower() in IMAGE_EXTS | VIDEO_EXTS]
     rng.shuffle(pool)
     if not pool and not timeline:
         raise RuntimeError("Нет материала: пусто в video/, images/, storyboard/ "
@@ -681,6 +711,19 @@ def assign_materials(scenes: list[dict], out_dir: Path,
     log(f"[Рендер] Материал: {len(scenes)} сцен, кадр меняется каждые <=5 c "
         f"({'таймлайн + ' if timeline else ''}пул {len(pool)} файлов"
         + (f", повторов подряд: {reused}" if reused else "") + ")")
+    # Раньше нехватку своего материала незаметно закрывали кадры прошлых
+    # роликов из той же папки, и в журнале всё выглядело благополучно. Теперь
+    # чужое не берётся вовсе, поэтому дефицит проявляется повторами — и о нём
+    # надо сказать вслух, иначе он так же молча ухудшает ролик.
+    if timeline and reused > len(scenes) * 0.15:
+        import quality
+        quality.degraded(
+            "Рендер", f"кадры повторяются: {reused} сцен из {len(scenes)} "
+            "заняты уже показанным материалом",
+            why=f"на ролик хватило только {len(pool)} своих файлов",
+            hint="увеличь долю ИИ-кадров или уменьши интенсивность монтажа — "
+                 "раскадровка качает по одному материалу на план",
+            level="заметно")
 
 
 # ---------- 2. Сегменты ----------
@@ -1857,9 +1900,10 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
     fps = int(opts.get("fps", 30))
     intensity = opts.get("intensity", "средняя")
 
-    audio = out_dir / "audio" / "voiceover_music.mp3"
-    if opts.get("no_music") or not audio.exists():
-        audio = out_dir / "audio" / "voiceover.mp3"
+    # Дорожку выбирает core.voice_track — там же, где раскадровка. Здесь
+    # стояла своя копия того же условия, и она вшивала в ролик микс прошлого
+    # ролика, если шаг музыки в этот раз упал (в app.log — трижды).
+    audio = voice_track(out_dir, log, bool(opts.get("no_music")))
     srt = out_dir / "subs" / "voiceover.srt"
     if not audio.exists():
         raise RuntimeError("Нет озвучки (audio/voiceover.mp3).")

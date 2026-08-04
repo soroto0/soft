@@ -276,6 +276,92 @@ class Api:
         (self._project / "meta.json").write_text(
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # Сколько слов сценария приходится на минуту готового ролика. Замер, а не
+    # оценка: у собранного abyss/2026-08-04 сценарий 2320 слов, а видео идёт
+    # 14.3 минуты — 162 слова на минуту.
+    WORDS_PER_MINUTE = 162
+    # Ниже какой доли от нужного объёма сценарий считается чужим. 0.6 — с
+    # запасом вниз: настоящий сценарий abyss дал 110% от расчёта, а найденные
+    # обрезки — 27% (Home Vault) и 11% (испанский). Между этими группами
+    # огромный зазор, порог посередине ничего пограничного не заденет.
+    SCRIPT_MIN_RATIO = 0.6
+
+    def _stale_script(self, text: str, ch: dict | None, p: dict) -> str:
+        """Почему лежащий в папке script.txt НЕ относится к этому ролику.
+
+        Пустая строка — сценарий свой, можно брать.
+
+        Зачем вообще. Рабочая папка у канала ОДНА на все его ролики, и
+        script.txt от прошлого никто с диска не убирает. Цепочка считала шаг
+        «сценарий» выполненным по одному факту наличия файла — и вместо того,
+        чтобы написать новый текст под новую тему, молча брала чужой.
+        Так на 20-минутном канале вышел ролик на ТРИ минуты: в meta.json тема
+        была про починку кранов, а в script.txt лежала история патента на
+        удлинитель, 509 слов вместо трёх тысяч. Та же болезнь уже вылечена у
+        overlays.txt (см. _auto_overlays и _srt_sig) — здесь тот же приём.
+        """
+        words = len(text.split())
+        if not words:
+            return ""
+        topic = (p.get("topic") or "").strip()
+        was = (self._read_meta().get("topic") or "").strip()
+        if topic and was and topic.lower() != was.lower():
+            return (f"в папке лежит сценарий другого ролика: «{was}», "
+                    f"а сейчас тема «{topic}»")
+        mins = int((ch or {}).get("minutes") or p.get("minutes") or 0)
+        if mins:
+            need = mins * self.WORDS_PER_MINUTE
+            if words < need * self.SCRIPT_MIN_RATIO:
+                return (f"сценарий в папке короче, чем нужно каналу: "
+                        f"{words} слов — это примерно "
+                        f"{words / self.WORDS_PER_MINUTE:.0f} мин видео, "
+                        f"а канал заявлен на {mins} мин (нужно ~{need} слов)")
+        return ""
+
+    def _warn_stale(self) -> list[str]:
+        """Назвать вслух всё, что в папке осталось от ПРОШЛОГО ролика.
+
+        Сеть безопасности для шагов, которые глушат свои сбои: музыка, SEO и
+        обложки ловят исключение и пишут «пропущено» одной строкой в журнал на
+        тысячу строк. Файл прошлого ролика при этом остаётся на диске и
+        выглядит как результат шага — с ним ролик и уходит на публикацию.
+        Список общий с галочками интерфейса (STEP_FILES), чтобы они не
+        разъезжались."""
+        import night_plan as np
+        d = self._project
+        bad = []
+        for name, rel in self.STEP_FILES:
+            if rel == "output_final.mp4":
+                continue          # его как раз сейчас и собираем
+            if (d / rel).exists() and not np.fresh_for_script(d, rel):
+                bad.append(f"{name} ({rel})")
+        # Обложек рисуется столько, сколько модель придумала концепций. Вышло
+        # меньше, чем в прошлый раз — лишние thumb2/thumb3 остаются от того
+        # ролика, и выбирать человек будет из смеси.
+        try:
+            extra = sorted(p.name for p in (d / "thumbs").glob("thumb*.jpg")
+                           if p.name != "thumb1.jpg"
+                           and not np.fresh_for_script(d, f"thumbs/{p.name}"))
+        except OSError:
+            extra = []
+        if extra:
+            bad.append("Обложки прошлого ролика (thumbs/"
+                       + ", ".join(extra) + ")")
+        mix = d / "audio" / "voiceover_music.mp3"
+        voice = d / "audio" / "voiceover.mp3"
+        try:
+            if (mix.exists() and voice.exists()
+                    and mix.stat().st_mtime < voice.stat().st_mtime):
+                bad.append("Музыка (audio/voiceover_music.mp3)")
+        except OSError:
+            pass
+        if bad:
+            self.log("[Остатки] В папке лежат файлы ПРОШЛОГО ролика — их шаги "
+                     "в этот раз не отработали: " + ", ".join(bad)
+                     + ". В ролик они не попадут (рендер и раскадровка их не "
+                       "берут), но публиковать по ним нельзя.", "warn")
+        return bad
+
     def _srt_sig(self) -> str:
         """Отпечаток текущих субтитров.
 
@@ -304,19 +390,45 @@ class Api:
             return True
         return False
 
+    # Шаги и файлы, по которым видно, что шаг сделан. Список общий для
+    # галочек в интерфейсе и для предупреждения в конце цепочки — иначе они
+    # разъезжаются, и интерфейс показывает готовым то, о чём цепочка молчит.
+    STEP_FILES = (
+        ("Озвучка", "audio/voiceover.mp3"),
+        ("Субтитры", "subs/voiceover.srt"),
+        ("Раскадровка", "timeline.json"),
+        ("Оверлеи", "overlays.txt"),
+        ("SEO", "seo.txt"),
+        ("Обложки", "thumbs/thumb1.jpg"),
+        ("Premiere", "sequence.xml"),
+        ("Рендер", "output_final.mp4"),
+    )
+
     def _checks(self, d: Path) -> dict:
-        def nonempty(p):
-            return p.exists() and any(p.iterdir())
-        return {
-            "Сценарий": (d / "script.txt").exists(),
-            "Озвучка": (d / "audio" / "voiceover.mp3").exists(),
-            "Субтитры": (d / "subs" / "voiceover.srt").exists(),
-            "Раскадровка": (d / "timeline.json").exists()
-                           or nonempty(d / "video") or nonempty(d / "storyboard"),
-            "Оверлеи": (d / "overlays.txt").exists(),
-            "Рендер": (d / "output_final.mp4").exists(),
-            "Premiere": (d / "sequence.xml").exists(),
-        }
+        # Галочка ставится не по наличию файла, а по тому, сделан ли он под
+        # ТЕКУЩИЙ сценарий: рабочая папка у канала одна на все ролики, и
+        # раньше новый ролик получал зелёные галочки на всех шагах, которых
+        # ещё не делали, — просто потому, что файлы прошлого лежат рядом.
+        # На настоящих данных 05.08 home-vault так показывал готовыми
+        # раскадровку, оверлеи, Premiere и обложки от ролика недельной
+        # давности (timeline.json 01.08 при сценарии 04.08).
+        import night_plan as np
+        ok = {"Сценарий": (d / "script.txt").exists()}
+        for name, rel in self.STEP_FILES:
+            ok[name] = (d / rel).exists() and np.fresh_for_script(d, rel)
+        if not ok["Раскадровка"]:
+            # Ручной путь: человек сам сложил материал в video/ (кнопка
+            # «Стоки»), timeline.json при этом не появляется. Условие то же —
+            # материал этого ролика, а не оставшийся от прошлого. Смотрим
+            # время правки САМОЙ ПАПКИ (оно меняется, когда в неё кладут
+            # файл), а не перебираем содержимое: в abyss/storyboard 3627
+            # файлов, а этот метод зовётся на каждый опрос состояния из
+            # интерфейса и по всем проектам канала сразу.
+            ok["Раскадровка"] = any(
+                (d / sub).is_dir() and any((d / sub).iterdir())
+                and np.fresh_for_script(d, sub)
+                for sub in ("video", "storyboard"))
+        return ok
 
     def _projects_root(self) -> Path:
         """Папка, среди подпапок которой лежат проекты текущего канала.
@@ -591,8 +703,24 @@ class Api:
     # ---------- сценарий ----------
     def save_script(self, text: str):
         self._project.mkdir(parents=True, exist_ok=True)
-        (self._project / "script.txt").write_text(text.strip(), encoding="utf-8")
-        self.log(f"[Сценарий] Сохранён: {self._project / 'script.txt'}")
+        f = self._project / "script.txt"
+        text = text.strip()
+        # ТОТ ЖЕ ТЕКСТ НЕ ПЕРЕЗАПИСЫВАЕМ. По времени правки script.txt
+        # решается, относится ли лежащее в папке (озвучка, субтитры,
+        # раскадровка, кадры) к текущему ролику или осталось от прошлого —
+        # см. night_plan.fresh_for_script. _tts_step сохраняет сценарий на
+        # КАЖДОМ прогоне, и без этой проверки время обновлялось бы даже когда
+        # ничего не менялось: всё готовое разом становилось бы «чужим», а это
+        # час платных ИИ-кадров заново на каждом повторном запуске.
+        try:
+            if f.exists() and f.read_text(encoding="utf-8") == text:
+                self.log("[Сценарий] Тот же текст — файл не трогаю "
+                         "(иначе готовые кадры и озвучка сочтутся чужими)")
+                return
+        except (OSError, UnicodeDecodeError):
+            pass
+        f.write_text(text, encoding="utf-8")
+        self.log(f"[Сценарий] Сохранён: {f}")
 
     def auto_scenes(self, text: str):
         scenes = core.auto_scenes(text)
@@ -650,11 +778,18 @@ class Api:
         # их отдельным файлом (по ним снимают и подбирают кадры) и озвучиваем
         # только чистый текст.
         text, cues = core.strip_cues(text)
+        cf = self._project / "cues.txt"
         if cues:
-            (self._project / "cues.txt").write_text(
-                "\n".join(cues), encoding="utf-8")
+            cf.write_text("\n".join(cues), encoding="utf-8")
             self.log(f"[Озвучка] Вырезал {len(cues)} режиссёрских ремарок "
                      "— сохранил в cues.txt, вслух они не пойдут")
+        elif cf.exists():
+            # Файл писался ТОЛЬКО когда ремарки есть. У сценария без ремарок
+            # в папке оставались ремарки прошлого ролика — по ним подбирают
+            # кадры и снимают, то есть человек работал бы по чужому листу.
+            cf.write_text("", encoding="utf-8")
+            self.log("[Озвучка] В сценарии нет режиссёрских ремарок — очистил "
+                     "cues.txt, там лежали ремарки прошлого ролика", "warn")
         voice = p.get("voice")
         rate = int(str(p.get("rate", "0%")).replace("%", "").replace("+", ""))
         if p.get("randomize"):
@@ -868,9 +1003,10 @@ class Api:
 
     def add_asmr(self, path: str, every: float):
         def job():
-            base = self._project / "audio" / "voiceover_music.mp3"
-            if not base.exists():
-                base = self._project / "audio" / "voiceover.mp3"
+            # Через core.voice_track — тем же правилом, что раскадровка и
+            # рендер: микс, оставшийся от прошлого ролика, здесь получил бы
+            # поверх чужой начитки ещё и звуки быта.
+            base = core.voice_track(self._project, self.log)
             if not base.exists():
                 raise RuntimeError("Сначала озвучка (и по желанию музыка).")
             if not (path or "").strip():
@@ -1099,7 +1235,15 @@ class Api:
                      "сохранил в overlays_prev.txt", "warn")
         manifest = []
         mf = self._project / "manifest.json"
-        if mf.exists():
+        # Из манифеста берутся КАРТИНКИ для popup-плашек. Он остаётся от
+        # ручной закачки стоков и, как всё в общей папке канала, переживает
+        # свой ролик — тогда в новом видео всплывали бы кадры прошлого.
+        import night_plan as np
+        if mf.exists() and not np.fresh_for_script(self._project,
+                                                   "manifest.json"):
+            self.log("[Оверлеи] manifest.json от прошлого ролика — плашки "
+                     "делаю без его картинок", "warn")
+        elif mf.exists():
             try:
                 manifest = json.loads(mf.read_text(encoding="utf-8"))
             except Exception:
@@ -1539,7 +1683,21 @@ class Api:
             # Сценария может ещё не быть: цепочка начиналась сразу с озвучки
             # и падала с «Нет сценария». Пишем его сами — по теме из поля и
             # ДЛИНЕ ИЗ ПРОФИЛЯ канала, а не из общего выпадающего списка.
-            if not (p.get("script") or "").strip() and not self._read("script.txt"):
+            disk_script = self._read("script.txt")
+            stale = self._stale_script(disk_script, ch, p) if disk_script else ""
+            if stale:
+                # Старый текст не затираем молча: переименовываем рядом.
+                # Он может оказаться нужным, а восстановить его будет неоткуда.
+                keep = self._project / f"script_чужой_{int(time.time())}.txt"
+                try:
+                    (self._project / "script.txt").rename(keep)
+                except OSError:
+                    pass
+                self.log(f"[Сценарий] {stale}. Отложил его в {keep.name} "
+                         "и пишу новый — иначе вышел бы ролик чужой длины "
+                         "и не по теме", "warn")
+                disk_script = ""
+            if not (p.get("script") or "").strip() and not disk_script:
                 key = (self._settings.get("gemini_key", "")
                        or self._settings.get("agnes_key", ""))
                 topic = (p.get("topic") or "").strip()
@@ -1647,6 +1805,13 @@ class Api:
                 except Exception as e:
                     # обложки не должны рушить готовый ролик
                     self.log(f"[Цепочка] Обложки пропущены: {e}", "warn")
+            # Сводка по остаткам прошлого ролика — ПЕРЕД рендером, пока ещё
+            # можно вмешаться. Шаги SEO/обложек/музыки глушат свои сбои в
+            # warn, и после такого сбоя в папке остаётся файл прошлого ролика
+            # (заголовок не про то, обложка не та, чужой микс озвучки). В
+            # журнале на тысячу строк это не видно, а на диске выглядит как
+            # успешно сделанный шаг.
+            self._warn_stale()
             # Последняя и самая важная проверка: render_project СБРАСЫВАЕТ
             # render.CANCEL на старте, поэтому «Стоп», нажатый на любом
             # предыдущем шаге, рендеру ничего не сообщал — часовой рендер
