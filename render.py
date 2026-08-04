@@ -32,7 +32,7 @@ from collections import deque
 from pathlib import Path
 
 from core import (srt_to_seconds, parse_srt, load_whisper_words, audio_duration,
-                  CREATE_NO_WINDOW)
+                  CREATE_NO_WINDOW, sound_palette_of)
 
 CONSOLE = None  # хук GUI: сюда льётся живой вывод ffmpeg (кадр/время/скорость)
 CANCEL = threading.Event()  # кнопка «Стоп»: убивает текущий ffmpeg и рендер
@@ -1369,6 +1369,17 @@ def _style_chain(opts: dict, wh: tuple[int, int] = (1920, 1080)) -> list[str]:
 # Атмосферный звук ИИ-клипов: громкость и потолок числа дорожек.
 AMB_GAIN = 0.28
 AMB_MAX_CLIPS = 40
+# Громкость звуков-акцентов. Была вписана числом прямо в фильтр — вынесена,
+# чтобы звуковой профиль канала (core.SOUND_PALETTES) мог её сдвигать.
+SFX_GAIN = 0.3
+
+# Сколько всего входов «-i» выдерживает финальный ffmpeg. Замер: 106 доезжало,
+# 176 вставало намертво. Берём 110 с запасом вниз от найденной границы.
+MAX_TOTAL_INPUTS = 110
+# Из них на оверлеи — большая часть: их видно, а звуковые слои лишь слышно.
+# 2 входа заняты видео и голосом, остаток делится между звуками и атмосферой.
+MAX_OVERLAY_INPUTS = 78
+MAX_SFX_INPUTS = 12
 
 
 def _has_audio(path: Path) -> bool:
@@ -1381,6 +1392,67 @@ def _has_audio(path: Path) -> bool:
         return bool(r.stdout.strip())
     except Exception:
         return False
+
+
+def _overlay_chain(ovls: list[dict], first_in: int, src: str) -> str:
+    """Цепочка наложения оверлеев на поток `src`. Возвращает filter_complex
+    без завершающей метки — последняя метка [vo{N-1}] и есть результат.
+
+    Вынесено отдельно, потому что нужно в двух местах: в финальном проходе и
+    в предварительном запекании (см. _bake_overlays)."""
+    fc, prev = "", src
+    for i, ov in enumerate(ovls):
+        fc += (f"[{first_in + i}:v]setpts=PTS-STARTPTS+{ov['t0']:.3f}/TB[o{i}];"
+               f"{prev}[o{i}]overlay={ov['x']}:{ov['y']}:"
+               f"eof_action=pass:"
+               f"enable='between(t,{ov['t0']:.3f},{ov['t1']:.3f})'"
+               f"[vo{i}];")
+        prev = f"[vo{i}]"
+    return fc
+
+
+def _bake_overlays(base_input: list[str], ovls: list[dict], dest: Path,
+                   fps: int, tmp: Path, wh: tuple[int, int], log=print) -> bool:
+    """Наложить порцию оверлеев ЗАРАНЕЕ, отдельным проходом.
+
+    Зачем: ffmpeg не тянет больше ~110 входов в одном filter_complex —
+    замерено, на 176 он встаёт намертво (0 c процессора, кадр не двигается).
+    Раньше лишние оверлеи просто выбрасывались, и ролик выходил беднее
+    задуманного. Здесь они не теряются: накладываются предварительным
+    проходом, а в финал идёт уже готовая картинка.
+
+    Промежуток кодируется с crf 14 — на глаз неотличимо от исходника, а
+    финальный проход всё равно пережмёт до crf 19.
+
+    False — проход не удался; вызывающий тогда обрежется по потолку, как
+    раньше: лучше ролик без части плашек, чем зависший рендер.
+    """
+    base_dir = Path(tmp).parent
+    cmd = ["ffmpeg", "-y"] + base_input
+    for ov in ovls:
+        pat = ov["pattern"]
+        try:
+            pat = str(Path(pat).relative_to(base_dir))
+        except ValueError:
+            pass
+        cmd += ["-framerate", str(fps), "-start_number", "0", "-i", pat]
+    n_base = sum(1 for a in base_input if a == "-i")
+    fc = _overlay_chain(ovls, n_base, "[0:v]")
+    fc += f"[vo{len(ovls) - 1}]null[vout]"
+    fcf = tmp / f"bake_{dest.stem}.txt"
+    fcf.write_text(fc, encoding="utf-8")
+    cmd += ["-filter_complex_script", str(fcf), "-map", "[vout]", "-an",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "14",
+            "-pix_fmt", "yuv420p", str(dest)]
+    log(f"[Рендер] Запекаю {len(ovls)} оверлеев отдельным проходом "
+        "(в один ffmpeg столько входов не влезает)")
+    try:
+        run_tree(cmd, 5400, cwd=str(base_dir))
+    except Exception as e:
+        log(f"[Рендер] Запекание не вышло ({str(e)[:120]}) — обрежу оверлеи "
+            "по потолку", "warn")
+        return False
+    return dest.exists() and dest.stat().st_size > 100_000
 
 
 def assemble(group_files: list[Path], audio: Path, srt: Path | None,
@@ -1435,9 +1507,47 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
     # «пропадал»: ffmpeg искал estoico-es/estoico-es/render_tmp/groups.txt.
     # Проявлялось только когда проект передан относительным путём И есть
     # оверлеи, поэтому из интерфейса (там путь всегда абсолютный) не всплывало.
-    cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-           "-i", str(Path(concat_list).resolve()),
-           "-i", str(Path(audio).resolve())]
+    # ПОТОЛОК ЧИСЛА ВХОДОВ. Замер по журналу 2026-08-04: финальный проход с
+    # 103 и 106 входами доезжал, со 176 и 320 — вставал НАМЕРТВО. Не медленно:
+    # ffmpeg продолжал печатать строки прогресса, но кадр не двигался, а
+    # процессорного времени тратилось 0.0 c за 20 секунд — взаимоблокировка.
+    # Ролик на 14 минут собрал 107 оверлеев + 27 звуков + 40 клипов атмосферы =
+    # 176 входов и встал на 22% за 18 минут до полной остановки.
+    #
+    # Режем по приоритету: оверлеи видно, атмосферу слышно, звуки-акценты —
+    # приятная мелочь. Лучше ролик без части акцентов, чем зависший рендер.
+    # Видеовход финала: обычно склейка групп, но если оверлеев слишком много —
+    # предварительно запечённый файл (см. ниже).
+    video_in = ["-f", "concat", "-safe", "0",
+                "-i", str(Path(concat_list).resolve())]
+    if len(ovls) > MAX_OVERLAY_INPUTS:
+        # Лишние НЕ выбрасываем: накладываем их заранее, порциями. Каждый
+        # проход добавляет минуты, зато в ролике остаются все плашки.
+        baked = None
+        src = list(video_in)
+        rest = list(ovls)
+        step = 0
+        while len(rest) > MAX_OVERLAY_INPUTS:
+            chunk, rest = rest[:MAX_OVERLAY_INPUTS], rest[MAX_OVERLAY_INPUTS:]
+            step += 1
+            out = tmp / f"baked_{step:02d}.mp4"
+            if not _bake_overlays(src, chunk, out, fps, tmp, wh, log):
+                baked = None
+                break
+            baked = out
+            src = ["-i", str(out.resolve())]
+        if baked is not None:
+            video_in = ["-i", str(baked.resolve())]
+            ovls = rest
+            log(f"[Рендер] Запечено за {step} проход(а/ов); в финал идут "
+                f"последние {len(ovls)} оверлеев")
+        else:
+            log(f"[Рендер] Оверлеев {len(ovls)}, беру первые "
+                f"{MAX_OVERLAY_INPUTS}: больше {MAX_TOTAL_INPUTS} входов "
+                "ffmpeg не переваривает — проверено, встаёт намертво", "warn")
+            ovls = ovls[:MAX_OVERLAY_INPUTS]
+
+    cmd = ["ffmpeg", "-y"] + video_in + ["-i", str(Path(audio).resolve())]
     if ovls:
         # Пути к секвенциям — относительные, ffmpeg запускается из папки
         # проекта. Абсолютный путь тут повторяется на КАЖДЫЙ оверлей, и на
@@ -1468,6 +1578,10 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
         # типы — без звука (см. SFX_FOR_TYPE). Любая ошибка синтеза/сведения
         # тихо откатывается на обычную дорожку — SFX не критичны для рендера.
         audio_map = "1:a"
+        # Звуковой профиль канала: плотность акцентов и громкости. То же поле
+        # «palette», что и у монтажа, — канал настраивается целиком, а не
+        # наполовину. Пустая палитра даёт прежние числа.
+        snd = sound_palette_of(opts.get("palette", ""))
         if opts.get("sfx", True):
             try:
                 # Каждый ЗВУК подключается ОДИН раз и размножается asplit.
@@ -1489,7 +1603,42 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                     # «#» в имя метки ffmpeg не годится — заменяем на «_v»
                     want.append((pick_sfx(role, k).replace("#", "_v"),
                                  max(0, round(ov["t0"] * 1000))))
+                # Прореживание по профилю канала — ТОЛЬКО плашки. Их сотни, и
+                # щелчок на каждой это подпись канала: у тёплого он уместен,
+                # у созерцательного рвёт ритм. Прореживаем ровным шагом, а не
+                # случайно: случай даёт то пусто, то три акцента подряд.
+                dens = float(snd.get("sfx_density", 1.0))
+                if dens < 1.0 and want:
+                    was = len(want)
+                    want = [ev for k, ev in enumerate(want)
+                            if int((k + 1) * dens) > int(k * dens)]
+                    log(f"[Рендер] Звуковой профиль «{snd['name']}»: "
+                        f"акценты на {len(want)} плашках из {was}")
+                # ЗВУК СЦЕН. Прореживанию выше НЕ подлежит: сцена — это удар,
+                # обрушение, целый нарисованный план, а не украшение плашки.
+                # Сцены нет в списке оверлеев: без этого кадра она выходила
+                # немой, хотя именно ей звук нужен сильнее всего (отказ опоры
+                # без удара выглядит мультиком). Опознаём по имени файла: сцены
+                # называются beat_NNN_scene_<вид>.mp4.
+                for sc in (scenes or []):
+                    f = sc.get("file")
+                    if not f or "_scene_" not in Path(f).name:
+                        continue
+                    kind = Path(f).stem.split("_scene_", 1)[1]
+                    role = SFX_FOR_SCENE.get(kind, "whoosh")
+                    k = seen_role.get(role, 0)
+                    seen_role[role] = k + 1
+                    want.append((pick_sfx(role, k).replace("#", "_v"),
+                                 max(0, round(float(sc.get("start", 0)) * 1000))))
                 uniq = sorted({n for n, _ in want})
+                # Звуки-акценты режем первыми: каждый уникальный это ещё один
+                # вход ffmpeg, а их набегало 27 при потолке в 110 на всё.
+                if len(uniq) > MAX_SFX_INPUTS:
+                    keep = set(uniq[:MAX_SFX_INPUTS])
+                    want = [(n, d) for n, d in want if n in keep]
+                    uniq = sorted(keep)
+                    _console(f"[Рендер] Звуков-акцентов слишком много — "
+                             f"оставляю {MAX_SFX_INPUTS} видов")
                 base = 2 + len(ovls)
                 slot = {n: base + k for k, n in enumerate(uniq)}
                 # Входы копим отдельно и подмешиваем в cmd только когда вся
@@ -1513,7 +1662,8 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                     used[n] += 1
                     lbl = f"sfx{len(sfx_labels)}"
                     sfx_parts.append(f"{src}adelay={delay_ms}:all=1,"
-                                     f"volume=0.3[{lbl}]")
+                                     f"volume={SFX_GAIN * float(snd['sfx_gain']):.3f}"
+                                     f"[{lbl}]")
                     sfx_labels.append(lbl)
                 if sfx_labels:
                     sfx_parts.append(
@@ -1558,9 +1708,14 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                         amb.append((p, float(sc["start"]), dur))
                 # Потолок: каждая дорожка — отдельный «-i», а длина команды
                 # Windows уже однажды рушила рендер после трёх часов работы.
-                if len(amb) > AMB_MAX_CLIPS:
+                # Сколько входов ещё можно потратить: всё, что уже в команде,
+                # уже занято (видео, голос, оверлеи, звуки-акценты).
+                used_inputs = sum(1 for a in cmd if a == "-i")
+                amb_cap = max(4, min(AMB_MAX_CLIPS,
+                                     MAX_TOTAL_INPUTS - used_inputs))
+                if len(amb) > amb_cap:
                     amb.sort(key=lambda x: -x[2])
-                    amb = amb[:AMB_MAX_CLIPS]
+                    amb = amb[:amb_cap]
                     amb.sort(key=lambda x: x[1])
                 if amb:
                     # Номер входа в ffmpeg = порядок его «-i» в команде.
@@ -1573,7 +1728,8 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                             f"[{base + k2}:a]atrim=0:{dur:.3f},"
                             f"asetpts=PTS-STARTPTS,"
                             f"adelay={int(t0 * 1000)}:all=1,"
-                            f"volume={AMB_GAIN}[{lbl}]")
+                            f"volume={AMB_GAIN * float(snd['clip_amb']):.3f}"
+                            f"[{lbl}]")
                         labels.append(lbl)
                     voice = (audio_map if audio_map.startswith("[")
                              else f"[{audio_map}]")
@@ -1590,7 +1746,9 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                     fc += ";" + ";".join(parts)
                     audio_map = "[ambout]"
                     log(f"[Рендер] Атмосфера ИИ-клипов: {len(amb)} дорожек "
-                        "подмешано под голос")
+                        f"подмешано под голос, громкость "
+                        f"{AMB_GAIN * float(snd['clip_amb']):.2f} "
+                        f"(профиль «{snd['name']}»)")
             except Exception as e:
                 log(f"[Рендер] Атмосфера пропущена "
                     f"({e.__class__.__name__}: {e})")
@@ -1698,6 +1856,13 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
             f"{len(IMAGE_MOTIONS)} движений картинки, "
             f"{len(set(VIDEO_MOTIONS))} движений видео, "
             f"цветокор: {look if look_chain else 'нет'}")
+    # Звуковой профиль называем по имени, как и цветокор: «случайный» в
+    # журнале не даёт понять, почему ролик звучит именно так.
+    snd = sound_palette_of(opts.get("palette", ""))
+    log(f"[Рендер] Звуковой профиль «{snd['name']}»: акценты на "
+        f"{float(snd['sfx_density']) * 100:.0f}% плашек, громкость акцентов "
+        f"x{float(snd['sfx_gain']):.2f}, атмосфера клипов "
+        f"x{float(snd['clip_amb']):.2f}")
 
     scenes = build_render_plan(parse_srt(srt), total, rng, intensity)
     assign_materials(scenes, out_dir, rng, log)

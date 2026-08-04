@@ -714,11 +714,15 @@ def add_music(voice_mp3: Path, music_path, log, gain_db: int = -14) -> Path:
 
 
 def add_ambience(base_mp3: Path, sfx_path, log, gain_db: int = -19,
-                 every: float = 22.0) -> Path:
+                 every: float = 22.0, palette: str = "") -> Path:
     """Сам раскидывает ASMR-звуки быта (шорох, звон ложки, вода) по дорожке:
     случайный звук из папки примерно каждые `every` секунд, тихо под голосом.
     Создаёт эффект присутствия, как в документалках Hidden Homestead.
-    sfx_path — папка/файлы со звуками. Пишет поверх base_mp3."""
+    sfx_path — папка/файлы со звуками. Пишет поверх base_mp3.
+
+    palette — звуковой профиль канала (SOUND_PALETTES): у тёплого канала
+    быта много и он близко, у хроники — сухой воздух и редкие шорохи. Без
+    палитры цифры остаются ровно теми, что передал вызывающий."""
     base_mp3 = Path(base_mp3)
     if not base_mp3.exists():
         raise FileNotFoundError(f"Нет дорожки: {base_mp3}")
@@ -728,6 +732,9 @@ def add_ambience(base_mp3: Path, sfx_path, log, gain_db: int = -19,
             "Нет ASMR-звуков. Положи в папку короткие звуки быта (шорох, "
             "звон, вода) — mp3/wav, и укажи её. Скачать можно бесплатно "
             "на pixabay.com/sound-effects.")
+    snd = sound_palette_of(palette)
+    gain_db = int(gain_db) + int(snd["amb_gain"])
+    every = float(every) * float(snd["amb_every"])
     dur = audio_duration(base_mp3) or 0
     if dur < 5:
         return base_mp3
@@ -745,8 +752,8 @@ def add_ambience(base_mp3: Path, sfx_path, log, gain_db: int = -19,
           + "[0:a]" + "".join(f"[a{k}]" for k in range(1, len(picks) + 1))
           + f"amix=inputs={mixn}:duration=first:normalize=0[mix]")
     dest = base_mp3.with_name("voiceover_asmr.mp3")
-    log(f"[ASMR] Раскидываю {n} звуков быта каждые ~{every:.0f} c "
-        f"(тихо, {gain_db} dB) — эффект присутствия")
+    log(f"[ASMR] Звуковой профиль «{snd['name']}»: {n} звуков быта каждые "
+        f"~{every:.0f} c (тихо, {gain_db} dB) — эффект присутствия")
     try:
         _run_child(["ffmpeg", "-y", "-i", str(base_mp3)] + inputs
                    + ["-filter_complex", fc, "-map", "[mix]",
@@ -2381,7 +2388,20 @@ def veo_image(prompt: str, dest: Path, api_key: str, log=print,
     media = data.get("media") or []
     if not media:
         raise RuntimeError("VeoNonStop Banana: ответ без картинки")
-    if upscale and not _upscale_off():
+    # Локальный путь: скачиваем оригинал и увеличиваем сами — второго
+    # запроса к Veo не делаем вовсе, cookie-слот свободен для следующего кадра.
+    if upscale and _upscale_mode() == "local":
+        download_file(media[0]["fifeUrl"], dest)
+        try:
+            from PIL import Image as _Im
+            with _Im.open(dest) as im:
+                w, h = im.size
+            if w and h and w < 2400:
+                upscale_local(dest, w * 2, h * 2, log)
+        except Exception as e:
+            log(f"[Картинка] Локальное увеличение пропущено ({e})")
+        return dest
+    if upscale and _upscale_mode() == "server" and not _upscale_off():
         last_err = None
         for attempt in range(2):
             try:
@@ -2416,6 +2436,68 @@ def veo_image(prompt: str, dest: Path, api_key: str, log=print,
 # Сколько раз пережидать занятость VeoNonStop, прежде чем сдаться. Фолбэков
 # на другие генераторы больше нет (разнородные кадры рушат единый вид ролика),
 # поэтому ждать — единственный способ не потерять план.
+# ---------- Увеличение кадра: у себя, а не в очереди к Veo ----------
+#
+# Апскейл у VeoNonStop — ОТДЕЛЬНЫЙ запрос, и он стоит в той же очереди к
+# единственному cookie-слоту, что и сама генерация. То есть каждый ИИ-кадр
+# обращается к сервису дважды.
+#
+# Замер ночи 2026-08-04 (7.7 ч работы): ожидание апскейла — 156 минут, 34%
+# всего времени. При этом в документации VeoNonStop апскейл описан как
+# «быстрый FFmpeg-путь на стороне сервера, ~4-8 секунд» — то есть нейросеть
+# там ничего не дорисовывает, это обычное масштабирование. Под нагрузкой оно
+# растягивалось до 180+ секунд просто из-за очереди.
+#
+# Значит выгоднее качать 720p и увеличивать локально: ffmpeg делает то же
+# самое за секунды и не занимает слот. Замер потери качества: PSNR 34.1 дБ
+# против серверного результата — разница есть, но небольшая и в основном на
+# мелкой фактуре.
+#
+# VEO_UPSCALE:  local (по умолчанию) | server | 0 (не увеличивать вовсе)
+def _upscale_mode() -> str:
+    v = os.getenv("VEO_UPSCALE", "local").strip().lower()
+    if v in ("0", "false", "no", "off"):
+        return "off"
+    if v in ("1", "true", "yes", "on", "server"):
+        return "server"
+    return "local"
+
+
+def upscale_local(path: Path, width: int, height: int, log=print) -> bool:
+    """Увеличить файл на месте до width x height через ffmpeg (lanczos).
+
+    Работает и с видео, и с картинкой. Неудача — не беда: кадр останется в
+    исходном разрешении, а рендер всё равно подгонит его под кадр.
+    """
+    src = Path(path)
+    if not src.exists():
+        return False
+    tmp = src.with_name(src.stem + "_up" + src.suffix)
+    args = ["ffmpeg", "-v", "error", "-i", str(src),
+            "-vf", f"scale={width}:{height}:flags=lanczos"]
+    if src.suffix.lower() in (".mp4", ".mov", ".webm"):
+        # -crf 16: увеличенный кадр не должен терять на компрессии больше,
+        # чем потерял на масштабировании
+        args += ["-c:v", "libx264", "-crf", "16", "-preset", "medium",
+                 "-pix_fmt", "yuv420p", "-c:a", "copy"]
+    else:
+        args += ["-q:v", "2"]
+    args += [str(tmp), "-y"]
+    try:
+        r = subprocess.run(args, capture_output=True, timeout=600,
+                           creationflags=CREATE_NO_WINDOW)
+        if r.returncode != 0 or not tmp.exists() or tmp.stat().st_size < 1024:
+            tmp.unlink(missing_ok=True)
+            return False
+        src.unlink(missing_ok=True)
+        tmp.rename(src)
+        return True
+    except Exception as e:
+        tmp.unlink(missing_ok=True)
+        log(f"[Кадр] Локальное увеличение не вышло ({e}) — оставляю как есть")
+        return False
+
+
 VEO_IMAGE_ATTEMPTS = 4
 VEO_IMAGE_BACKOFF = 6      # секунд; умножается на номер попытки
 
@@ -2447,6 +2529,11 @@ _VEO_LIMIT_SINCE = 0.0
 # могут освободиться через минуту, а мы проспим семнадцать, и в журнале на это
 # время тишина, неотличимая от зависания.
 VEO_PROBE_S = float(os.getenv("VEO_PROBE_S", "60"))
+# Доля провалов, выше которой аккаунт считается перегруженным и число потоков
+# срезается до числа cookie-слотов. Ниже — не трогаем: замер 2026-08-04 показал
+# 0 провалов на четырёх потоках при одном слоте, а срезание до одного стоило
+# шестикратного замедления.
+VEO_BAD_RATE = float(os.getenv("VEO_BAD_RATE", "0.30"))
 
 
 def _veo_image_models() -> list[str]:
@@ -2601,16 +2688,38 @@ def _veo_wait_out_limit(log=print) -> bool:
         log(f"[Картинка] Лимит держится дольше, чем отведено на прогон "
             f"({VEO_LIMIT_BUDGET_S / 60:.0f} мин) — дальше кадры идут со стока.",
             "warn")
+        # И БОЛЬШЕ НЕ СТУЧИМСЯ. Раньше возврат False означал только «этот
+        # план возьмёт сток», а следующий снова шёл в Veo — и так на каждом
+        # из сотни планов. Именно отсюда взялись 347 запросов на исчерпанный
+        # аккаунт, из-за которых поддержка и написала «не долбите сервер».
+        # Закрываем Veo целиком: раз лимит держится дольше полутора часов,
+        # он суточный, и до конца прогона там ловить нечего.
+        _veo_mark_down(log)
         return False
-    step = min(VEO_PROBE_S,
-               max(0.0, _VEO_LIMIT_UNTIL - time.time()),
+    # ЖДЁМ ВЕСЬ СРОК МОЛЧА, а не проверяем сервер каждую минуту.
+    #
+    # Так прямо попросила поддержка VeoNonStop 2026-08-04: «это лимит самого
+    # аккаунта Google, надо отключиться от сервера минут на 20 для ротации
+    # аккаунта» и отдельно — «НЕ НАДО ДОЛБИТЬ СЕРВЕР ЗАПРОСАМИ В ОГРОМНОМ
+    # КОЛИЧЕСТВЕ». Проверка раз в минуту ротации МЕШАЕТ: с их стороны это
+    # выглядит как непрерывный поток запросов на исчерпанный аккаунт.
+    #
+    # Замер, из-за которого они и написали: 347 упоров в лимит против всего
+    # 18 ожиданий — то есть на каждое честное ожидание приходилось два
+    # десятка бесполезных запросов.
+    step = min(max(0.0, _VEO_LIMIT_UNTIL - time.time()),
                VEO_LIMIT_BUDGET_S - _limit_elapsed())
     if step <= 0:
-        # окно ожидания вышло — начнём новое, если бюджет ещё позволяет
         _VEO_LIMIT_UNTIL = 0.0
-        return _VEO_LIMIT_SPENT < VEO_LIMIT_BUDGET_S
+        return _limit_elapsed() < VEO_LIMIT_BUDGET_S
     _sleep_cancel(step)          # «Стоп» прерывает ожидание
     _VEO_LIMIT_SPENT += step
+    # Отчитываемся о КАЖДОЙ пробе. Раньше писалась одна строка «проверяю
+    # каждые 60 c», а дальше журнал молчал минутами — со стороны это выглядит
+    # зависанием, и понять, идёт работа или всё умерло, было нельзя.
+    log(f"[Картинка] Лимит держится, жду дальше "
+        f"({_limit_elapsed() / 60:.0f} из "
+        f"{VEO_LIMIT_BUDGET_S / 60:.0f} мин)", "dim")
     return True
 
 
@@ -2642,7 +2751,7 @@ def _veo_mark_down(log=print) -> None:
 
 
 def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
-              style: str = "") -> Path:
+              style: str = "", wait_on_limit: bool = True) -> Path:
     """Картинка: VeoNonStop (Banana, ОСНОВНОЙ) -> Agnes -> Gemini (фолбэки,
     если Veo недоступен/ключ истёк/упал). style — единый визуальный стиль
     проекта (VISUAL_STYLES), добавляется к промпту."""
@@ -2703,6 +2812,14 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
         # И только когда упёрлись все — ждём.
         if veo_bench_key(veo_key, log):
             continue
+        # Ждать имеет смысл, только если кадр НУЖЕН. Для необязательной замены
+        # уже готового кадра ожидание — чистый вред: 2026-08-04 ролик был
+        # собран целиком (92/92), а полировка 13 кадров упёрлась в суточный
+        # лимит и заморозила конвейер на полтора часа ради косметики.
+        if not wait_on_limit:
+            log("[Картинка] Лимит исчерпан, а кадр необязательный — "
+                "не жду, оставляю как есть")
+            break
         if not _veo_wait_out_limit(log):
             break              # бюджет прогона исчерпан — только теперь сток
     log(f"[Картинка] VeoNonStop не справился ({last}) — этот план возьмёт "
@@ -3013,7 +3130,9 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
         if prefer_ai and os.getenv("VEO_API_KEY", "").strip():
             try:
                 jpg = dest.with_suffix(".ai.jpg")
-                gen_image(q, jpg, "", log, visual_style)
+                # wait_on_limit=False: это полировка уже готового ролика.
+                # Не вышло — остаётся прежний клип, конвейер идёт дальше.
+                gen_image(q, jpg, "", log, visual_style, wait_on_limit=False)
                 tmp_mp4 = dest.with_suffix(".ai.mp4")
                 ken_burns(jpg, tmp_mp4, duration=max(need, 6), fps=25)
                 dest.unlink(missing_ok=True)
@@ -3312,7 +3431,169 @@ def gen_variant_theme(topic: str, kind: str, api_key: str = "",
         return ""
 
 
-MUSIC_MOODS = ("calm", "dark", "upbeat", "epic", "horror")
+# Пул настроений музыки. СВЕРЕН С ТЕМ, ЧТО ЛЕЖИТ НА ДИСКЕ И ЧТО УМЕЮТ КАЧАТЬ
+# все три источника (OPENVERSE_MOOD_Q, ARCHIVE_MOOD_Q, JAMENDO_MOOD_TAGS).
+#
+# Раньше здесь было пять слов, и три из них не совпадали с библиотекой:
+# папки tense, sad и hopeful заполнялись при наполнении библиотеки, но
+# подборщик про них не знал и НИ РАЗУ не мог их взять. Замер на рабочей
+# машине: 38 треков из 84 (951 MB из 1.2 GB, то есть 79% скачанного объёма)
+# лежали мёртвым грузом. Разнообразие уже было оплачено и просто не доезжало
+# до ролика.
+#
+# Обратное несовпадение было опаснее: «horror» подборщик выбрать МОГ, а папки
+# horror нет ни на диске, ни в запросах Openverse/Архива. Такой выбор уводил
+# музыку в закачку по сети, и при неудаче всех трёх источников ролик выходил
+# вообще без музыки. Слово убрано из словаря, но не потеряно: MOOD_ALIASES
+# переводит его в dark, поэтому старые meta.json и ответы модели читаются
+# по-прежнему. Для abyss это ещё и правильнее по существу — канал
+# документальный и хоррор ему прямо противопоказан (см. avoid в channels.json).
+MUSIC_MOODS = ("calm", "dark", "tense", "sad", "epic", "upbeat", "hopeful")
+
+# Синонимы, которые встречались раньше или которые может выдать модель.
+# Не «лишняя строгость»: без неё ответ «horror» просто отбрасывался бы в
+# fallback, то есть настроение снова определялось бы жанром канала.
+MOOD_ALIASES = {
+    "horror": "dark", "scary": "dark", "ominous": "dark",
+    "suspense": "tense", "tension": "tense", "suspenseful": "tense",
+    "melancholy": "sad", "melancholic": "sad", "sombre": "sad", "somber": "sad",
+    "uplifting": "hopeful", "positive": "hopeful", "warm": "hopeful",
+    "energetic": "upbeat", "happy": "upbeat",
+    "cinematic": "epic", "dramatic": "epic",
+    "peaceful": "calm", "reflective": "calm", "ambient": "calm",
+}
+
+
+def normalize_mood(word: str, fallback: str = "") -> str:
+    """Слово -> настроение из MUSIC_MOODS. Пусто, если не опознано."""
+    w = re.sub(r"[^a-z]", "", (word or "").strip().lower())
+    if w in MUSIC_MOODS:
+        return w
+    return MOOD_ALIASES.get(w, fallback)
+
+
+# ---------- Звуковой почерк канала ----------
+#
+# До этого музыка, эмбиент и звуки-акценты подбирались ОДИНАКОВО для всех
+# каналов: одно и то же настроение из общего пула, одна громкость подложки,
+# одна плотность акцентов. Картинку каналам уже развели (render.PALETTES —
+# монтаж, ATMOSPHERE — атмосфера кадра), а звук остался общим, и три разных
+# канала продолжали звучать как один конвейер.
+#
+# Приём повторён СОЗНАТЕЛЬНО тот же, что для картинки, и его суть — множители
+# весов поверх ПОЛНОГО общего пула, а не свой короткий список на канал. Канал
+# с урезанным словарём настроений отличается не характером, а бедностью:
+# доступными остаются три настроения из пяти, и через десять роликов это
+# слышно как повтор. Здесь любому каналу доступны все MUSIC_MOODS — меняется
+# только то, как часто каждое выпадает. Нулей в множителях не бывает.
+#
+# Привязка — к тому же полю channels.json/"palette", что и картинка. Вторая
+# независимая настройка означала бы канал, настроенный наполовину: монтаж
+# документальный, а музыка бодрая.
+#
+# Поля профиля:
+#   moods         — множители к весам настроений музыки (см. pick_music_mood)
+#   music_gain    — сдвиг громкости подложки под голосом, dB (к базовым -14)
+#   sfx_density   — доля плашек, получающих звук-акцент (1.0 = все, как было)
+#   sfx_gain      — множитель громкости акцентов
+#   clip_amb      — множитель громкости атмосферы ИИ-клипов (дождь, ветер)
+#   amb_gain      — сдвиг громкости ASMR-звуков быта, dB
+#   amb_every     — множитель интервала между ними (>1 — реже)
+SOUND_PALETTES = {
+    # Хроника разрушений. Музыка отступает за голос и материал: в
+    # документалке этой ниши подложка не ведёт, а держит напряжение. Зато
+    # собственный звук съёмки громче обычного — он часть документа.
+    "harsh": {
+        "name": "хроника",
+        "moods": {"dark": 3.0, "tense": 2.6, "sad": 1.2, "epic": 0.9,
+                  "calm": 0.6, "hopeful": 0.25, "upbeat": 0.1},
+        "music_gain": -4, "sfx_density": 0.75, "sfx_gain": 1.15,
+        "clip_amb": 1.25, "amb_gain": -2, "amb_every": 1.3,
+    },
+    # Тёплый рассказ. Подложка слышна — она и создаёт уют; звуки быта частые
+    # и близкие, это подпись ниши (см. Hidden Homestead).
+    "warm": {
+        "name": "тёплый",
+        # Опорные настроения здесь upbeat и hopeful, а не calm: на calm
+        # сходятся ВСЕ каналы (модель отвечает им чаще всего на любую
+        # документалку), и тёплый канал, который тоже любит calm, оставался
+        # неотличим от созерцательного — замерено, расхождение падало до 15%.
+        "moods": {"upbeat": 3.0, "hopeful": 2.6, "calm": 1.5, "epic": 0.8,
+                  "sad": 0.3, "tense": 0.25, "dark": 0.15},
+        "music_gain": 1, "sfx_density": 1.0, "sfx_gain": 0.9,
+        "clip_amb": 1.0, "amb_gain": 2, "amb_every": 0.75,
+    },
+    # Созерцание. Музыка непрерывна и громче всех — на 35-минутной лекции она
+    # и есть атмосфера. Акценты, наоборот, редки: щелчок на каждой плашке
+    # рвёт то самое созерцание, ради которого зритель остался.
+    "contemplative": {
+        "name": "созерцание",
+        # sad и epic наравне с calm: биография философа — это масштаб и цена,
+        # заплаченная человеком, а не только тишина. Заодно это и есть то,
+        # чем канал расходится с тёплым: на одном calm они звучали почти
+        # одинаково.
+        "moods": {"sad": 2.4, "epic": 2.2, "calm": 2.0, "hopeful": 1.2,
+                  "dark": 0.9, "tense": 0.5, "upbeat": 0.15},
+        "music_gain": 3, "sfx_density": 0.35, "sfx_gain": 0.7,
+        "clip_amb": 0.85, "amb_gain": -3, "amb_every": 1.6,
+    },
+}
+# Нет палитры (проект вне каналов) — ровно прежнее поведение: общий пул с
+# общими весами и прежние громкости.
+SOUND_DEFAULT = {
+    "name": "общий",
+    "moods": {},
+    "music_gain": 0, "sfx_density": 1.0, "sfx_gain": 1.0,
+    "clip_amb": 1.0, "amb_gain": 0, "amb_every": 1.0,
+}
+
+# Насколько подсказка по содержанию сценария весит против остальных настроений.
+# Три к одному: содержание остаётся главным (ролик про обрушение не станет
+# бодрым оттого, что канал тёплый), но характер канала успевает сместить выбор.
+# Четыре к одному пробовали — при совпадении подсказки с любимым настроением
+# палитры вес перемножался, и два канала снова сходились в одну точку.
+MOOD_HINT_WEIGHT = 3.0
+
+
+def sound_palette_of(name: str) -> dict:
+    """Звуковой профиль по имени палитры канала. Незнакомое имя или пусто —
+    общий профиль, то есть поведение как до появления палитр."""
+    return SOUND_PALETTES.get((name or "").strip().lower(), SOUND_DEFAULT)
+
+
+def mood_weights(hint: str = "", palette: str = "") -> list[float]:
+    """Веса ВСЕХ настроений: подсказка по сценарию плюс характер канала.
+
+    Отдельной функцией — чтобы её можно было замерить, не подбирая музыку:
+    проверка «ни одно настроение не стало недоступно» это ровно проверка,
+    что в этом списке нет нулей.
+    """
+    hint = normalize_mood(hint)
+    mult = sound_palette_of(palette).get("moods") or {}
+    return [(MOOD_HINT_WEIGHT if m == hint else 1.0) * float(mult.get(m, 1.0))
+            for m in MUSIC_MOODS]
+
+
+def pick_music_mood(hint: str = "", palette: str = "",
+                    seed_text: str = "") -> str:
+    """Настроение музыки: что услышано в сценарии + чем канал звучит обычно.
+
+    hint (ответ guess_music_mood) остаётся главным — у него вес вчетверо
+    больше остальных. Палитра лишь смещает вероятности: один и тот же
+    сценарий на «harsh» скорее уйдёт в тревожное, на «warm» — в светлое.
+    Закрытых настроений нет ни у одного канала, см. mood_weights.
+
+    seed_text — обычно сам сценарий: повторная сборка того же ролика даёт ту
+    же музыку, а следующий ролик канала — другую. Сеять по пути проекта, как
+    project_style, здесь НЕЛЬЗЯ: рабочая папка у канала одна на все ролики,
+    и канал получил бы одно настроение навсегда.
+    """
+    import zlib
+    hint = normalize_mood(hint, "calm")
+    weights = mood_weights(hint, palette)
+    rng = (random.Random(zlib.crc32(seed_text.encode("utf-8", "replace")))
+           if seed_text else random)
+    return rng.choices(list(MUSIC_MOODS), weights=weights)[0]
 
 
 def guess_music_mood(script_text: str, fallback: str = "calm",
@@ -3334,14 +3615,19 @@ def guess_music_mood(script_text: str, fallback: str = "calm",
               "that fits its actual subject and emotional arc.\n"
               f"Allowed answers, reply with one word only: {', '.join(MUSIC_MOODS)}\n"
               "  calm = reflective, observational, gentle\n"
-              "  dark = tense, sombre, investigative, tragedy\n"
-              "  upbeat = light, curious, energetic, positive\n"
+              "  dark = dread, menace, sombre, tragedy\n"
+              "  tense = suspense, investigation, something about to give way\n"
+              "  sad = loss, mourning, a life that cost its owner dearly\n"
               "  epic = grand scale, awe, survival, historic weight\n"
-              "  horror = dread, menace, the supernatural\n\n"
+              "  upbeat = light, curious, energetic, practical\n"
+              "  hopeful = warm, reassuring, a problem being solved\n\n"
               f"NARRATION (first part):\n{text[:4000]}"}],
             api_key, 0.3, 20)
-        word = re.sub(r"[^a-z]", "", (out or "").strip().lower())
-        if word in MUSIC_MOODS:
+        # Через normalize_mood, а не сравнением со списком: модель охотно
+        # отвечает синонимом («suspenseful», «horror»), и раньше такой ответ
+        # уходил в fallback — то есть настроение опять определял жанр канала.
+        word = normalize_mood(out or "")
+        if word:
             return word
         log(f"[Музыка] Непонятный ответ про настроение ({out!r:.60}) — "
             f"остаюсь на «{fallback}»")
@@ -3390,9 +3676,13 @@ def pick_music_by_mood(music_dir: Path, mood: str) -> Path:
 # Jamendo единственный из бесплатных источников музыки с открытым API и
 # понятными Creative Commons лицензиями. Тег под каждое настроение — набор
 # самых ходовых тегов в их каталоге, не идеальный, но рабочий.
+# Ключи — ровно MUSIC_MOODS: этот словарь ещё и задаёт, какие папки создаёт
+# наполнение библиотеки. Пока в нём было пять слов из другого набора, папки
+# tense/sad/hopeful наполнялись только Openverse и Архивом, а Jamendo вместо
+# них заводил папку horror, которую подборщик потом искал и не находил.
 JAMENDO_MOOD_TAGS = {
-    "calm": "calm", "dark": "dark", "upbeat": "energetic",
-    "epic": "epic", "horror": "horror",
+    "calm": "calm", "dark": "dark", "tense": "suspense", "sad": "sad",
+    "epic": "epic", "upbeat": "energetic", "hopeful": "hopeful",
 }
 
 
@@ -3782,15 +4072,22 @@ def veo_video(prompt: str, dest: Path, api_key: str, log=print) -> Path:
     import veo_client
     # Апскейл — отдельная задача Veo. Для быстрого черновика его можно
     # отключить через VEO_UPSCALE=0: результат останется в 720p.
-    upscale = os.getenv("VEO_UPSCALE", "1").strip().lower() not in (
-        "0", "false", "no", "off"
-    )
-    quality = "1080p с апскейлом" if upscale else "720p без апскейла"
+    mode = _upscale_mode()
+    quality = {"server": "1080p, апскейл у них",
+               "local": "720p, увеличу локально",
+               "off": "720p без увеличения"}[mode]
     log(f"[Видео-ИИ] VeoNonStop ({quality}): «{prompt[:60]}» (1-3 мин)...")
     # _cancel_log: ожидание готовности живёт внутри veo_client, и оборвать его
     # можно только через тот log, который он зовёт на каждом опросе статуса
     veo_client.generate_video_and_wait(prompt, dest, api_key=api_key,
-                                       upscale=upscale, log=_cancel_log(log))
+                                       upscale=(mode == "server"),
+                                       log=_cancel_log(log))
+    if mode == "local":
+        # Второго запроса к Veo не делаем: их апскейл — это масштабирование
+        # ffmpeg на их стороне, стоящее в общей очереди. Делаем то же самое
+        # у себя за секунды и не занимаем cookie-слот.
+        if upscale_local(dest, 1920, 1080, log):
+            log(f"[Видео-ИИ] Увеличено локально до 1080p: {dest.name}")
     log(f"[Видео-ИИ] Готово: {dest.name}")
     return dest
 
@@ -5238,6 +5535,16 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
         # иначе выход из раскадровки ждал бы всю очередь Veo целиком.
         if CANCEL.is_set():
             return (i, False, None)
+        # Папку кадров создаём ПЕРЕД каждой записью, а не один раз в начале
+        # раскадровки. Она может исчезнуть посреди прогона — чистка временных
+        # файлов, антивирус, синхронизация облака, случайный rm. Так и вышло
+        # 2026-08-04: папку снесли на четвёртом часу, mkdir из начала стадии
+        # уже отработал, и КАЖДЫЙ следующий кадр падал с «No such file or
+        # directory», уходя на сток. Четыре с половиной часа генерации впустую.
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
         try:
             if kind == "photo":
                 # Фото могло появиться уже после сборки очереди — например его
@@ -5290,11 +5597,34 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
                 cookies = int(usage.get("cookies_allocated", 0))
             except (TypeError, ValueError):
                 pass
-            if cookies > 0 and cookies < limit:
-                log(f"[Раскадровка] VeoNonStop: тариф разрешает {limit} задач, "
-                    f"но cookie-слотов всего {cookies} — держу {cookies}, "
-                    "иначе половина задач уйдёт в лимит и будет создана дважды")
+            # Что РЕАЛЬНО ответил сервер. Нужно потому, что ограничитель по
+            # слотам однажды промолчал при cookies_allocated=1 в ответе API, и
+            # по журналу нельзя было понять, чего он не увидел. Строка дешёвая,
+            # печатается раз на прогон.
+            log(f"[Раскадровка] VeoNonStop отвечает: тариф {limit}, "
+                f"cookie-слотов {cookies}, занято "
+                f"{usage.get('active_tasks', '?')}", "dim")
+            # Жать до числа cookie-слотов НЕ всегда правильно. Замер показал
+            # оба исхода на одном и том же аккаунте (cookies_allocated=1):
+            #   ночью  — 4 потока, 52% задач в провал, двойная работа;
+            #   утром  — 4 потока, 0 провалов, 17 c на кадр;
+            #   днём   — 1 поток (сжали), 98 c на кадр, в шесть раз медленнее.
+            # Значит дело не в числе слотов, а в том, штормит сервер или нет.
+            # Смотрим на ФАКТИЧЕСКУЮ долю провалов аккаунта и жмёмся только
+            # когда она высокая: тупой потолок стоил трёх часов на ровном месте.
+            done_n = int(usage.get("completed_tasks", 0) or 0)
+            fail_n = int(usage.get("failed_tasks", 0) or 0)
+            bad = fail_n / max(1, done_n + fail_n)
+            if cookies > 0 and cookies < limit and bad > VEO_BAD_RATE:
+                log(f"[Раскадровка] VeoNonStop штормит: {100 * bad:.0f}% задач "
+                    f"в провал ({fail_n} из {done_n + fail_n}). Жмусь до "
+                    f"{cookies} потока по числу cookie-слотов, иначе половина "
+                    "уйдёт в лимит и будет создана дважды")
                 limit = cookies
+            elif cookies > 0 and cookies < limit:
+                log(f"[Раскадровка] Cookie-слот {cookies}, но провалов всего "
+                    f"{100 * bad:.0f}% — держу {limit} потока: сервер отвечает "
+                    "нормально, душить себя незачем")
             active = max(0, int(usage.get("active_tasks", 0)))
             free = max(0, limit - active)
             # В run_job фото и image-to-video идут последовательно: сначала
@@ -5431,8 +5761,38 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
 
     if queries is None and (agnes_key or os.getenv("AGNES_API_KEY", "")
             or os.getenv("GEMINI_API_KEY", "")):
-        log("[Раскадровка] Составляю умные запросы по смыслу текста (LLM)...")
-        queries = smart_queries(beats, agnes_key, log)
+        # ЗАПРОСЫ КЭШИРУЮТСЯ. Их сочиняет LLM, а значит на одних и тех же
+        # планах она каждый раз выдаёт чуть иные формулировки. Из запроса
+        # строится ИМЯ ФАЙЛА кадра — и после повторного запуска ни один
+        # готовый кадр не узнаётся. Замер 2026-08-04: при возобновлении
+        # подхватилось 2 из 76, остальные час генерировались заново.
+        # Ключ кэша — отпечаток самих планов: изменился сценарий или тайминги,
+        # запросы честно пересочиняются.
+        import hashlib as _hl
+        qfile = Path(out_dir) / "queries.json"
+        fp = _hl.sha1("|".join(b["text"] for b in beats).encode("utf-8")
+                      ).hexdigest()
+        cached = None
+        try:
+            saved = json.loads(qfile.read_text(encoding="utf-8"))
+            if saved.get("fingerprint") == fp and len(saved.get("queries") or []) == len(beats):
+                cached = saved["queries"]
+        except (OSError, ValueError, KeyError):
+            pass
+        if cached:
+            queries = cached
+            log(f"[Раскадровка] Запросы к кадрам взяты из прошлого прогона "
+                f"({len(queries)} шт.) — имена файлов совпадут, готовые кадры "
+                "переиспользуются")
+        else:
+            log("[Раскадровка] Составляю умные запросы по смыслу текста (LLM)...")
+            queries = smart_queries(beats, agnes_key, log)
+            try:
+                qfile.write_text(json.dumps(
+                    {"fingerprint": fp, "queries": queries},
+                    ensure_ascii=False), encoding="utf-8")
+            except OSError:
+                pass    # не сохранили — просто пересочиним в следующий раз
 
     def fetch_video(query, need, dest, line=""):
         """Клип под план из ВСЕХ доступных видео-библиотек сразу.
@@ -5769,6 +6129,8 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             # (тот же plan_kinds, что и в стоковой ветке) решает видео это
             # или фото — иначе ИИ-видео (Agnes/Veo) никогда бы не звучало.
             try:
+                # см. пояснение в run_job: папка может исчезнуть посреди прогона
+                sdir.mkdir(parents=True, exist_ok=True)
                 if want_photo:
                     jpg = sdir / f"beat_{i:03d}_{safe}_ai.jpg"
                     if not jpg.exists():   # уже мог подготовить префетч

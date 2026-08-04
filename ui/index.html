@@ -507,7 +507,7 @@
             <!-- Проверяет зрением, что кадр соответствует закадровому тексту,
                  и перекачивает несовпавшие — до рендера, где замена стоит
                  одну закачку, а не пересборку всего ролика. -->
-            <label class="switch"><input type="checkbox" id="rShots" checked><span class="tr"></span>Проверять кадры по тексту (ИИ)</label>
+            <label class="switch"><input type="checkbox" id="rShots"><span class="tr"></span>Проверять кадры по тексту (ИИ)</label>
           </div>
           <div class="sep"></div>
           <div class="sect">Эффекты поверх кадра</div>
@@ -648,7 +648,7 @@
     <div class="sect">Музыка</div>
     <div class="field">
       <label>Библиотека музыки</label>
-      <input type="text" id="sMusicLib" class="grow" placeholder="папка с подпапками calm/dark/upbeat/epic/horror">
+      <input type="text" id="sMusicLib" class="grow" placeholder="папка с подпапками calm/dark/tense/sad/epic/upbeat/hopeful">
       <button class="btn ghost" onclick="app.pickMusicLib()">Папка…</button>
     </div>
     <div class="field">
@@ -660,9 +660,12 @@
       <button class="btn ghost" onclick="app.fillMusicLib()">Наполнить</button>
     </div>
     <div class="hint" style="margin-top:10px">
-      Софт сам подбирает трек под жанр сценария (документальный→calm, крайм→dark,
-      топ-лист→upbeat, мотивация→epic, хоррор→horror). Без ключа Jamendo наполняй
-      эти 5 подпапок своими треками. С ключом «Наполнить» один раз скачает пачку
+      Софт сам подбирает трек по содержанию сценария, а затем смещает выбор под
+      звуковой профиль канала (палитра в профиле: harsh — тревожное и мрачное,
+      warm — бодрое и тёплое, contemplative — печальное и величественное).
+      Доступны все 7 настроений любому каналу, меняется только частота.
+      Без ключа Jamendo наполняй эти 7 подпапок своими треками. С ключом
+      «Наполнить» один раз скачает пачку
       лицензионных треков сразу под все настроения. Рядом с каждым кладётся
       .license.txt — на случай, если понадобится указать автора.
     </div>

@@ -1,103 +1,61 @@
 #!/usr/bin/env python3
-"""Ночной автопилот: по ролику на каждый канал, пока ноутбук стоит без тебя.
+"""Ночной автопилот из командной строки: по ролику на каждый канал.
 
 Запуск:
     python autopilot.py                  # по одному ролику на каждый канал
     python autopilot.py --videos 2       # по два ролика на канал
     python autopilot.py --channel abyss  # только этот канал
     python autopilot.py --draft          # черновое качество (быстрее)
+    python autopilot.py --plan           # только показать план, ничего не делать
+    python autopilot.py --fit            # старое поведение: пропускать каналы,
+                                         # которые точно не успеют до утра
 
 Утром: сводка в autopilot_report.txt, подробности — в app.log.
 
-Почему это не отдельная реализация пайплайна. Ролик собирает та же
-webapp.Api.generate_all, что и кнопка «Генерировать видео» в приложении.
-Копия цепочки жила бы своей жизнью: прошлая версия автопилота была именно
-копией, в ней стояло visual_mode="stock" и genvideo=False — и ночь работы
-давала ролики, целиком собранные из стоковых клипов, без единого ИИ-кадра.
-Здесь такого разъезда быть не может: шаг добавили в приложении — он есть и
-ночью.
 
-Что автопилот добавляет сверх кнопки:
-  * ролик каждой ночи уходит в СВОЮ папку с датой. Папка канала одна на все
-    ролики, и лежащий в ней script.txt цепочка считает готовым сценарием —
-    ночь подряд переозвучивала бы вчерашний текст вместо нового;
-  * канал, упавший на любом шаге, не уносит с собой остальные: ночь из трёх
-    каналов не должна пропадать целиком из-за одного;
-  * сводка за ночь одним файлом.
+ПОЧЕМУ ЗДЕСЬ НЕТ ЦИКЛА ПО КАНАЛАМ
+
+Ночь целиком живёт в webapp.Api.autopilot, а этот файл — тонкая обёртка:
+разбирает ключи, зовёт тот же метод, что и кнопка «Автопилот на ночь», и ждёт.
+Пока реализаций было две, они расходились молча и по мелочам, а стоило это
+целых ночей. Пример из ночи 2026-08-03: командная строка запускала каждый
+канал отдельной фоновой задачей и потому сбрасывала между каналами бюджет
+ожидания лимита Veo, а кнопка гнала всё одной задачей и не сбрасывала — второй
+канал у неё уходил на сток с первого кадра. Разъехались они не по злому
+умыслу, а потому что правку внесли в одном месте из двух.
+
+Ещё раньше копией был весь пайплайн: в той копии стояло visual_mode="stock" и
+genvideo=False, и ночь работы давала ролики, целиком собранные из стоковых
+клипов, без единого ИИ-кадра.
+
+Расчёт «что делать и сколько на это дать» тоже общий — он в night_plan.py,
+модуле без побочных эффектов (его можно импортировать и прогнать всухую, чего
+про этот файл сказать нельзя: он тянет webapp).
 """
 import argparse
 import os
 import sys
 import time
-import traceback
-from datetime import datetime
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE))
 
 import channels as channels_mod          # noqa: E402
-import webapp                            # noqa: E402
+import night_plan                        # noqa: E402
 
 REPORT = BASE / "autopilot_report.txt"
 
-# Опрос «задача ещё идёт?». Раз в 5 секунд: цепочка длится десятки минут,
+# Как часто спрашивать «ночь ещё идёт?». Раз в 5 секунд: ночь длится часами,
 # частить незачем.
 POLL_S = 5.0
-# Потолок на один ролик. Ночь конечна: зависший канал не должен съесть её
-# целиком, ролики следующих каналов важнее. Пустая переменная = считать по
-# длине канала (см. _budget_for).
-MAX_VIDEO_S = float(os.getenv("AUTOPILOT_MAX_VIDEO_S", "0"))
-
-# Замер 2026-08-03: один ИИ-кадр ≈ 110 c (текст→видео 55, фото→видео 68,
-# апскейл 52), один кадр закрывает ~9 c ролика, ИИ-доля 0.85. Отсюда минута
-# готового видео ≈ 10-11 минут работы.
-SEC_PER_VIDEO_MINUTE = 11 * 60
-
-
-# Сколько всего часов есть у ночи. Ночь конечна, а сумма каналов — нет:
-# замер 2026-08-03 дал 12.5 ч на три канала при десятичасовой ночи.
-NIGHT_H = float(os.getenv("AUTOPILOT_NIGHT_H", "10"))
-
-
-def _estimate_s(channel: dict) -> float:
-    """Сколько ПРИМЕРНО займёт ролик этого канала, по его длине."""
-    return float(channel.get("minutes") or 12) * SEC_PER_VIDEO_MINUTE
-
-
-def _fits(channel: dict, left_s: float) -> bool:
-    """Успеем ли доделать этот ролик в оставшееся время.
-
-    Смысл — НЕ НАЧИНАТЬ то, что не успеем закончить. Оборванный на середине
-    ролик хуже, чем неначатый: утром это папка с кадрами и без видео, из
-    которой всё равно ничего не выложить. Лучше два готовых ролика и один
-    честно пропущенный, чем два готовых и один огрызок.
-
-    Запас 15%: оценка средняя, а лимиты Veo добавляют непредсказуемые паузы.
-    """
-    return _estimate_s(channel) * 1.15 <= left_s
-
-
-def _budget_for(channel: dict) -> float:
-    """Сколько давать одному ролику, ПО ЕГО ДЛИНЕ, а не одним числом на всех.
-
-    Общий потолок в 6 часов был ошибкой: 13-минутный abyss укладывается в 2.3 ч,
-    а 45-минутный испанский идёт 7.8 ч — и его бросали бы недоделанным ровно
-    на середине, каждую ночь. Считаем от длины канала и добавляем половину
-    сверху: озвучка, субтитры и рендер тоже занимают время, а лимиты Veo
-    добавляют непредсказуемые паузы.
-    """
-    if MAX_VIDEO_S > 0:
-        return MAX_VIDEO_S          # задано руками — уважаем
-    minutes = float(channel.get("minutes") or 12)
-    return max(2 * 3600, minutes * SEC_PER_VIDEO_MINUTE * 1.5)
 
 
 def _params(draft: bool) -> dict:
     """Настройки прогона.
 
     Язык, жанр, голос, визуальный стиль и длину задаёт ПРОФИЛЬ КАНАЛА —
-    generate_all накладывает его через channels.apply_to_params поверх этих
+    цепочка накладывает его через channels.apply_to_params поверх этих
     значений. Здесь только то, чего в профиле нет.
 
     visual_mode="mixed" — не "stock". Ролик ради того и собирается ИИ-кадрами,
@@ -109,11 +67,13 @@ def _params(draft: bool) -> dict:
         "ai_ratio": 0.85,
         "script": "",            # пусто = цепочка сама возьмёт тему по нише
         "topic": "",
-        # Ровно та строка, что стоит в выпадающем списке интерфейса. Проверка
-        # в _tts_step ищет подстроку «Edge», и на «edge» строчными она НЕ
-        # срабатывает: 2026-08-03 автопилот из-за этого ушёл в Amazon Polly,
-        # получил NoCredentialsError (ключей AWS нет) и завалил канал сразу
-        # после готового сценария.
+        # Ровно та строка, что стоит в выпадающем списке интерфейса. 2026-08-03
+        # здесь стояло «edge» строчными, проверка в _tts_step искала «Edge» с
+        # учётом регистра и не срабатывала: автопилот уходил в Amazon Polly,
+        # получал NoCredentialsError (ключей AWS нет) и заваливал канал сразу
+        # после готового сценария. Саму проверку с тех пор сделали
+        # нечувствительной к регистру, но строку оставляем точной — совпадение
+        # с интерфейсом здесь и есть смысл этого поля.
         "engine": "Edge TTS (бесплатно)",
         "polly_engine": "neural",
         "rate": "0",
@@ -136,86 +96,6 @@ def _params(draft: bool) -> dict:
     }
 
 
-def project_dir_for_night(channel: dict) -> Path:
-    """Своя папка на каждый ролик: <канал>/2026-08-04, при повторе — _2, _3.
-
-    Без этого второй ролик за ночь лёг бы поверх первого, а лежащий в папке
-    script.txt цепочка приняла бы за готовый сценарий и вместо новой темы
-    переозвучила бы вчерашнюю.
-    """
-    root = channels_mod.projects_dir(channel)
-    if not root.is_absolute():
-        root = BASE / root
-    stamp = datetime.now().strftime("%Y-%m-%d")
-    d = root / stamp
-    i = 1
-    # Занятой считается ЛЮБАЯ существующая папка, даже пустая: пустую оставляет
-    # ролик, упавший на первом же шаге, и следующий лёг бы поверх него.
-    while d.exists():
-        i += 1
-        d = root / f"{stamp}_{i}"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def _wait(api, log, budget: float) -> bool:
-    """Дождаться конца задачи. True — дошла до конца, False — упёрлась в потолок.
-
-    budget приходит СНАРУЖИ, из _budget_for(канал). Раньше здесь читалась
-    глобальная MAX_VIDEO_S, а у неё значение по умолчанию стало 0 — то есть
-    первая же проверка срабатывала через секунду после старта, и автопилот
-    убивал каждый ролик, не дав ему начаться.
-
-    _bg гасит исключения внутри себя и просто снимает _busy, поэтому «как всё
-    прошло» видно не отсюда, а по тому, появился ли файл ролика.
-    """
-    t0 = time.time()
-    while api._busy:
-        if time.time() - t0 > budget:
-            log(f"[Автопилот] Ролик идёт дольше "
-                f"{budget / 3600:.1f} ч — останавливаю и перехожу "
-                "к следующему каналу")
-            api.stop_render()      # общий «Стоп»: гасит любую стадию, не только ffmpeg
-            # даём цепочке свернуться самой, прежде чем занимать её следующим
-            for _ in range(60):
-                if not api._busy:
-                    break
-                time.sleep(1)
-            return False
-        time.sleep(POLL_S)
-    return True
-
-
-def run_one(api, channel: dict, draft: bool, log) -> dict:
-    """Один ролик. Исключения наружу не пускает — их разбирает вызывающий."""
-    name = channel.get("name") or channel.get("id")
-    t0 = time.time()
-    api.channel_select(channel["id"])
-    budget = _budget_for(channel)
-    d = project_dir_for_night(channel)
-    api.set_project(str(d))
-    log(f"[Автопилот] «{name}» -> {d.name} "
-        f"({channel.get('minutes', '?')} мин, {channel.get('lang', '?')}); "
-        f"на этот ролик отвожу {budget / 3600:.1f} ч")
-
-    # Проверяем занятость ДО запуска, а не после. После — гонка: цепочка,
-    # упавшая на первой же строке, успевает снять _busy раньше, чем мы на него
-    # посмотрим, и настоящая ошибка подменилась бы выдуманным «занято».
-    if api._busy:
-        raise RuntimeError(f"занято другой задачей: {api._busy}")
-    api.generate_all(_params(draft))
-    finished = _wait(api, log, budget)
-
-    out = d / "output_final.mp4"
-    size = out.stat().st_size if out.exists() else 0
-    return {
-        "channel": name, "dir": d, "file": out if size else None,
-        "size": size, "sec": time.time() - t0,
-        "why": "" if size else ("прервано по таймауту" if not finished
-                                else "рендер не дал файла — смотри app.log"),
-    }
-
-
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Ночной автопилот: ролик на каждый канал")
@@ -224,15 +104,20 @@ def main() -> int:
                     help="сколько роликов на канал (по умолчанию 1)")
     ap.add_argument("--draft", action="store_true",
                     help="черновое качество — быстрее")
-    ap.add_argument("--night", type=float, default=NIGHT_H,
-                    help=f"сколько часов есть у ночи (по умолчанию {NIGHT_H:.0f})")
-    ap.add_argument("--all", action="store_true",
-                    help="гнать все каналы, даже если ночи не хватит "
-                         "(рискуешь недоделанным роликом)")
+    ap.add_argument("--night", type=float, default=night_plan.NIGHT_H,
+                    help=f"сколько часов есть у ночи "
+                         f"(по умолчанию {night_plan.NIGHT_H:.0f})")
+    # Ключ --all убран: пропуска, который он отменял, больше нет по умолчанию.
+    # Вместо него --fit включает СТАРОЕ поведение. Смысл перевернулся вместе с
+    # ценой обрыва: пока прерванный ролик означал переделку с нуля, начинать
+    # то, что не успеешь, было чистым убытком; теперь он доделывается
+    # следующей ночью за минуты, и убыток — наоборот, пропущенный канал.
+    ap.add_argument("--fit", action="store_true",
+                    help="пропускать каналы, которые точно не успеют до утра "
+                         "(прежнее поведение по умолчанию)")
+    ap.add_argument("--plan", action="store_true",
+                    help="показать план ночи и выйти, ничего не делая")
     args = ap.parse_args()
-
-    api = webapp.Api()
-    log = api.log                      # тот же журнал, что и у приложения
 
     chans = channels_mod.load()
     if args.channel:
@@ -244,72 +129,63 @@ def main() -> int:
             print(f"Канал «{args.channel}» не найден", file=sys.stderr)
             return 2
 
-    # КОРОТКИЕ ВПЕРЁД. Порядок решает, сколько роликов будет готово к утру:
-    # начав с самого длинного, можно потратить всю ночь на него одного.
-    chans = sorted(chans, key=_estimate_s)
+    plan = night_plan.dry_run(chans, args.night, args.videos, args.fit)
+    print(f"План ночи ({len(chans)} канал(ов) x {args.videos}, "
+          f"в ночи {args.night:.0f} ч):")
+    print(night_plan.format_plan(plan))
+    if args.plan:
+        # Сухой прогон намеренно НЕ импортирует webapp: его импорт сам по себе
+        # переписывает Overlay.tsx и ходит в платный API. Посмотреть план
+        # должно быть безопасно.
+        return 0
 
-    night_s = max(0.0, args.night) * 3600
-    started = datetime.now()
-    deadline = time.time() + night_s if night_s else 0.0
-    plan_h = sum(_estimate_s(c) for c in chans) * args.videos / 3600
-    log(f"[Автопилот] Ночь началась: {len(chans)} канал(ов) x {args.videos}. "
-        f"Ожидаемо {plan_h:.1f} ч работы"
-        + (f", в ночи {args.night:.0f} ч" if night_s else ", без ограничения")
-        + f". Качество: {'черновое' if args.draft else 'обычное'}")
-    if night_s and plan_h > args.night and not args.all:
-        log("[Автопилот] Всё не влезет — длинные каналы пропущу, чтобы не "
-            "оставить недоделанный ролик. Нужны все: ключ --all", "warn")
-    results = []
+    import webapp                        # noqa: E402  (тяжёлый импорт — по делу)
+    api = webapp.Api()
 
-    for ch in chans:
-        for _ in range(args.videos):
-            nm = ch.get("name") or ch.get("id")
-            # НЕ НАЧИНАЕМ то, что не успеем закончить: огрызок хуже, чем
-            # честно пропущенный канал — из него всё равно нечего выложить.
-            if deadline and not args.all:
-                left = deadline - time.time()
-                if not _fits(ch, left):
-                    log(f"[Автопилот] «{nm}» пропущен: нужно "
-                        f"~{_estimate_s(ch)/3600:.1f} ч, до утра осталось "
-                        f"{max(left,0)/3600:.1f} ч", "warn")
-                    results.append({"channel": nm, "dir": None, "file": None,
-                                    "size": 0, "sec": 0.0,
-                                    "why": "пропущен — не успевал до утра"})
-                    continue
-            try:
-                results.append(run_one(api, ch, args.draft, log))
-            except BaseException as e:
-                # BaseException, а не Exception: core.Cancelled и webapp.Stopped
-                # унаследованы от него, и без этого «Стоп» на одном канале унёс
-                # бы с собой всю оставшуюся ночь.
-                log(f"[Автопилот] «{nm}» упал: {e}", "err")
-                log(traceback.format_exc().rstrip(), "dim")
-                results.append({"channel": nm, "dir": None, "file": None,
-                                "size": 0, "sec": 0.0, "why": str(e)})
+    p = _params(args.draft)
+    p.update({"videos": args.videos, "night_h": args.night,
+              "fit_only": args.fit, "channel": args.channel or ""})
+    t_start = time.time()
+    api.autopilot(p)
+    if api._busy is None:
+        # Ночь даже не началась — «занято» другой задачей или каналы не нашлись.
+        # Без этой проверки дальше распечаталась бы сводка ПРОШЛОЙ ночи, и
+        # человек утром решил бы, что всё отработало.
+        print("Ночь не запустилась — смотри последние строки app.log",
+              file=sys.stderr)
+        return 2
 
-    ok = [r for r in results if r["file"]]
-    lines = [
-        "=" * 62,
-        f"Автопилот: {started:%Y-%m-%d %H:%M} — {datetime.now():%H:%M}",
-        f"Готово {len(ok)} из {len(results)}",
-        "=" * 62, "",
-    ]
-    for r in results:
-        if r["file"]:
-            lines.append(f"  ✔ {r['channel']}: {r['file']} "
-                         f"({r['size'] / 2**20:.0f} МБ, "
-                         f"{r['sec'] / 60:.0f} мин)")
-        else:
-            lines.append(f"  ✖ {r['channel']}: {r['why']}")
-    lines += ["", "Подробности каждого шага — в app.log.",
-              "Перед загрузкой на YouTube отметь «Altered content», если в "
-              "ролике есть реалистичные ИИ-кадры."]
-    report = "\n".join(lines)
-    REPORT.write_text(report + "\n", encoding="utf-8")
+    # Ночь идёт в фоновом потоке, как и по кнопке. Ждём её здесь, а не
+    # управляем ею: любое «управление» отсюда — это второй экземпляр логики,
+    # ровно то, из-за чего пути и разъезжались.
+    try:
+        while api._busy:
+            time.sleep(POLL_S)
+    except KeyboardInterrupt:
+        # Ctrl+C = «Стоп» человека, а не сбой канала. Раньше цикл по каналам
+        # ловил его через `except BaseException` наравне со сбоем канала, и
+        # прерывание не прерывало ничего: автопилот просто переходил к
+        # следующему каналу. Гасим ночь тем же путём, что и кнопка.
+        print("\nCtrl+C — останавливаю ночь…", file=sys.stderr)
+        api.stop_render()
+        for _ in range(120):
+            if not api._busy:
+                break
+            time.sleep(1)
+        return 130
+
+    # Сводку читаем, только если она НОВАЯ. Файл один на все ночи, и печатать
+    # вчерашний, когда сегодняшняя ночь не дописала свой, — прямой способ
+    # сказать человеку «всё готово» про несделанное.
+    fresh = REPORT.exists() and REPORT.stat().st_mtime >= t_start
+    report = REPORT.read_text(encoding="utf-8") if fresh else ""
+    if not report:
+        print("Сводка не записана — ночь оборвалась нештатно, смотри app.log",
+              file=sys.stderr)
+        return 1
     print("\n" + report)
-    for line in lines:
-        log(line)
-    return 0 if len(ok) == len(results) else 1
+    # Код возврата — по сводке: 0, только если у каждого канала стоит «+».
+    return 0 if report and "\n  - " not in report else 1
 
 
 if __name__ == "__main__":

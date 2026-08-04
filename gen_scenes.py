@@ -90,11 +90,20 @@ import type {{ SceneProps }} from '../types';
 
 export const {component}: React.FC<SceneProps> = (p) => {{ ... }};
 
-2. Import ONLY what you actually use. Unused imports fail the typecheck
-   (the project runs tsc with --strict and --noUnusedLocals).
+2. Import ONLY what you actually use, and declare NO variable you do not
+   use. The project runs tsc with --strict and --noUnusedLocals, so a
+   single leftover `const width = ...` or `const fps = ...` that you never
+   reference REJECTS THE WHOLE FILE. If you destructure useVideoConfig(),
+   take only the fields you actually need.
+   (Measured 2026-08-04: this single mistake caused half of all rejections.)
 3. Multiply your top-level opacity by `p.enter * p.exit`. Both must appear.
 4. It is a full-frame scene: a dark opaque background is CORRECT here
    (use background '#07090c'). Do NOT leave the frame empty.
+   Your drawing must be CLEARLY VISIBLE against that dark background:
+   use the light palette below for strokes and text, never dark-on-dark.
+   Keep every element inside the middle 80% of the frame — anything
+   positioned outside is invisible and the render comes out a flat fill,
+   which is an automatic rejection.
 5. Everything must be drawn with SVG or divs. No images, no fetch, no
    external files, no randomness, no Date/Math.random — the render must be
    deterministic and identical every time.
@@ -110,6 +119,59 @@ export const {component}: React.FC<SceneProps> = (p) => {{ ... }};
 Style: documentary schematic — thin lines, restrained palette (off-white
 #e9f2f6, amber accent #e0b44c, danger #d0523f), generous empty space. It must
 look like a diagram in an archival report, not like a mobile app UI.
+
+WORKING EXAMPLE — copy this structure exactly, change only the drawing.
+It compiles under --strict --noUnusedLocals. Note the interpolate signature:
+interpolate(frame, [inputStart, inputEnd], [outputStart, outputEnd], options)
+— four arguments, the two ranges are ARRAYS OF THE SAME LENGTH, and the
+options object is the ONLY place easing/extrapolate go. Passing a bare number
+as the fourth argument is the single most common compile error.
+
+import React from 'react';
+import {{ AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing }} from 'remotion';
+import type {{ SceneProps }} from '../types';
+
+export const ExampleScene: React.FC<SceneProps> = (p) => {{
+  const frame = useCurrentFrame();
+  const {{ fps }} = useVideoConfig();
+  const span = Math.max(1, Math.round((p.dur || 6) * fps));
+
+  const draw = interpolate(frame, [0, span * 0.5], [0, 1], {{
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  }});
+  const rise = interpolate(frame, [span * 0.2, span * 0.6], [24, 0], {{
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  }});
+  const pulse = interpolate(frame, [0, span * 0.5, span], [0.6, 1, 0.6], {{
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  }});
+
+  const opacity = p.enter * p.exit;
+  const LEN = 2 * Math.PI * 120;
+
+  return (
+    <AbsoluteFill style={{{{ background: '#07090c', opacity,
+                          justifyContent: 'center', alignItems: 'center' }}}}>
+      <svg width="52%" viewBox="0 0 400 320">
+        <circle cx={{200}} cy={{150}} r={{120}} fill="none" stroke="#e9f2f6"
+                strokeWidth={{3}} strokeDasharray={{LEN}}
+                strokeDashoffset={{LEN * (1 - draw)}} />
+        <line x1={{200}} y1={{150}} x2={{320}} y2={{150}} stroke="#e0b44c"
+              strokeWidth={{4}} opacity={{pulse}} />
+      </svg>
+      {{p.title ? (
+        <div style={{{{ marginTop: 28, transform: `translateY(${{rise}}px)`,
+                     fontFamily: "'Segoe UI', Arial, sans-serif",
+                     fontSize: 34, color: '#e9f2f6' }}}}>{{p.title}}</div>
+      ) : null}}
+    </AbsoluteFill>
+  );
+}};
 
 Reply with ONLY the TypeScript code. No markdown fences, no commentary.
 """
@@ -325,15 +387,41 @@ def propose(script_text: str, channel: dict, count: int = 8,
     return good[:count]
 
 
-def write_scene(idea: dict, api_key: str = "", log=print) -> str:
-    """Попросить модель написать КОД одной сцены."""
+def write_scene(idea: dict, api_key: str = "", log=print,
+                rejected: str = "", why: list | None = None) -> str:
+    """Попросить модель написать КОД одной сцены.
+
+    rejected/why — прошлая отвергнутая попытка и причины отказа. БЕЗ НИХ
+    повтор был буквально тем же запросом: тот же промпт — тот же ответ.
+    Замер ночи 2026-08-04: из шести сцен три отвергнуты, и у каждой все
+    три попытки провалились по одной и той же причине (неиспользуемая
+    переменная, залитый кадр) — модель не знала, что именно не так.
+    Ровно та же ошибка уже ловилась на главах сценария.
+    """
     import core
     kind = idea["kind"]
     prompt = CODE_PROMPT.format(
         quote=idea.get("quote", ""), brief=idea.get("brief", ""),
         title=idea.get("title", ""), component=_component_name(kind))
+    if rejected and why:
+        prompt += (
+            "\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED. Fix exactly these "
+            "problems and keep everything else:\n"
+            + "\n".join(f"  - {w}" for w in why)
+            + "\n\nCommon causes, in case they apply:\n"
+              "  - a variable you computed but never used (TypeScript is run "
+              "with --noUnusedLocals: DELETE it or actually use it)\n"
+              "  - everything you drew is the same colour as the background, "
+              "or positioned outside the frame, so the render is a flat fill\n"
+              "  - the animation finishes in the first frames, so the picture "
+              "at 25% and at 80% of the duration is identical\n"
+              "\nPREVIOUS ATTEMPT:\n" + rejected[:3000])
+    # Температура для КОДА низкая. 0.85 хороша для замыслов, но на коде
+    # даёт синтаксический мусор: замер 2026-08-04 — 26 отказов из 54 были
+    # не «скучно нарисовано», а «'}' expected» и «No overload matches».
+    # Разнообразие сцен обеспечивает propose(), а не дрожь в генераторе кода.
     return _strip_fences(core.llm_chat(
-        [{"role": "user", "content": prompt}], api_key, 0.85, 8000))
+        [{"role": "user", "content": prompt}], api_key, 0.3, 8000))
 
 
 def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
@@ -364,13 +452,16 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
             accepted.append(idea)
             log(f"[Сцены] {kind}: уже в библиотеке — беру готовую")
             continue
+        prev_code, prev_why = "", []
         for attempt in range(1, ATTEMPTS + 1):
             try:
-                code = write_scene(idea, api_key, log)
+                code = write_scene(idea, api_key, log,
+                                   rejected=prev_code, why=prev_why)
             except Exception as e:
                 log(f"[Сцены] {kind}: модель не ответила ({e})", "warn")
                 break
             bad = accept(kind, code, idea.get("title", ""), dur, log)
+            prev_code, prev_why = code, bad
             if not bad:
                 log(f"[Сцены] {kind}: ПРИНЯТА (попытка {attempt})")
                 lib[f"{channel.get('id','')}/{kind}"] = {

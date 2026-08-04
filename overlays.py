@@ -29,6 +29,7 @@ import json
 import math
 import base64
 import shutil
+import hashlib
 import subprocess
 from pathlib import Path
 
@@ -682,8 +683,14 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
                     key=lambda p: int(re.sub(r"[^\d]", "", p.stem) or 0))
     if not frames:
         raise RuntimeError("remotion render: нет кадров на выходе")
+    # os.replace, а не Path.rename: на Windows rename падает с WinError 183
+    # («файл уже существует»), стоит целевому имени быть занятым. Так и было —
+    # в папке оставались кадры прошлого прогона, они попадали в этот же список
+    # по *.png, и оверлей срывался в откат на встроенный вид. Папку теперь
+    # чистит _drop_frames перед рендером, но переименование обязано пережить
+    # и прямой вызов _render_remotion мимо build_overlays.
     for i, f in enumerate(frames):   # element-N.png -> %04d.png для ffmpeg
-        f.rename(dest_dir / f"{i:04d}.png")
+        os.replace(f, dest_dir / f"{i:04d}.png")
     return W, H
 
 
@@ -847,7 +854,7 @@ def _render_hyperframes(item: dict, W: int, H: int, fps: int, dest_dir: Path,
     if not frames:
         raise RuntimeError("hyperframes render: нет кадров на выходе")
     for i, f in enumerate(frames):   # frame_NNNNNN.png -> %04d.png для ffmpeg
-        f.rename(dest_dir / f"{i:04d}.png")
+        os.replace(f, dest_dir / f"{i:04d}.png")   # см. _render_remotion
     if (W, H) != (1920, 1080):
         scaled = dest_dir / "_scaled"
         scaled.mkdir(exist_ok=True)
@@ -863,7 +870,7 @@ def _render_hyperframes(item: dict, W: int, H: int, fps: int, dest_dir: Path,
         for f in dest_dir.glob("*.png"):
             f.unlink()
         for f in scaled.glob("*.png"):
-            f.rename(dest_dir / f.name)
+            os.replace(f, dest_dir / f.name)
         scaled.rmdir()
     return W, H
 
@@ -1487,6 +1494,166 @@ def _variant_options(out_dir, kind: str) -> tuple[str, ...]:
     return base + lib
 
 
+# ---------- Переиспользование готовых секвенций между прогонами ----------
+
+# Отпечаток лежит рядом с кадрами. Имя с точки — чтобы файл не мозолил глаза
+# среди 0000.png и точно не спутался с кадром: ffmpeg читает секвенцию строго
+# по маске %04d.png и на посторонний .json даже не смотрит.
+OVL_STAMP = ".overlay.json"
+
+
+def _code_stamp() -> str:
+    """Отпечаток КОДА, который рисует оверлеи.
+
+    Без него правка компонента (или самого overlays.py) осталась бы
+    незамеченной: исходные данные строки в overlays.txt те же, отпечаток
+    совпал — и прогон взял бы с диска ровно тот старый вид, ради замены
+    которого правку и делали. Такую подмену на глаз не поймать: плашка
+    выглядит нормально, просто не так, как теперь задумано.
+
+    Смотрим время правки файлов, а не их содержимое: ровно так же устроена
+    проверка свежести бандла в _remotion_bundle, и стоит это один stat на
+    файл (полторы сотни файлов на весь прогон).
+    """
+    newest = 0.0
+    for root, pat in ((REMOTION_DIR / "src", "**/*"),
+                      (REMOTION_DIR / "public", "**/*"),
+                      (HYPERFRAMES_DIR, "*.html"),
+                      (HYPERFRAMES_DIR / "compositions", "*.html"),
+                      (Path(__file__).parent, "overlays.py")):
+        try:
+            for p in root.glob(pat):
+                if p.is_file():
+                    newest = max(newest, p.stat().st_mtime)
+        except OSError:
+            pass          # папки может не быть (HyperFrames не установлен)
+    return f"{newest:.0f}"
+
+
+def _content_stamp(it: dict, out_dir) -> str:
+    """Отпечаток картинок, на которые ссылается content.
+
+    У popup/collage/gallery в кадре не текст, а сам файл, и путь к нему между
+    прогонами не меняется — меняется содержимое (кадры перекачиваются и
+    перегенерируются на каждом прогоне). По одной только строке overlays.txt
+    подмену не заметить, и оверлей молча показывал бы прошлую картинку.
+    """
+    if it["type"] not in ("popup", "collage", "gallery"):
+        return ""
+    rels = []
+    if it["type"] == "popup":
+        rels.append(it["content"])
+    else:               # "label::путь;;label::путь"
+        for chunk in it["content"].split(";;"):
+            _, _, rel = chunk.partition("::")
+            if rel.strip():
+                rels.append(rel.strip())
+    parts = []
+    for rel in rels:
+        img = Path(out_dir) / rel      # тот же поиск, что в _data_uri/_pillow
+        if not img.exists():
+            img = Path(rel)
+        try:
+            st = img.stat()
+            parts.append(f"{rel}:{st.st_size}:{int(st.st_mtime)}")
+        except OSError:
+            parts.append(f"{rel}:нет")
+    return "|".join(parts)
+
+
+def _overlay_sig(it: dict, W: int, H: int, fps: int, engine: str,
+                 variant: str, code_stamp: str, out_dir) -> str:
+    """Отпечаток всего, от чего зависит КАРТИНКА этого оверлея.
+
+    Момента показа (t) здесь намеренно нет: на пиксели он не влияет вообще,
+    а от его включения любая правка тайминга в overlays.txt означала бы
+    перерисовку всех секвенций ради неизменившихся кадров.
+
+    Зато есть variant и engine: один и тот же текст, нарисованный другим
+    видом или другим движком, — это другая плашка. Номер папки (ovl_NN)
+    привязан к порядку строк, так что после вставки одной строки в середину
+    overlays.txt в ovl_07 лежит уже ЧУЖОЙ оверлей — ловится тем, что у него
+    не сойдутся тип/текст/длительность/вид.
+    """
+    fields = ["v1", it["type"], it["content"], it.get("pos", ""),
+              f"{float(it['dur']):.3f}", variant or "", engine,
+              f"{W}x{H}@{fps}", code_stamp, _content_stamp(it, out_dir)]
+    return hashlib.sha1("\x1f".join(fields).encode("utf-8")).hexdigest()
+
+
+def _stamped_frames(dest: Path, sig: str, engine: str) -> dict | None:
+    """Готовая секвенция ИМЕННО этого оверлея — или None, если её нет."""
+    try:
+        rec = json.loads((dest / OVL_STAMP).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if rec.get("sig") != sig:
+        return None
+    # Кадры, нарисованные Pillow при живом Remotion, — это след аварии: движок
+    # один раз не отработал, и плашка ушла в упрощённый запасной вид. Данные у
+    # неё те же, отпечаток совпадёт — и без этой проверки одна осечка застряла
+    # бы в ролике навсегда, потому что каждый следующий прогон честно брал бы
+    # упрощённую плашку с диска. Перерисовка даёт движку второй шанс; если он
+    # всё ещё сломан, будет ровно то же, что и без переиспользования.
+    if rec.get("engine") == "pillow" and engine != "pillow":
+        return None
+    # Число кадров сверяем обязательно: файлы могли пропасть уже после
+    # отпечатка (чистка диска, антивирус, оборванное копирование), а
+    # неполная секвенция — это оверлей, который в ролике оборвётся на
+    # середине, причём молча: ffmpeg на нехватку кадров не жалуется.
+    if sum(1 for _ in dest.glob("*.png")) != rec.get("frames"):
+        return None
+    return rec
+
+
+def _drop_frames(dest: Path) -> None:
+    """Выкинуть кадры чужого/устаревшего оверлея перед рендером.
+
+    Обязательный шаг, а не уборка для порядка. Remotion пишет свои
+    element-NNN.png прямо в эту папку, после чего код переименовывает в
+    0000.png всё, что нашёл по *.png. Кадры прошлого прогона попадали в тот
+    же список — и переименование падало с WinError 183 («файл уже
+    существует»). В прогоне 2026-08-04 так осыпались 9 оверлеев из ~119:
+    каждый откатывался на встроенный вид или на Pillow.
+
+    Чистим ТОЛЬКО когда отпечаток не совпал: снести папки целиком перед
+    стартом означало бы каждый раз рисовать заново всё, ради чего и затеяно
+    переиспользование.
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / OVL_STAMP).unlink(missing_ok=True)
+    for old in dest.glob("*.png"):
+        try:
+            old.unlink()
+        except OSError:
+            pass          # занят другим процессом — рендер перезапишет сам
+
+
+def _stamp_frames(dest: Path, sig: str, geom: tuple, engine: str) -> None:
+    """Пометить готовую секвенцию — пишется ПОСЛЕ удачного рендера.
+
+    Порядок важен: оборванный на середине прогон (кнопка «Стоп», убитый
+    процесс) оставляет папку без отпечатка, и следующий раз честно рисует
+    её заново, а не подхватывает огрызок.
+
+    Геометрию (cw/ch/x/y) кладём сюда же: у водяного знака и у Pillow
+    положение в кадре считается ПО ХОДУ рендера (обрезка по непрозрачной
+    области, _position), и без записи взять секвенцию с диска было бы
+    нечем — плашка встала бы в угол вместо своего места.
+    """
+    cw, ch, x, y = geom
+    try:
+        (dest / OVL_STAMP).write_text(
+            json.dumps({"sig": sig,
+                        "frames": sum(1 for _ in dest.glob("*.png")),
+                        "cw": cw, "ch": ch, "x": x, "y": y,
+                        "engine": engine}, ensure_ascii=False),
+            encoding="utf-8")
+    except OSError:
+        pass              # не записали — потеряем время на следующем прогоне,
+                          # но не ролик
+
+
 def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                    log=print) -> list[dict]:
     """Читает overlays.txt проекта, рендерит секвенции.
@@ -1585,7 +1752,10 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
             why=f"{design} не отрисовался: {str(err)[:100]}",
             level="заметно")
 
-    out = []
+    # Отпечаток кода считаем один раз на прогон: он одинаков для всех
+    # оверлеев, а внутри — обход полутора сотен файлов.
+    code_stamp = _code_stamp()
+    out, reused, drawn = [], 0, 0
     for k, it in enumerate(items):
         try:
             dest = Path(tmp) / f"ovl_{k:02d}"
@@ -1600,6 +1770,29 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                 wheel_pos[it["type"]] += 1
             else:
                 lib_pick = picked.get(it["type"], "")
+            # Секвенция с прошлого прогона: один оверлей — это ~14 секунд
+            # Remotion, и на сотне оверлеев перезапуск ролика стоил 25 минут
+            # заново (замер 2026-08-04: четыре перезапуска одного видео —
+            # полтора часа впустую). Кадры всё это время лежали в render_tmp,
+            # просто код о них не знал.
+            sig = _overlay_sig(it, W, H, fps, engine, lib_pick, code_stamp,
+                               out_dir)
+            ready = _stamped_frames(dest, sig, engine)
+            if ready:
+                out.append({"pattern": str(dest / "%04d.png"),
+                            "t0": it["t"], "t1": it["t"] + it["dur"],
+                            "x": ready.get("x", 0), "y": ready.get("y", 0),
+                            "type": it["type"]})
+                reused += 1
+                mm, ss = divmod(int(it["t"]), 60)
+                log(f"[Оверлеи] {mm:02d}:{ss:02d} {it['type']}: "
+                    f"{it['content'][:50]} -> с диска "
+                    f"({ready.get('engine', '?')})")
+                continue
+            # Отпечаток не сошёлся — в папке либо огрызок, либо вовсе другой
+            # оверлей (номер папки привязан к порядку строк в overlays.txt).
+            # Смешивать его кадры с новыми нельзя, см. _drop_frames.
+            _drop_frames(dest)
             # Водяной знак идёт мимо всех общих веток: у него длительность
             # всего ролика, и покадровый рендер такой длины невозможен в
             # принципе — почему именно, см. _render_watermark. Вариант из
@@ -1767,6 +1960,8 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
             if used_engine == "pillow":
                 cw, ch = _pillow(it, dest)
                 x, y = _position(it["pos"], it["type"], cw, ch, W, H)
+            _stamp_frames(dest, sig, (cw, ch, x, y), used_engine)
+            drawn += 1
             out.append({"pattern": str(dest / "%04d.png"),
                         "t0": it["t"], "t1": it["t"] + it["dur"],
                         "x": x, "y": y, "type": it["type"]})
@@ -1791,6 +1986,9 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                       "(npm install) — без них типы compare/banner/collage/"
                       "titlecard пропадают целиком") if no_engine else "",
                 level="критично")
+    if reused:
+        log(f"[Оверлеи] Уже готово с прошлого прогона: {reused} секвенц. — "
+            f"не перерисовываю, беру с диска; отрисовано заново: {drawn}")
     return out
 
 

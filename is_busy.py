@@ -33,8 +33,11 @@ def main() -> int:
     if not LOG.exists():
         print("журнала нет — считаю, что ничего не идёт")
         return 0
-    # хвоста в 4000 строк с запасом хватает на любую задачу
-    lines = LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-4000:]
+    # Читаем ВЕСЬ журнал, а не хвост. Окно в 4000 строк казалось щедрым, но
+    # длинный прогон пишет десятки тысяч: метка «▶ запущено» уходила за край,
+    # проверка не находила её и отвечала «свободно» посреди генерации.
+    # Проверено вживую — соврала ровно так.
+    lines = LOG.read_text(encoding="utf-8", errors="replace").splitlines()
     open_task = None
     last_stage = ""
     for ln in lines:
