@@ -1,0 +1,42 @@
+{
+  "wall_thickness_differential": {
+    "verdict": "ok",
+    "why": "a grey rectangle and a smaller red rectangle with a dashed border, with dimension lines indicating a total width of 25mm and a reduced width of 22mm",
+    "checked": "2026-08-05 03:31",
+    "subject": "A close-up cross-section of the steel wall showing a 25mm block shrinking to 22mm as an 'acid' layer eats into the interior surface.",
+    "title": "Corrosion Allowance Deficit"
+  },
+  "stress_concentration_heatmap": {
+    "verdict": "ok",
+    "why": "A schematic nozzle outline with horizontal red lines curving and bunching into sharp inner corners, overlaid with glowing heat-map spots.",
+    "checked": "2026-08-05 03:32",
+    "subject": "A heat-map overlay on a nozzle weld showing stress lines bunching and turning bright red at the sharp interior corners.",
+    "title": "Nozzle Stress Concentration"
+  },
+  "comparison_diagram": {
+    "verdict": "ok",
+    "why": "one continuous horizontal red bar on the left and two shorter horizontal yellow bars separated by a gap on the right",
+    "checked": "2026-08-05 03:33",
+    "subject": "Side-by-side animation comparing the single rod design versus the two-rod modification.",
+    "title": "Modification Comparison"
+  },
+  "thermal_gradient_map": {
+    "verdict": "bad",
+    "why": "на кадре видно «a single flat reddish-orange rectangle outlined in white, a dashed yellow line underneath it, and text labels above and below»; не хватает: The drawing consists of a single flat-colored block without any color gradient shifting from blue to red, heat radiation arrows, or distinct layers representing the steam jacket and steel wall.",
+    "checked": "2026-08-05 03:34",
+    "subject": "A cross-section showing heat radiating from the steam jacket into the steel wall, with a color gradient shifting from blue (cold) to red (hot).",
+    "title": "Heating the Reactor Shell"
+  },
+  "vessel_cross_section": {
+    "verdict": "ok",
+    "why": "a vessel outline containing a dark filled region for liquid level, small yellow dots inside, an inlet pipe at the bottom, and a 20 FT height dimension line",
+    "checked": "2026-08-05 03:36",
+    "subject": "the diagram is named \"vessel cross section\" — the drawing must show exactly that"
+  },
+  "thermal_gradient_cross_section": {
+    "verdict": "bad",
+    "why": "на кадре видно «a horizontal rectangle divided into a flat reddish section containing a yellow dot and a flat dark gray section, with a text label 'Yield Strength: 50 MPa' and an L-shaped line beneath.»; не хватает: The drawing shows flat solid colors and a yield strength label, missing any thermal color gradient, temperature values, or cross-sectional layer details.",
+    "checked": "2026-08-05 03:37",
+    "subject": "the diagram is named \"thermal gradient cross section\" — the drawing must show exactly that"
+  }
+}

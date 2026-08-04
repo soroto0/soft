@@ -23,13 +23,22 @@
      которое посреди документального ролика читается как провал;
   3. НАСТОЯЩИЙ рендер двух кадров и разбор пикселей: не залито, нарисовано
      хоть что-то, достаточно цветов, между кадрами есть движение;
-  4. взгляд человека — сцены складываются в папку на просмотр.
+  4. ЗРЕНИЕ: отрисованный кадр показывают модели и спрашивают, изображает
+     ли он то, что заявлено замыслом. Ступени 1-3 отвечают на вопрос «код
+     рабочий?» и ни одна не отвечает на вопрос «на картинке видно то, что
+     обещано названием?». Сцена thermal_gradient_map прошла их все и
+     оказалась ровным розовым прямоугольником в рамке под заголовком
+     «steam jacket cross-section»: ни градиента, ни разреза. Пиксели такое
+     не ловят в принципе — заливка, меняющая цвет со временем, честно даёт
+     и цвета, и движение;
+  5. взгляд человека — сцены складываются в папку на просмотр.
 
 Файл намеренно отдельный от gen_remotion_gemini.py: тот при запуске
 перезаписывает живой Overlay.tsx.
 
-    python gen_scenes.py --channel abyss --project abyss --count 3
-    python gen_scenes.py --selftest      # негативный тест гейта
+    python gen_scenes.py --selftest              # негативный тест гейта
+    python gen_scenes.py --audit --limit 5       # досмотреть библиотеку
+    python gen_scenes.py --list                  # накопленные вердикты
 """
 import argparse
 import json
@@ -45,9 +54,26 @@ REMOTION = BASE / "remotion"
 SCENES_DIR = REMOTION / "src" / "scenes"
 REGISTRY = REMOTION / "src" / "Scene.tsx"
 LIBRARY = BASE / "scenes.json"
+# Вердикты зрения по УЖЕ НАПИСАННЫМ сценам. Отдельный файл, а не поле в
+# .tsx и не переименование файла: сцены лежат в remotion/src, и любая правка
+# там пересобирает весь проект Remotion — пометка не стоит того, чтобы
+# трогать исходники, которые в этот момент может рендерить ночной прогон.
+AUDIT = BASE / "scenes_audit.json"
+
+# Сцены, написанные РУКАМИ, а не моделью. Аудит их не трогает вовсе, и
+# пометиться на перегенерацию они не могут: иначе grow() однажды перезаписал
+# бы ручной компонент машинным, а взять его обратно было бы неоткуда.
+BUILTIN_SCENES = ("globe", "layers", "forces", "chart", "backdrop")
 
 # Сколько раз просить модель переписать сцену, если приёмка её отвергла.
 ATTEMPTS = 3
+
+# Доля длительности, на которой берём кадр для ЗРЕНИЯ. Не середина и не
+# четверть: почти все сцены дорисовываются постепенно (strokeDashoffset,
+# растущие столбцы), и на 25% схема ещё наполовину не появилась — модель
+# честно ответит «пусто», хотя сцена нормальная. 0.72 — уже дорисовано, но
+# ещё до затухания p.exit.
+VISION_AT = 0.72
 
 PROPOSE_PROMPT = """You are a documentary motion-graphics director.
 
@@ -128,12 +154,42 @@ export const {component}: React.FC<SceneProps> = (p) => {{ ... }};
    in the first half second.
 9. Caption: render p.title if present, near the bottom or top edge.
 10. No placeholder, TODO or FIXME anywhere.
+11. THE DRAWING MUST BE THE THING, NOT A LABEL FOR IT. A shape filled with
+    one flat colour, with a caption above it, is the most common failure
+    here and is rejected automatically: a real frame of your scene is
+    rendered and shown to a vision model, which is asked whether the
+    picture actually depicts "{title}". A caption saying "cross-section"
+    is a claim; only the drawing counts. Concretely:
+      - a GRADIENT is drawn as a gradient: an SVG <linearGradient> with 3+
+        stops, or a row of 8+ bands stepping in colour, with BOTH ends
+        labelled with their values (e.g. 18°C and 82°C). A single fill that
+        merely changes colour over time is NOT a gradient.
+      - a CROSS-SECTION shows what is inside: at least three distinct
+        layers/materials with visible boundaries between them, different
+        fills or hatching, each with a leader line and a name.
+      - a COMPARISON shows BOTH quantities in the same picture at the same
+        scale, each with its number — two bars, two columns, two circles.
+        One bar is not a comparison.
+      - a QUANTITY OVER TIME has a plotted polyline or path, a value axis
+        with 3+ ticks and numbers, and a time axis.
+      - a SEQUENCE OF STAGES shows the stages: numbered steps, or the same
+        object drawn three times in different states, joined by arrows.
+      - FORCES are arrows with a direction, a magnitude and a point of
+        application, drawn ON the object they act upon.
+      - a PATH or LEAK shows where it starts, what it passes through and
+        where it ends — not a single line across empty space.
+    Test yourself: cover the caption. A viewer who cannot read it must
+    still be able to say what the picture is about. Aim for 8-20 drawn
+    elements (use .map() over a small array of data — that is how you get
+    layers, ticks and bands without writing them out one by one), not 2.
 
 Style: documentary schematic — thin lines, restrained palette (off-white
 #e9f2f6, amber accent #e0b44c, danger #d0523f), generous empty space. It must
 look like a diagram in an archival report, not like a mobile app UI.
 
 WORKING EXAMPLE — copy this structure exactly, change only the drawing.
+Note how much is actually DRAWN: three named layers, a real gradient with
+three stops, a labelled axis, a moving front. That is the minimum density.
 It compiles under --strict --noUnusedLocals. Note the interpolate signature:
 interpolate(frame, [inputStart, inputEnd], [outputStart, outputEnd], options)
 — four arguments, the two ranges are ARRAYS OF THE SAME LENGTH, and the
@@ -149,36 +205,68 @@ export const ExampleScene: React.FC<SceneProps> = (p) => {{
   const {{ fps }} = useVideoConfig();
   const span = Math.max(1, Math.round((p.dur || 6) * fps));
 
-  const draw = interpolate(frame, [0, span * 0.5], [0, 1], {{
+  const draw = interpolate(frame, [0, span * 0.45], [0, 1], {{
     easing: Easing.out(Easing.cubic),
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   }});
-  const rise = interpolate(frame, [span * 0.2, span * 0.6], [24, 0], {{
-    easing: Easing.out(Easing.cubic),
+  const heat = interpolate(frame, [span * 0.2, span * 0.85], [0, 1], {{
+    easing: Easing.inOut(Easing.quad),
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   }});
-  const pulse = interpolate(frame, [0, span * 0.5, span], [0.6, 1, 0.6], {{
+  const rise = interpolate(frame, [span * 0.3, span * 0.7], [18, 0], {{
+    easing: Easing.out(Easing.cubic),
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   }});
 
   const opacity = p.enter * p.exit;
-  const LEN = 2 * Math.PI * 120;
+  const layers = [
+    {{ x: 60, w: 90, fill: '#c9d3d9', name: 'STEEL 25 mm' }},
+    {{ x: 150, w: 60, fill: '#8a949b', name: 'SCALE 6 mm' }},
+    {{ x: 210, w: 110, fill: '#5d6a73', name: 'LINING 40 mm' }},
+  ];
+  const ticks = [0, 1, 2, 3, 4];
 
   return (
     <AbsoluteFill style={{{{ opacity,
                           justifyContent: 'center', alignItems: 'center' }}}}>
-      <svg width="52%" viewBox="0 0 400 320">
-        <circle cx={{200}} cy={{150}} r={{120}} fill="none" stroke="#e9f2f6"
-                strokeWidth={{3}} strokeDasharray={{LEN}}
-                strokeDashoffset={{LEN * (1 - draw)}} />
-        <line x1={{200}} y1={{150}} x2={{320}} y2={{150}} stroke="#e0b44c"
-              strokeWidth={{4}} opacity={{pulse}} />
+      <svg width="62%" viewBox="0 0 420 250">
+        <defs>
+          <linearGradient id="heat" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#d0523f" />
+            <stop offset="0.45" stopColor="#e0b44c" />
+            <stop offset="1" stopColor="#5b7f9c" />
+          </linearGradient>
+        </defs>
+        {{layers.map((L) => (
+          <g key={{L.name}}>
+            <rect x={{L.x}} y={{190 - 120 * draw}} width={{L.w}}
+                  height={{120 * draw}} fill={{L.fill}}
+                  stroke="#e9f2f6" strokeWidth={{0.6}} />
+            <text x={{L.x + L.w / 2}} y={{58}} fill="#e9f2f6" fontSize={{9}}
+                  textAnchor="middle" opacity={{draw}}>{{L.name}}</text>
+          </g>
+        ))}}
+        <rect x={{60}} y={{70}} width={{260}} height={{120}} fill="url(#heat)"
+              opacity={{0.5 * heat}} />
+        <line x1={{60 + 260 * heat}} y1={{62}} x2={{60 + 260 * heat}} y2={{198}}
+              stroke="#e9f2f6" strokeWidth={{2}} strokeDasharray="4 3" />
+        {{ticks.map((t) => (
+          <g key={{t}}>
+            <line x1={{60 + t * 65}} y1={{190}} x2={{60 + t * 65}} y2={{198}}
+                  stroke="#e9f2f6" strokeWidth={{1}} />
+            <text x={{60 + t * 65}} y={{212}} fill="#e9f2f6" fontSize={{9}}
+                  textAnchor="middle">{{180 - t * 40}}°C</text>
+          </g>
+        ))}}
+        <text x={{60}} y={{234}} fill="#d0523f" fontSize={{10}}>FIRE SIDE</text>
+        <text x={{320}} y={{234}} fill="#5b7f9c" fontSize={{10}}
+              textAnchor="end">SHELL</text>
       </svg>
       {{p.title ? (
-        <div style={{{{ marginTop: 28, transform: `translateY(${{rise}}px)`,
+        <div style={{{{ marginTop: 26, transform: `translateY(${{rise}}px)`,
                      fontFamily: "'Segoe UI', Arial, sans-serif",
                      fontSize: 34, color: '#e9f2f6' }}}}>{{p.title}}</div>
       ) : null}}
@@ -188,6 +276,68 @@ export const ExampleScene: React.FC<SceneProps> = (p) => {{
 
 Reply with ONLY the TypeScript code. No markdown fences, no commentary.
 """
+
+
+# Вопрос зрению про ОТРИСОВАННЫЙ кадр. Списан с PICK_PROMPT в core.py —
+# тот же порядок «сначала опиши, что видишь, потом суди»: там замерено, что
+# без описания модель охотно подтверждает всё подряд (из 40 планов ни разу
+# не сказала «не подходит», хотя 19 были мимо). Здесь та же ловушка сильнее:
+# в кадре крупными буквами написано ровно то, что мы спрашиваем, и модель
+# читает подпись вместо картинки. Поэтому подпись объявлена НЕ ДОКАЗАТЕЛЬСТВОМ
+# прямым текстом, а описание требуется раньше вердикта.
+VISION_PROMPT = """This is one rendered frame of an animated SCHEMATIC
+diagram from a documentary. It is supposed to depict:
+
+  CAPTION SHOWN ON SCREEN: "__TITLE__"
+  WHAT IT MUST DEPICT: __SUBJECT__
+
+A schematic is not a photograph and not an illustration. Plain rectangles,
+flat colours, thin lines, printed numbers and a lot of empty space are the
+CORRECT style here. NEVER fail a picture for being abstract, for lacking
+texture, realism, detail, shading, materials or surroundings, or for not
+looking like the real object. Style is never a reason to fail.
+
+Judge one thing only: does the DRAWING carry the information it promises,
+or is the information only in the words printed on it? The caption is a
+claim, not evidence — a plain box labelled "cross-section" is still a plain
+box.
+
+It PASSES when the drawing itself carries the substance. For example:
+  - two quantities drawn to the same scale with their numbers, so you can
+    SEE which is bigger — that is a comparison, even as two plain bars
+  - a shape divided into distinct parts, layers or zones with boundaries
+  - a colour ramp, or a row of steps/bands running across something
+  - a plotted line or curve against an axis with ticks and numbers
+  - arrows showing a direction, a flow, a force or a sequence of stages
+  - a marked path with a start, something it passes through, and an end
+  - dimension lines, callouts or leader lines that name the parts
+
+It FAILS when the drawing carries nothing and the caption does all the work:
+  - a gradient promised, but the area is ONE flat colour
+  - a cross-section promised, but the shape is undivided: no layers, no
+    boundary, no parts, nothing inside
+  - a comparison promised, but only ONE quantity is drawn
+  - a graph promised, but no plotted curve, or no axis at all
+  - a process or sequence promised, but no stages and no arrows
+  - forces promised, but no arrows on the object they act upon
+  - a single shape with a caption, and nothing else
+
+Do not fail a picture because the animation looks unfinished at the edges —
+this is one frame out of many.
+
+Work in this order and do not skip a step:
+1. "shows" — say in a few words what is LITERALLY drawn: the shapes, lines,
+   bars, layers, arrows and numbers you can see. Do not repeat the caption
+   back and do not describe what it is supposed to mean.
+2. "depicts" — true if what you just described already carries the KEY FACT
+   of WHAT IT MUST DEPICT. Ask yourself: with the caption covered, could a
+   viewer read that fact off this picture? Judge substance, not polish.
+3. "why" — one short sentence; when false, name what is MISSING FROM THE
+   DRAWING (never "it looks too simple" or "it is not realistic").
+
+Reply with ONLY a JSON object, no markdown:
+{"shows": "<what is literally drawn>", "depicts": true|false,
+ "why": "<one sentence>"}"""
 
 
 def _strip_fences(s: str) -> str:
@@ -351,33 +501,72 @@ def check_static(src: str) -> list[str]:
     return bad
 
 
+def _still(kind: str, title: str, dur: float, at: float, dest: Path) -> str:
+    """Отрисовать ОДИН кадр сцены в dest. Возвращает текст ошибки или ''.
+
+    Вынесено из check_render, потому что кадр нужен теперь двум ступеням —
+    пиксельной и зрительной, — и они обязаны смотреть на ОДНО И ТО ЖЕ:
+    вторая копия вызова разъехалась бы по props (bare, items, lat/lon), и
+    зрение судило бы не ту картинку, что прошла пиксели.
+
+    bare=1 — БЕЗ общей подложки. Иначе проверка стала бы бессмысленной:
+    живой фон сам даёт и десятки цветов, и движение между кадрами, и
+    заглушка, не нарисовавшая ровно ничего, прошла бы её на чужой картинке.
+    """
+    props = {"kind": kind, "title": title, "dur": dur, "exit": 1, "enter": 1,
+             "bare": True,
+             "items": ["Опора A", "Опора B", "! Опора C"],
+             "lat": 55, "lon": 37}
+    fr = max(0, min(int(dur * 30) - 1, int(dur * 30 * at)))
+    r = subprocess.run(
+        ["npx", "remotion", "still", "Scene", str(dest), "--frame", str(fr),
+         "--image-format", "png", "--props", json.dumps(props, ensure_ascii=False)],
+        cwd=REMOTION, capture_output=True, text=True, encoding="utf-8",
+        errors="replace", timeout=600, shell=True)
+    if r.returncode != 0 or not dest.exists():
+        return f"рендер упал: {(r.stderr or '')[-200:]}"
+    return ""
+
+
+def _for_vision(png: Path) -> bytes:
+    """Кадр сцены -> картинка, которую есть смысл показывать модели.
+
+    Две обязательные поправки, без них проверка врёт:
+      1) при bare=1 фон кадра ПРОЗРАЧНЫЙ, и PNG раскладывается на белом.
+         Палитра сцен светлая (#e9f2f6) — на белом от схемы остаются
+         невидимые линии, и зрение честно отвечает «пустой кадр» про
+         нормальную сцену. Подкладываем тёмное, как настоящий Backdrop.
+      2) 1920x1080 модели не нужны и стоят токенов: ужимаем до 1024.
+    """
+    from PIL import Image
+    im = Image.open(png).convert("RGBA")
+    flat = Image.alpha_composite(
+        Image.new("RGBA", im.size, (11, 13, 16, 255)), im).convert("RGB")
+    flat.thumbnail((1024, 1024))
+    import io
+    buf = io.BytesIO()
+    # PNG, а не JPEG: vision_chat в core.py отдаёт байты дальше с mime
+    # image/png и своего параметра под другой формат не имеет
+    flat.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
 def check_render(kind: str, title: str, dur: float, log=print) -> list[str]:
     """Ступень 3: настоящий рендер и разбор пикселей.
 
-    Рендерим с bare=1, то есть БЕЗ общей подложки. Иначе проверка стала бы
-    бессмысленной: живой фон сам даёт и десятки цветов, и движение между
-    кадрами, и заглушка, не нарисовавшая ровно ничего, прошла бы её на
-    чужой картинке. С bare в кадре остаётся только то, что нарисовала сама
-    сцена, — а именно это мы и хотим измерить.
+    Отвечает на вопрос «сцена вообще что-то нарисовала и это шевелится».
+    На вопрос «нарисовано ли то, что заявлено» отвечает check_vision.
     """
     from PIL import Image
     import tempfile
     bad = []
     tmp = Path(tempfile.mkdtemp())
-    props = {"kind": kind, "title": title, "dur": dur, "exit": 1, "enter": 1,
-             "bare": True,
-             "items": ["Опора A", "Опора B", "! Опора C"],
-             "lat": 55, "lon": 37}
     shots = []
-    for fr in (int(dur * 30 * 0.25), int(dur * 30 * 0.8)):
-        dest = tmp / f"f{fr}.png"
-        r = subprocess.run(
-            ["npx", "remotion", "still", "Scene", str(dest), "--frame", str(fr),
-             "--image-format", "png", "--props", json.dumps(props, ensure_ascii=False)],
-            cwd=REMOTION, capture_output=True, text=True, encoding="utf-8",
-            errors="replace", timeout=600, shell=True)
-        if r.returncode != 0 or not dest.exists():
-            return [f"рендер упал: {r.stderr[-200:]}"]
+    for at in (0.25, 0.8):
+        dest = tmp / f"f{at}.png"
+        err = _still(kind, title, dur, at, dest)
+        if err:
+            return [err]
         shots.append(dest)
 
     stats = []
@@ -397,6 +586,93 @@ def check_render(kind: str, title: str, dur: float, log=print) -> list[str]:
     if a == b:
         bad.append("между началом и концом ничего не изменилось — нет анимации")
     return bad
+
+
+# Что вернула ступень зрения. Три исхода, а не два, — и это главное решение
+# в этом файле, см. комментарий в check_vision.
+VISION_OK = "ok"            # на кадре видно заявленное
+VISION_BAD = "bad"          # кадр не про то, что обещано именем сцены
+VISION_BLIND = "unverified"  # посмотреть не удалось (квота, сеть, отказ)
+
+
+def check_vision(kind: str, title: str, subject: str, dur: float = 6.0,
+                 api_key: str = "", log=print,
+                 png: Path | None = None) -> tuple[str, str]:
+    """Ступень 4: посмотреть на ОТРИСОВАННЫЙ кадр и спросить, то ли на нём.
+
+    Зачем отдельная ступень. Все предыдущие отвечают на вопрос «код
+    рабочий?»: компилируется, корень прозрачный, цветов больше одного,
+    между кадрами есть движение. Сцена thermal_gradient_map прошла их все и
+    оказалась РОВНЫМ РОЗОВЫМ ПРЯМОУГОЛЬНИКОМ в рамке под заголовком «steam
+    jacket cross-section»: ни градиента, ни разреза. Пиксельная проверка
+    такое не поймает никогда — прямоугольник, меняющий цвет со временем,
+    честно даёт и цвета, и движение. Отличить схему от подписанной заливки
+    может только тот, кто СМОТРИТ на картинку.
+
+    Приём взят с _vision_pick в core.py (выбор стокового кадра зрением):
+    тот же vision_chat с перебором ключей и моделей, тот же порядок вопросов
+    «опиши -> оцени -> ответь», тот же max_tokens=1500 (у моделей с
+    «размышлениями» меньший бюджет возвращает пустой ответ).
+
+    ЧТО ДЕЛАЕМ, КОГДА ЗРЕНИЕ НЕДОСТУПНО. Суточная квота Gemini считается на
+    пару «проект + модель» и выбирается регулярно — то есть отказ здесь не
+    исключение, а обычный вечер. Обе крайности плохи:
+      - считать невидимое браком значит останавливать конвейер ровно тогда,
+        когда он работает: сцены перестанут писаться, и каждый нарисованный
+        момент выродится в обычный кадр — та самая деградация «по лимиту»,
+        которой мы избегаем везде;
+      - считать невидимое годным молча значит вернуть ровно ту дыру, ради
+        которой всё это писалось, только теперь с видимостью проверки.
+    Поэтому третий исход: ПРИНИМАЕМ, но помечаем сцену как непроверенную —
+    в журнал предупреждением, в scenes.json полем vision и в scenes_audit.json
+    отдельной записью. Непроверенная сцена работает, но её видно в списке, и
+    `--audit` на живой квоте досматривает её позже. Брак так задерживается
+    максимум до следующего аудита, а ночь не встаёт.
+    """
+    import core
+    import tempfile
+    subject = (subject or "").strip()
+    if not subject:
+        # Не с чем сравнивать: без замысла («что должно быть нарисовано»)
+        # вопрос модели вырождается в «красиво ли», а это не проверка.
+        return VISION_BLIND, "нечего проверять: у сцены нет описания замысла"
+
+    tmp = None
+    if png is None:
+        tmp = Path(tempfile.mkdtemp())
+        png = tmp / f"{kind}.png"
+        err = _still(kind, title, dur, VISION_AT, png)
+        if err:
+            return VISION_BLIND, err
+
+    prompt = (VISION_PROMPT
+              .replace("__TITLE__", str(title or "(нет подписи)")[:120])
+              .replace("__SUBJECT__", subject[:400].replace("\n", " ")))
+    try:
+        out = core.vision_chat(
+            prompt, _for_vision(png), api_key,
+            system="You are a documentary fact-checker looking at a diagram.",
+            max_tokens=1500)
+    except Exception as e:
+        return VISION_BLIND, core._redact(e) if hasattr(core, "_redact") else str(e)
+
+    m = re.search(r"\{.*\}", out, re.S)
+    if not m:
+        return VISION_BLIND, f"ответ зрения не разобрался: {out[:160]}"
+    try:
+        ans = json.loads(m.group(0))
+    except ValueError:
+        return VISION_BLIND, f"ответ зрения не JSON: {out[:160]}"
+
+    shows = str(ans.get("shows", "")).strip()
+    why = str(ans.get("why", "")).strip()
+    if ans.get("depicts") is True:
+        return VISION_OK, shows
+    # Ровно как в _vision_pick: вердикт весомее номера/описания. Отсутствие
+    # "depicts": true считаем отказом, а не сбоем — модель ответила, просто
+    # не подтвердила.
+    return VISION_BAD, (f"на кадре видно «{shows}»; не хватает: {why}"
+                        if shows else why or "модель не подтвердила замысел")
 
 
 def register(kind: str, component: str) -> None:
@@ -426,8 +702,61 @@ def typecheck() -> tuple[bool, str]:
     return r.returncode == 0, (r.stdout or r.stderr)[-900:]
 
 
-def accept(kind: str, code: str, title: str, dur: float, log=print) -> list[str]:
-    """Прогнать сцену через все ступени. Пустой список = принята."""
+# ---------- Журнал вердиктов зрения по библиотеке сцен ----------
+
+def audit_load() -> dict:
+    try:
+        data = json.loads(AUDIT.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def audit_mark(kind: str, verdict: str, why: str = "", subject: str = "",
+               title: str = "") -> None:
+    """Записать вердикт по сцене. ТОЛЬКО в данные.
+
+    Помечаем, а не удаляем и не переписываем .tsx: файлы сцен лежат в
+    remotion/src, Remotion собирает весь проект целиком, и правка ради
+    пометки может обрушить сборку идущего в этот момент рендера. К тому же
+    удалённая сцена унесла бы с собой и замысел, по которому её надо
+    переписать.
+    """
+    from datetime import datetime
+    data = audit_load()
+    rec = data.get(kind) or {}
+    rec.update({"verdict": verdict, "why": why[:400],
+                "checked": datetime.now().strftime("%Y-%m-%d %H:%M")})
+    if subject:
+        rec["subject"] = subject[:300]
+    if title:
+        rec["title"] = title[:120]
+    data[kind] = rec
+    AUDIT.write_text(json.dumps(data, ensure_ascii=False, indent=2),
+                     encoding="utf-8")
+
+
+def quarantined() -> dict:
+    """Сцены, про которые зрение сказало «нарисовано не то» — {kind: причина}.
+
+    Их нельзя переиспользовать: библиотека сцен общая, и одна такая сцена
+    кочует из ролика в ролик, пока её не перепишут.
+    """
+    return {k: v.get("why", "") for k, v in audit_load().items()
+            if v.get("verdict") == VISION_BAD and k not in BUILTIN_SCENES}
+
+
+def accept(kind: str, code: str, title: str, dur: float, log=print,
+           subject: str = "", api_key: str = "",
+           report: dict | None = None) -> list[str]:
+    """Прогнать сцену через все ступени. Пустой список = принята.
+
+    subject — что сцена ОБЯЗАНА изобразить (brief замысла). Без него ступень
+    зрения пропускается: сравнивать картинку не с чем.
+    report — сюда кладётся исход зрения (ok/bad/unverified) для вызывающего;
+    новый необязательный аргумент, чтобы не менять сигнатуру для старых
+    вызовов (селф-тест зовёт accept без него).
+    """
     component = _component_name(kind)
     path = SCENES_DIR / f"{kind}.tsx"
     SCENES_DIR.mkdir(parents=True, exist_ok=True)
@@ -441,6 +770,23 @@ def accept(kind: str, code: str, title: str, dur: float, log=print) -> list[str]
             bad.append(f"не проходит типизацию проекта: {out.strip()[:300]}")
     if not bad:
         bad = check_render(kind, title, dur, log)
+    if not bad and subject:
+        verdict, why = check_vision(kind, title, subject, dur, api_key, log)
+        if report is not None:
+            report["vision"], report["vision_why"] = verdict, why
+        if verdict == VISION_BAD:
+            # Формулируем ПРЕТЕНЗИЮ СЛОВАМИ МОДЕЛИ: этот текст уходит в
+            # следующую попытку (write_scene подставляет why в промпт), и
+            # «модель видит у тебя один плоский прямоугольник» правит код
+            # куда лучше, чем «сцена не принята».
+            bad.append(f"на отрисованном кадре не видно заявленного "
+                       f"({subject[:120]}): {why}")
+        elif verdict == VISION_BLIND:
+            log(f"[Сцены] {kind}: зрение недоступно ({why[:120]}) — принимаю "
+                "НЕПРОВЕРЕННОЙ, пометил в scenes_audit.json", "warn")
+            audit_mark(kind, VISION_BLIND, why, subject, title)
+        else:
+            audit_mark(kind, VISION_OK, why, subject, title)
 
     if bad:
         unregister(kind, component)
@@ -562,6 +908,12 @@ def write_scene(idea: dict, api_key: str = "", log=print,
               "or positioned outside the frame, so the render is a flat fill\n"
               "  - the animation finishes in the first frames, so the picture "
               "at 25% and at 80% of the duration is identical\n"
+              "  - the picture is one shape filled with a single flat colour "
+              "with a caption over it. The caption is not the drawing. Draw "
+              "the gradient stops, the layers and their boundaries, the "
+              "second bar of the comparison, the axis with its numbers — "
+              "a rendered frame is shown to a vision model and it is asked "
+              "whether the promised thing is actually visible\n"
               "\nPREVIOUS ATTEMPT:\n" + rejected[:3000])
     # Температура для КОДА низкая. 0.85 хороша для замыслов, но на коде
     # даёт синтаксический мусор: замер 2026-08-04 — 26 отказов из 54 были
@@ -590,16 +942,40 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
 
     accepted = []
     have = set(available_scenes())
+    # Сцены, которые аудит уже признал не изображающими своё название.
+    # Библиотека ОБЩАЯ и переиспользуемая, поэтому один розовый прямоугольник
+    # без такой проверки кочует из ролика в ролик неограниченно долго.
+    quar = quarantined()
     for idea in ideas:
         kind = idea["kind"]
+        redo = ""
         if kind in have:
-            # Такая сцена уже есть — не переписываем, просто используем.
-            # Так библиотека канала копится между роликами, а не
-            # переделывается заново каждую ночь.
-            accepted.append(idea)
-            log(f"[Сцены] {kind}: уже в библиотеке — беру готовую")
-            continue
+            redo = quar.get(kind, "")
+            if not redo:
+                # Такая сцена уже есть — не переписываем, просто используем.
+                # Так библиотека канала копится между роликами, а не
+                # переделывается заново каждую ночь.
+                accepted.append(idea)
+                log(f"[Сцены] {kind}: уже в библиотеке — беру готовую")
+                continue
+            log(f"[Сцены] {kind}: помечена на перегенерацию ({redo[:120]}) — "
+                "пишу заново вместо того, чтобы брать готовую", "warn")
+        # Старый код сцены на случай, если переписать не выйдет. accept()
+        # при отказе СТИРАЕТ файл и вычищает его из Scene.tsx — для новой
+        # сцены это правильно, а для существующей означало бы, что неудачная
+        # ночь молча уносит сцену, на которую ссылаются другие ролики.
+        # Лучше вернуть прежнюю (пусть и плохую) версию: она хотя бы
+        # собирается, а пометка на перегенерацию остаётся висеть.
+        old_code = ""
+        if redo:
+            try:
+                old_code = (SCENES_DIR / f"{kind}.tsx").read_text(encoding="utf-8")
+            except OSError:
+                pass
+        # Что сцена ОБЯЗАНА изобразить — это и есть вопрос к зрению.
+        subject = (idea.get("brief") or idea.get("quote") or "").strip()
         prev_code, prev_why = "", []
+        done = False
         for attempt in range(1, ATTEMPTS + 1):
             try:
                 code = write_scene(idea, api_key, log,
@@ -607,29 +983,153 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
             except Exception as e:
                 log(f"[Сцены] {kind}: модель не ответила ({e})", "warn")
                 break
-            bad = accept(kind, code, idea.get("title", ""), dur, log)
+            report: dict = {}
+            bad = accept(kind, code, idea.get("title", ""), dur, log,
+                         subject=subject, api_key=api_key, report=report)
             prev_code, prev_why = code, bad
             if not bad:
-                log(f"[Сцены] {kind}: ПРИНЯТА (попытка {attempt})")
+                seen = report.get("vision", VISION_BLIND)
+                log(f"[Сцены] {kind}: ПРИНЯТА (попытка {attempt})"
+                    + ("" if seen == VISION_OK else
+                       " — но кадр зрением НЕ ПРОВЕРЕН, помечена в "
+                       "scenes_audit.json"))
                 lib[f"{channel.get('id','')}/{kind}"] = {
                     "kind": kind, "channel": channel.get("id", ""),
                     "title": idea.get("title", ""),
                     "quote": idea.get("quote", "")[:200],
                     "brief": idea.get("brief", "")[:300],
+                    # Видел ли кто-нибудь эту сцену глазами. Поле нужно
+                    # именно в библиотеке: по нему `--audit --unverified`
+                    # потом досматривает то, что прошло на выбранной квоте.
+                    "vision": seen,
                 }
                 accepted.append(idea)
                 have.add(kind)
+                done = True
                 break
             log(f"[Сцены] {kind}: отклонена (попытка {attempt}/{ATTEMPTS}) — "
                 + "; ".join(bad)[:200], "warn")
-        else:
-            log(f"[Сцены] {kind}: не прошла приёмку за {ATTEMPTS} попытки — "
-                "этот момент останется обычным кадром", "warn")
+        if not done:
+            log(f"[Сцены] {kind}: не прошла приёмку — этот момент останется "
+                "обычным кадром", "warn")
+            # Восстанавливаем ИМЕННО ЗДЕСЬ, а не в ветке «кончились попытки»:
+            # цикл выходит ещё и по break, когда модель не ответила, и тогда
+            # файл уже мог быть стёрт предыдущей попыткой.
+            if old_code:
+                (SCENES_DIR / f"{kind}.tsx").write_text(old_code,
+                                                        encoding="utf-8")
+                register(kind, _component_name(kind))
+                log(f"[Сцены] {kind}: вернул прежнюю версию файла — она "
+                    "остаётся помеченной на перегенерацию, но сборка "
+                    "Remotion не разваливается", "warn")
 
     LIBRARY.write_text(json.dumps(lib, ensure_ascii=False, indent=2),
                        encoding="utf-8")
     log(f"[Сцены] Принято {len(accepted)} из {len(ideas)}")
     return accepted
+
+
+# ---------- Досмотр УЖЕ НАПИСАННОЙ библиотеки ----------
+
+def library_subjects() -> dict:
+    """kind -> {title, subject} по scenes.json.
+
+    Замысел («что сцена обязана изобразить») хранится только там: в самом
+    .tsx его нет, а без него зрению не с чем сравнивать картинку. Ключ в
+    библиотеке — «канал/kind», а файл сцены общий на все каналы, поэтому
+    сводим к kind; если один kind заводили два канала, берём первый
+    попавшийся замысел — они по определению про одно и то же.
+    """
+    out = {}
+    try:
+        lib = json.loads(LIBRARY.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return out
+    for rec in lib.values():
+        if not isinstance(rec, dict):
+            continue
+        kind = rec.get("kind")
+        if not kind or kind in out:
+            continue
+        out[kind] = {"title": rec.get("title", ""),
+                     "subject": (rec.get("brief") or rec.get("quote") or "")}
+    return out
+
+
+def _claim_of(kind: str, subjects: dict) -> tuple[str, str]:
+    """Что сцена ОБЕЩАЕТ показать: (подпись, замысел).
+
+    Замысел берём из scenes.json, но у части сцен его нет — их завели до
+    того, как библиотека стала записывать brief. Для них судим ПО ИМЕНИ:
+    имя сцены и есть заявка на содержание, и вопрос «видно ли на картинке
+    thermal gradient cross section» — ровно тот, ради которого всё это
+    писалось. Иначе шесть самых старых сцен остались бы непроверяемыми
+    навсегда.
+    """
+    rec = subjects.get(kind) or {}
+    subject = (rec.get("subject") or "").strip()
+    if not subject:
+        subject = (f'the diagram is named "{kind.replace("_", " ")}" — the '
+                   "drawing must show exactly that")
+    return rec.get("title", ""), subject
+
+
+def audit(only: list | None = None, limit: int = 0, recheck: bool = False,
+          dur: float = 6.0, api_key: str = "", log=print) -> dict:
+    """Прогнать УЖЕ ЛЕЖАЩИЕ в библиотеке сцены через ступень зрения.
+
+    Зачем отдельной командой, а не при каждом ролике. Сцены
+    переиспользуются («уже в библиотеке — беру готовую»), поэтому брак,
+    написанный один раз, кочует из ролика в ролик. Но досматривать все
+    шесть десятков на каждом прогоне нельзя: это шесть десятков рендеров и
+    шесть десятков запросов к зрению, а суточная квота — двадцать на пару
+    «проект + модель». Поэтому досмотр — ручная команда с --limit, а ролик
+    просто читает готовые вердикты из scenes_audit.json.
+
+    Ничего не удаляет и не переписывает: только пишет вердикты в данные.
+    Отвергнутые сцены попадут на перегенерацию в следующий раз, когда
+    очередной ролик их закажет (см. quarantined() в grow).
+    """
+    subjects = library_subjects()
+    known = audit_load()
+    kinds = [k for k in available_scenes() if k not in BUILTIN_SCENES]
+    skipped = len(available_scenes()) - len(kinds)
+    if only:
+        kinds = [k for k in kinds if k in set(only)]
+
+    todo = []
+    for k in kinds:
+        was = (known.get(k) or {}).get("verdict")
+        if was in (VISION_OK, VISION_BAD) and not recheck:
+            continue
+        todo.append(k)
+    if limit:
+        todo = todo[:limit]
+
+    log(f"[Аудит] Сцен в диспетчере: {len(kinds)}; написаны руками "
+        f"(не трогаю): {skipped}; к досмотру сейчас: {len(todo)}")
+    stat = {VISION_OK: 0, VISION_BAD: 0, VISION_BLIND: 0}
+    for i, k in enumerate(todo, 1):
+        title, subject = _claim_of(k, subjects)
+        verdict, why = check_vision(k, title, subject, dur, api_key, log)
+        audit_mark(k, verdict, why, subject, title)
+        stat[verdict] = stat.get(verdict, 0) + 1
+        mark = {VISION_OK: "годится", VISION_BAD: "НА ПЕРЕГЕНЕРАЦИЮ",
+                VISION_BLIND: "не удалось посмотреть"}[verdict]
+        log(f"[Аудит] {i}/{len(todo)} {k}: {mark} — {why[:200]}")
+        if verdict == VISION_BLIND and "429" in why:
+            # Квота выбрана: остальные пойдут тем же путём, а каждый из них
+            # стоит ещё и рендера кадра. Останавливаемся и говорим об этом
+            # вслух, чтобы досмотр продолжили завтра, а не считали, что
+            # библиотека проверена.
+            log("[Аудит] Зрение упёрлось в суточную квоту — останавливаю "
+                "досмотр. Непроверенные сцены остались непроверенными, "
+                "запустите --audit ещё раз позже", "warn")
+            break
+    log(f"[Аудит] Годных {stat[VISION_OK]}, на перегенерацию "
+        f"{stat[VISION_BAD]}, непроверенных {stat[VISION_BLIND]}. "
+        f"Вердикты в {AUDIT.name}")
+    return stat
 
 
 # ---------- Негативный тест приёмки ----------
@@ -752,9 +1252,62 @@ def selftest(log=print) -> int:
         log(f"проверка не отработала: {e}")
         fails.append(str(e))
 
+    # Ступень зрения проверяем ОТДЕЛЬНОЙ командой (--audit --only ...), а не
+    # здесь: она стоит запроса к модели, а суточная квота Gemini мала —
+    # селф-тест должен оставаться бесплатным и запускаемым сколько угодно.
     log("\n" + "=" * 58)
     if fails:
         log("ПРОВАЛ: " + "; ".join(fails))
         return 1
     log("гейт ловит и заглушку, и пустой кадр")
     return 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--selftest", action="store_true",
+                    help="негативный тест приёмки, без обращений к модели")
+    ap.add_argument("--audit", action="store_true",
+                    help="досмотреть зрением уже написанные сцены")
+    ap.add_argument("--only", default="",
+                    help="только эти сцены, через запятую")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="сколько сцен досмотреть за раз (квота зрения мала)")
+    ap.add_argument("--recheck", action="store_true",
+                    help="пересмотреть и те, по которым вердикт уже есть")
+    ap.add_argument("--list", action="store_true",
+                    help="показать накопленные вердикты")
+    a = ap.parse_args(argv)
+
+    # Ключи лежат в .env, а читает его app.py — отдельная команда
+    # запускается без приложения, и без этой строки зрение молча ушло бы в
+    # «недоступно» на пустом ключе, пометив всю библиотеку непроверенной.
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(BASE / ".env")
+    except Exception:
+        pass
+
+    if a.selftest:
+        return selftest()
+    if a.list:
+        data = audit_load()
+        if not data:
+            print(f"{AUDIT.name}: пока пусто — запустите --audit")
+            return 0
+        for k, v in sorted(data.items(),
+                           key=lambda kv: kv[1].get("verdict", "")):
+            print(f"{v.get('verdict','?'):11} {k:38} {v.get('why','')[:90]}")
+        bad = [k for k, v in data.items() if v.get("verdict") == VISION_BAD]
+        print(f"\nна перегенерацию помечено: {len(bad)} из {len(data)}")
+        return 0
+    if a.audit:
+        only = [s.strip() for s in a.only.split(",") if s.strip()]
+        stat = audit(only=only or None, limit=a.limit, recheck=a.recheck)
+        return 0 if stat.get(VISION_BAD, 0) == 0 else 2
+    ap.print_help()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
