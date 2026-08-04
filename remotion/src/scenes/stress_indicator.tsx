@@ -30,7 +30,7 @@ export const StressIndicatorScene: React.FC<SceneProps> = (p) => {
   const currentColor = `rgb(${red}, ${green}, ${blue})`;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="60%" viewBox="0 0 400 400">
         <line x1="200" y1="380" x2="200" y2="20" stroke="#e9f2f6" strokeWidth="2" strokeDasharray="8 8" />
         <circle cx="200" cy="200" r={20 * magnitude} fill="none" stroke={currentColor} strokeWidth="4" />

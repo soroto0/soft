@@ -26,7 +26,7 @@ export const BourdonTubeMechanismScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center', color: '#e9f2f6', fontFamily: 'sans-serif' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center', color: '#e9f2f6', fontFamily: 'sans-serif' }}>
       <svg width="60%" viewBox="0 0 400 400">
         <circle cx="200" cy="200" r="150" fill="none" stroke="#e9f2f6" strokeWidth="2" />
         <path d={`M 150 200 A 50 50 0 0 1 ${200 + tubePath} 150`} fill="none" stroke="#e0b44c" strokeWidth="8" strokeLinecap="round" />

@@ -28,7 +28,7 @@ export const HydrostaticVsPneumaticEnergyScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="80%" height="80%" viewBox="0 0 800 400">
         <text x="400" y="50" fill="#e9f2f6" fontSize="32" textAnchor="middle" fontFamily="sans-serif">{p.title}</text>
         

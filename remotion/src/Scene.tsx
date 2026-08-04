@@ -66,6 +66,7 @@ import { UltrasonicSensorDiagramScene } from './scenes/ultrasonic_sensor_diagram
 import { FracturePropagationAnimationScene } from './scenes/fracture_propagation_animation';
 import { VaporCloudExpansionScene } from './scenes/vapor_cloud_expansion';
 import { SeismicShockDiagramScene } from './scenes/seismic_shock_diagram';
+import { Backdrop } from './scenes/backdrop';
 export type { SceneProps };
 
 // Точка входа для СЦЕН — планов, которые целиком нарисованы, а не сняты.
@@ -73,6 +74,16 @@ export type { SceneProps };
 // живёт секунды поверх кадра, у сцены фон непрозрачный и она сама занимает
 // весь план. Смешивать их в одном компоненте значило бы держать два
 // противоположных набора требований в одном месте.
+//
+// ФОН СЦЕНЫ ЖИВЁТ ЗДЕСЬ, А НЕ В САМИХ СЦЕНАХ. Раньше каждая сцена сама
+// заливала корень плоским '#07090c', и посреди документального ролика это
+// читалось как провал в чёрное — «кончился материал». Компонент Backdrop
+// против этого и написан, но сгенерированные сцены его не импортировали:
+// защита была, подключена не была. Теперь подложка подставляется ровно в
+// одном месте — под результат диспетчера, — поэтому она достаётся и всем
+// уже написанным сценам, и всем будущим, и забыть её нельзя в принципе.
+// Сцене остаётся только НЕ закрашивать свой корень непрозрачным цветом
+// (за этим следит приёмка в gen_scenes.py).
 const useFade = (dur: number) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -89,10 +100,12 @@ const useFade = (dur: number) => {
   return { enter, exit };
 };
 
-export const Scene: React.FC<SceneProps> = (p) => {
-  const { enter, exit } = useFade(p.dur);
-  const props = { ...p, enter, exit };
-  switch (p.kind) {
+// Диспетчер по kind. Вынесен из Scene отдельной функцией, чтобы «какую сцену
+// рисовать» и «на чём она лежит» не смешивались: сюда gen_scenes.py дописывает
+// case-ветки автоматом, и чем меньше вокруг них кода, тем безопаснее правка.
+// null означает «сцены с таким именем нет» — обрабатывает вызывающий.
+const pickScene = (props: SceneProps): React.ReactElement | null => {
+  switch (props.kind) {
     case 'globe':
       return <GlobeScene {...props} />;
     case 'layers':
@@ -222,9 +235,32 @@ export const Scene: React.FC<SceneProps> = (p) => {
     case 'seismic_shock_diagram':
       return <SeismicShockDiagramScene {...props} />;
     default:
-      // Неизвестная сцена не должна давать чёрный кадр в готовом ролике:
-      // пусть лучше план возьмёт обычный материал (вызывающий код увидит,
-      // что рендер не дал картинки).
-      return <AbsoluteFill />;
+      return null;
   }
+};
+
+export const Scene: React.FC<SceneProps> = (p) => {
+  const { enter, exit } = useFade(p.dur);
+  const body = pickScene({ ...p, enter, exit });
+
+  if (body === null) {
+    // Неизвестная сцена не должна давать чёрный кадр в готовом ролике:
+    // пусть лучше план возьмёт обычный материал (вызывающий код увидит,
+    // что рендер не дал картинки). Подложку сюда как раз НЕ подставляем —
+    // иначе пустой кадр стал бы красивым и неотличимым от рабочей сцены,
+    // и проверка «рендер ничего не дал» перестала бы срабатывать.
+    return <AbsoluteFill />;
+  }
+
+  // Подложка НЕ гаснет вместе с содержимым (enter/exit умножают только
+  // рисунок внутри сцены): клип сцены встаёт в раскадровку отдельным планом
+  // и склеивается с соседними через xfade. Если бы фон тоже уезжал в ноль,
+  // на стыке получилось бы двойное затемнение — провал в чёрное, ровно то,
+  // от чего мы уходим.
+  return (
+    <AbsoluteFill>
+      {p.bare ? null : <Backdrop />}
+      {body}
+    </AbsoluteFill>
+  );
 };

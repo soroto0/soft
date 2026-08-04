@@ -24,7 +24,7 @@ export const DefectCutawayScene: React.FC<SceneProps> = (p) => {
 	const glowIntensity = interpolate(frame, [0, totalFrames / 2, totalFrames], [0.2, 0.8, 0.2]);
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
+		<AbsoluteFill style={{ opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
 			<svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
 				<rect
 					x={width * 0.3}

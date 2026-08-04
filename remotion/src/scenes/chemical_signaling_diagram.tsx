@@ -16,7 +16,7 @@ export const ChemicalSignalingDiagramScene: React.FC<SceneProps> = (p) => {
 	const particleOffset = interpolate(frame, [0, durationInFrames], [0, 800]);
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
+		<AbsoluteFill style={{ opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
 			<div style={{ position: 'absolute', top: height * 0.1, width: '100%', textAlign: 'center', fontSize: 32, fontWeight: 200, letterSpacing: '0.2em' }}>
 				{p.title}
 			</div>

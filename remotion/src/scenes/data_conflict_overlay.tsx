@@ -28,7 +28,6 @@ export const DataConflictOverlayScene: React.FC<SceneProps> = (p) => {
 	});
 
 	const containerStyle: React.CSSProperties = {
-		backgroundColor: '#07090c',
 		width: '100%',
 		height: '100%',
 		display: 'flex',

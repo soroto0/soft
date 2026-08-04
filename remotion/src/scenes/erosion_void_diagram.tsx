@@ -27,7 +27,7 @@ export const ErosionVoidDiagramScene: React.FC<SceneProps> = (p) => {
 	});
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
+		<AbsoluteFill style={{ opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
 			<svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
 				<g transform={`translate(${width / 2 - 200}, ${height / 2 - 100})`}>
 					<rect x="0" y={foundationShift} width="400" height="40" fill="#e9f2f6" />

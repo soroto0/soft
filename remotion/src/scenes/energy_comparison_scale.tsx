@@ -20,7 +20,7 @@ export const EnergyComparisonScaleScene: React.FC<SceneProps> = (p) => {
 	const springOffset = interpolate(frame, [0, durationInFrames], [0, 80]);
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity: globalOpacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
+		<AbsoluteFill style={{ opacity: globalOpacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
 			<div style={{ position: 'absolute', top: '10%', width: '100%', textAlign: 'center', fontSize: '60px', fontWeight: '200' }}>
 				{p.title || 'Stored Energy Comparison'}
 			</div>

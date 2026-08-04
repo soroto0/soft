@@ -27,7 +27,7 @@ export const UnzippingFailureDiagramScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="60%" viewBox="0 0 400 400">
         <rect x="150" y="50" width="100" height="300" fill="#1a1f26" stroke="#e9f2f6" strokeWidth="2" />
         <line x1="200" y1="50" x2="200" y2={zipperY} stroke="#d0523f" strokeWidth="4" strokeDasharray="8 4" />

@@ -1,7 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { SceneProps } from '../types';
-import { Backdrop } from './backdrop';
 
 // Сцена «разрез». Для всего, что залегает слоями и о чём говорят сверху вниз:
 // грунт под фундаментом, пирог стены, состав перекрытия, отложения.
@@ -48,7 +47,6 @@ export const LayersScene: React.FC<SceneProps> = (p) => {
 
   return (
     <AbsoluteFill>
-      <Backdrop />
       <AbsoluteFill style={{ opacity }}>
         <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
           {items.map((label, i) => {

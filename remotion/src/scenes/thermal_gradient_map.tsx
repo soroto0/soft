@@ -32,7 +32,7 @@ export const ThermalGradientMapScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="60%" viewBox="0 0 400 200">
         <rect x="50" y="50" width="300" height="100" fill="none" stroke="#e9f2f6" strokeWidth="2" />
         <rect x="55" y="55" width="290" height="90" fill={color} fillOpacity={glow} />

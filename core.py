@@ -4965,6 +4965,15 @@ def fetch_wiki_images(query: str, count: int, dest_dir: Path, prefix: str,
     return out
 
 
+# Источники Openverse, которые отдают музейные экспонаты, а не съёмку:
+# гравюры, свитки, полотна, старые карты. Слова по подстроке, потому что
+# провайдеры называются по-разному («smithsonian», «si_*», «met» и т.п.).
+ART_SOURCES = ("museum", "smithsonian", "metmuseum", "clevelandart",
+               "rijksmuseum", "statensmuseum", "brooklynmuseum", "artic",
+               "digitaltmuseum", "nypl", "spurlock", "thorvaldsens",
+               "svgsilh", "phylopic", "floraon", "biodiversity")
+
+
 def openverse_search(query: str, used: dict, log=print, line: str = "",
                      api_key: str = "") -> str | None:
     """URL одной свежей CC-картинки из Openverse (агрегатор ~800 млн
@@ -4979,20 +4988,37 @@ def openverse_search(query: str, used: dict, log=print, line: str = "",
     «золотистые эмпанады на решётке». Возвращаем None вместо заведомо чужого
     кадра — пусть план уйдёт на генерацию."""
     import requests
-    try:
-        r = requests.get(
-            "https://api.openverse.org/v1/images/",
-            params={"q": query, "page_size": SEARCH_POOL,
-                    "license_type": "all-cc", "aspect_ratio": "wide",
-                    "mature": "false"},
-            headers={"User-Agent": WIKI_UA},
-            timeout=30)
+
+    def _ask(params: dict) -> list[dict]:
+        r = requests.get("https://api.openverse.org/v1/images/",
+                         params=params, headers={"User-Agent": WIKI_UA},
+                         timeout=30)
         if r.status_code != 200:
-            return None
-        items = [{"id": it["id"], "url": it.get("url"),
-                  "thumb": it.get("thumbnail") or it.get("url"),
-                  "license": it.get("license", ""), "author": it.get("creator", "")}
-                 for it in r.json().get("results", []) if it.get("url")]
+            return []
+        return [{"id": it["id"], "url": it.get("url"),
+                 "thumb": it.get("thumbnail") or it.get("url"),
+                 "source": str(it.get("source") or "").lower(),
+                 "license": it.get("license", ""),
+                 "author": it.get("creator", "")}
+                for it in r.json().get("results", []) if it.get("url")]
+
+    base = {"q": query, "page_size": SEARCH_POOL, "license_type": "all-cc",
+            "aspect_ratio": "wide", "mature": "false"}
+    try:
+        # category=photograph — то, чего здесь не хватало. Openverse это
+        # АГРЕГАТОР, и рядом с фотографиями в нём лежат оцифрованные музейные
+        # экспонаты: под фразу «hand writing green ink» в ролик приехал скан
+        # японского свитка, целиком, с цветовой шкалой и инвентарным номером
+        # музея в кадре. Для документального ролика это брак независимо от
+        # того, насколько слова совпали.
+        items = _ask(dict(base, category="photograph"))
+        if not items:
+            # Узкий фильтр иногда не даёт ничего. Тогда берём широкую выдачу,
+            # но выкидываем заведомо музейные источники руками — лучше
+            # вернуть None и отправить план на генерацию, чем поставить в
+            # документалку экспонат под стеклом.
+            items = [x for x in _ask(base)
+                     if not any(bad in x["source"] for bad in ART_SOURCES)]
         p = None
         if items and line and (api_key or os.getenv("GEMINI_API_KEY", "")):
             seen = set(map(str, used.get("openverse", [])))
@@ -5004,7 +5030,21 @@ def openverse_search(query: str, used: dict, log=print, line: str = "",
             if got is not None:
                 used.setdefault("openverse", []).append(str(got["id"]))
                 p = got
+        if p is None and line:
+            # Слепой выбор ЗАПРЕЩЁН, когда фраза диктора известна. Здесь и
+            # раньше стоял отбор зрением, но мимо него было два прохода: нет
+            # ключа Gemini (суточная квота выбирается быстро) и сбой самого
+            # отбора. В обоих случаях брался просто первый неиспользованный
+            # результат — так в ролик и попал музейный свиток. Замер прямо
+            # сейчас: под «hand writing green ink» Openverse отдаёт бутик
+            # Montblanc в Торонто. Совпало по словам, к кадру отношения не
+            # имеет. Лучше None и генерация, чем чужая картинка.
+            log("[Openverse] подходящего кадра нет "
+                "(отбор зрением не отработал) — план уйдёт на генерацию")
+            return None
         if p is None:
+            # Фразы нет — значит вызывающему нужна любая картинка по словам
+            # (например, наполнение библиотеки), и слепой выбор уместен.
             picked = _pick_unused(items, "openverse", used, 1, log)
             if not picked:
                 return None

@@ -27,7 +27,7 @@ export const GeographyLayoutScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="80%" height="80%" viewBox="0 0 400 400">
         <rect x="50" y="50" width="300" height="300" fill="none" stroke="#e9f2f6" strokeWidth={2} strokeDasharray="1200" strokeDashoffset={1200 * (1 - draw)} />
         <rect x="120" y="120" width="160" height="160" fill="#1a2026" stroke="#e9f2f6" strokeWidth={1} />

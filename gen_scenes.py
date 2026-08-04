@@ -16,7 +16,11 @@
   1. типизация ФЛАГАМИ ПРОЕКТА (strict, noUnusedLocals) — неиспользованные
      импорты interpolate/Easing выдают заглушку надёжнее всего;
   2. статический разбор: непрозрачный корень, отсутствие p.enter/p.exit,
-     слова placeholder/TODO, слишком мало кода;
+     слова placeholder/TODO, слишком мало кода. Непрозрачный корень стоит
+     тут не для красоты: фон сцены кладёт Scene.tsx (живая подложка
+     Backdrop), и сцена, закрасившая кадр своим '#07090c', эту подложку
+     молча отменяет — получается ровное тёмное пятно на семь секунд,
+     которое посреди документального ролика читается как провал;
   3. НАСТОЯЩИЙ рендер двух кадров и разбор пикселей: не залито, нарисовано
      хоть что-то, достаточно цветов, между кадрами есть движение;
   4. взгляд человека — сцены складываются в папку на просмотр.
@@ -97,13 +101,22 @@ export const {component}: React.FC<SceneProps> = (p) => {{ ... }};
    take only the fields you actually need.
    (Measured 2026-08-04: this single mistake caused half of all rejections.)
 3. Multiply your top-level opacity by `p.enter * p.exit`. Both must appear.
-4. It is a full-frame scene: a dark opaque background is CORRECT here
-   (use background '#07090c'). Do NOT leave the frame empty.
-   Your drawing must be CLEARLY VISIBLE against that dark background:
-   use the light palette below for strokes and text, never dark-on-dark.
-   Keep every element inside the middle 80% of the frame — anything
-   positioned outside is invisible and the render comes out a flat fill,
-   which is an automatic rejection.
+4. DO NOT PAINT THE FRAME BACKGROUND. The player already puts a living
+   backdrop under your scene (soft moving light, dust motes, grain,
+   vignette) — that is what makes a drawn shot sit inside a documentary
+   instead of reading as a hole in the film. Your root element must
+   therefore stay TRANSPARENT: no `background` and no `backgroundColor`
+   on the root, and none on any <AbsoluteFill> — an <AbsoluteFill> covers
+   the whole frame, so filling one hides the backdrop completely.
+   Rejected automatically. (Opaque fills on a small inner <div> — a panel,
+   a card, a label plate — are fine, that is not the frame background.)
+   Do NOT import or render `Backdrop` yourself either: you would get two
+   of them stacked, and the vignette would double.
+   Assume a DARK backdrop underneath: draw with the light palette below,
+   never dark-on-dark. Do NOT leave the frame empty. Keep every element
+   inside the middle 80% of the frame — anything positioned outside is
+   invisible and the render comes out empty, which is an automatic
+   rejection.
 5. Everything must be drawn with SVG or divs. No images, no fetch, no
    external files, no randomness, no Date/Math.random — the render must be
    deterministic and identical every time.
@@ -155,7 +168,7 @@ export const ExampleScene: React.FC<SceneProps> = (p) => {{
   const LEN = 2 * Math.PI * 120;
 
   return (
-    <AbsoluteFill style={{{{ background: '#07090c', opacity,
+    <AbsoluteFill style={{{{ opacity,
                           justifyContent: 'center', alignItems: 'center' }}}}>
       <svg width="52%" viewBox="0 0 400 320">
         <circle cx={{200}} cy={{150}} r={{120}} fill="none" stroke="#e9f2f6"
@@ -191,9 +204,135 @@ def _component_name(kind: str) -> str:
 
 # ---------- приёмка ----------
 
+def _is_opaque(value: str) -> bool:
+    """Закрасит ли этот цвет то, что лежит под ним.
+
+    Прозрачные записи пропускаем: сквозь rgba(...,0.2) или '#07090c40'
+    подложку видно, и такой слой — это тонировка, а не заливка кадра.
+    Всё, что не удалось разобрать (градиент, url(), имя цвета), считаем
+    непрозрачным: ошибиться в сторону отказа дешевле, чем выпустить
+    в ролик сцену на плоской заливке.
+    """
+    v = value.strip().strip("'\"` ")
+    if not v or v in ("transparent", "none", "inherit", "initial", "unset"):
+        return False
+    m = re.match(r"rgba?\(([^)]*)\)$", v)
+    if m:
+        parts = [x.strip() for x in m.group(1).split(",")]
+        if len(parts) == 4:
+            try:
+                return float(parts[3]) > 0.9
+            except ValueError:
+                return True
+        return True
+    m = re.match(r"#([0-9a-fA-F]+)$", v)
+    if m:
+        h = m.group(1)
+        if len(h) == 8:                       # #rrggbbaa
+            return int(h[6:], 16) >= 230
+        if len(h) == 4:                       # #rgba
+            return int(h[3] * 2, 16) >= 230
+        return True                           # #rgb / #rrggbb — альфы нет
+    return True
+
+
+def _balanced(src: str, start: int, open_ch: str, close_ch: str) -> str:
+    """Кусок текста от start до парной закрывающей скобки включительно."""
+    depth = 0
+    for i in range(start, len(src)):
+        if src[i] == open_ch:
+            depth += 1
+        elif src[i] == close_ch:
+            depth -= 1
+            if depth == 0:
+                return src[start:i + 1]
+    return src[start:]
+
+
+def _bg_values(text: str) -> list[str]:
+    """Значения background/backgroundColor из куска кода.
+
+    Разбирать вручную приходится из-за запятых внутри самих значений:
+    rgba(0,0,0,0.4) и градиенты режутся простым split пополам, и тогда
+    'rgba(208' не разберётся как цвет и уедет в «непрозрачный».
+    """
+    out = []
+    for m in re.finditer(r"background(?:Color)?\s*:\s*", text):
+        depth, val, i = 0, [], m.end()
+        while i < len(text):
+            c = text[i]
+            if c in "([":
+                depth += 1
+            elif c in ")]":
+                depth -= 1
+            elif depth == 0 and c in ",;}\n":
+                break
+            val.append(c)
+            i += 1
+        v = "".join(val).strip()
+        if v:
+            out.append(v)
+    return out
+
+
+def _balanced_tag(src: str, start: int) -> str:
+    """Открывающий JSX-тег целиком: до '>' вне фигурных скобок."""
+    depth = 0
+    for i in range(start, len(src)):
+        c = src[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        elif c == ">" and depth == 0:
+            return src[start:i + 1]
+    return src[start:start + 400]
+
+
+def _fullframe_backgrounds(src: str) -> list[str]:
+    """Все фоны, залитые НА ВЕСЬ КАДР.
+
+    Полный кадр — это корневой элемент сцены и любой <AbsoluteFill>:
+    последний по определению растянут inset:0, поэтому непрозрачный фон
+    на нём закрывает подложку целиком. Заливки на обычных <div> не
+    смотрим вовсе — панель или плашка внутри сцены имеет право быть
+    непрозрачной, это часть рисунка, а не фон плана.
+    """
+    tags = []
+    for m in re.finditer(r"<AbsoluteFill\b", src):
+        tags.append(_balanced_tag(src, m.start()))
+    m = re.search(r"return\s*\(?\s*(<[A-Za-z])", src)
+    if m:
+        tags.append(_balanced_tag(src, m.start(1)))
+
+    out = []
+    for tag in tags:
+        out += _bg_values(tag)
+        # style={containerStyle} — фон спрятан в переменной
+        for var in re.findall(r"style=\{([A-Za-z_$][\w$]*)\}", tag):
+            vm = re.search(r"\bconst\s+" + re.escape(var) + r"\b[^=]*=\s*\{", src)
+            if vm:
+                obj = _balanced(src, vm.end() - 1, "{", "}")
+                out += _bg_values(obj)
+    return out
+
+
 def check_static(src: str) -> list[str]:
     """Ступень 2: то, что видно в коде без запуска."""
     bad = []
+    # Заливка кадра — тот самый брак, из-за которого сцены посреди
+    # документального ролика читались как провал в чёрное. Подложку кладёт
+    # Scene.tsx под каждую сцену; непрозрачный корень её просто закрывает,
+    # и вся защита пропадает молча — рендер при этом проходит.
+    opaque = [v.strip() for v in _fullframe_backgrounds(src) if _is_opaque(v)]
+    if opaque:
+        bad.append(
+            f"непрозрачная заливка на весь кадр ({opaque[0]}) — она закроет "
+            "общую подложку Backdrop, и сцена станет плоским тёмным пятном; "
+            "фон кадра кладёт Scene.tsx, корень сцены должен быть прозрачным")
+    if re.search(r"\bBackdrop\b", src):
+        bad.append("сцена сама подключает Backdrop — его уже подставляет "
+                   "Scene.tsx, второй экземпляр удвоит виньетку и пылинки")
     if "p.enter" not in src or "p.exit" not in src:
         bad.append("не использует p.enter/p.exit — сцена моргнёт на склейке")
     if re.search(r"placeholder|TODO|FIXME", src, re.I):
@@ -213,12 +352,20 @@ def check_static(src: str) -> list[str]:
 
 
 def check_render(kind: str, title: str, dur: float, log=print) -> list[str]:
-    """Ступень 3: настоящий рендер и разбор пикселей."""
+    """Ступень 3: настоящий рендер и разбор пикселей.
+
+    Рендерим с bare=1, то есть БЕЗ общей подложки. Иначе проверка стала бы
+    бессмысленной: живой фон сам даёт и десятки цветов, и движение между
+    кадрами, и заглушка, не нарисовавшая ровно ничего, прошла бы её на
+    чужой картинке. С bare в кадре остаётся только то, что нарисовала сама
+    сцена, — а именно это мы и хотим измерить.
+    """
     from PIL import Image
     import tempfile
     bad = []
     tmp = Path(tempfile.mkdtemp())
     props = {"kind": kind, "title": title, "dur": dur, "exit": 1, "enter": 1,
+             "bare": True,
              "items": ["Опора A", "Опора B", "! Опора C"],
              "lat": 55, "lon": 37}
     shots = []
@@ -510,9 +657,49 @@ export const SelftestBlankScene: React.FC<SceneProps> = (p) => {
   const b = interpolate(frame, [0, 30], [0, 1]);
   const c = interpolate(frame, [0, 30], [0, 1]);
   const o = p.enter * p.exit * a * b * c;
-  return <AbsoluteFill style={{ opacity: o, background: '#07090c' }} />;
+  return <AbsoluteFill style={{ opacity: o }} />;
 };
 """
+
+# Формально безупречная сцена, которая закрашивает кадр. Именно этот брак
+# доехал до готового ролика: код компилируется, движение есть, кадр не пустой —
+# и всё равно зритель видит семь секунд ровной темноты вместо подложки.
+OPAQUE = """import React from 'react';
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import type { SceneProps } from '../types';
+
+export const SelftestOpaqueScene: React.FC<SceneProps> = (p) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const span = Math.max(1, Math.round((p.dur || 6) * fps));
+  const draw = interpolate(frame, [0, span * 0.5], [0, 1], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const rise = interpolate(frame, [0, span], [24, 0], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const pulse = interpolate(frame, [0, span * 0.5, span], [0.6, 1, 0.6], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const opacity = p.enter * p.exit;
+  return (
+    <AbsoluteFill style={{ background: '#07090c', opacity,
+                           justifyContent: 'center', alignItems: 'center' }}>
+      <svg width="52%" viewBox="0 0 400 320">
+        <line x1={40} y1={160 + rise} x2={40 + 320 * draw} y2={160 + rise}
+              stroke="#e9f2f6" strokeWidth={3} opacity={pulse} />
+      </svg>
+      {p.title ? <div style={{ color: '#e9f2f6' }}>{p.title}</div> : null}
+    </AbsoluteFill>
+  );
+};
+"""
+
+# Та же сцена, но с прозрачным корнем — её приёмка обязана пропустить,
+# иначе новая проверка просто запретила бы писать сцены.
+GOOD = OPAQUE.replace("background: '#07090c', opacity,", "opacity,") \
+             .replace("SelftestOpaqueScene", "SelftestGoodScene")
 
 
 def selftest(log=print) -> int:
@@ -530,6 +717,23 @@ def selftest(log=print) -> int:
         log(f"    {b}")
     if not bad:
         fails.append("заглушка прошла статическую проверку")
+
+    bad_op = check_static(OPAQUE)
+    log(f"\nсцена с непрозрачным корнем -> {len(bad_op)} претензий:")
+    for b in bad_op:
+        log(f"    {b}")
+    if not any("непрозрачн" in b for b in bad_op):
+        fails.append("заливка кадра прошла статическую проверку — "
+                     "подложку Backdrop снова закроют")
+
+    # Обратная сторона: проверка не должна отвергать нормальную сцену,
+    # иначе гейт «работает», просто ничего не пропуская.
+    bad_ok = check_static(GOOD)
+    log(f"\nта же сцена с прозрачным корнем -> {len(bad_ok)} претензий:")
+    for b in bad_ok:
+        log(f"    {b}")
+    if bad_ok:
+        fails.append("правильная сцена отвергнута: " + "; ".join(bad_ok))
 
     bad2 = check_static(BLANK)
     log(f"\nпустой кадр (три пустых interpolate) -> {len(bad2)} претензий:")

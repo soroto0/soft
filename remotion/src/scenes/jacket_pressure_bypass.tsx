@@ -35,7 +35,6 @@ export const JacketPressureBypassScene: React.FC<SceneProps> = (p) => {
 	return (
 		<AbsoluteFill
 			style={{
-				backgroundColor: '#07090c',
 				opacity: p.enter * p.exit,
 				fontFamily: 'monospace',
 				color: '#e9f2f6',

@@ -43,7 +43,6 @@ export const EnergyStorageComparisonScene: React.FC<SceneProps> = (p) => {
   return (
     <AbsoluteFill
       style={{
-        background: '#07090c',
         opacity,
         justifyContent: 'center',
         alignItems: 'center',

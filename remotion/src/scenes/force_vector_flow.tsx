@@ -30,7 +30,7 @@ export const ForceVectorFlowScene: React.FC<SceneProps> = (p) => {
   const yPos = 100 + arrowProgress * 100;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="70%" viewBox="0 0 400 400">
         <line x1="50" y1="100" x2="350" y2="100" stroke="#e9f2f6" strokeWidth="4" strokeDasharray="300" strokeDashoffset={300 * (1 - drawLines)} />
         <line x1="50" y1="200" x2="350" y2="200" stroke="#e9f2f6" strokeWidth="4" strokeDasharray="300" strokeDashoffset={300 * (1 - drawLines)} />

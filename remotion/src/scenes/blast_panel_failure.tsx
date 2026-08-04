@@ -25,7 +25,7 @@ export const BlastPanelFailureScene: React.FC<SceneProps> = (p) => {
 	});
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity: opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
+		<AbsoluteFill style={{ opacity: opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
 			<svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
 				<g transform={`translate(${width * 0.1}, ${height * 0.1})`}>
 					<rect

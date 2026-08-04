@@ -12,7 +12,7 @@ export const PourSequenceAnimationScene: React.FC<SceneProps> = (p) => {
 	const pipeY = interpolate(frame, [0, duration * 0.3], [height * 0.2, height * 0.65], { easing: Easing.bezier(0.42, 0, 0.58, 1), extrapolateRight: 'clamp' });
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity: p.enter * p.exit }}>
+		<AbsoluteFill style={{ opacity: p.enter * p.exit }}>
 			<svg width={width} height={height}>
 				<rect x={width * 0.2} y={mudLevel} width={width * 0.6} height={height * 0.25} fill="#3d4a52" />
 				<rect x={width * 0.2} y={mudLevel} width={width * 0.6} height={height * 0.05} fill="#d0523f" fillOpacity={concreteOpacity} />

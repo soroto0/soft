@@ -53,7 +53,6 @@ export const LongitudinalFailureSequenceScene: React.FC<SceneProps> = (p) => {
   const sceneOpacity = p.enter * p.exit;
 
   const containerStyle: React.CSSProperties = {
-    backgroundColor: '#07090c',
     color: '#e9f2f6',
     fontFamily: 'monospace',
     opacity: sceneOpacity,

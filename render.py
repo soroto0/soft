@@ -124,6 +124,31 @@ def disable_hw(reason: str = "") -> None:
     _HW_ENCODER = ""
 
 
+# Цветовые метки на КАЖДОМ выходном файле рендера.
+#
+# Материал приходит в трёх разных цветовых пространствах, и это замер, а не
+# предположение: в раскадровке одного ролика 250 клипов без меток, 83 клипа
+# yuvj420p/pc/bt470bg (это кадры, собранные из фотографий: JPEG отдаёт полный
+# диапазон и матрицу BT.601) и 29 клипов yuv420p/tv/bt709. Всё это лежало на
+# одной дорожке, никто не приводил их к общему виду, и готовый ролик наследовал
+# метку первого попавшегося входа — BT.601 с полным диапазоном.
+#
+# Что видит зритель: картинку, посчитанную по BT.709, показывают через матрицу
+# BT.601. Даёт равномерный розово-сиреневый налив по всему кадру и уход зелени
+# в кислотный — ровно та жалоба, с которой это и нашлось. На отдельных кадрах
+# ошибку не поймать: если писать PNG прямо из фильтра, метка не участвует и
+# кадр выходит нормальным. Видно только в собранном файле.
+COLOR_TAGS = ["-color_range", "tv", "-colorspace", "bt709",
+              "-color_primaries", "bt709", "-color_trc", "bt709"]
+
+# Приведение к тем же меткам внутри фильтра. Ставится в хвост КАЖДОГО сегмента:
+# метки на кодировщике только подписывают файл, а сами пиксели пересчитать
+# обязан scale — иначе подпись «bt709» окажется враньём поверх данных BT.601,
+# и сдвиг никуда не денется.
+COLOR_FIX = ("scale=in_range=auto:out_range=tv:"
+             "in_color_matrix=auto:out_color_matrix=bt709")
+
+
 def venc_args(crf: str, preset: str, final: bool = False) -> list[str]:
     """Аргументы кодировщика: аппаратный, если есть, иначе libx264.
     NVENC не понимает -crf/-preset от x264: у него -cq и свои пресеты
@@ -135,12 +160,14 @@ def venc_args(crf: str, preset: str, final: bool = False) -> list[str]:
     промежуточных сегментах и группах, которые всё равно перекодируются."""
     enc = "" if final else hw_encoder()
     if not enc:
-        return ["-c:v", "libx264", "-preset", preset, "-crf", crf]
+        return ["-c:v", "libx264", "-preset", preset, "-crf", crf] + COLOR_TAGS
     if enc == "h264_nvenc":
-        return ["-c:v", enc, "-preset", "p2", "-rc", "vbr", "-cq", crf, "-b:v", "0"]
+        return ["-c:v", enc, "-preset", "p2", "-rc", "vbr", "-cq", crf,
+                "-b:v", "0"] + COLOR_TAGS
     if enc == "h264_qsv":
-        return ["-c:v", enc, "-global_quality", crf]
-    return ["-c:v", enc, "-rc", "cqp", "-qp_i", crf, "-qp_p", crf]
+        return ["-c:v", enc, "-global_quality", crf] + COLOR_TAGS
+    return ["-c:v", enc, "-rc", "cqp", "-qp_i", crf,
+            "-qp_p", crf] + COLOR_TAGS
 
 
 # ---------- Синтезированные SFX (whoosh/pop/ding на появление оверлеев) ----------
@@ -444,8 +471,12 @@ def _run_enc(build_cmd, label: str, crf: str, preset: str, final: bool = False):
         if CANCEL.is_set() or not is_hw:
             raise          # отмена пользователем или уже процессор — не глушим
     disable_hw(label)
-    _run(build_cmd(["-c:v", "libx264", "-preset", preset, "-crf", crf]),
-         label=label)
+    # COLOR_TAGS и здесь: этот откат собирает аргументы сам, мимо venc_args, и
+    # без них сегмент, переехавший на процессор, ушёл бы без цветовых меток —
+    # то есть ровно один клип посреди ролика оказался бы в другом цветовом
+    # пространстве. Именно такой разнобой и дал розовый налив.
+    _run(build_cmd(["-c:v", "libx264", "-preset", preset, "-crf", crf]
+                   + COLOR_TAGS), label=label)
 
 
 def _placeholder(dest: Path, dur: float, w: int, h: int, fps: int):
@@ -806,7 +837,8 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
     """Один сегмент: картинка с движением или обрезанное видео. Без звука.
     extra_vf — доп. фильтр (например, цветокор по главам)."""
     dur = max(dur, 0.2)
-    tail_vf = (extra_vf + "," if extra_vf else "") + "format=yuv420p,setsar=1"
+    tail_vf = ((extra_vf + "," if extra_vf else "")
+               + COLOR_FIX + ",format=yuv420p,setsar=1")
     if kind == "image":
         frames = max(int(round(dur * fps)), 2)
         # Движения — почерк канала, но доступны ВСЕ: палитра меняет частоту,
@@ -1443,7 +1475,7 @@ def _bake_overlays(base_input: list[str], ovls: list[dict], dest: Path,
     fcf.write_text(fc, encoding="utf-8")
     cmd += ["-filter_complex_script", str(fcf), "-map", "[vout]", "-an",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "14",
-            "-pix_fmt", "yuv420p", str(dest)]
+            "-pix_fmt", "yuv420p"] + COLOR_TAGS + [str(dest)]
     log(f"[Рендер] Запекаю {len(ovls)} оверлеев отдельным проходом "
         "(в один ffmpeg столько входов не влезает)")
     try:
@@ -1498,6 +1530,10 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
             sub_filter = _subtitles_filter(srt, size, style_name, sub_font)
         post.append(sub_filter)
     post += _style_chain(opts, wh)
+    # Тот же пересчёт, что и у сегментов: в финал приходят ещё и PNG-секвенции
+    # оверлеев и синтетические слои (color=, noise=), а они свои цветовые
+    # свойства не объявляют, и без приведения файл снова уедет в BT.601.
+    post.append(COLOR_FIX)
     post.append("format=yuv420p")
 
     # АБСОЛЮТНЫЕ пути: финальный ffmpeg запускается с cwd=папка проекта

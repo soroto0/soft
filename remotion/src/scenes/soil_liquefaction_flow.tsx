@@ -14,7 +14,7 @@ export const SoilLiquefactionFlowScene: React.FC<SceneProps> = (p) => {
 	const subsidence = interpolate(frame, [0, durationInFrames], [0, 50], { easing: Easing.bezier(0.4, 0, 0.2, 1) });
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
+		<AbsoluteFill style={{ opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
 			<svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
 				<rect x={width / 2 - 200} y={height / 2 - 100 - subsidence} width={400} height={40} fill="none" stroke="#e0b44c" strokeWidth={4} />
 				<line x1={0} y1={height / 2 - 60 - subsidence} x2={width} y2={height / 2 - 60 - subsidence} stroke="#e9f2f6" strokeWidth={2} />

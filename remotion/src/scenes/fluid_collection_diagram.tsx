@@ -28,7 +28,7 @@ export const FluidCollectionDiagramScene: React.FC<SceneProps> = (p) => {
   });
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="60%" viewBox="0 0 400 300">
         <rect x="50" y="50" width="300" height="200" fill="none" stroke="#e9f2f6" strokeWidth="2" />
         <rect x="80" y="80" width="240" height="140" fill="none" stroke="#e9f2f6" strokeDasharray="8 4" strokeWidth="1" />

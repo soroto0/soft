@@ -30,7 +30,7 @@ export const StrengthTemperatureCurveScene: React.FC<SceneProps> = (p) => {
   const chartHeight = height * 0.6;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width={chartWidth} height={chartHeight} viewBox="0 0 400 200" style={{ overflow: 'visible' }}>
         <line x1="0" y1="200" x2="400" y2="200" stroke="#e9f2f6" strokeWidth="2" />
         <line x1="0" y1="200" x2="0" y2="0" stroke="#e9f2f6" strokeWidth="2" />

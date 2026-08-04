@@ -14,7 +14,7 @@ export const CrossSectionDiagramScene: React.FC<SceneProps> = (p) => {
 	const pitOpacity = interpolate(frame, [0, totalFrames / 2, totalFrames], [0.8, 0.4, 0.2]);
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity, fontFamily: 'sans-serif' }}>
+		<AbsoluteFill style={{ opacity, fontFamily: 'sans-serif' }}>
 			<svg width={width} height={height}>
 				{/* Rhine Water */}
 				<rect x={0} y={waterLevelY} width={width * 0.3} height={height - waterLevelY} fill="#e9f2f6" fillOpacity={0.2} />

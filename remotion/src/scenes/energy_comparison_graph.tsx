@@ -30,7 +30,7 @@ export const EnergyComparisonGraphScene: React.FC<SceneProps> = (p) => {
   const waterHeight = barGrowth * (300 / 44);
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <div style={{ width: '80%', height: '80%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ color: '#e9f2f6', fontSize: 48, marginBottom: 60, fontFamily: 'sans-serif', fontWeight: 100, letterSpacing: '0.05em' }}>
           {p.title}

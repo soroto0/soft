@@ -28,7 +28,7 @@ export const FracturePropagationAnimationScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="80%" viewBox="0 0 800 400">
         <rect x="100" y="150" width="600" height="100" fill="none" stroke="#e9f2f6" strokeWidth="2" />
         <line x1="100" y1="200" x2="700" y2="200" stroke="#e9f2f6" strokeWidth="4" strokeDasharray="10 10" />

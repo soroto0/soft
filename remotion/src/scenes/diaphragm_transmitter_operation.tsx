@@ -31,7 +31,7 @@ export const DiaphragmTransmitterOperationScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="80%" height="80%" viewBox="0 0 800 400">
         <text x="400" y="380" textAnchor="middle" fill="#e9f2f6" style={{ fontSize: 28, fontFamily: 'sans-serif', letterSpacing: '2px' }}>
           {p.title}

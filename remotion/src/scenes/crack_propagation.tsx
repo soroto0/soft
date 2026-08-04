@@ -28,7 +28,7 @@ export const CrackPropagationScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="60%" viewBox="0 0 200 300" style={{ overflow: 'visible' }}>
         <rect x={50} y={20} width={100} height={240} fill="none" stroke="#e9f2f6" strokeWidth={2} strokeDasharray="4 4" />
         <path d="M 100 20 L 100 260" stroke="#e9f2f6" strokeWidth={1} strokeOpacity={0.3} />

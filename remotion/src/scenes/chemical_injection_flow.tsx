@@ -39,7 +39,7 @@ export const ChemicalInjectionFlowScene: React.FC<SceneProps> = (p) => {
   const nozzleY = vY + vHeight * 0.75;
 
   return (
-    <AbsoluteFill style={{ backgroundColor: '#07090c', opacity }}>
+    <AbsoluteFill style={{ opacity }}>
       <svg
         width={width}
         height={height}

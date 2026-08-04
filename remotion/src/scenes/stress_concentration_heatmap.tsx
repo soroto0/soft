@@ -38,7 +38,6 @@ export const StressConcentrationHeatmapScene: React.FC<SceneProps> = (p) => {
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: '#07090c',
         opacity: p.enter * p.exit,
         color: '#e9f2f6',
         fontFamily: 'monospace',

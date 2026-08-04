@@ -28,7 +28,7 @@ export const SteamJacketHeatingScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="80%" height="80%" viewBox="0 0 400 200">
         <rect x="50" y="50" width="300" height="100" fill="#2a2d32" stroke="#e9f2f6" strokeWidth="2" />
         <rect x="50" y="50" width="300" height="20" fill="#e0b44c" fillOpacity={0.3 + (heatGradient * 0.5)} />

@@ -28,7 +28,7 @@ export const ComparisonDiagramScene: React.FC<SceneProps> = (p) => {
   });
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="80%" height="80%" viewBox="0 0 800 400">
         <text x="200" y="100" fill="#e9f2f6" fontSize="28" textAnchor="middle" style={{ fontFamily: 'sans-serif', letterSpacing: '1px' }}>Single Rod</text>
         <line x1="75" y1="200" x2={75 + 250 * draw} y2="200" stroke="#d0523f" strokeWidth="10" strokeLinecap="round" />

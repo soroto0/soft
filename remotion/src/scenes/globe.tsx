@@ -1,7 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { SceneProps } from '../types';
-import { Backdrop } from './backdrop';
 
 // СЦЕНА, а не оверлей: занимает кадр целиком и заменяет собой съёмку там,
 // где снимать нечего — «на другом конце планеты», «широта 62 градуса»,
@@ -139,7 +138,6 @@ export const GlobeScene: React.FC<SceneProps> = (p) => {
 
   return (
     <AbsoluteFill>
-      <Backdrop />
       <AbsoluteFill style={{ opacity, transform: `scale(${scale})` }}>
         <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
           <defs>

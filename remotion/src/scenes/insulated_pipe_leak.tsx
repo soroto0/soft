@@ -26,7 +26,7 @@ export const InsulatedPipeLeakScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="60%" viewBox="0 0 400 400">
         <circle cx={200} cy={200} r={80} fill="none" stroke="#e9f2f6" strokeWidth={4} />
         <circle cx={200} cy={200} r={110} fill="none" stroke="#e9f2f6" strokeWidth={2} strokeDasharray="4 4" />

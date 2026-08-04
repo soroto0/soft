@@ -21,7 +21,7 @@ export const PressureForceDiagramScene: React.FC<SceneProps> = (p) => {
 	const accentColor = interpolate(frame, [0, duration], [0, 1]) > 0.7 ? '#d0523f' : '#e0b44c';
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
+		<AbsoluteFill style={{ opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
 			<svg width={width} height={height}>
 				<rect
 					x={wallX}

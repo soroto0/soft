@@ -27,7 +27,7 @@ export const VaporCloudExpansionScene: React.FC<SceneProps> = (p) => {
   });
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="80%" height="80%" viewBox="0 0 600 400">
         <rect x="100" y="100" width="400" height="200" fill="none" stroke="#e9f2f6" strokeWidth="2" />
         <rect x="250" y="200" width="100" height="100" fill="none" stroke="#d0523f" strokeWidth="4" />

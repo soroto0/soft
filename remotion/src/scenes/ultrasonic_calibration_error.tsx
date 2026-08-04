@@ -12,7 +12,7 @@ export const UltrasonicCalibrationErrorScene: React.FC<SceneProps> = (p) => {
 	const signalScale = interpolate(frame, [0, durationInFrames], [0, 1], { easing: Easing.bezier(0.4, 0, 0.2, 1) });
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity, padding: '10%' }}>
+		<AbsoluteFill style={{ opacity, padding: '10%' }}>
 			<div style={{ color: '#e9f2f6', fontSize: 48, textAlign: 'center', marginBottom: 20, fontFamily: 'monospace' }}>
 				{p.title}
 			</div>

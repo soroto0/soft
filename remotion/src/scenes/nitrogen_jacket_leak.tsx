@@ -27,7 +27,7 @@ export const NitrogenJacketLeakScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="60%" viewBox="0 0 400 400">
         <rect x="150" y="100" width="100" height="200" fill="none" stroke="#e9f2f6" strokeWidth="4" />
         <rect x="130" y="80" width="140" height="240" fill="none" stroke="#e9f2f6" strokeWidth="2" strokeDasharray="4 4" />

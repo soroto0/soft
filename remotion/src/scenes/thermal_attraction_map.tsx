@@ -24,7 +24,7 @@ export const ThermalAttractionMapScene: React.FC<SceneProps> = (p) => {
 	const opacity = p.enter * p.exit;
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
+		<AbsoluteFill style={{ opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
 			<svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
 				<rect x={width * 0.4} y={height * 0.2} width={width * 0.2} height={height * 0.6} fill="#1a2026" stroke="#e9f2f6" strokeWidth="2" />
 				

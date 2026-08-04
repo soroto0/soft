@@ -28,7 +28,7 @@ export const LabTestSimulationScene: React.FC<SceneProps> = (p) => {
   const strokeColor = colorShift > 0.7 ? '#d0523f' : '#e0b44c';
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="80%" height="80%" viewBox="0 0 400 400">
         <line x1={100} y1={50} x2={300} y2={50} stroke="#e9f2f6" strokeWidth={4} />
         <rect x={175} y={50 - pistonMove} width={50} height={50} fill="#e9f2f6" />

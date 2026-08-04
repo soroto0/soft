@@ -27,7 +27,7 @@ export const ThermalGradientCrossSectionScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="80%" viewBox="0 0 600 400">
         <rect x={100} y={100} width={400} height={100} fill="#2a3038" stroke="#e9f2f6" strokeWidth={2} />
         <rect x={100} y={100} width={400 * heatSpread} height={100} fill="#d0523f" opacity={glow} />

@@ -29,7 +29,7 @@ export const HoopStressDiagramScene: React.FC<SceneProps> = (p) => {
 	const r = 200;
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity }}>
+		<AbsoluteFill style={{ opacity }}>
 			<svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
 				<defs>
 					<marker

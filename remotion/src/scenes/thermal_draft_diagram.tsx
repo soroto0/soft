@@ -21,7 +21,7 @@ export const ThermalDraftDiagramScene: React.FC<SceneProps> = (p) => {
 	});
 
 	return (
-		<AbsoluteFill style={{ backgroundColor: '#07090c', opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
+		<AbsoluteFill style={{ opacity, color: '#e9f2f6', fontFamily: 'sans-serif' }}>
 			<svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
 				<rect x={width * 0.6} y={height * 0.4} width={width * 0.2} height={height * 0.4} fill="#1a1d21" stroke="#e9f2f6" strokeWidth="2" />
 				<rect x={width * 0.65} y={height * 0.75} width={width * 0.1} height={height * 0.05} fill="#d0523f" fillOpacity={heatIntensity} />

@@ -29,7 +29,7 @@ export const MechanicalFailureAnimationScene: React.FC<SceneProps> = (p) => {
   const dangerColor = `rgb(208, 82, ${63 + stressColor * 100})`;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="80%" viewBox="0 0 400 300">
         <rect x="50" y="140" width="300" height="20" fill="#e9f2f6" />
         <path

@@ -31,7 +31,7 @@ export const WallThicknessDifferentialScene: React.FC<SceneProps> = (p) => {
   const warningOpacity = interpolate(progress, [0.7, 1], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
 
   return (
-    <AbsoluteFill style={{ backgroundColor: '#07090c', opacity: p.enter * p.exit, fontFamily: 'monospace', color: '#e9f2f6' }}>
+    <AbsoluteFill style={{ opacity: p.enter * p.exit, fontFamily: 'monospace', color: '#e9f2f6' }}>
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
         {/* Nominal Outline */}
         <rect

@@ -27,7 +27,7 @@ export const CrackPropagationMacroScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="60%" viewBox="0 0 400 300">
         <rect x="50" y="50" width="300" height="150" fill="#1a1d21" stroke="#e9f2f6" strokeWidth="2" />
         <line x1="200" y1="50" x2="200" y2={50 + (150 * crackProgress)} stroke="#d0523f" strokeWidth="6" strokeLinecap="round" />

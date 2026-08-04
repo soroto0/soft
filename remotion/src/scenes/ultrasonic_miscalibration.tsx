@@ -53,7 +53,6 @@ export const UltrasonicMiscalibrationScene: React.FC<SceneProps> = (p) => {
     <AbsoluteFill
       style={{
         opacity,
-        backgroundColor: '#07090c',
         color: '#e9f2f6',
         fontFamily: 'monospace',
         overflow: 'hidden',

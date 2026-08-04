@@ -166,7 +166,11 @@ const Counter = ({ content, exit, enter }: { content: string; exit: number; ente
   // Parse content
   const match = content.match(/([^\d]*)([\d][\d,.\s]*)(.*)/);
   const prefix = match ? match[1] : '';
-  const suffix = match ? match[3] : '';
+  // Пробел между числом и единицей. Группа числа жадная и захватывает \s,
+  // поэтому «1,200 acres» распадалось на «1,200 » и «acres», а в кадр уходило
+  // слипшееся «1,200acres». Хвостовой пробел возвращаем единице измерения;
+  // там, где его не было («270°F»), ничего не меняется.
+  const suffix = match ? (match[2].match(/\s+$/)?.[0] ?? '') + match[3] : '';
   const rawNumStr = match ? match[2].replace(/[,\s]/g, '') : '0';
   const targetNum = parseFloat(rawNumStr) || 0;
 
@@ -230,7 +234,11 @@ const CounterTag = ({ content, exit, enter }: { content: string; exit: number; e
   const frame = useCurrentFrame();
   const match = content.match(/([^\d]*)([\d][\d,.\s]*)(.*)/);
   const prefix = match ? match[1] : '';
-  const suffix = match ? match[3] : '';
+  // Пробел между числом и единицей. Группа числа жадная и захватывает \s,
+  // поэтому «1,200 acres» распадалось на «1,200 » и «acres», а в кадр уходило
+  // слипшееся «1,200acres». Хвостовой пробел возвращаем единице измерения;
+  // там, где его не было («270°F»), ничего не меняется.
+  const suffix = match ? (match[2].match(/\s+$/)?.[0] ?? '') + match[3] : '';
   const rawNumStr = match ? match[2].replace(/[,\s]/g, '') : '0';
   const targetNum = parseFloat(rawNumStr) || 0;
   const currentVal = interpolate(frame, [0, 40], [0, targetNum], {

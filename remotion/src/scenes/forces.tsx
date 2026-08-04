@@ -1,7 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { SceneProps } from '../types';
-import { Backdrop } from './backdrop';
 
 // Сцена «нагрузка». Ради неё канал про разрушения и существует: словами
 // «вес перешёл на три оставшиеся опоры» описывается то, что нельзя снять
@@ -57,7 +56,6 @@ export const ForcesScene: React.FC<SceneProps> = (p) => {
 
   return (
     <AbsoluteFill>
-      <Backdrop />
       <AbsoluteFill style={{ opacity }}>
         <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
           {/* грунт */}

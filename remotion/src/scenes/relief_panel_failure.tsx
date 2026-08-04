@@ -47,7 +47,7 @@ export const ReliefPanelFailureScene: React.FC<SceneProps> = (p) => {
   ];
 
   return (
-    <AbsoluteFill style={{ backgroundColor: '#07090c', opacity }}>
+    <AbsoluteFill style={{ opacity }}>
       <svg
         width={width}
         height={height}

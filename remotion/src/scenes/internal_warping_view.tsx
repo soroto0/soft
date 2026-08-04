@@ -27,7 +27,7 @@ export const InternalWarpingViewScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="60%" viewBox="0 0 400 400">
         <path
           d={`M 100 100 C 150 ${100 + warpTop} 250 ${100 - warpTop} 300 100 L 300 300 C 250 ${300 - warpBottom} 150 ${300 + warpBottom} 100 300 Z`}

@@ -80,7 +80,6 @@ export const WeldLineCatastrophicSplitScene: React.FC<SceneProps> = (p) => {
       style={{
         width,
         height,
-        background: '#07090c',
         opacity,
         display: 'flex',
         flexDirection: 'column',

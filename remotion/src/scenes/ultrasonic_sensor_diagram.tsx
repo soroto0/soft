@@ -27,7 +27,7 @@ export const UltrasonicSensorDiagramScene: React.FC<SceneProps> = (p) => {
   const opacity = p.enter * p.exit;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="80%" viewBox="0 0 600 400">
         <rect x={100} y={150} width={400} height={100} fill="none" stroke="#e9f2f6" strokeWidth={2} />
         <rect x={100} y={150} width={400} height={30} fill="#d0523f" opacity={crackVisibility} />

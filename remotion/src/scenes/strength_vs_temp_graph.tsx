@@ -61,7 +61,6 @@ export const StrengthVsTempGraphScene: React.FC<SceneProps> = (p) => {
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: '#07090c',
         opacity: sceneOpacity,
         fontFamily: 'monospace',
         color: '#e9f2f6',

@@ -31,7 +31,7 @@ export const StressConcentrationMapScene: React.FC<SceneProps> = (p) => {
   const color = `rgb(${redValue}, 82, ${blueValue})`;
 
   return (
-    <AbsoluteFill style={{ background: '#07090c', opacity, justifyContent: 'center', alignItems: 'center' }}>
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
       <svg width="60%" viewBox="0 0 400 400">
         <path d="M 100 200 L 300 200 L 300 250 L 220 250 L 200 300 L 180 250 L 100 250 Z" 
               fill="none" stroke="#e9f2f6" strokeWidth="2" />
