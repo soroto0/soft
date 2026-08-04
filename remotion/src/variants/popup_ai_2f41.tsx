@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Popup, вариант «падающий снимок». Чем СТРУКТУРНО отличается от встроенного
 // Popup: там снимок стоит по центру, наезжает масштабом от 0.5 и всё время
@@ -54,7 +55,7 @@ export const PopupAi2F41: React.FC<VariantProps> = (p) => {
           left: 22,
           right: 22,
           bottom: 16,
-          fontFamily: "'Segoe UI', Arial, sans-serif",
+          fontFamily: TEXT,
           fontSize: 24,
           letterSpacing: '0.06em',
           color: '#2b2721',

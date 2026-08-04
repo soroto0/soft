@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { SERIF, TEXT } from '../fonts';
 
 // Врезка-цитата, вариант «левый кант». Чем СТРУКТУРНО отличается от
 // встроенного PullQuote: там центрированный блок и огромная кавычка,
@@ -96,7 +97,7 @@ export const QuoteAi7C1A: React.FC<VariantProps> = (p) => {
                 <div style={{
                   transform: `translateY(${up}%)`,
                   opacity: soft,
-                  fontFamily: "'Georgia', 'Times New Roman', serif",
+                  fontFamily: SERIF,
                   fontSize: 54,
                   lineHeight: 1.16,
                   color: INK,
@@ -119,7 +120,7 @@ export const QuoteAi7C1A: React.FC<VariantProps> = (p) => {
             }}>
               <div style={{ width: 26, height: 2, background: ACCENT }} />
               <span style={{
-                fontFamily: "'Segoe UI', Arial, sans-serif",
+                fontFamily: TEXT,
                 fontSize: 22,
                 letterSpacing: '0.22em',
                 textTransform: 'uppercase',

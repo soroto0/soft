@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Marker, третий вид. Встроенный Marker и ai_b3d5 («перо») оба ПОДЧЁРКИВАЮТ:
 // линия под строкой. Здесь маркер проходит ПОВЕРХ текста широкой полупрозрачной
@@ -48,7 +49,7 @@ export const MarkerAiE5A8: React.FC<VariantProps> = (p) => {
         <div style={{
           position: 'relative',
           opacity: textIn,
-          fontFamily: "'Segoe UI', Arial, sans-serif",
+          fontFamily: TEXT,
           fontSize: 52,
           fontWeight: 600,
           lineHeight: 1.25,

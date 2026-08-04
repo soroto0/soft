@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Highlight, вариант «фокусировка». Встроенный Highlight обводит точку
 // эллипсом и тянет выноску вбок к подписи. Здесь эллипса нет вовсе: с четырёх
@@ -77,7 +78,7 @@ export const HighlightAi5A19: React.FC<VariantProps> = (p) => {
         top: `${labelTop}%`,
         transform: `translate(-50%, ${(1 - labelIn) * 8}px)`,
         opacity: labelIn,
-        fontFamily: "'Segoe UI', Arial, sans-serif",
+        fontFamily: TEXT,
         fontSize: 30,
         letterSpacing: '0.1em',
         textTransform: 'uppercase',

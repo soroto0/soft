@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Redact, вариант «штамп». Встроенный Redact закрашивает строки полосами
 // одна за другой — движение мелкое и однородное. Здесь порядок обратный и
@@ -81,7 +82,7 @@ export const RedactAi3D8F: React.FC<VariantProps> = (p) => {
           transform: `translate(-50%, -50%) rotate(-13deg) scale(${hit})`,
           border: `6px solid ${STAMP}`,
           color: STAMP,
-          fontFamily: "'Segoe UI', Arial, sans-serif",
+          fontFamily: TEXT,
           fontSize: 46,
           fontWeight: 700,
           letterSpacing: '0.2em',

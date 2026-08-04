@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { SERIF } from '../fonts';
 
 export const TitlecardAiE566: React.FC<VariantProps> = (p) => {
   const { width, height } = useVideoConfig();
@@ -119,7 +120,7 @@ export const TitlecardAiE566: React.FC<VariantProps> = (p) => {
           right: '15%',
           textAlign: 'left',
           color: '#4a3520',
-          fontFamily: "'Georgia', 'Times New Roman', serif",
+          fontFamily: SERIF,
           lineHeight: 1.4,
           textTransform: 'none',
           letterSpacing: '-0.02em',

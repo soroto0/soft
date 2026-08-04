@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Gallery, третий вид. Встроенная Gallery и ai_dfc3 («киноплёнка») двигают
 // кадры ПО ГОРИЗОНТАЛИ. Здесь снимки сменяют друг друга НА МЕСТЕ: очередной
@@ -55,7 +56,7 @@ export const GalleryAi2C58: React.FC<VariantProps> = (p) => {
                   position: 'absolute', left: 0, right: 0, bottom: 0,
                   padding: '14px 18px',
                   background: 'linear-gradient(0deg, rgba(6,8,10,0.85), rgba(6,8,10,0))',
-                  fontFamily: "'Segoe UI', Arial, sans-serif",
+                  fontFamily: TEXT,
                   fontSize: 24,
                   letterSpacing: '0.08em',
                   color: '#f2efe8',

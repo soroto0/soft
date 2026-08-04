@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Галерея, вариант «киноплёнка». Встроенная Gallery — это коридор в
 // перспективе: карточки идут ВГЛУБЬ по оси Z мимо камеры. Здесь глубины
@@ -122,7 +123,7 @@ export const GalleryAiDFC3: React.FC<VariantProps> = (p) => {
                   padding: '8px 12px',
                   background: 'linear-gradient(0deg, rgba(0,0,0,0.85), rgba(0,0,0,0))',
                   color: '#f2f2ee',
-                  fontFamily: "'Segoe UI Semibold', 'Segoe UI', sans-serif",
+                  fontFamily: TEXT,
                   fontSize: 22,
                   letterSpacing: '0.04em',
                   whiteSpace: 'nowrap',

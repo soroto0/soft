@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Коллаж, вариант «стопка снимков». Встроенный Collage раскладывает 3
 // фото В РЯД на фоне миллиметровки, все три появляются наездом масштаба
@@ -120,7 +121,7 @@ export const CollageAi92B6: React.FC<VariantProps> = (p) => {
                 // тёмная подпись по кремовому полю снимка: светлый текст
                 // на светлой бумаге был бы нечитаем
                 color: '#241f1a',
-                fontFamily: "'Segoe UI Semibold', 'Segoe UI', sans-serif",
+                fontFamily: TEXT,
                 fontSize: 21,
                 letterSpacing: '0.04em',
                 whiteSpace: 'nowrap',

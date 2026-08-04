@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Compare, вариант «весы». Встроенный Compare ставит две одинаковые коробки
 // и наезжает на них масштабом — обе стороны равноправны и неподвижны.
@@ -53,7 +54,7 @@ export const CompareAi2D7A: React.FC<VariantProps> = (p) => {
         borderTop: 'none',
         padding: '16px 18px 20px',
         background: 'rgba(10,12,15,0.62)',
-        fontFamily: "'Segoe UI', Arial, sans-serif",
+        fontFamily: TEXT,
         fontSize: 36,
         lineHeight: 1.16,
         color: '#ffffff',

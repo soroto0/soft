@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 // Kinetic, вариант «разрез». Встроенный Kinetic выбрасывает слова по одному
 // снизу, ai_3e90 держит в кадре ровно одно слово. Здесь фраза стоит целиком,
@@ -33,7 +34,7 @@ export const KineticAi6A2E: React.FC<VariantProps> = (p) => {
   // Общий стиль строки: обе половины должны быть НАБРАНЫ ОДИНАКОВО, иначе
   // на шве буквы не совпадут по ширине и разрез будет видно как брак.
   const line: React.CSSProperties = {
-    fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
+    fontFamily: DISPLAY,
     fontSize: FS,
     lineHeight: 1,
     color: '#ffffff',

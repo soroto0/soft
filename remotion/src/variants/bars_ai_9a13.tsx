@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Bars, второй вид. Встроенный BarChart растит ГОРИЗОНТАЛЬНЫЕ сплошные полосы
 // слева направо. Здесь полосы ВЕРТИКАЛЬНЫЕ и набираются дискретными блоками
@@ -50,7 +51,7 @@ export const BarsAi9A13: React.FC<VariantProps> = (p) => {
               <div style={{
                 opacity: k,
                 marginBottom: 8,
-                fontFamily: "'Segoe UI', Arial, sans-serif",
+                fontFamily: TEXT,
                 fontSize: 30, fontWeight: 700, color: ACCENT,
                 textShadow: '0 2px 12px rgba(0,0,0,0.95)',
                 fontVariantNumeric: 'tabular-nums',
@@ -81,7 +82,7 @@ export const BarsAi9A13: React.FC<VariantProps> = (p) => {
               <div style={{
                 marginTop: 10,
                 opacity: k,
-                fontFamily: "'Segoe UI', Arial, sans-serif",
+                fontFamily: TEXT,
                 fontSize: 20,
                 letterSpacing: '0.12em',
                 textTransform: 'uppercase',

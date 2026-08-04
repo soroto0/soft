@@ -1,5 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import { DISPLAY, TEXT, SERIF } from './fonts';
 import { VARIANTS, DECOR } from './variants/_registry';
 import type { OverlayProps } from './types';
 
@@ -99,7 +100,7 @@ const LowerThird = ({ content, exit, enter }: { content: string; exit: number; e
           }} />
           
           <div style={{ 
-            fontFamily: "'Segoe UI Black', 'Arial', sans-serif", 
+            fontFamily: DISPLAY, 
             fontSize: '64px', 
             lineHeight: 1, 
             color: '#ffffff',
@@ -137,7 +138,7 @@ const LowerThirdUnderline = ({ content, exit, enter }: { content: string; exit: 
     <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'flex-start', padding: '90px 70px' }}>
       <div style={{ transform: `translateY(${rise}px)`, opacity, display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div style={{
-          fontFamily: "'Segoe UI Black', 'Arial', sans-serif",
+          fontFamily: DISPLAY,
           fontSize: '52px',
           lineHeight: 1,
           color: '#ffffff',
@@ -192,7 +193,7 @@ const Counter = ({ content, exit, enter }: { content: string; exit: number; ente
         filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.6))'
       }}>
         <div style={{ 
-          fontFamily: "'Segoe UI Black', 'Arial', sans-serif", 
+          fontFamily: DISPLAY, 
           fontSize: '140px', 
           color: '#ffffff',
           textShadow: `0 0 40px rgba(${THEME.accentRgb},0.3)`
@@ -271,7 +272,7 @@ const CounterTag = ({ content, exit, enter }: { content: string; exit: number; e
         padding: '20px 46px'
       }}>
         <div style={{
-          fontFamily: "Georgia, 'Times New Roman', serif",
+          fontFamily: SERIF,
           fontWeight: 700,
           fontSize: '46px',
           color: '#1a1410',
@@ -314,7 +315,7 @@ const BarChart = ({ content, exit, enter }: { content: string; exit: number; ent
 
           return (
             <div key={idx} style={{ marginBottom: '24px', display: 'flex', alignItems: 'center' }}>
-              <div style={{ width: '150px', textAlign: 'right', paddingRight: '20px', color: '#ccc', fontFamily: "'Segoe UI', sans-serif", fontSize: '24px' }}>
+              <div style={{ width: '150px', textAlign: 'right', paddingRight: '20px', color: '#ccc', fontFamily: TEXT, fontSize: '24px' }}>
                 {item.label}
               </div>
               <div style={{ flex: 1, height: '30px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
@@ -383,10 +384,10 @@ const Timeline = ({ content, exit, enter }: { content: string; exit: number; ent
                 transform: `scale(${dotAnim})`,
                 marginBottom: '10px'
               }} />
-              <div style={{ color: '#fff', fontFamily: "'Segoe UI Black', sans-serif", fontSize: '20px', textShadow: '0 2px 8px rgba(0,0,0,0.85)' }}>{evt.year}</div>
+              <div style={{ color: '#fff', fontFamily: DISPLAY, fontSize: '20px', textShadow: '0 2px 8px rgba(0,0,0,0.85)' }}>{evt.year}</div>
               {/* #e8edf2 даёт 5.07:1 против серого (96,100,104) — выше порога 4.5:1;
                   тень держит читаемость и на светлом кадре */}
-              <div style={{ color: '#e8edf2', fontFamily: "'Segoe UI', sans-serif", fontSize: '14px', marginTop: '4px', textShadow: '0 2px 8px rgba(0,0,0,0.85)' }}>{evt.label}</div>
+              <div style={{ color: '#e8edf2', fontFamily: TEXT, fontSize: '14px', marginTop: '4px', textShadow: '0 2px 8px rgba(0,0,0,0.85)' }}>{evt.label}</div>
             </div>
           );
         })}
@@ -456,7 +457,7 @@ const Callout = ({ content, pos, exit, enter }: { content: string; pos: string; 
             width: '4px', height: '40px', background: THEME.accent, marginRight: '16px', borderRadius: '2px',
             boxShadow: `0 0 8px ${THEME.accent}`
           }} />
-          <span style={{ color: '#fff', fontFamily: "'Segoe UI', sans-serif", fontSize: '24px', lineHeight: 1.2 }}>
+          <span style={{ color: '#fff', fontFamily: TEXT, fontSize: '24px', lineHeight: 1.2 }}>
             {content}
           </span>
         </div>
@@ -514,7 +515,7 @@ const Compare = ({ content, exit, enter }: { content: string; exit: number; ente
           borderRadius: '12px', padding: '40px', textAlign: 'center',
           boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
         }}>
-          <div style={{ color: '#fff', fontFamily: "'Segoe UI Black', sans-serif", fontSize: '48px', lineHeight: 1.2 }}>
+          <div style={{ color: '#fff', fontFamily: DISPLAY, fontSize: '48px', lineHeight: 1.2 }}>
             {left}
           </div>
         </div>
@@ -528,7 +529,7 @@ const Compare = ({ content, exit, enter }: { content: string; exit: number; ente
           borderRadius: '12px', padding: '40px', textAlign: 'center',
           boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
         }}>
-          <div style={{ color: '#fff', fontFamily: "'Segoe UI Black', sans-serif", fontSize: '48px', lineHeight: 1.2 }}>
+          <div style={{ color: '#fff', fontFamily: DISPLAY, fontSize: '48px', lineHeight: 1.2 }}>
             {right}
           </div>
         </div>
@@ -564,7 +565,7 @@ const Banner = ({ content, exit, enter }: { content: string; exit: number; enter
       }}>
         <div style={{
           color: THEME.bannerText,
-          fontFamily: "'Segoe UI Black', sans-serif",
+          fontFamily: DISPLAY,
           fontSize: '42px',
           textTransform: 'uppercase',
           letterSpacing: '1px'
@@ -605,7 +606,7 @@ const BannerRibbon = ({ content, exit, enter }: { content: string; exit: number;
         <div style={{
           transform: 'skewX(8deg)',
           color: '#ffffff',
-          fontFamily: "'Segoe UI Black', sans-serif",
+          fontFamily: DISPLAY,
           fontSize: '38px',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
@@ -642,7 +643,7 @@ const Watermark = ({ content, pos, enter }: { content: string; pos: string; ente
       } as React.CSSProperties}>
         <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: THEME.accent }} />
         <span style={{
-          color: '#fff', fontFamily: "'Segoe UI', sans-serif", fontWeight: 600,
+          color: '#fff', fontFamily: TEXT, fontWeight: 600,
           fontSize: '15px', letterSpacing: '0.5px', whiteSpace: 'nowrap',
         }}>
           {content}
@@ -690,7 +691,7 @@ const Collage = ({ items, exit, enter }: { items: { label: string; img: string }
               <div style={{
                 background: `linear-gradient(180deg,${THEME.kickerFrom},${THEME.kickerTo})`,
                 border: `1px solid rgba(${THEME.accentRgb},0.5)`,
-                color: THEME.accentLight, fontFamily: "'Segoe UI Semibold', sans-serif",
+                color: THEME.accentLight, fontFamily: TEXT,
                 fontSize: 18, padding: '8px 18px', borderRadius: 6,
                 letterSpacing: 0.5, boxShadow: '0 8px 20px rgba(0,0,0,0.5)',
               }}>{it.label}</div>
@@ -719,7 +720,7 @@ const TitleCard = ({ content, exit, enter }: { content: string; exit: number; en
       <div style={{ opacity: exit, textAlign: 'center', maxWidth: '84%' }}>
         <div style={{
           display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0 20px',
-          fontFamily: "'Segoe UI Black', sans-serif", fontSize: 78, lineHeight: 1.05,
+          fontFamily: DISPLAY, fontSize: 78, lineHeight: 1.05,
           textTransform: 'uppercase', color: '#fff',
         }}>
           {words.map((w, i) => {
@@ -744,7 +745,7 @@ const TitleCard = ({ content, exit, enter }: { content: string; exit: number; en
         }} />
         {sub && (
           <div style={{
-            opacity: subOp, marginTop: 18, fontFamily: "'Segoe UI', sans-serif",
+            opacity: subOp, marginTop: 18, fontFamily: TEXT,
             fontSize: 26, color: '#e6e6ee', letterSpacing: 1,
           }}>{sub.trim()}</div>
         )}
@@ -780,7 +781,7 @@ const Kinetic = ({ content, exit }: { content: string; exit: number }) => {
             <span key={i} style={{
               opacity: a * exit,
               transform: `translateY(${up}px)`,
-              fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
+              fontFamily: DISPLAY,
               fontSize: 88, lineHeight: 1.12, color: '#ffffff',
               textTransform: 'uppercase', letterSpacing: '-0.02em',
               textShadow: '0 6px 22px rgba(0,0,0,0.85)',
@@ -833,7 +834,7 @@ const Highlight = ({ content, pos, exit, enter }: { content: string; pos: string
         ...(toLeft ? { right: `${100 - cx + 22}%` } : { left: `${cx + 22}%` }),
         top: `${labelTop}%`,
         opacity: labelIn * enter, transform: `translateY(${(1 - labelIn) * 10}px)`,
-        fontFamily: "'Segoe UI', Arial, sans-serif", fontSize: 34, color: '#fff',
+        fontFamily: TEXT, fontSize: 34, color: '#fff',
         background: 'rgba(12,14,18,0.82)', padding: '10px 18px',
         [toLeft ? 'borderRight' : 'borderLeft']: `4px solid ${THEME.accent}`,
         textAlign: toLeft ? 'right' : 'left',
@@ -861,11 +862,11 @@ const PullQuote = ({ content, exit, enter }: { content: string; exit: number; en
       <div style={{ position: 'relative', maxWidth: '76%' }}>
         <div style={{
           position: 'absolute', left: -70, top: -70, fontSize: 200, lineHeight: 1,
-          fontFamily: 'Georgia, serif', color: THEME.accent, opacity: 0.55,
+          fontFamily: SERIF, color: THEME.accent, opacity: 0.55,
           transform: `scale(${markScale})`, transformOrigin: 'left top',
         }}>“</div>
         <div style={{
-          fontFamily: 'Georgia, serif', fontSize: 58, lineHeight: 1.3,
+          fontFamily: SERIF, fontSize: 58, lineHeight: 1.3,
           color: '#ffffff', fontStyle: 'italic',
           textShadow: '0 4px 18px rgba(0,0,0,0.9)',
         }}>{text}</div>
@@ -875,7 +876,7 @@ const PullQuote = ({ content, exit, enter }: { content: string; exit: number; en
         }} />
         {author ? (
           <div style={{
-            marginTop: 14, fontFamily: "'Segoe UI', Arial, sans-serif",
+            marginTop: 14, fontFamily: TEXT,
             fontSize: 28, letterSpacing: '0.12em', textTransform: 'uppercase',
             color: THEME.accentLight, opacity: rule,
           }}>{author}</div>
@@ -909,7 +910,7 @@ const Stamp = ({ content, exit }: { content: string; exit: number }) => {
         textAlign: 'right', background: 'rgba(10,12,16,0.35)',
       }}>
         <div style={{
-          fontFamily: "'Bahnschrift', 'Segoe UI', sans-serif", fontSize: 44,
+          fontFamily: DISPLAY, fontSize: 44,
           letterSpacing: '0.18em', textTransform: 'uppercase', color: '#ffffff',
         }}>{main}</div>
         {sub ? (
@@ -1022,7 +1023,7 @@ const Marker = ({ content, exit, enter }: { content: string; exit: number; enter
               }} />
               <span style={{
                 position: 'relative',
-                fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
+                fontFamily: DISPLAY,
                 fontSize: 76, lineHeight: 1.24,
                 color: `rgb(${ink(255, 0)},${ink(255, 1)},${ink(255, 2)})`,
                 letterSpacing: '-0.01em',
@@ -1087,7 +1088,7 @@ const Gallery = ({ items, exit, enter }: { items: { label: string; img: string }
               <div style={{
                 position: 'absolute', left: '50%', bottom: -14, transform: 'translateX(-50%)',
                 background: '#ffffff', color: '#111', padding: '4px 14px',
-                fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
+                fontFamily: DISPLAY,
                 fontSize: 26, whiteSpace: 'nowrap',
                 boxShadow: '0 6px 18px rgba(0,0,0,0.45)',
               }}>{c.label}</div>

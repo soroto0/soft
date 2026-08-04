@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Infographic, вариант «кольца». Величина показана дугой, которая ОБВОДИТ круг
 // (stroke-dashoffset), а не длиной полосы. Движение круговое — третья, отличная
@@ -68,7 +69,7 @@ export const InfographicAiE380: React.FC<VariantProps> = (p) => {
                         transform="rotate(-90 70 70)"
                         style={{ filter: 'drop-shadow(0 0 8px rgba(90,200,200,0.6))' }} />
                 <text x={70} y={70} textAnchor="middle" dominantBaseline="central"
-                      fontFamily="'Segoe UI', Arial, sans-serif" fontSize={38}
+                      fontFamily={TEXT} fontSize={38}
                       fontWeight={700} fill="#ffffff"
                       style={{ paintOrder: 'stroke' }}
                       stroke="rgba(4,8,10,0.85)" strokeWidth={5}
@@ -77,7 +78,7 @@ export const InfographicAiE380: React.FC<VariantProps> = (p) => {
               <div style={{
                 marginTop: 8,
                 opacity: k,
-                fontFamily: "'Segoe UI', Arial, sans-serif",
+                fontFamily: TEXT,
                 fontSize: 22,
                 letterSpacing: '0.14em',
                 textTransform: 'uppercase',

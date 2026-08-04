@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 // Counter, вариант «механический счётчик». Встроенный Counter наезжает
 // масштабом целым блоком, а число внутри просто пересчитывается — движется
@@ -40,7 +41,7 @@ export const CounterAi4C8B: React.FC<VariantProps> = (p) => {
       }}>
         {prefix ? (
           <span style={{
-            fontFamily: "'Bahnschrift', 'Segoe UI', sans-serif",
+            fontFamily: DISPLAY,
             fontSize: 64, color: ACCENT, marginRight: 4,
           }}>{prefix}</span>
         ) : null}
@@ -73,7 +74,7 @@ export const CounterAi4C8B: React.FC<VariantProps> = (p) => {
                     height: H,
                     lineHeight: `${H}px`,
                     textAlign: 'center',
-                    fontFamily: "'Bahnschrift', 'Segoe UI', sans-serif",
+                    fontFamily: DISPLAY,
                     fontSize: 74,
                     color: '#f6f1e6',
                     fontVariantNumeric: 'tabular-nums',
@@ -94,7 +95,7 @@ export const CounterAi4C8B: React.FC<VariantProps> = (p) => {
 
         {suffix ? (
           <span style={{
-            fontFamily: "'Bahnschrift', 'Segoe UI', sans-serif",
+            fontFamily: DISPLAY,
             fontSize: 64, color: ACCENT, marginLeft: 6,
           }}>{suffix}</span>
         ) : null}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY, TEXT } from '../fonts';
 
 // Хронология, вариант «вертикальная лента». Встроенный Timeline — это
 // ГОРИЗОНТАЛЬНАЯ ось у нижнего края, точки на ней выскакивают с
@@ -93,7 +94,7 @@ export const TimelineAiA18E: React.FC<VariantProps> = (p) => {
                 }} />
                 <div>
                   <div style={{
-                    fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
+                    fontFamily: DISPLAY,
                     fontSize: 40,
                     lineHeight: 1,
                     color: '#ffffff',
@@ -103,7 +104,7 @@ export const TimelineAiA18E: React.FC<VariantProps> = (p) => {
                   {e.label ? (
                     <div style={{
                       marginTop: 6,
-                      fontFamily: "'Segoe UI', Arial, sans-serif",
+                      fontFamily: TEXT,
                       fontSize: 22,
                       // Подпись НЕ должна опираться на градиентную подложку:
                       // та растушёвана вправо и на другом соотношении

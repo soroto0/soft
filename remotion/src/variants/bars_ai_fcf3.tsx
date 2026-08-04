@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 export const BarsAiFCF3: React.FC<VariantProps> = (p) => {
   const frame = useCurrentFrame();
@@ -38,7 +39,7 @@ export const BarsAiFCF3: React.FC<VariantProps> = (p) => {
       display: 'flex',
       justifyContent: 'center' as const,
       alignItems: 'center' as const,
-      fontFamily: "'Bahnschrift', sans-serif",
+      fontFamily: DISPLAY,
       color: '#e0f7fa',
       overflow: 'hidden' as const,
       position: 'relative' as const,

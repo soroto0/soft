@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY, TEXT } from '../fonts';
 
 // Титр, вариант «диафрагма». Встроенный TitleCard затемняет ВЕСЬ кадр и
 // выбрасывает слова по одному наездом масштаба. Здесь ровно наоборот:
@@ -75,7 +76,7 @@ export const TitlecardAiC4F7: React.FC<VariantProps> = (p) => {
           justifyContent: 'center',
         }}>
           <div style={{
-            fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
+            fontFamily: DISPLAY,
             fontSize: Math.round(height * 0.082),
             lineHeight: 1.02,
             textTransform: 'uppercase',
@@ -91,7 +92,7 @@ export const TitlecardAiC4F7: React.FC<VariantProps> = (p) => {
               marginTop: Math.round(height * 0.018),
               opacity: subIn,
               transform: `translateY(${(1 - subIn) * 12}px)`,
-              fontFamily: "'Segoe UI', Arial, sans-serif",
+              fontFamily: TEXT,
               fontSize: Math.round(height * 0.028),
               letterSpacing: '0.24em',
               textTransform: 'uppercase',

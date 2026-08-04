@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY, TEXT } from '../fonts';
 
 // Bars, вариант «столбцы». Встроенный BarChart растит полосы ВЛЕВО-ВПРАВО,
 // ai_fcf3 чертит их лучом осциллографа. Здесь ось повёрнута: столбцы растут
@@ -51,7 +52,7 @@ export const BarsAi8F3C: React.FC<VariantProps> = (p) => {
             }}>
               <div style={{
                 opacity: k,
-                fontFamily: "'Bahnschrift', 'Segoe UI', sans-serif",
+                fontFamily: DISPLAY,
                 fontSize: 36,
                 color: '#ffffff',
                 marginBottom: 8,
@@ -67,7 +68,7 @@ export const BarsAi8F3C: React.FC<VariantProps> = (p) => {
               <div style={{
                 marginTop: 10,
                 opacity: k,
-                fontFamily: "'Segoe UI', Arial, sans-serif",
+                fontFamily: TEXT,
                 fontSize: 22,
                 letterSpacing: '0.1em',
                 textTransform: 'uppercase',

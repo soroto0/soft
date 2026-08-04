@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing, Img } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 export const Lower3Ai0FBF: React.FC<VariantProps> = (p) => {
   const frame = useCurrentFrame();
@@ -103,7 +104,7 @@ export const Lower3Ai0FBF: React.FC<VariantProps> = (p) => {
           {/* Content text using Swiss typography - Bahnschrift for technical feel */}
           <div
             style={{
-              fontFamily: 'Bahnschrift, "Segoe UI", sans-serif',
+              fontFamily: DISPLAY,
               fontSize: '22px',
               fontWeight: '700',
               color: '#1a1a1a',
@@ -143,7 +144,7 @@ export const Lower3Ai0FBF: React.FC<VariantProps> = (p) => {
                   filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))'
                 }}
               />
-              <span style={{ fontFamily: 'Bahnschrift, sans-serif', color: '#777' }}>VIS</span>
+              <span style={{ fontFamily: DISPLAY, color: '#777' }}>VIS</span>
             </div>
           )}
         </div>

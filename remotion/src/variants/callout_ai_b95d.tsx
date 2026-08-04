@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Callout, вариант «бирка на нити». Встроенный Callout ставит рядом с точкой
 // прямоугольник, ai_6cdb — паспарту с ниточкой, ai_7e21 тянет размерную
@@ -68,7 +69,7 @@ export const CalloutAiB95D: React.FC<VariantProps> = (p) => {
           padding: '12px 22px',
           border: '1px solid rgba(90,78,54,0.45)',
           boxShadow: '0 12px 26px rgba(0,0,0,0.55)',
-          fontFamily: "'Segoe UI', Arial, sans-serif",
+          fontFamily: TEXT,
           fontSize: 30,
           letterSpacing: '0.06em',
           textTransform: 'uppercase',

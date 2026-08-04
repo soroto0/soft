@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Compare, вариант «шторка». Стороны не стоят рядом одновременно: сначала в
 // кадре только левая, потом её СМЕТАЕТ вертикальная граница, идущая слева
@@ -35,7 +36,7 @@ export const CompareAi9B31: React.FC<VariantProps> = (p) => {
     alignItems: 'center',
     justifyContent: align,
     padding: '0 9%',
-    fontFamily: "'Segoe UI', Arial, sans-serif",
+    fontFamily: TEXT,
     fontSize: 54,
     lineHeight: 1.2,
     color: '#ffffff',

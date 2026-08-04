@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Collage, третий вид. Встроенный Collage выстраивает ряд карточек, ai_92b6 —
 // стопку, падающую веером. Здесь снимки СЛЕТАЮТСЯ с четырёх сторон кадра в
@@ -49,7 +50,7 @@ export const CollageAiB845: React.FC<VariantProps> = (p) => {
               {it.label ? (
                 <div style={{
                   marginTop: 6,
-                  fontFamily: "'Segoe UI', Arial, sans-serif",
+                  fontFamily: TEXT,
                   fontSize: 18,
                   letterSpacing: '0.1em',
                   textTransform: 'uppercase',

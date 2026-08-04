@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 // Маркер, вариант «подчёркивание пером». Встроенный Marker ЗАКРАШИВАЕТ
 // слова сплошной плашкой (и вынужден перекрашивать текст на ходу, чтобы
@@ -68,7 +69,7 @@ export const MarkerAiB3D5: React.FC<VariantProps> = (p) => {
               <span key={i} style={{
                 display: 'inline-block',
                 transform: `translateY(${hop}px)`,
-                fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
+                fontFamily: DISPLAY,
                 fontSize: 66,
                 lineHeight: 1.18,
                 color: '#ffffff',

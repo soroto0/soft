@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 export const Lower3Ai393B: React.FC<VariantProps> = (p) => {
   const frame = useCurrentFrame();
@@ -325,7 +326,7 @@ export const Lower3Ai393B: React.FC<VariantProps> = (p) => {
         {/* Subtle secondary line in Bahnschrift for technical contrast */}
         <div
           style={{
-            fontFamily: '"Bahnschrift", sans-serif',
+            fontFamily: DISPLAY,
             fontSize: Math.round(height * 0.015),
             fontWeight: 400,
             color: amberDk,

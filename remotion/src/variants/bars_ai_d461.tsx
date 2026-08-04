@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Bars, третий вид. Ни горизонтальных полос (встроенный BarChart), ни
 // вертикальных столбиков (ai_9a13): значения расходятся ЛУЧАМИ из центра, и
@@ -77,7 +78,7 @@ export const BarsAiD461: React.FC<VariantProps> = (p) => {
             transform: 'translate(-50%, -50%)',
             opacity: k,
             textAlign: 'center',
-            fontFamily: "'Segoe UI', Arial, sans-serif",
+            fontFamily: TEXT,
             textShadow: '0 2px 10px rgba(0,0,0,0.95)',
             whiteSpace: 'nowrap',
           }}>

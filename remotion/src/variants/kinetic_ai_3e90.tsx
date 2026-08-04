@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 // Кинетика, вариант «по одному слову». Отличие от встроенного Kinetic
 // СТРУКТУРНОЕ, а не цветовое: там слова НАКАПЛИВАЮТСЯ в центре и к концу
@@ -92,7 +93,7 @@ export const KineticAi3E90: React.FC<VariantProps> = (p) => {
         <span style={{
           opacity: alive,
           transform: `scale(${Math.max(scale, 0.001)})`,
-          fontFamily: "'Segoe UI Black', 'Arial Black', sans-serif",
+          fontFamily: DISPLAY,
           fontSize: 118,
           lineHeight: 1,
           color: '#ffffff',

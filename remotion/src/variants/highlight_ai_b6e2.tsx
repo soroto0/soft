@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Highlight, вариант «эхо». Ни обводки, ни скобок: от точки РАСХОДЯТСЯ
 // кольца, как круги по воде, — три штуки со сдвигом по времени, каждое
@@ -64,7 +65,7 @@ export const HighlightAiB6E2: React.FC<VariantProps> = (p) => {
         top: `${labelTop}%`,
         transform: `translate(-50%, ${(1 - labelIn) * -8}px)`,
         opacity: labelIn,
-        fontFamily: "'Segoe UI', Arial, sans-serif",
+        fontFamily: TEXT,
         fontSize: 29,
         color: '#eaf6fb',
         background: 'rgba(8,14,20,0.74)',

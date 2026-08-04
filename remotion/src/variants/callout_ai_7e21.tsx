@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 // Callout, вариант «размерная выноска». Встроенный Callout ставит рядом с
 // точкой прямоугольник с указателем, ai_6cdb — музейное паспарту с ниточкой
@@ -59,7 +60,7 @@ export const CalloutAi7E21: React.FC<VariantProps> = (p) => {
         top: `${cy}%`,
         transform: 'translate(-50%, -140%)',
         opacity: labelIn,
-        fontFamily: "'Bahnschrift', 'Segoe UI', sans-serif",
+        fontFamily: DISPLAY,
         fontSize: 30,
         letterSpacing: '0.12em',
         textTransform: 'uppercase',

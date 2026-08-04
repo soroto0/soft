@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY, SERIF } from '../fonts';
 
 const COLORS = {
   bg: '#1e1b19',
@@ -132,7 +133,7 @@ export const TitlecardAi11B9: React.FC<VariantProps> = (p) => {
           {/* Main Headline - Letterpress Style */}
           <h1 style={{
             fontSize: TITLE_SIZE,
-            fontFamily: '"Segoe UI Black", "Arial Black", sans-serif',
+            fontFamily: DISPLAY,
             color: COLORS.textMain,
             margin: 0,
             textAlign: 'center',
@@ -159,7 +160,7 @@ export const TitlecardAi11B9: React.FC<VariantProps> = (p) => {
           {subtitle && (
             <div style={{
               fontSize: SUB_SIZE,
-              fontFamily: '"Georgia", serif',
+              fontFamily: SERIF,
               color: COLORS.textSub,
               textAlign: 'center',
               fontStyle: 'italic',

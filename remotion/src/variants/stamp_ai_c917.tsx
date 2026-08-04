@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Stamp, третий вид. Встроенный Stamp и ai_5b2d («полевой слейт» — рейка
 // слева направо, текст по буквам) оба живут в нижней части кадра и рисуются
@@ -61,7 +62,7 @@ export const StampAiC917: React.FC<VariantProps> = (p) => {
                   stroke={SEAL} strokeWidth={2} opacity={0.7} />
           <text fill={SEAL} fontSize={19} fontWeight={700}
                 letterSpacing={4}
-                fontFamily="'Segoe UI', Arial, sans-serif">
+                fontFamily={TEXT}>
             <textPath href="#sealArc" startOffset="50%" textAnchor="middle">
               {ring}
             </textPath>
@@ -69,7 +70,7 @@ export const StampAiC917: React.FC<VariantProps> = (p) => {
           {core ? (
             <text x={R + 12} y={R + 20} textAnchor="middle"
                   fill={SEAL} fontSize={34} fontWeight={700} letterSpacing={2}
-                  fontFamily="'Segoe UI', Arial, sans-serif">{core}</text>
+                  fontFamily={TEXT}>{core}</text>
           ) : null}
         </svg>
       </div>

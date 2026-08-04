@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 // Kinetic, вариант «набор строки». Ни выскакивания слов снизу (встроенный),
 // ни одного слова в кадре (ai_3e90), ни встречного разреза (ai_6a2e). Здесь
@@ -42,7 +43,7 @@ export const KineticAiF174: React.FC<VariantProps> = (p) => {
         maxWidth: '100%',
       }}>
         <span style={{
-          fontFamily: "'Bahnschrift', 'Segoe UI', sans-serif",
+          fontFamily: DISPLAY,
           fontSize: 76,
           lineHeight: 1.1,
           color: '#ffffff',

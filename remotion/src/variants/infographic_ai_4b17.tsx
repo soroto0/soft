@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Infographic, вариант «табло». Встроенный тип рисуется тем же BarChart, что и
 // bars: горизонтальные полосы, растущие влево-вправо. Здесь полос нет вообще —
@@ -74,7 +75,7 @@ export const InfographicAi4B17: React.FC<VariantProps> = (p) => {
               <div style={{
                 transform: `translateY(${rise}px)`,
                 opacity: run > 0 ? 1 : 0,
-                fontFamily: "'Segoe UI', Arial, sans-serif",
+                fontFamily: TEXT,
                 fontSize: 92,
                 fontWeight: 700,
                 lineHeight: 1,
@@ -86,7 +87,7 @@ export const InfographicAi4B17: React.FC<VariantProps> = (p) => {
                 marginTop: 12,
                 transform: `translateY(${rise * 0.6}px)`,
                 opacity: run,
-                fontFamily: "'Segoe UI', Arial, sans-serif",
+                fontFamily: TEXT,
                 fontSize: 24,
                 letterSpacing: '0.16em',
                 textTransform: 'uppercase',

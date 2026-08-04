@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 // Counter, вариант «шкала». Число здесь не главное и не по центру: оно едет
 // вместе с БЕГУНКОМ по горизонтальной шкале с делениями, и величина читается
@@ -86,7 +87,7 @@ export const CounterAiD3F6: React.FC<VariantProps> = (p) => {
           whiteSpace: 'nowrap',
         }}>
           <div style={{
-            fontFamily: "'Bahnschrift', 'Segoe UI', sans-serif",
+            fontFamily: DISPLAY,
             fontSize: 68,
             fontWeight: 700,
             color: '#ffffff',

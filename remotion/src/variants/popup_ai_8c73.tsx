@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Popup, вариант «шторка». Ни масштаба, ни поворота, ни покачивания — снимок
 // стоит неподвижно, а ОТКРЫВАЕТСЯ полосой маски, идущей слева направо
@@ -61,7 +62,7 @@ export const PopupAi8C73: React.FC<VariantProps> = (p) => {
         }}>
           <div style={{ width: 34, height: 2, background: ACCENT }} />
           <span style={{
-            fontFamily: "'Segoe UI', Arial, sans-serif",
+            fontFamily: TEXT,
             fontSize: 26,
             letterSpacing: '0.14em',
             textTransform: 'uppercase',

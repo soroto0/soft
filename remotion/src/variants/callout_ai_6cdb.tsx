@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 export const CalloutAi6CDB: React.FC<VariantProps> = (p) => {
   const frame = useCurrentFrame();
@@ -192,7 +193,7 @@ export const CalloutAi6CDB: React.FC<VariantProps> = (p) => {
             
             {/* Header / Category Kicker - subtle and technical */}
             <div style={{
-              fontFamily: '"Bahnschrift", sans-serif',
+              fontFamily: DISPLAY,
               // 10px на кадре 720p — это полтора пикселя штриха, шапка
               // этикетки превращалась в серую царапину
               fontSize: '13px',

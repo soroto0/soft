@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
 export const TitlecardAi1BE7: React.FC<VariantProps> = (p) => {
   const frame = useCurrentFrame();
@@ -101,7 +102,7 @@ export const TitlecardAi1BE7: React.FC<VariantProps> = (p) => {
           transform: `translate(-50%, -50%) scale(${interpolate(frame, [0, fps], [0.8, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.elastic(1.2) })})`,
           opacity: combinedFade,
           color: '#FF00FF',
-          fontFamily: "'Bahnschrift', 'Arial Black', sans-serif",
+          fontFamily: DISPLAY,
           letterSpacing: '-2px',
           textTransform: 'uppercase',
           fontSize: Math.min(p.width ?? 0 * 0.18, 180),

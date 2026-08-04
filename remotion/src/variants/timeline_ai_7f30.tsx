@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { TEXT } from '../fonts';
 
 // Timeline, третий вид. Встроенный Timeline и ai_a18e разворачиваются ПО
 // ВЕРТИКАЛИ (лента сверху вниз, события въезжают слева). Здесь ось
@@ -72,14 +73,14 @@ export const TimelineAi7F30: React.FC<VariantProps> = (p) => {
             maxWidth: '22%',
           }}>
             <div style={{
-              fontFamily: "'Segoe UI', Arial, sans-serif",
+              fontFamily: TEXT,
               fontSize: 26, fontWeight: 700, color: ACCENT,
               textShadow: '0 2px 10px rgba(0,0,0,0.95)',
             }}>{(when || '').trim()}</div>
             {what ? (
               <div style={{
                 marginTop: 4,
-                fontFamily: "'Segoe UI', Arial, sans-serif",
+                fontFamily: TEXT,
                 fontSize: 21, color: '#f0ece3', lineHeight: 1.25,
                 textShadow: '0 2px 10px rgba(0,0,0,0.95)',
               }}>{what}</div>
