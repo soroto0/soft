@@ -741,11 +741,31 @@ def voice_track(out_dir: Path, log=None, no_music: bool = False) -> Path:
         return mixed          # чистого голоса нет — судить не по чему
     try:
         stale = mixed.stat().st_mtime < voice.stat().st_mtime
-    except OSError:
-        stale = False
-    if stale and log:
-        log(f"[Звук] {mixed.name} старше озвучки — это микс ПРОШЛОГО ролика; "
-            "беру чистый голос, иначе в видео попала бы чужая начитка", "warn")
+    except OSError as e:
+        # Не смогли сравнить даты — считаем микс ЧУЖИМ. Обратное умолчание
+        # («раз не проверили, значит свой») и есть та самая тихая деградация:
+        # цена ошибки несимметрична — в худшем случае ролик выйдет без музыки,
+        # а при ошибке в другую сторону в него попадёт чужая начитка целиком.
+        stale = True
+        if log:
+            log(f"[Звук] Не смог сравнить даты {mixed.name} и {voice.name} "
+                f"({e}) — на всякий случай беру чистый голос", "warn")
+    if stale:
+        if log:
+            log(f"[Звук] {mixed.name} старше озвучки — это микс ПРОШЛОГО "
+                "ролика; беру чистый голос, иначе в видео попала бы чужая "
+                "начитка", "warn")
+        # В сводку: зритель услышит голос БЕЗ музыкальной подложки, а шаг
+        # «музыка» при этом отчитался успехом ещё в прошлый раз — на диске
+        # лежит готовый файл, и отличить его от свежего нечем.
+        import quality
+        quality.degraded(
+            "Звук", "ролик идёт без музыкальной подложки, только голос",
+            why=f"{mixed.name} старше озвучки — это микс прошлого ролика, "
+                "брать его нельзя",
+            hint="шаг «Музыка» в этот раз не отработал — посмотри выше, "
+                 "почему, и прогони его отдельно",
+            level="заметно")
     return voice if stale else mixed
 
 
@@ -3001,7 +3021,13 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
             return None
         b = beats[i]
         src = Path(b.get("file", ""))
+        # Ниже три выхода «молча None». Каждый из них означает не «кадр
+        # хороший», а «кадр не посмотрели», и раньше они не попадали в errors —
+        # то есть план засчитывался в число ПРОВЕРЕННЫХ. Ровно тот отчёт,
+        # который выглядит хорошо потому, что проверка не работала: «100%
+        # чисто» на планах, от которых остались битые файлы.
         if not src.exists():
+            errors.append(f"план {i + 1}: файла нет ({src.name})")
             return None
         shot = Path(tmp) / f"s{i}.jpg"
         try:
@@ -3010,9 +3036,11 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
                  "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "5",
                  str(shot)],
                 timeout=60, check=True)
-        except Exception:
+        except Exception as e:
+            errors.append(f"план {i + 1}: кадр не извлекается ({str(e)[:80]})")
             return None
         if not shot.exists():
+            errors.append(f"план {i + 1}: ffmpeg не отдал кадр из {src.name}")
             return None
         line = str(b.get("text", "")).replace("\n", " ")[:250]
         try:
@@ -3092,7 +3120,9 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
             why=f"проверка зрением не прошла на {len(errors)} из {len(idx)} "
                 f"планов ({lost:.0f}%): {errors[0]}",
             hint="обычно это лимит квоты Gemini — добавь ещё ключ в .env и "
-                 "прогони проверку кадров заново",
+                 "прогони проверку кадров заново. Если в причине «файла нет» "
+                 "или «кадр не извлекается» — дело не в квоте, а в битых "
+                 "файлах раскадровки",
             level="критично" if lost > 50 else "заметно")
         if lost > 50:
             log("[Кадры] ⚠ Проверено меньше половины — считайте, что "
@@ -4678,12 +4708,40 @@ def pick_video_file(files: list[dict]) -> dict:
     return max(files, key=lambda f: f.get("height") or 0)
 
 
-def _load_used() -> dict:
+def _load_used(log=None) -> dict:
     if USED_MEDIA_FILE.exists():
         try:
             return json.loads(USED_MEDIA_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except Exception as e:
+            # Это САМАЯ тихая из поломок конвейера: битый used_media.json
+            # означает, что вся история дедупликации исчезла, и следующий
+            # ролик спокойно наберёт клипы из предыдущих — ровно то, из-за
+            # чего ролик собрался на треть из старого материала. Внешне при
+            # этом всё «успешно»: пустая история неотличима от чистой.
+            #
+            # Копию делаем до того, как _save_used перезапишет файл содержимым
+            # одного прогона: иначе история не просто не читается, а
+            # уничтожается насовсем. Ничего не удаляем — только копируем.
+            bak = USED_MEDIA_FILE.with_suffix(".json.broken")
+            try:
+                if not bak.exists():
+                    shutil.copy2(USED_MEDIA_FILE, bak)
+            except OSError:
+                pass
+            msg = (f"[Стоки] used_media.json не читается ({e}) — история "
+                   "использованного материала потеряна, ролик может набрать "
+                   f"клипы из прошлых видео. Копия битого файла: {bak.name}")
+            if log:
+                log(msg, "warn")
+            else:
+                print(msg)
+            import quality
+            quality.degraded(
+                "Стоки", "в ролик мог попасть материал из прошлых видео",
+                why=f"история использованного (used_media.json) не читается: {e}",
+                hint=f"проверь {USED_MEDIA_FILE.name}; копия битого лежит "
+                     f"рядом как {bak.name}",
+                level="критично")
     return {}
 
 
@@ -4723,6 +4781,21 @@ def _pick_unused(items: list[dict], kind: str, used: dict, count: int, log) -> l
     if not fresh and items:
         log("[Стоки] Все найденные варианты уже использовались в прошлых видео — "
             "беру повторно (переформулируй ключевые слова для разнообразия).")
+        # Повтор материала зритель узнаёт мгновенно — это главный признак
+        # «одинаковых роликов на канале», и именно так ролик собрался на треть
+        # из старых клипов. Одна строка в журнале это не удерживала: она
+        # печатается на КАЖДЫЙ такой план и тонет среди тысяч других.
+        # quality схлопнет их в одну строку со счётчиком «×N» — по нему сразу
+        # видно, это единичный план или половина ролика.
+        import quality
+        quality.degraded(
+            "Стоки", "в кадре материал, уже использованный в прошлых видео",
+            why=f"по запросу ({kind}) все {len(items)} найденных вариантов "
+                "уже были в прежних роликах",
+            hint="запросы к стокам слишком похожи на прошлые — смени тему или "
+                 "формулировки; на канале с длинной историей помогает только "
+                 "генерация кадров вместо стока",
+            level="заметно")
         fresh = list(items)
     random.shuffle(fresh)
     picked = fresh[:count]
@@ -5634,8 +5707,28 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
                     try:                          # иначе это ~1-3 мин НА КАЖДЫЙ
                         gen_video_from_image(dest, query, clip, veo_key, log,
                                              visual_style)
-                    except Exception:
-                        pass   # не страшно — основной цикл сделает Ken Burns
+                    except Cancelled:
+                        raise         # «Стоп» — не деградация, наверх как есть
+                    except Exception as e:
+                        # Ken Burns это зум по НЕПОДВИЖНОЙ картинке вместо
+                        # настоящего движения в кадре — разницу видно сразу.
+                        # Откат законный (лучше зум, чем дырка), но здесь он
+                        # был полностью нем: ни строки в журнале, ни следа в
+                        # итоге, и «живой» ролик незаметно становился
+                        # слайд-шоу. Формулировка ДОСЛОВНО та же, что в
+                        # основном цикле ниже: quality схлопывает одинаковые
+                        # записи, и один и тот же изъян должен давать одну
+                        # строку со счётчиком, а не две похожие.
+                        log(f"[Раскадровка] План {i}: оживить фото не "
+                            f"вышло ({_redact(e)}) — Ken Burns")
+                        import quality
+                        quality.degraded(
+                            "Раскадровка", "кадр не ожил: вместо движения "
+                            "в сцене — простой зум по неподвижной картинке",
+                            why=f"image-to-video не отработал "
+                                f"({e.__class__.__name__})",
+                            hint="проверь остаток квоты VeoNonStop",
+                            level="заметно")
             elif not dest.exists():
                 gen_video(_image_prompt(query, visual_style), dest, log)
             return (i, True, None)
@@ -5834,7 +5927,7 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     pexels = KeyRotator(pexels_keys or os.getenv("PEXELS_API_KEY", ""))
     pixabay = KeyRotator(pixabay_keys or os.getenv("PIXABAY_API_KEY", ""))
     pexels_get, pixabay_get = _stock_getters(pexels, pixabay, log)
-    used = _load_used()
+    used = _load_used(log)   # с log: битая история — не мелочь, о ней надо знать
 
     if queries is None and (agnes_key or os.getenv("AGNES_API_KEY", "")
             or os.getenv("GEMINI_API_KEY", "")):
@@ -6015,9 +6108,28 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                 wiki = fetch_wiki_images(query, 1, sdir, dest.stem, used, log)
                 if wiki:
                     ken_burns(wiki[0], dest, duration=need)
+                    # Wikimedia — ПОСЛЕДНИЙ путь, и единственный, где картинку
+                    # никто не смотрел: и сток, и Openverse проходят проверку
+                    # зрением, а здесь берётся первое подходящее по словам. Так
+                    # в кадр и попадают гравюры и музейные экспонаты вместо
+                    # фотографии. Плюс лицензия: CC-BY требует атрибуции в
+                    # описании, и забыть об этом — не мелочь.
+                    import quality
+                    quality.degraded(
+                        "Стоки", "часть кадров взята с Wikimedia вслепую — по "
+                        "словам запроса, без проверки, что на картинке",
+                        why=f"ни сток, ни Openverse ничего не дали по «{query}»",
+                        hint="проверь эти планы глазами: с Wikimedia приходят "
+                             "гравюры и музейные экспонаты вместо съёмки. И "
+                             "укажи атрибуцию в описании — лицензия названа "
+                             "строкой [Wiki] в журнале",
+                        level="заметно")
                     return need
-            except Exception:
-                pass
+            except Exception as e:
+                # Молчать нельзя: это последний источник, и после него у плана
+                # остаётся только генерация или дырка в монтаже.
+                log(f"[Стоки] Wikimedia не ответила по «{query}» "
+                    f"({_redact(e)}) — план пойдёт дальше без фото")
             return None
         jpg = dest.with_suffix(".jpg")
         try:

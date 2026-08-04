@@ -67,6 +67,13 @@ import { FracturePropagationAnimationScene } from './scenes/fracture_propagation
 import { VaporCloudExpansionScene } from './scenes/vapor_cloud_expansion';
 import { SeismicShockDiagramScene } from './scenes/seismic_shock_diagram';
 import { Backdrop } from './scenes/backdrop';
+import { StructuralLoadDistributionScene } from './scenes/structural_load_distribution';
+import { GeologicalCrossSectionScene } from './scenes/geological_cross_section';
+import { ForceVectorDiagramScene } from './scenes/force_vector_diagram';
+import { BoreholeDataMapScene } from './scenes/borehole_data_map';
+import { DifferentialSettlementViewScene } from './scenes/differential_settlement_view';
+import { ShearPlaneLubricationScene } from './scenes/shear_plane_lubrication';
+import { MicroscopicClayStructureScene } from './scenes/microscopic_clay_structure';
 export type { SceneProps };
 
 // Точка входа для СЦЕН — планов, которые целиком нарисованы, а не сняты.
@@ -234,6 +241,20 @@ const pickScene = (props: SceneProps): React.ReactElement | null => {
       return <VaporCloudExpansionScene {...props} />;
     case 'seismic_shock_diagram':
       return <SeismicShockDiagramScene {...props} />;
+    case 'structural_load_distribution':
+      return <StructuralLoadDistributionScene {...props} />;
+    case 'geological_cross_section':
+      return <GeologicalCrossSectionScene {...props} />;
+    case 'force_vector_diagram':
+      return <ForceVectorDiagramScene {...props} />;
+    case 'borehole_data_map':
+      return <BoreholeDataMapScene {...props} />;
+    case 'differential_settlement_view':
+      return <DifferentialSettlementViewScene {...props} />;
+    case 'shear_plane_lubrication':
+      return <ShearPlaneLubricationScene {...props} />;
+    case 'microscopic_clay_structure':
+      return <MicroscopicClayStructureScene {...props} />;
     default:
       return null;
   }

@@ -32,7 +32,15 @@ from collections import deque
 from pathlib import Path
 
 from core import (srt_to_seconds, parse_srt, load_whisper_words, audio_duration,
-                  CREATE_NO_WINDOW, sound_palette_of, voice_track)
+                  CREATE_NO_WINDOW, sound_palette_of, voice_track,
+                  # run_tree зовётся в _bake_overlays, но в этот список не
+                  # входил — и запекание падало с NameError КАЖДЫЙ раз. Замер
+                  # по app.log 2026-08-05 00:19:51: «Запекание не вышло (name
+                  # 'run_tree' is not defined)», следом «Оверлеев 91, беру
+                  # первые 78». То есть весь смысл запекания (не терять
+                  # плашки) не работал ни разу с момента написания, а наружу
+                  # это выходило одной строкой warn.
+                  run_tree)
 
 CONSOLE = None  # хук GUI: сюда льётся живой вывод ffmpeg (кадр/время/скорость)
 CANCEL = threading.Event()  # кнопка «Стоп»: убивает текущий ffmpeg и рендер
@@ -61,6 +69,30 @@ PRESET_FINAL = "medium"
 
 _HW_ENCODER: str | None = None      # кэш результата проверки (None = не проверяли)
 _HW_DISABLED = False                # «выключено навсегда» переживает гонку проверок
+# Почему аппаратного пути нет. Хранится ОТДЕЛЬНО от кэша результата, потому
+# что проверка делается один раз на процесс, а ролик за ночь собирается не
+# один: без этой строки предупреждение попадало бы в сводку только первого
+# ролика, а второй и третий выглядели бы так, будто с видеокартой всё хорошо.
+_HW_FAIL_REASON = ""
+_HW_BY_USER = False                 # выключено человеком (HW_ENCODE=0), не сбой
+
+
+def _hw_report() -> None:
+    """Сказать в сводку ЭТОГО ролика, что видеокарта в рендере не участвует.
+
+    Зовётся при каждой выдаче пустого кодировщика, а не только в момент
+    проверки. quality.degraded схлопывает одинаковые записи, так что лишних
+    строк это не даёт."""
+    if not _HW_FAIL_REASON or _HW_BY_USER:
+        return
+    import quality
+    quality.degraded(
+        "Рендер", "видеокарта в рендере не участвует, всё считает процессор",
+        why=_HW_FAIL_REASON,
+        hint="если видеокарта NVIDIA есть — обнови драйвер и закрой другие "
+             "программы, кодирующие видео. Промежуточные проходы это самая "
+             "долгая часть рендера, на процессоре ждать в разы дольше",
+        level="мелочь")
 
 
 def hw_encoder() -> str:
@@ -72,16 +104,32 @@ def hw_encoder() -> str:
 
     Отключается принудительно через HW_ENCODE=0 в .env.
     Результат кэшируется — проверка стоит ~1 с."""
-    global _HW_ENCODER
+    global _HW_ENCODER, _HW_FAIL_REASON, _HW_BY_USER
     if _HW_DISABLED:
+        _hw_report()
         return ""
     if _HW_ENCODER is not None:
+        if not _HW_ENCODER:
+            _hw_report()
         return _HW_ENCODER
     # пустое значение = «не задано» -> берём умолчание (как _env_switch в core)
     flag = os.getenv("HW_ENCODE", "").strip().lower()
     if flag in ("0", "false", "no", "off"):
+        # Это выбор человека, а не отказ железа — в деградации не пишем, но
+        # вслух говорим: иначе «почему видеокарта простаивает» приходится
+        # выяснять чтением .env.
+        _console("[Рендер] Аппаратное кодирование выключено вручную "
+                 "(HW_ENCODE=0 в .env) — считает процессор")
+        _HW_BY_USER = True
+        _HW_FAIL_REASON = "выключено вручную: HW_ENCODE=0 в .env"
         _HW_ENCODER = ""
         return _HW_ENCODER
+    # Причину отказа КАЖДОГО кандидата запоминаем. Раньше здесь стоял голый
+    # `except: continue`, и на машине с работающей GeForce отказ NVENC (занятые
+    # сессии, старый драйвер, ffmpeg без поддержки) выглядел ровно как
+    # отсутствие видеокарты: пустая строка, ни слова в журнале. Владелец три
+    # дня считал, что рендер идёт на видеокарте, пока тот шёл на процессоре.
+    why: list[str] = []
     for enc in ("h264_nvenc", "h264_qsv", "h264_amf"):
         try:
             r = subprocess.run(
@@ -96,30 +144,54 @@ def hw_encoder() -> str:
                 _HW_ENCODER = enc
                 _console(f"[Рендер] Аппаратное кодирование: {enc}")
                 return _HW_ENCODER
-        except Exception:
-            continue
+            # Берём ПЕРВЫЕ строки stderr, а не последние: при -loglevel error
+            # ffmpeg сначала печатает настоящую причину («Cannot load
+            # nvcuda.dll», «No capable devices found», «OpenEncodeSessionEx
+            # failed: out of memory»), а последней — общее «Error initializing
+            # output stream», по которому ничего не понять.
+            tail = (r.stderr or "").strip().splitlines()
+            why.append(f"{enc}: " + (" | ".join(tail[:2])[:200] if tail
+                                     else f"код {r.returncode}"))
+        except Exception as e:
+            why.append(f"{enc}: {e.__class__.__name__}: {str(e)[:120]}")
     _HW_ENCODER = ""
+    _HW_FAIL_REASON = "; ".join(why) or "ни один кандидат не запустился"
+    _console("[Рендер] Аппаратного кодирования НЕТ — весь рендер считает "
+             f"процессор. Почему: {_HW_FAIL_REASON}")
+    _hw_report()
     return _HW_ENCODER
 
 
-def disable_hw(reason: str = "") -> None:
+def disable_hw(reason: str = "", where: str = "") -> None:
     """Выключает аппаратный путь до конца процесса. Нужно при отказе на
     лету: у GeForce жёсткий лимит одновременных сессий NVENC, и когда
     сегменты пойдут параллельно, лишние просто не закодируются. Без этого
-    отката вызывающий уходил в _placeholder, то есть в ЧЁРНЫЙ КАДР."""
-    global _HW_ENCODER, _HW_DISABLED
+    отката вызывающий уходил в _placeholder, то есть в ЧЁРНЫЙ КАДР.
+
+    reason — ТЕКСТ ОШИБКИ ffmpeg, а не имя сегмента. Раньше сюда приходила
+    метка («seg_042»), и журнал отвечал на вопрос «где», но не «почему»:
+    строка «аппаратное кодирование отключено: seg_042» одинаково выглядит и
+    при занятых сессиях NVENC, и при слетевшем драйвере, и при битом файле.
+    where — метка, чтобы не потерять и «где» тоже.
+    """
+    global _HW_ENCODER, _HW_DISABLED, _HW_FAIL_REASON
     _HW_DISABLED = True
     if _HW_ENCODER:
-        _console(f"[Рендер] Аппаратное кодирование отключено{': ' + reason if reason else ''}"
-                 " — перехожу на процессор (libx264)")
+        _HW_FAIL_REASON = (f"отказал на лету{' (' + where + ')' if where else ''}"
+                           f"{': ' + reason if reason else ''}")
+        _console(f"[Рендер] Аппаратное кодирование отключено — {_HW_FAIL_REASON}"
+                 ". Перехожу на процессор (libx264): картинка та же, но "
+                 "промежуточные проходы это самая долгая часть рендера, и "
+                 "теперь их считает процессор — ждать в разы дольше")
         # Картинка от этого не портится (финал и так всегда libx264), но
         # рендер разом становится в разы дольше — а причина терялась.
         import quality
         quality.degraded(
             "Рендер", "промежуточные проходы считает процессор, а не видеокарта",
-            why=f"аппаратный кодировщик отказал{': ' + reason if reason else ''}",
+            why=_HW_FAIL_REASON,
             hint="у GeForce жёсткий лимит одновременных сессий NVENC — "
-                 "закрой другие программы, которые кодируют видео",
+                 "закрой другие программы, которые кодируют видео. Рендер от "
+                 "этого не портится, но идёт в разы дольше",
             level="мелочь")
     _HW_ENCODER = ""
 
@@ -467,10 +539,18 @@ def _run_enc(build_cmd, label: str, crf: str, preset: str, final: bool = False):
     try:
         _run(build_cmd(used), label=label)
         return
-    except RuntimeError:
+    except RuntimeError as e:
         if CANCEL.is_set() or not is_hw:
             raise          # отмена пользователем или уже процессор — не глушим
-    disable_hw(label)
+        # Текст ошибки ffmpeg НЕ выбрасываем: это единственное место, где видно,
+        # почему видеокарта отказала. Раньше сюда передавалась только метка
+        # сегмента, и причина («OpenEncodeSessionEx failed: out of memory»,
+        # «No capable devices») терялась вместе с исключением.
+        # Первая строка сообщения — наш же заголовок «ffmpeg упал (метка)», её
+        # пропускаем; дальше идёт stderr, и настоящая причина в его начале.
+        err = [s for s in str(e).strip().splitlines()[1:] if s.strip()]
+        hw_err = " | ".join(err[:2])[:200] if err else str(e)[:200]
+    disable_hw(hw_err, where=label)
     # COLOR_TAGS и здесь: этот откат собирает аргументы сам, мимо venc_args, и
     # без них сегмент, переехавший на процессор, ушёл бы без цветовых меток —
     # то есть ровно один клип посреди ролика оказался бы в другом цветовом
@@ -1624,6 +1704,21 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
             log(f"[Рендер] Оверлеев {len(ovls)}, беру первые "
                 f"{MAX_OVERLAY_INPUTS}: больше {MAX_TOTAL_INPUTS} входов "
                 "ffmpeg не переваривает — проверено, встаёт намертво", "warn")
+            # Обрезка ВИДНА зрителю: во второй половине ролика плашек просто
+            # нет, и выглядит это как «моушн-графика кончилась». Одной строкой
+            # warn в журнале на тысячу строк это не заметить — а именно так и
+            # терялись длинные ролики.
+            import quality
+            quality.degraded(
+                "Оверлеи",
+                f"в ролик попала только часть плашек ({MAX_OVERLAY_INPUTS} из "
+                f"{len(ovls)}) — дальше по хронометражу их нет",
+                why="запекание лишних оверлеев отдельным проходом не удалось "
+                    "(причина строкой выше), а больше "
+                    f"{MAX_TOTAL_INPUTS} входов ffmpeg не выдерживает",
+                hint="перезапусти рендер: чаще всего запекание срывается из-за "
+                     "нехватки места или памяти",
+                level="заметно")
             ovls = ovls[:MAX_OVERLAY_INPUTS]
 
     cmd = ["ffmpeg", "-y"] + video_in + ["-i", str(Path(audio).resolve())]
@@ -1754,6 +1849,18 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                     audio_map = "[aout]"
             except Exception as e:
                 log(f"[Рендер] SFX пропущены ({e.__class__.__name__}: {e})")
+                # Галка «звуки» стоит, а звуков нет — это слышно: плашки
+                # выезжают в тишине. Строка выше уходила в общий поток журнала
+                # и в итог прогона не попадала никак.
+                import quality
+                quality.degraded(
+                    "Звук", "плашки и сцены появляются беззвучно — "
+                            "звуки-акценты в ролик не попали",
+                    why=f"сборка звуковой дорожки сорвалась: "
+                        f"{e.__class__.__name__}: {str(e)[:120]}",
+                    hint="проверь папку assets/sfx — обычно это недоступный "
+                         "или битый wav",
+                    level="заметно")
                 audio_map = "1:a"
         # Атмосферный звук ИИ-клипов. Veo отдаёт ролик СО ЗВУКОМ — замерено
         # ffprobe на свежесгенерированном клипе: дорожки h264 + aac. Дождь по
@@ -1831,6 +1938,17 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
             except Exception as e:
                 log(f"[Рендер] Атмосфера пропущена "
                     f"({e.__class__.__name__}: {e})")
+                # Дождь, ветер и шаги из ИИ-клипов приходят вместе с картинкой
+                # бесплатно; без них под голосом остаётся мёртвая тишина — это
+                # ровно тот «голый голос под музыкой», ради ухода от которого
+                # блок и написан.
+                import quality
+                quality.degraded(
+                    "Звук", "в кадре нет собственных звуков ИИ-клипов "
+                            "(дождь, ветер, шаги) — под голосом тишина",
+                    why=f"подмешивание атмосферы сорвалось: "
+                        f"{e.__class__.__name__}: {str(e)[:120]}",
+                    level="заметно")
         # filter_complex УХОДИТ В ФАЙЛ. На 54-минутном ролике со 163
         # оверлеями команда превысила лимит Windows (~32000 символов) и
         # рендер упал в самом конце, после трёх часов работы, с

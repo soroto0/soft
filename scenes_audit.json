@@ -38,5 +38,47 @@
     "why": "на кадре видно «a horizontal rectangle divided into a flat reddish section containing a yellow dot and a flat dark gray section, with a text label 'Yield Strength: 50 MPa' and an L-shaped line beneath.»; не хватает: The drawing shows flat solid colors and a yield strength label, missing any thermal color gradient, temperature values, or cross-sectional layer details.",
     "checked": "2026-08-05 03:37",
     "subject": "the diagram is named \"thermal gradient cross section\" — the drawing must show exactly that"
+  },
+  "structural_load_distribution": {
+    "verdict": "ok",
+    "why": "A rectangular block representing a raft sitting on a larger rectangular block representing soil, with five identical yellow arrows pointing downward from the raft into the soil.",
+    "checked": "2026-08-05 04:09",
+    "subject": "Show a cross-section of the raft foundation with arrows radiating downward to represent the pressure being spread evenly across the soil.",
+    "title": "Foundation Load Distribution"
+  },
+  "geological_cross_section": {
+    "verdict": "ok",
+    "why": "A vertical stack of four distinct rectangular colored layers, with horizontal dashed lines separating the middle layers and leader lines pointing to each section.",
+    "checked": "2026-08-05 04:12",
+    "subject": "A cross-section diagram showing labeled layers of soil, highlighting the specific dense clay layer beneath the foundation.",
+    "title": "Soil Composition"
+  },
+  "force_vector_diagram": {
+    "verdict": "ok",
+    "why": "A white rectangle with three horizontal arrows pointing outward from each side and three vertical arrows pointing downward from the bottom edge.",
+    "checked": "2026-08-05 04:14",
+    "subject": "Display the silo with arrows pushing outward on the walls (lateral) and downward into the ground (vertical) to visualize the dual stress.",
+    "title": "Lateral vs Vertical Forces"
+  },
+  "borehole_data_map": {
+    "verdict": "ok",
+    "why": "A vertical column divided into four colored layers (brown, beige, blue, and dark grey) with a depth scale on the left ranging from 0m to 31.25m, where the blue layer is highlighted with a red dashed outline and a pointer label reading '16m: Soft Blue'.",
+    "checked": "2026-08-05 04:16",
+    "subject": "Show a vertical borehole diagram highlighting the 'soft blue clay' layer at 16 meters that the engineers ignored.",
+    "title": "Hidden Soil Risk"
+  },
+  "differential_settlement_view": {
+    "verdict": "ok",
+    "why": "A rectangular area divided by a diagonal dashed line, with a vertical axis on the left labeled with depth measurements (0cm, 40cm, 80cm, 120cm) and labels for 'SOUTH' and 'NORTH' sides.",
+    "checked": "2026-08-05 04:21",
+    "subject": "A simple diagram comparing the depth of the north and south sides of the foundation to show the initiation of the tilt.",
+    "title": "Uneven Sinking"
+  },
+  "shear_plane_lubrication": {
+    "verdict": "ok",
+    "why": "Two offset grey rectangular blocks labeled 'RDEN' and 'BASE' with a thin yellow horizontal layer labeled 'VEIN' between them, containing a red arrow labeled 'SHEAR FORCE', and a friction scale at the bottom reading 'FRICTION: 0.43'.",
+    "checked": "2026-08-05 04:23",
+    "subject": "A zoom-in on the shear plane showing the thin clay vein acting as a 'slip' layer, reducing friction between the raft and the earth.",
+    "title": "Subterranean Lubrication"
   }
 }
