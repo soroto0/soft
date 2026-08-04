@@ -5645,6 +5645,38 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         log(f"[Раскадровка] Режим MIXED: {len(ai_indices)}/{len(beats)} "
             f"планов ({ai_ratio:.0%}) будут ИИ-кадрами, равномерно по ролику")
 
+    # СЦЕНЫ: планы, которые нарисуются целиком вместо съёмки. Модель читает
+    # сценарий и сама решает, где съёмка бессильна — «вес перешёл на три
+    # оставшиеся опоры», «под фундаментом торф», «за сорок лет просело на
+    # 12 см». Такое не найти ни на стоках, ни у генератора видео.
+    #
+    # Привязка к плану — по ЦИТАТЕ: модель возвращает фразу из сценария,
+    # мы ищем план, в тексте которого она звучит. Не по номеру плана:
+    # нумерация зависит от разбивки на биты, модель её не видит и угадать
+    # не может.
+    scene_plan: dict[int, dict] = {}
+    if scenes > 0 and channel:
+        try:
+            import gen_scenes
+            script_txt = (Path(out_dir) / "script.txt")
+            text = script_txt.read_text(encoding="utf-8") if script_txt.exists() else ""
+            if text:
+                for idea in gen_scenes.grow(text, channel, scenes,
+                                            api_key=gemini_key, log=log):
+                    q = re.sub(r"\W+", " ", str(idea.get("quote", ""))).lower().strip()
+                    if len(q) < 12:
+                        continue
+                    head = " ".join(q.split()[:6])
+                    for bi, b in enumerate(beats):
+                        bt = re.sub(r"\W+", " ", b["text"]).lower()
+                        if head and head in bt and bi not in scene_plan and bi >= 2:
+                            scene_plan[bi] = idea
+                            break
+                log(f"[Сцены] Привязано к планам: {len(scene_plan)} "
+                    f"(на {len(beats)} планов ролика)")
+        except Exception as e:
+            log(f"[Сцены] Пропускаю: {_redact(e)}", "warn")
+
     # Пул скачанных клипов для переиспользования: часовое видео = сотни
     # планов, а у стоков лимиты. Качаем до max_unique уникальных клипов,
     # дальше переиспользуем уже скачанные — рендер даёт им РАЗНОЕ движение

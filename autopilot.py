@@ -55,6 +55,29 @@ MAX_VIDEO_S = float(os.getenv("AUTOPILOT_MAX_VIDEO_S", "0"))
 SEC_PER_VIDEO_MINUTE = 11 * 60
 
 
+# Сколько всего часов есть у ночи. Ночь конечна, а сумма каналов — нет:
+# замер 2026-08-03 дал 12.5 ч на три канала при десятичасовой ночи.
+NIGHT_H = float(os.getenv("AUTOPILOT_NIGHT_H", "10"))
+
+
+def _estimate_s(channel: dict) -> float:
+    """Сколько ПРИМЕРНО займёт ролик этого канала, по его длине."""
+    return float(channel.get("minutes") or 12) * SEC_PER_VIDEO_MINUTE
+
+
+def _fits(channel: dict, left_s: float) -> bool:
+    """Успеем ли доделать этот ролик в оставшееся время.
+
+    Смысл — НЕ НАЧИНАТЬ то, что не успеем закончить. Оборванный на середине
+    ролик хуже, чем неначатый: утром это папка с кадрами и без видео, из
+    которой всё равно ничего не выложить. Лучше два готовых ролика и один
+    честно пропущенный, чем два готовых и один огрызок.
+
+    Запас 15%: оценка средняя, а лимиты Veo добавляют непредсказуемые паузы.
+    """
+    return _estimate_s(channel) * 1.15 <= left_s
+
+
 def _budget_for(channel: dict) -> float:
     """Сколько давать одному ролику, ПО ЕГО ДЛИНЕ, а не одним числом на всех.
 
@@ -201,6 +224,11 @@ def main() -> int:
                     help="сколько роликов на канал (по умолчанию 1)")
     ap.add_argument("--draft", action="store_true",
                     help="черновое качество — быстрее")
+    ap.add_argument("--night", type=float, default=NIGHT_H,
+                    help=f"сколько часов есть у ночи (по умолчанию {NIGHT_H:.0f})")
+    ap.add_argument("--all", action="store_true",
+                    help="гнать все каналы, даже если ночи не хватит "
+                         "(рискуешь недоделанным роликом)")
     args = ap.parse_args()
 
     api = webapp.Api()
@@ -216,22 +244,44 @@ def main() -> int:
             print(f"Канал «{args.channel}» не найден", file=sys.stderr)
             return 2
 
-    total = len(chans) * args.videos
-    log(f"[Автопилот] Ночь началась: {len(chans)} канал(ов) x {args.videos} = "
-        f"{total} ролик(ов). Качество: "
-        f"{'черновое' if args.draft else 'обычное'}")
+    # КОРОТКИЕ ВПЕРЁД. Порядок решает, сколько роликов будет готово к утру:
+    # начав с самого длинного, можно потратить всю ночь на него одного.
+    chans = sorted(chans, key=_estimate_s)
+
+    night_s = max(0.0, args.night) * 3600
     started = datetime.now()
+    deadline = time.time() + night_s if night_s else 0.0
+    plan_h = sum(_estimate_s(c) for c in chans) * args.videos / 3600
+    log(f"[Автопилот] Ночь началась: {len(chans)} канал(ов) x {args.videos}. "
+        f"Ожидаемо {plan_h:.1f} ч работы"
+        + (f", в ночи {args.night:.0f} ч" if night_s else ", без ограничения")
+        + f". Качество: {'черновое' if args.draft else 'обычное'}")
+    if night_s and plan_h > args.night and not args.all:
+        log("[Автопилот] Всё не влезет — длинные каналы пропущу, чтобы не "
+            "оставить недоделанный ролик. Нужны все: ключ --all", "warn")
     results = []
 
     for ch in chans:
         for _ in range(args.videos):
+            nm = ch.get("name") or ch.get("id")
+            # НЕ НАЧИНАЕМ то, что не успеем закончить: огрызок хуже, чем
+            # честно пропущенный канал — из него всё равно нечего выложить.
+            if deadline and not args.all:
+                left = deadline - time.time()
+                if not _fits(ch, left):
+                    log(f"[Автопилот] «{nm}» пропущен: нужно "
+                        f"~{_estimate_s(ch)/3600:.1f} ч, до утра осталось "
+                        f"{max(left,0)/3600:.1f} ч", "warn")
+                    results.append({"channel": nm, "dir": None, "file": None,
+                                    "size": 0, "sec": 0.0,
+                                    "why": "пропущен — не успевал до утра"})
+                    continue
             try:
                 results.append(run_one(api, ch, args.draft, log))
             except BaseException as e:
                 # BaseException, а не Exception: core.Cancelled и webapp.Stopped
                 # унаследованы от него, и без этого «Стоп» на одном канале унёс
                 # бы с собой всю оставшуюся ночь.
-                nm = ch.get("name") or ch.get("id")
                 log(f"[Автопилот] «{nm}» упал: {e}", "err")
                 log(traceback.format_exc().rstrip(), "dim")
                 results.append({"channel": nm, "dir": None, "file": None,

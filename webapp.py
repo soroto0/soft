@@ -12,6 +12,7 @@ import os
 import re
 import json
 import hashlib
+import time
 import threading
 import traceback
 from datetime import datetime
@@ -1449,7 +1450,12 @@ class Api:
                 self._settings.get("agnes_key", ""), False,
                 int(self._settings.get("max_unique", 200)),
                 p.get("visual_mode", "mixed"), p.get("visual_style", ""),
-                float(p.get("ai_ratio", 0.85)))
+                float(p.get("ai_ratio", 0.85)),
+                channel=ch,
+                # Сцены — планы, нарисованные целиком вместо съёмки. Их
+                # придумывает и пишет модель под ЭТОТ сценарий. Ноль —
+                # выключено, поведение как раньше.
+                scenes=int(p.get("scenes", 6)))
             self._stop_check()
             if p.get("check_shots", True):
                 # ГЛАВНАЯ проверка качества: кадр не про то, что говорит
@@ -1542,12 +1548,30 @@ class Api:
         base["script"] = ""
         base["topic"] = ""
 
+        # Короткие каналы вперёд и не начинать то, что не успеем закончить:
+        # оборванный на середине ролик хуже неначатого — утром это папка с
+        # кадрами и без видео. Замер: три канала это 12.5 ч, ночь — 10.
+        chans = sorted(chans, key=ap._estimate_s)
+        night_h = float(p.get("night_h") or ap.NIGHT_H)
+        deadline = time.time() + night_h * 3600 if night_h > 0 else 0.0
+
         def job():
             started = datetime.now()
             results = []
+            plan_h = sum(ap._estimate_s(c) for c in chans) * per / 3600
+            self.log(f"[Автопилот] Ожидаемо {plan_h:.1f} ч работы, "
+                     f"в ночи {night_h:.0f} ч")
             for ch in chans:
                 for _ in range(per):
                     nm = ch.get("name") or ch.get("id")
+                    if deadline:
+                        left = deadline - time.time()
+                        if not ap._fits(ch, left):
+                            self.log(f"[Автопилот] «{nm}» пропущен: нужно "
+                                     f"~{ap._estimate_s(ch)/3600:.1f} ч, "
+                                     f"осталось {max(left,0)/3600:.1f} ч", "warn")
+                            results.append((nm, None, 0))
+                            continue
                     try:
                         self._stop_check()
                         self.channel_select(ch["id"])

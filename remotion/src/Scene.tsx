@@ -6,6 +6,15 @@ import { LayersScene } from './scenes/layers';
 import { ForcesScene } from './scenes/forces';
 import { ChartScene } from './scenes/chart';
 
+import { CrossSectionDiagramScene } from './scenes/cross_section_diagram';
+import { DefectCutawayScene } from './scenes/defect_cutaway';
+import { PourSequenceAnimationScene } from './scenes/pour_sequence_animation';
+import { ErosionVoidDiagramScene } from './scenes/erosion_void_diagram';
+import { PressureForceDiagramScene } from './scenes/pressure_force_diagram';
+import { SoilLiquefactionFlowScene } from './scenes/soil_liquefaction_flow';
+import { ChemicalSignalingDiagramScene } from './scenes/chemical_signaling_diagram';
+import { ThermalAttractionMapScene } from './scenes/thermal_attraction_map';
+import { ThermalDraftDiagramScene } from './scenes/thermal_draft_diagram';
 export type { SceneProps };
 
 // Точка входа для СЦЕН — планов, которые целиком нарисованы, а не сняты.
@@ -41,6 +50,24 @@ export const Scene: React.FC<SceneProps> = (p) => {
       return <ForcesScene {...props} />;
     case 'chart':
       return <ChartScene {...props} />;
+    case 'cross_section_diagram':
+      return <CrossSectionDiagramScene {...props} />;
+    case 'defect_cutaway':
+      return <DefectCutawayScene {...props} />;
+    case 'pour_sequence_animation':
+      return <PourSequenceAnimationScene {...props} />;
+    case 'erosion_void_diagram':
+      return <ErosionVoidDiagramScene {...props} />;
+    case 'pressure_force_diagram':
+      return <PressureForceDiagramScene {...props} />;
+    case 'soil_liquefaction_flow':
+      return <SoilLiquefactionFlowScene {...props} />;
+    case 'chemical_signaling_diagram':
+      return <ChemicalSignalingDiagramScene {...props} />;
+    case 'thermal_attraction_map':
+      return <ThermalAttractionMapScene {...props} />;
+    case 'thermal_draft_diagram':
+      return <ThermalDraftDiagramScene {...props} />;
     default:
       // Неизвестная сцена не должна давать чёрный кадр в готовом ролике:
       // пусть лучше план возьмёт обычный материал (вызывающий код увидит,
