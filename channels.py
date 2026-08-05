@@ -82,6 +82,30 @@ DEFAULTS = {
 }
 
 
+def _complain(what: str, why: str = "", hint: str = "",
+              level: str = "заметно") -> None:
+    """Сказать в сводку прогона, что профиль канала применился НЕ ЦЕЛИКОМ.
+
+    Отдельная обёртка, потому что журнала (callback log) здесь нет и быть не
+    может: channels.py зовут и из интерфейса, и из ночной цепочки, и из
+    планировщика — единого места, куда писать, у них нет. А сводка деградаций
+    одна на прогон, и попадает она последними строками журнала.
+
+    Зачем вообще. Профиль КАНАЛА задаёт язык, голос, темп речи, шрифт
+    субтитров и долю ИИ-кадров. Любая его потеря — это ролик чужим голосом
+    или чужим шрифтом, то есть ровно то, что зритель видит и слышит первым.
+    Раньше такая потеря проходила совершенно молча: значение подменялось
+    умолчанием, и в журнале не оставалось ни строки.
+    """
+    try:
+        import quality
+        quality.degraded("Каналы", what, why=why, hint=hint, level=level)
+    except Exception:
+        # Сводка — вещь вспомогательная: если её не удалось записать, это не
+        # повод ронять запуск ролика.
+        pass
+
+
 def series_suffix(channel: dict) -> str:
     """Хвост заголовка для канала с нумерованной серией. Пусто, если серии
     нет. Нужен, потому что у такого канала заголовок вне формата сразу
@@ -89,7 +113,11 @@ def series_suffix(channel: dict) -> str:
     name = (channel.get("series") or "").strip()
     if not name:
         return ""
-    return f" | {name} #{int(channel.get('series_next', 1))}"
+    # Через _num, а не через int(): series_next правят руками в сыром JSON, и
+    # int("") роняло сборку заголовка целиком. Молча ставить единицу тоже
+    # нельзя — тогда КАЖДЫЙ выпуск канала выйдет с «#1» в заголовке, и
+    # зритель перестанет отличать новый ролик от старого.
+    return f" | {name} #{_num(channel.get('series_next', 1), 1, 'series_next')}"
 
 
 def bump_series(channel_id: str) -> None:
@@ -101,19 +129,70 @@ def bump_series(channel_id: str) -> None:
     upsert(ch)
 
 
-def load() -> list[dict]:
-    """Все профили. Пустой список — каналы ещё не заведены (это норма)."""
+def _read() -> tuple[list[dict], str]:
+    """Разбор channels.json: (профили, причина отказа).
+
+    ПОЧЕМУ ДВА ЗНАЧЕНИЯ, А НЕ ПРОСТО СПИСОК. Раньше и «файла ещё нет», и
+    «файл испорчен» давали один и тот же пустой список — и это была не
+    мелочь, а потеря всех каналов разом. Дальше по коду пустой список
+    означает «каналов не заведено»: upsert() дописывал к НЕМУ один профиль и
+    сохранял результат целиком, то есть один битый байт в файле стирал
+    остальные каналы навсегда; автопилот на пустом списке тихо не делал за
+    ночь ничего; выбранный канал переставал находиться, и ролик уезжал в
+    сборку с умолчаниями — чужим языком, чужим голосом, чужим шрифтом.
+
+    Причина отказа возвращается отдельно, чтобы вызывающий сам решил: читать
+    (интерфейсу лучше показать пустой список, чем белый экран) можно, а
+    ПИСАТЬ поверх нечитаемого файла — нельзя.
+    """
     try:
-        data = json.loads(CHANNELS_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
+        raw = CHANNELS_FILE.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return [], ""          # каналы ещё не заведены — это норма
+    except OSError as e:
+        return [], f"{CHANNELS_FILE.name} не читается: {e}"
+    try:
+        data = json.loads(raw)
+    except ValueError as e:
+        return [], f"{CHANNELS_FILE.name} испорчен (не разбирается как JSON): {e}"
     if not isinstance(data, list):
-        return []
-    out = []
+        return [], (f"{CHANNELS_FILE.name} испорчен: ожидался список каналов, "
+                    f"а лежит {type(data).__name__}")
+    out, skipped = [], 0
     for rec in data:
         if isinstance(rec, dict) and rec.get("id"):
             out.append({**DEFAULTS, **rec})
-    return out
+        else:
+            skipped += 1
+    if skipped:
+        # Запись без id — это канал, который пропал из интерфейса и из ночного
+        # плана: его ролики не снимаются, а сказать об этом было некому.
+        _complain(f"в channels.json пропущено записей без id: {skipped}",
+                  why="у профиля канала нет поля id — такая запись нигде не "
+                      "числится каналом",
+                  hint="открой channels.json и допиши id пропавшим каналам",
+                  level="критично")
+    return out, ""
+
+
+def load() -> list[dict]:
+    """Все профили. Пустой список — каналы ещё не заведены (это норма).
+
+    Испорченный файл нормой НЕ считается: он тоже отдаёт пустой список (иначе
+    интерфейс не открылся бы и чинить было бы нечем), но громко жалуется, а
+    запись поверх такого файла запрещена — см. _read и upsert.
+    """
+    chans, broken = _read()
+    if broken:
+        _complain("профили каналов не прочитаны — язык, голос, шрифт и стиль "
+                  "взяты умолчательные",
+                  why=broken,
+                  hint="почини channels.json (рядом мог остаться "
+                       "channels.json.tmp от прерванной записи) — пока он "
+                       "битый, сохранение канала будет отказывать, чтобы не "
+                       "затереть остальные",
+                  level="критично")
+    return chans
 
 
 def save(channels: list[dict]) -> None:
@@ -143,7 +222,17 @@ def upsert(channel: dict) -> list[dict]:
     # Чтение и запись — под одним замком: иначе между load() и save() успевает
     # вклиниться upsert из фонового потока, и его правка теряется целиком.
     with _FILE_LOCK:
-        chans = load()
+        chans, broken = _read()
+        if broken:
+            # ОТКАЗЫВАЕМСЯ ПИСАТЬ. Прочитать файл не вышло, значит в chans
+            # пусто — и сохранение записало бы в channels.json ровно один
+            # профиль, стерев остальные каналы вместе с их темами, формулами
+            # ниш и списком уже снятых тем. Восстанавливать это неоткуда.
+            # Лучше отказ, который человек увидит сразу, чем «сохранено».
+            raise RuntimeError(
+                f"Профиль не сохранён: {broken}. Записать сейчас — значит "
+                f"затереть остальные каналы; почини {CHANNELS_FILE.name} "
+                "(или удали его, если каналов и правда нет) и повтори")
         for i, ch in enumerate(chans):
             if ch["id"] == cid:
                 chans[i] = {**ch, **channel, "id": cid}
@@ -154,17 +243,30 @@ def upsert(channel: dict) -> list[dict]:
     return chans
 
 
-def _num(value, default):
+def _num(value, default, field: str = ""):
     """Число из профиля, каким бы его ни ввели руками.
 
     Профиль правится как СЫРОЙ JSON в окне prompt (ui/app.js, editChannel),
     поэтому в rate/sub_width/ai_ratio легко попадает "" или "-3%" вместо
     числа. Раньше int("") валил apply_to_params с ValueError — то есть
     опечатка в форме канала роняла весь запуск ещё до первого кадра, и по
-    сообщению было не понять, что дело в профиле."""
+    сообщению было не понять, что дело в профиле.
+
+    Но и молчать про подмену нельзя. Человек ЧТО-ТО в поле написал, а ролик
+    вышел с умолчанием: rate — это темп речи (слышно сразу), sub_width —
+    ширина строки субтитров, ai_ratio — доля рисованных кадров, minutes —
+    длина ролика. Отличаем ПУСТОЕ поле («ничего не навязываю», молчим) от
+    НЕПОНЯТНОГО значения («хотел, но не вышло» — говорим вслух).
+    """
     try:
         return type(default)(value)
     except (TypeError, ValueError):
+        if field and value is not None and str(value).strip():
+            _complain(f"настройка канала «{field}» не понята и заменена "
+                      f"умолчанием {default!r}",
+                      why=f"в профиле записано {value!r}, а нужно число",
+                      hint=f"впиши в «{field}» число (профиль правится как "
+                           "сырой JSON, кавычки и знаки % туда не годятся)")
         return default
 
 
@@ -233,7 +335,22 @@ def channel_projects(root: Path) -> list[Path]:
     """
     try:
         subs = [p for p in root.iterdir() if is_project_dir(p)]
-    except OSError:
+    except FileNotFoundError:
+        # На канале ещё не начинали ни одного ролика — папки просто нет.
+        # Это норма и молчать здесь правильно.
+        return []
+    except OSError as e:
+        # А вот это НЕ норма, и раньше выглядело точно так же. Пустой список
+        # означает «незаконченных роликов нет»: latest_project возвращает
+        # корень канала, и «Генерировать видео» начинает НОВЫЙ ролик поверх
+        # почти готового — сценарий, озвучка и сотни ИИ-кадров остаются
+        # лежать в подпапке нетронутыми (так уже потеряли два ролика за день).
+        _complain("папка канала не читается — незаконченные ролики не "
+                  "найдены, работа может начаться заново вместо продолжения",
+                  why=f"{root}: {e}",
+                  hint="проверь, доступна ли папка канала (диск на месте, "
+                       "путь в поле folder верный)",
+                  level="критично")
         return []
     return sorted(subs, key=lambda p: (-_touched_at(p), p.name))
 
@@ -298,7 +415,7 @@ def apply_to_params(channel: dict, p: dict) -> dict:
         # такое число тихо уезжало дальше по конвейеру: доля ИИ-планов
         # считается умножением, и 85 означает «генерировать всё подряд» —
         # безлимитный Veo это молча съест, а счёт придёт за 85 роликов.
-        ratio = _num(channel["ai_ratio"], float(DEFAULTS["ai_ratio"]))
+        ratio = _num(channel["ai_ratio"], float(DEFAULTS["ai_ratio"]), "ai_ratio")
         out["ai_ratio"] = min(1.0, max(0.0, ratio / 100 if ratio > 1 else ratio))
     # Субтитры — единственная настройка, которую профиль раньше перебивал
     # БЕЗУСЛОВНО: человек снимал галочку «Вшить субтитры», а они всё равно
@@ -309,11 +426,11 @@ def apply_to_params(channel: dict, p: dict) -> dict:
     out["subs"] = (bool(p.get("subs", True))
                    and bool(channel.get("subs_on", True)))
     # мусор в поле не должен обнулять ширину, выбранную в интерфейсе
-    if _num(channel.get("sub_width"), 0):
+    if _num(channel.get("sub_width"), 0, "sub_width"):
         out["sub_width"] = _num(channel["sub_width"], 0)
     if channel.get("voice"):
         out["voice"] = channel["voice"]
-        out["rate"] = f"{_num(channel.get('rate', 0), 0):+d}%"
+        out["rate"] = f"{_num(channel.get('rate', 0), 0, 'rate'):+d}%"
         # Здесь стояло out["randomize"] = False — «чтобы разнообразие не
         # перебило голос канала». Но тот же флаг отвечает ещё за
         # интенсивность монтажа, цветокор и эффекты, и выключение ради
@@ -323,6 +440,7 @@ def apply_to_params(channel: dict, p: dict) -> dict:
         locked += ["voice", "rate"]
     if channel.get("minutes"):
         # длина уезжает в расчёт сценария, где ждут число, а не строку "45"
-        out.setdefault("minutes", _num(channel["minutes"], DEFAULTS["minutes"]))
+        out.setdefault("minutes",
+                       _num(channel["minutes"], DEFAULTS["minutes"], "minutes"))
     out["channel_locked"] = locked
     return out

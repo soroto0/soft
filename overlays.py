@@ -109,6 +109,28 @@ def _fade(im, alpha: float):
 
 # ---------- Разбор overlays.txt ----------
 
+# Разделители, из которых собирается content: «::» делит заголовок и
+# подпись, «;;» — позиции коллажа, «*» помечает вымарываемое слово.
+RE_SEPS = re.compile(r"::|;;|\*")
+
+
+def has_payload(text: str) -> bool:
+    """Есть ли в content хоть что-то, что можно нарисовать.
+
+    Проверка не на пустую строку, а на пустое СОДЕРЖИМОЕ: у quote, stamp и
+    titlecard разделитель «::» дописывается автоматически (вторая часть —
+    автор или дата — может быть пустой), и текст, потерявшийся по дороге,
+    приходил сюда строкой «::» — формально непустой. Дальше он ничего не
+    рисовал, а подложка у половины видов непрозрачная и рисуется до и
+    независимо от текста: в кадре получался тёмный прямоугольник со
+    скруглёнными углами и пустой серединой.
+
+    Требуем ровно одну букву или цифру — этого достаточно, чтобы отсеять
+    «::», «;;», «*» и голую пунктуацию, и не задеть ни одно осмысленное
+    содержимое (у popup и collage это пути к файлам, у counter — число)."""
+    return any(ch.isalnum() for ch in RE_SEPS.sub(" ", text or ""))
+
+
 def parse_overlays(text: str) -> list[dict]:
     """-> [{t, type, content, pos, dur}], битые строки пропускаются."""
     items = []
@@ -139,6 +161,14 @@ def parse_overlays(text: str) -> list[dict]:
                          # gallery — карточки с фото уходят вглубь кадра
                          "kinetic", "highlight", "quote", "stamp", "redact",
                          "marker", "gallery"):
+            continue
+        if not has_payload(parts[2]):
+            # Оверлей без содержимого не рисуется вовсе — см. has_payload.
+            # То же самое проверяет и Remotion (Overlay.hasPayload), но
+            # отсев обязан быть ЗДЕСЬ: секвенция такого оверлея всё равно
+            # рендерится минуту и всё равно попадает в список входов
+            # ffmpeg, у которого свой жёсткий потолок (MAX_OVERLAY_INPUTS) —
+            # то есть пустышка вытесняла бы из ролика настоящую плашку.
             continue
         pos = parts[3] if len(parts) > 3 and parts[3] else ""
         dur = 4.0
@@ -765,17 +795,25 @@ def _render_watermark(item: dict, W: int, H: int, fps: int, dest_dir: Path,
 
 def render_thumbnail(headline: str, dest: Path, bg: Path | None = None,
                      layout: str = "left", accent: str = "#f5c451",
-                     log=print) -> Path:
+                     log=print, style: str = "") -> Path:
     """Обложка для YouTube (1280x720 JPG) композицией Thumbnail.
 
     Отдельная функция, а не тип оверлея: у обложки противоположные
     требования — непрозрачный фон на весь кадр и кегль, читаемый в ленте
     шириной ~210px. Картинка фона уходит в props как data-URI, как и у
     popup/collage: у Remotion своя рабочая папка, относительный путь оттуда
-    не разрешится."""
+    не разрешится.
+
+    style — палитра канала (harsh/warm/contemplative, то же поле, по
+    которому render.PALETTES выбирает склейки). Решает шрифт, регистр,
+    геометрию акцента и форму затемнения. Без него обложки трёх каналов
+    совпадали до пикселя: замер по abyss/thumbs/thumb1.jpg и
+    estoico-es/thumbs/thumb1.jpg — одна золотая рамка, один Arial Black
+    капсом, одна золотая черта; разными были только слова и фотография."""
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    props = {"headline": headline, "layout": layout, "accent": accent, "bg": ""}
+    props = {"headline": headline, "layout": layout, "accent": accent,
+             "style": style, "bg": ""}
     if bg and Path(bg).exists():
         # Фон ужимаем до размера обложки ПЕРЕД вставкой: генератор отдаёт
         # апскейл до 2K (6+ МБ), а в base64 это раздувало props.json до
@@ -992,33 +1030,34 @@ def _project_variant(out_dir, kind: str, options: tuple[str, ...]) -> str:
     # увидит их все. А вот между каналами постоянство — это узнаваемость: у
     # abyss своя плашка, у home-vault своя, и они не меняются местами.
     #
-    # Порядок канонический (алфавитный) и ОДИН для всех каналов, различается
-    # только смещение по номеру канала. Только так три канала гарантированно
-    # получают разные виды, когда вариантов хватает. Пробовал разводить
-    # взвешенным выбором и перестановками — совпадений оставалось 15-18 из 18:
-    # независимый выбор из общего мешка развести каналы не может в принципе.
-    # Смещение складывается из ДВУХ слагаемых, и каждое отвечает за своё.
+    # Каналы больше НЕ разводятся здесь — они разведены раньше, на уровне
+    # библиотеки: _variant_options отдаёт только варианты своего канала, и
+    # наборы у трёх каналов не пересекаются ни одним элементом. Пока пул был
+    # общим, смещение по номеру канала было единственной защитой от
+    # столкновений, и защита эта была слабой: набор-то один на всех, менялась
+    # только точка входа в него. Теперь у abyss в жребии физически нет плашек
+    # home-vault, и наоборот.
     #
-    #   номер канала  — разводит каналы между собой;
-    #   номер ролика  — двигает выбор от ролика к ролику ВНУТРИ канала.
+    # Здесь остаётся вторая задача — двигать выбор от ролика к ролику ВНУТРИ
+    # канала, чтобы соседние видео одного канала не открывались одним и тем же
+    # видом. За это отвечает _project_offset (отпечаток имени папки ролика).
+    # Номер канала оставлен слагаемым намеренно: он сдвигает точку входа в
+    # СВОЙ список, поэтому у двух каналов с одинаковым числом видов ещё и
+    # порядковый номер вида не совпадает — мелочь, но бесплатная.
     #
-    # Второго слагаемого раньше не было, и это была настоящая потеря: выбор
-    # зависел только от канала, поэтому КАЖДЫЙ ролик abyss получал одну и ту же
-    # плашку, каждый ролик home-vault — свою, и так до бесконечности. Каналы
-    # различались, а ролики одного канала были неотличимы.
+    # Ограничения не возникает: с ростом номера ролика канал по кругу проходит
+    # ВСЕ свои варианты, а не сидит в своей четверти списка.
     #
-    # Почему это не возвращает старую беду со столкновениями. Шаг у всех
-    # каналов одинаковый, а стартовая точка разная, поэтому для ОДНОГО И ТОГО
-    # ЖЕ ролика разница индексов двух каналов равна разнице их номеров и в ноль
-    # не обращается — совпасть они не могут в принципе. Проверял иначе: и
-    # взвешенный выбор, и перестановки на канал давали 15-18 совпадений из 18,
-    # потому что независимый выбор из общего мешка развести каналы не способен.
-    #
-    # И ограничения не возникает: с ростом номера ролика канал по кругу
-    # проходит ВСЕ варианты, а не сидит в своей четверти списка.
+    # Третье слагаемое — сам ТИП. В докстроке выше оно было описано с самого
+    # начала («kind солится в seed отдельно»), а в формуле его не было, и это
+    # стало видно, как только у канала появился ровный набор своих видов:
+    # список у всех типов одинаковой длины и формы, один индекс на всех — и
+    # lower3, banner, quote, stamp получали в ролике вид с одним и тем же
+    # номером, то есть одинаковые место, подложку и появление.
+    import zlib as _zlib
     order = sorted(options)
-    return order[(_channel_index(out_dir) + _project_offset(out_dir))
-                 % len(order)]
+    return order[(_channel_index(out_dir) + _project_offset(out_dir)
+                  + _zlib.crc32(kind.encode())) % len(order)]
 
 
 def _project_offset(out_dir) -> int:
@@ -1186,9 +1225,19 @@ def rebuild_registry(log=print, meta: dict | None = None) -> int:
             log(f"[Варианты] {key}: файла {fname or '?'} нет — пропускаю")
             continue
         live[key] = rec
-    imports = "".join(
-        f"import {{ {rec['component']} }} from './{Path(rec['file']).stem}';\n"
-        for rec in live.values())
+    # Импорт на КОМПОНЕНТ, а не на запись. Один компонент обслуживает много
+    # записей: у почерка канала (variant_factory) вид «место+подложка+
+    # появление» один и тот же для всех 18 типов, различается только ключ
+    # «тип/вариант». Повторный `import { X } from './y'` — это ошибка
+    # TypeScript «Duplicate identifier», то есть падение сборки ВСЕХ плашек.
+    seen = set()
+    imports = ""
+    for rec in live.values():
+        stem = Path(rec["file"]).stem
+        if (rec["component"], stem) in seen:
+            continue
+        seen.add((rec["component"], stem))
+        imports += f"import {{ {rec['component']} }} from './{stem}';\n"
     # Две карты, а не одна. VARIANTS заменяет встроенный вид, DECOR
     # подкладывается ПОД него: у типов, где движение неотделимо от данных
     # (bars, infographic, compare, timeline, counter), заменять нечем —
@@ -1238,8 +1287,9 @@ def _registry_is_stale() -> bool:
 
 
               # префиксы имён вариантов в библиотеке: ai_ — сгенерированные и
-              # написанные руками компоненты, lot_ — обёртки над Lottie
-_LIB_PREFIXES = ("remotion_ai_", "remotion_lot_")
+              # написанные руками компоненты, lot_ — обёртки над Lottie,
+              # ch_ — почерк канала (variant_factory, палитра и приёмы канала)
+_LIB_PREFIXES = ("remotion_ai_", "remotion_lot_", "remotion_ch_")
 
 
 def _is_lib_pick(pick: str) -> bool:
@@ -1490,24 +1540,31 @@ def _library_variants(kind: str, engine: str | None = None,
     прошлых роликах и остались в библиотеке навсегда. Запись без файла на
     диске игнорируем. engine=None — оба движка.
 
-    channel — берутся ТОЛЬКО варианты этого канала плюс общие (без метки
-    канала). Иначе оверлей, придуманный для канала про сантехнику, всплыл бы
-    на канале про полярные экспедиции, и каналы стали бы неотличимы — ровно
-    то, ради чего профили и заводятся.
+    channel — берутся ТОЛЬКО варианты ЭТОГО канала. Строго, без «общего
+    пула»: метка канала — это принадлежность, а не предпочтение.
 
-    Пустой channel — это НЕ «бери любые»: у проекта, заведённого мимо
-    каналов (например «Новый проект» с вручную вставленным сценарием),
-    канала в meta.json нет, и раньше ему подходили варианты сразу всех
-    каналов — то есть утечка шла именно там, где о ней некому догадаться.
-    Теперь такому проекту достаются только общие варианты. Пока каналы не
-    заведены вовсе, метки channel нет ни у одной записи, и общими остаются
-    все — библиотека работает как раньше."""
+    Раньше сюда же попадали записи без метки канала, и это сводило всю
+    затею на нет. Помечен каналом был один вариант из сорока шести, то есть
+    практически вся библиотека была общей, и три канала тянули один и тот же
+    набор плашек — разводились только порядком перебора. Владелец сказал
+    прямо: «я не хочу чтобы эти баннеры использовались в других моих каналах
+    лишь в abyss хочу, а в других каналах должен быть новые баннеры по его
+    стилям».
+
+    Обеднеть от этого канал не может: чего ему не хватает, то допроизводится
+    в его собственной палитре (variant_factory.ensure — механически, и
+    webapp._grow_variant_library — через ИИ, по одному виду на ролик).
+
+    Пустой channel — проект, заведённый мимо каналов («Новый проект» с
+    вручную вставленным сценарием). Ему достаются только записи без метки:
+    чужую библиотеку он не увидит, а базовые виды из Overlay.tsx у него
+    остаются в любом случае."""
     return tuple(
         rec["variant"] for rec in load_variants_meta().values()
         if rec.get("type") == kind and rec.get("enabled", True)
         and rec.get("variant")
         and (engine is None or rec.get("engine", "remotion") == engine)
-        and rec.get("channel", "") in ("", channel)
+        and rec.get("channel", "") == channel
         and _variant_file(rec).exists())
 
 
@@ -1558,6 +1615,18 @@ def _variant_options(out_dir, kind: str) -> tuple[str, ...]:
     if hyperframes_available():
         lib += tuple(f"hyperframes_{v}"
                      for v in _library_variants(kind, "hyperframes", ch))
+    # Встроенные виды из Overlay.tsx (classic/ribbon/underline/chyron/tag) —
+    # ОБЩИЕ на все каналы, другого экземпляра у них нет. Пока они оставались в
+    # жребии, принадлежность библиотеки не давала полного разведения: свои
+    # плашки у каналов разные, а вот классический баннер один и тот же кочевал
+    # из abyss в home-vault — ровно то, на что жаловался владелец.
+    #
+    # Убираем их, но НЕ безоглядно: канал должен сначала обзавестись своими.
+    # Порог 3 — чтобы тип не остался с парой видов и не начал повторяться
+    # внутри ролика. Ниже порога встроенные виды остаются как страховка, и у
+    # проекта вне каналов (ch пустой) всё работает как раньше.
+    if ch and len(lib) >= 3:
+        return lib
     return base + lib
 
 
@@ -2153,7 +2222,7 @@ def _phrase_candidate(t: float, text: str, manifest: list):
 
 def suggest_overlays_auto(rows: list, manifest: list, out_dir,
                           log=print, min_gap: float = 5.0,
-                          watermark: str = "") -> str:
+                          watermark: str = "", palette: str = "") -> str:
     """Полный автомат: авторасстановка + автоподбор картинок для popup.
     Реальных людей (два слова с заглавных — похоже на имя) ищем ТОЛЬКО в
     Wikimedia Commons: ИИ-генерация лиц реальных людей сознательно не
@@ -2184,7 +2253,8 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     gemini_key = (_gemini_keys() or [""])[0]
     draft = None
     if gemini_key:
-        draft = suggest_overlays_llm(rows, gemini_key, log, min_gap)
+        draft = suggest_overlays_llm(rows, gemini_key, log, min_gap,
+                                     palette=palette)
     if not draft:
         if gemini_key:
             # Громко и с причиной. Раньше эта подмена проходила рядовой
@@ -2306,7 +2376,7 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     total = srt_to_seconds(rows[-1][1]) if rows else 0
     if total > 0:
         out_lines = _topup_overlays(out_lines, rows, min_gap,
-                                    density_floor(total), log)
+                                    density_floor(total), log, palette)
         out_lines.sort(key=lambda l: (not re.match(r"\s*\d{2}:\d{2}:\d{2}", l),
                                       l[:8]))
     if watermark.strip() and rows:
@@ -2388,6 +2458,8 @@ def _fits_type(otype: str, text: str) -> tuple[bool, str]:
     Проверка ровно та, что делает рендерер: bars ищет пары label:число,
     timeline — пары год:событие, counter — число. Не сойдётся формат —
     рендерер бросит исключение, и оверлей пропадёт из ролика уже на сборке."""
+    if not has_payload(text):
+        return False, text        # рисовать нечего — см. has_payload
     if otype == "compare":
         return ("::" in text), text
     if otype in ("quote", "stamp", "titlecard"):
@@ -2528,7 +2600,57 @@ def _rebalance_types(lines: list, log=print) -> list:
 LLM_WINDOW_S = 8 * 60
 
 
-def _type_budget(n_rows: int, min_gap: float) -> str:
+# Какими типами плашек ГОВОРИТ канал. Доли в процентах от числа моментов.
+#
+# Зачем это отдельно от библиотеки видов. Даже когда у каждого канала своя
+# колода дизайнов, ролики остаются похожими, если во всех трёх стоят одни и
+# те же плашки в одних и тех же местах: смена дизайна — это оформление, а
+# смена НАБОРА типов — это уже другой способ рассказывать. Разбор аварии
+# говорит документом (штамп, вымарывание, шкала, хронология), бережливый быт
+# — деньгами и сравнением «было/стало», философская документалка — цитатой и
+# маркером по строке.
+#
+# Доли — цель для планировщика, а не запрет: тип с малой долей всё равно
+# появится, если материал сам просит (в философском ролике встретилась дата —
+# будет timeline). Нулей здесь нет намеренно, по той же причине, по которой их
+# нет в палитрах монтажа: канал должен отличаться характером, а не бедностью.
+TYPE_MIX = {
+    # abyss: язык официального разбора. Штамп места и даты, вымаранная
+    # страница отчёта, шкала величин, хронология событий.
+    "harsh": {"stamp": 10, "redact": 8, "timeline": 8, "bars": 7,
+              "counter": 5, "callout": 7, "titlecard": 4, "collage": 4,
+              "gallery": 3, "kinetic": 4, "marker": 2, "quote": 2,
+              "compare": 3},
+    # home-vault: язык кухонного расчёта. Цена, экономия, «было/стало»,
+    # разложенные рядом образцы.
+    "warm": {"counter": 11, "compare": 9, "collage": 8, "gallery": 6,
+             "bars": 5, "marker": 5, "kinetic": 6, "titlecard": 4,
+             "quote": 2, "stamp": 2, "redact": 1, "timeline": 2},
+    # estoico-es: язык чтения вслух. Цитата, подчёркнутая строка, разворот
+    # мысли по словам. Семьдесят минут ровного темпа — цифры тут редки.
+    "contemplative": {"quote": 12, "marker": 10, "kinetic": 8, "titlecard": 6,
+                      "collage": 3, "gallery": 3, "stamp": 3, "timeline": 3,
+                      "counter": 2, "bars": 1, "redact": 1, "compare": 4},
+}
+
+# Чем добирается плотность, если планировщик недобрал. Тоже по каналу: до
+# этого цикл был один на всех (banner, lower3, callout, kinetic, marker,
+# highlight), и на длинном ролике добор перебивал любую разницу в наборе
+# типов — на 20-минутном home-vault добор давал десятки строк.
+TOPUP_CYCLE = {
+    "harsh": [("stamp", "top", 5), ("lower3", "bottom", 4),
+              ("callout", "point:70,40", 7), ("banner", "top", 9),
+              ("highlight", "point:62,45", 6)],
+    "warm": [("banner", "top", 9), ("lower3", "bottom", 4),
+             ("marker", "center", 8), ("callout", "point:70,40", 7),
+             ("kinetic", "center", 6)],
+    "contemplative": [("marker", "center", 8), ("kinetic", "center", 6),
+                      ("lower3", "bottom", 4), ("quote", "center", 12),
+                      ("banner", "top", 9)],
+}
+
+
+def _type_budget(n_rows: int, min_gap: float, palette: str = "") -> str:
     """Сколько каких типов просить — ПРОПОРЦИОНАЛЬНО длине куска.
 
     Раньше потолки были абсолютными и на весь ролик: «не более 2 titlecard,
@@ -2546,10 +2668,33 @@ def _type_budget(n_rows: int, min_gap: float) -> str:
     дело не в числе штук, а в однообразии.
 
     Теперь редкие типы получают долю от общего числа моментов, с порогом в
-    одну штуку — чтобы и короткий ролик не остался без них."""
+    одну штуку — чтобы и короткий ролик не остался без них.
+
+    palette — набор типов КАНАЛА (TYPE_MIX). Без него все три канала просили
+    у планировщика один и тот же микс, и ролики выходили похожими даже при
+    разном оформлении: одинаковый набор плашек в одинаковых местах — это
+    одинаковый способ рассказывать."""
     want = max(1, int(n_rows * 0.6))          # грубая оценка числа моментов
     def share(pct, lo=1):
         return max(lo, round(want * pct / 100))
+    mix = TYPE_MIX.get((palette or "").strip().lower())
+    if mix:
+        listed = ", ".join(f"{k} {share(v)}" for k, v in sorted(
+            mix.items(), key=lambda kv: (-kv[1], kv[0])))
+        return (
+            f"Aim for roughly this MIX across this span (~{want} moments). "
+            "These are targets, not hard caps — a long video with only three "
+            "kinds of graphic looks cheap. The ORDER matters: the first kinds "
+            "listed are this channel's own voice, reach for them first and "
+            "let the narration earn them:\n"
+            f"  {listed}\n"
+            "  the rest split between banner, lower3, callout.\n"
+            "NEVER let one type exceed a quarter of the total. Reach for the "
+            "rarer kinds whenever the narration gives you the material for "
+            "them: a number -> counter, two dates -> timeline, two sides -> "
+            "compare, a quotation -> quote, a place or date -> stamp, a "
+            "comparison of several examples -> gallery. "
+            "Reply ")
     return (
         f"Aim for roughly this MIX across this span (~{want} moments). These "
         "are targets, not hard caps — a long video with only three kinds of "
@@ -2589,7 +2734,7 @@ def density_floor(total: float) -> int:
 
 
 def _topup_overlays(lines: list, rows: list, min_gap: float,
-                    need: int, log=print) -> list:
+                    need: int, log=print, palette: str = "") -> list:
     """Досыпать оверлеев в незанятые промежутки, пока их меньше need.
 
     Работает с ГОТОВЫМИ строками файла, а не с планом LLM, — поэтому годится
@@ -2610,9 +2755,10 @@ def _topup_overlays(lines: list, rows: list, min_gap: float,
         return lines
     # чередуем типы и ЗОНЫ ЭКРАНА: один и тот же баннер по кругу читается
     # как шаблон — ровно та претензия, из-за которой всё это и затевалось
-    cycle = [("banner", "top", 9), ("lower3", "bottom", 4),
-             ("callout", "point:70,40", 7), ("kinetic", "center", 6),
-             ("marker", "center", 5), ("highlight", "point:62,45", 6)]
+    cycle = TOPUP_CYCLE.get((palette or "").strip().lower()) or [
+        ("banner", "top", 9), ("lower3", "bottom", 4),
+        ("callout", "point:70,40", 7), ("kinetic", "center", 6),
+        ("marker", "center", 5), ("highlight", "point:62,45", 6)]
     ki = 0
     added = []
     # Идём НЕ подряд от начала, а с шагом по всему таймлайну: жадный проход
@@ -2716,7 +2862,8 @@ def _retention_note(t0: float, span: float, whole: float) -> str:
 
 def _ask_span(chunk: list, api_key: str, log, min_gap: float,
               attempts: int, depth: int = 0,
-              whole: float | None = None) -> tuple[str, int]:
+              whole: float | None = None,
+              palette: str = "") -> tuple[str, int]:
     """Спросить план на кусок и, если вышло ЖИДКО, переспросить половинами.
 
     Это и есть то, чего софту не хватало. Раньше он спрашивал один раз и,
@@ -2738,7 +2885,8 @@ def _ask_span(chunk: list, api_key: str, log, min_gap: float,
     # длиннее ~12 минут — ровно на тех, где жалуются на однообразие).
     got = suggest_overlays_llm(chunk, api_key, log, min_gap,
                                target=None, attempts=attempts,
-                               allow_windows=False, whole=whole)
+                               allow_windows=False, whole=whole,
+                               palette=palette)
     span = srt_to_seconds(chunk[-1][1]) - srt_to_seconds(chunk[0][0])
     # Планка нарочно скромная — вдвое ниже рабочей плотности. Задача не
     # выжать максимум, а поймать провал: кусок, где вместо десятка моментов
@@ -2784,7 +2932,7 @@ def _ask_span(chunk: list, api_key: str, log, min_gap: float,
         if len(half) < 2:
             continue
         sub, more = _ask_span(half, api_key, log, min_gap, attempts,
-                              depth + 1, whole=whole)
+                              depth + 1, whole=whole, palette=palette)
         retried += more
         if sub:
             out.append(sub)
@@ -2800,7 +2948,8 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                          min_gap: float = 8.0, target: int | None = None,
                          attempts: int = 3,
                          allow_windows: bool = True,
-                         whole: float | None = None) -> str | None:
+                         whole: float | None = None,
+                         palette: str = "") -> str | None:
     """ОСНОВНОЙ путь расстановки оверлеев (не только фолбэк): LLM понимает
     смысл текста целиком, поэтому расставляет оверлеи ПЛОТНЕЕ и умнее, чем
     голый regex (который зависит от явных денег/дат/имён/вопросов в тексте
@@ -2842,7 +2991,7 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                 continue
             asked += 1
             got, retried = _ask_span(chunk, api_key, log, min_gap,
-                                     attempts, whole=span)
+                                     attempts, whole=span, palette=palette)
             thin += retried
             if got:
                 parts.append(got)
@@ -2976,7 +3125,7 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "ring that draws itself around a spot, then a short caption. "
                   "p.text is that caption (under 4 words). Use it when the "
                   "narration points at a detail that is visible in the shot\n"
-                  + _type_budget(len(rows), min_gap)
+                  + _type_budget(len(rows), min_gap, palette)
                   + _retention_note(t0, span, whole or span) +
                   f'with a JSON array of {{"line": <line number>, "type": '
                   # popup не включён намеренно: ему нужна КАРТИНКА, которую
@@ -3040,6 +3189,15 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
         idx = int(p.get("line", 0)) - 1
         text = str(p.get("text", "")).strip()
         otype = str(p.get("type", "banner")).strip().lower()
+        if not has_payload(text):
+            # Пункт без текста дальше не идёт. Проверка стоит ДО дописывания
+            # разделителей ниже: у quote и stamp к пустому тексту добавлялось
+            # «::», и отсев `if text and ...` в конце цикла такой пункт
+            # пропускал — строка непустая. В ролик уезжала плашка без единого
+            # знака. Пустые пункты тут не редкость: ответ модели регулярно
+            # обрывается лимитом токенов и спасается «до места обрыва»
+            # (см. выше), а последний спасённый объект может быть без "text".
+            continue
         if otype not in POS:
             otype = "banner"
         if otype == "compare" and "::" not in text:

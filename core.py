@@ -713,6 +713,39 @@ def add_music(voice_mp3: Path, music_path, log, gain_db: int = -14) -> Path:
     return dest
 
 
+def mix_is_stale(out_dir) -> str:
+    """Микс «голос + музыка» в папке остался от ПРОШЛОГО ролика? Словами.
+
+    Пустая строка — микс свой (или его просто нет, или сравнивать не с чем).
+
+    Вынесено отдельно от voice_track, потому что вопрос задают ДВА разных
+    места и по разным поводам: рендер и раскадровка спрашивают «какую дорожку
+    брать» (voice_track), а сводка «что в папке от прошлого ролика»
+    (webapp._warn_stale) — «какую дорожку не брать». Правило одно, и жить оно
+    должно в одном месте: копия этого же сравнения дат уже завелась в
+    _warn_stale, а разъехавшись, они дают худшее из возможного — ролик едет с
+    одной дорожкой, а предупреждение человеку про другую.
+
+    Признак точный и не требует отдельного отпечатка: микс ДЕЛАЕТСЯ ИЗ
+    voiceover.mp3, значит не может быть старше него. Старше — значит от
+    прошлой озвучки.
+    """
+    a = Path(out_dir) / "audio"
+    voice, mixed = a / "voiceover.mp3", a / "voiceover_music.mp3"
+    if not mixed.exists() or not voice.exists():
+        return ""
+    try:
+        if mixed.stat().st_mtime < voice.stat().st_mtime:
+            return (f"{mixed.name} старше озвучки — это микс прошлого ролика")
+    except OSError as e:
+        # Не смогли сравнить даты — считаем микс ЧУЖИМ. Обратное умолчание
+        # («раз не проверили, значит свой») и есть та самая тихая деградация:
+        # цена ошибки несимметрична — в худшем случае ролик выйдет без музыки,
+        # а при ошибке в другую сторону в него попадёт чужая начитка целиком.
+        return f"не смог сравнить даты {mixed.name} и {voice.name} ({e})"
+    return ""
+
+
 def voice_track(out_dir: Path, log=None, no_music: bool = False) -> Path:
     """Какая дорожка озвучивает ЭТОТ ролик: голос с музыкой или чистый голос.
 
@@ -729,9 +762,8 @@ def voice_track(out_dir: Path, log=None, no_music: bool = False) -> Path:
     04.08 и voiceover_music.mp3 от 03.08 на 83 минуты — то есть и звук
     чужой, и раскадровка с монтажом растянулись бы на 83 минуты вместо 15.
 
-    Признак «свой/чужой» здесь точный и не требует отдельного отпечатка: микс
-    ДЕЛАЕТСЯ ИЗ voiceover.mp3, значит не может быть старше него. Старше —
-    значит от прошлой озвучки.
+    Признак «свой/чужой» считает mix_is_stale — там же, где его спрашивает
+    сводка остатков, чтобы правило не разъехалось на две копии.
     """
     a = Path(out_dir) / "audio"
     voice, mixed = a / "voiceover.mp3", a / "voiceover_music.mp3"
@@ -739,30 +771,18 @@ def voice_track(out_dir: Path, log=None, no_music: bool = False) -> Path:
         return voice
     if not voice.exists():
         return mixed          # чистого голоса нет — судить не по чему
-    try:
-        stale = mixed.stat().st_mtime < voice.stat().st_mtime
-    except OSError as e:
-        # Не смогли сравнить даты — считаем микс ЧУЖИМ. Обратное умолчание
-        # («раз не проверили, значит свой») и есть та самая тихая деградация:
-        # цена ошибки несимметрична — в худшем случае ролик выйдет без музыки,
-        # а при ошибке в другую сторону в него попадёт чужая начитка целиком.
-        stale = True
-        if log:
-            log(f"[Звук] Не смог сравнить даты {mixed.name} и {voice.name} "
-                f"({e}) — на всякий случай беру чистый голос", "warn")
+    stale = mix_is_stale(out_dir)
     if stale:
         if log:
-            log(f"[Звук] {mixed.name} старше озвучки — это микс ПРОШЛОГО "
-                "ролика; беру чистый голос, иначе в видео попала бы чужая "
-                "начитка", "warn")
+            log(f"[Звук] {stale}; беру чистый голос, иначе в видео попала бы "
+                "чужая начитка", "warn")
         # В сводку: зритель услышит голос БЕЗ музыкальной подложки, а шаг
         # «музыка» при этом отчитался успехом ещё в прошлый раз — на диске
         # лежит готовый файл, и отличить его от свежего нечем.
         import quality
         quality.degraded(
             "Звук", "ролик идёт без музыкальной подложки, только голос",
-            why=f"{mixed.name} старше озвучки — это микс прошлого ролика, "
-                "брать его нельзя",
+            why=f"{stale} — брать его нельзя",
             hint="шаг «Музыка» в этот раз не отработал — посмотри выше, "
                  "почему, и прогони его отдельно",
             level="заметно")
@@ -2227,18 +2247,254 @@ def gen_scenes_ai(script_text: str, api_key: str = "", log=print,
     return "\n".join(lines)
 
 
+# ---------- Язык выдачи: сторож, а не определитель ----------
+
+# Частотные служебные слова языков, на которых идут каналы. Это НЕ
+# определитель языка и не претендует им быть — это сторож против ОДНОЙ
+# поломки, которая в проекте уже случалась: кириллица уехала в англоязычный
+# ролик, потому что язык канала до шага просто не доходил (ХЕНДОВЕР, п.3).
+#
+# У SEO и обложек та же болезнь стоит дороже, чем у плашки: заголовок, теги
+# и текст на обложке — это ровно то, по чему ролик находят и по чему решают
+# открыть его. Испанский канал с английским заголовком не найдёт никто, и
+# заметить это можно только глазами, уже после публикации.
+#
+# Служебные слова выбраны потому, что они не зависят от темы: в любом
+# испанском тексте есть «que» и «de», в любом английском — «the» и «of».
+# Проверка идёт по пробельным границам, иначе английское «the» находилось бы
+# внутри испанского «entre».
+_LANG_MARKERS = {
+    "English": ("the", "of", "and", "to", "that", "with", "was", "from"),
+    "Spanish": ("que", "de", "la", "el", "los", "para", "con", "una", "su"),
+    "Russian": ("и", "в", "не", "на", "что", "с", "как", "по"),
+    "German": ("der", "die", "das", "und", "ist", "mit", "von", "den"),
+    "French": ("le", "la", "les", "des", "que", "pour", "avec", "dans"),
+    "Portuguese": ("de", "que", "os", "as", "para", "com", "uma", "não"),
+}
+
+
+def _lang_score(text: str, lang_name: str) -> int:
+    """Сколько служебных слов языка встретилось в тексте."""
+    words = re.findall(r"[^\W\d_]+", (text or "").lower(), re.UNICODE)
+    markers = set(_LANG_MARKERS.get(lang_name, ()))
+    return sum(1 for w in words if w in markers)
+
+
+def lang_mismatch(text: str, lang: str) -> str:
+    """Не на том ли языке вышел текст. Пустая строка — всё в порядке,
+    иначе человеческое объяснение, что именно не так.
+
+    Два разных признака, и путать их нельзя:
+      * КИРИЛЛИЦА в нерусском ролике — это всегда ошибка и видно её сразу,
+        без всякой статистики (та самая поломка из ХЕНДОВЕРа);
+      * ПЕРЕВЕС ЧУЖИХ служебных слов — испанское описание, съехавшее в
+        английский. Требуем именно перевес, а не отсутствие чужих слов:
+        в испанском тексте законно стоят «Nueva York» и «the Guardian»,
+        и придираться к ним нельзя.
+    """
+    text = (text or "").strip()
+    if len(text) < 40:
+        return ""                    # на огрызке статистика ничего не значит
+    want = LANGS.get(lang, "English")
+    if want != "Russian" and re.search(r"[а-яёА-ЯЁ]", text):
+        return "в тексте кириллица, а ролик не русский"
+    mine = _lang_score(text, want)
+    rivals = {name: _lang_score(text, name) for name in _LANG_MARKERS
+              if name != want}
+    top, best = max(rivals.items(), key=lambda kv: kv[1], default=("", 0))
+    # Порог не «больше нуля», а «вдвое больше своих»: испанский и
+    # португальский делят половину служебных слов, и строгое сравнение
+    # ругалось бы на каждый испанский текст.
+    if best > max(mine * 2, 3):
+        return f"текст похож на {top} ({best} служебных слов против {mine})"
+    if mine == 0:
+        return f"в тексте нет ни одного служебного слова языка ({want})"
+    return ""
+
+
+# ---------- SEO ----------
+
+# КАК ВЫГЛЯДИТ SEO КАЖДОГО ЖАНРА.
+#
+# Раньше здесь был один блок инструкций на все каналы: «описание — первая
+# фраза до 120 символов и два абзаца контекста», «теги — 15 штук: 3-4
+# широких, 6-7 конкретных, 4-5 длинных», «главы — метки по 2-5 слова».
+# Замер по трём готовым seo.txt в папках каналов (abyss, home-vault,
+# estoico-es): все три описания — ровно три абзаца одинаковой длины, все три
+# набора тегов — ровно 15 через запятую, все три набора глав — метки в 3-5
+# слов. Разбор обрушения моста, починка крана и биография философа
+# продавались одним и тем же текстом; отличались только слова.
+#
+# Ключ — script_shape канала, а не его имя: именно форма сценария решает,
+# что вообще может стоять в описании и по чему нарезаются главы. Новый канал
+# с shape="disaster" получит правильное SEO, не будучи здесь упомянут.
+SEO_SHAPES = {
+    "disaster": {
+        "desc":
+            "DESCRIPTION: the first sentence names the STRUCTURE, the PLACE "
+            "and the YEAR, and states plainly that it failed. Do not withhold "
+            "it — the title already says something went wrong, so a teasing "
+            "first line only reads as evasion. Then exactly two paragraphs: "
+            "one on the chain of decisions that made the failure inevitable, "
+            "one on what the official inquiry established and what was "
+            "changed in the codes afterwards. Name the inquiry or report if "
+            "the script names it. NEVER use a death toll as a hook, never "
+            "speculate about what the victims experienced, never call it "
+            "'shocking' or 'chilling'. The restraint is the tone of this "
+            "niche and audiences punish channels that break it.",
+        "tags":
+            "TAGS: 15 comma-separated, lower-case. Weight them towards the "
+            "ENGINEERING, not the tragedy: the field (structural "
+            "engineering, forensic engineering, civil engineering), the type "
+            "of structure, the named structure, the place, the year, the "
+            "material or mechanism that failed, and the inquiry. Forbidden "
+            "tags: horror, disaster porn, shocking, creepy, mystery, "
+            "unsolved — they pull the wrong audience onto a documentary.",
+        "chapters":
+            "Cut the chapters at the STAGES OF THE FAILURE, in the order the "
+            "video takes them: the ordinary day, the decision that mattered, "
+            "the warning that was missed, the failure itself, the inquiry, "
+            "what changed. Each label is a neutral noun phrase of 2-5 words "
+            "naming a thing or a moment. Never put a number of dead in a "
+            "label.",
+    },
+    "howto": {
+        "desc":
+            "DESCRIPTION: the first sentence must carry the PRICE and the "
+            "PERMANENCE — the actual number of dollars and how long the fix "
+            "lasts. That pairing is the measured difference between this "
+            "channel's hits and its flops, and it belongs above the fold "
+            "where it is the only thing search shows. Then exactly two "
+            "paragraphs: one on why the usual approach fails and what people "
+            "currently pay for it, one on the materials with exact "
+            "quantities and times, plus the limits — what must never be "
+            "mixed and which surfaces this damages. NEVER write the "
+            "description as a numbered list of tips: every measured flop on "
+            "the reference channel was a list, at 0.03-0.12x the median.",
+        "tags":
+            "TAGS: 15 comma-separated, lower-case. Weight them towards the "
+            "JOB and its COST: the task, the material and its price, the "
+            "tool, the professional service being displaced (plumber, "
+            "exterminator, hvac), the room, and phrases a person types when "
+            "the problem is already happening tonight. Forbidden tags: "
+            "anything with a number of items in it (5 tips, 10 hacks) — "
+            "lists are exactly what fails here.",
+        "chapters":
+            "Cut the chapters at the STEPS OF THE JOB, in the order the "
+            "viewer will actually do them. The first is the problem and its "
+            "cost, the last is how to tell it worked. Each label is a short "
+            "verb phrase of 2-5 words that reads as an instruction "
+            "('Mix the paste', 'Seal the joint'). Never number them.",
+    },
+    "biography": {
+        "desc":
+            "DESCRIPTION: the first sentence is THIRD PERSON and PAST TENSE "
+            "and says what happened TO the thinker or TO the world. This is "
+            "measured, not taste: on the reference channel the same author "
+            "scored 199,346 views when the promise was about his ordeal and "
+            "538 when it was about the viewer's demons. Then exactly two "
+            "paragraphs: one on the life — dates, cities, correspondents, "
+            "what it cost — and one on the idea that life produced, with the "
+            "title of the work and the year it was published. ABSOLUTELY "
+            "FORBIDDEN: addressing the viewer at all. No second person, no "
+            "'you', no 'your', no imperative, no advice, no lesson to apply, "
+            "no 'how to'. If a sentence could appear in a self-help book, "
+            "delete it.",
+        "tags":
+            "TAGS: 15 comma-separated, lower-case. Weight them towards the "
+            "PERSON AND THE WORK: the thinker's name, the titles of the "
+            "works, the school of thought, the century, the city, the "
+            "correspondents and rivals, plus phrases someone types when they "
+            "want a documentary about a philosopher. Forbidden tags: "
+            "self-help, motivation, personal development, life lessons, "
+            "habits — that audience does not finish a long documentary and "
+            "the reference channel's flops all sit there.",
+        "chapters":
+            "Cut the chapters at the PERIODS OF THE LIFE and the works that "
+            "came out of them, in the order the video takes them. Each label "
+            "is a place, a year, a work title or an event — a noun phrase of "
+            "2-5 words. NEVER write a label in the second person and never "
+            "as an instruction.",
+    },
+    "mystery": {
+        "desc":
+            "DESCRIPTION: the first sentence restates the unresolved "
+            "question without answering it — it is all that shows above the "
+            "fold. Then exactly two paragraphs of real context: what is "
+            "documented, and where the accounts contradict each other. Do "
+            "NOT spoil the ending. Never present a version as proven.",
+        "tags":
+            "TAGS: 15 comma-separated, lower-case. Mix the field, the named "
+            "people and places actually in the script, the year, and "
+            "long-tail phrases someone would really type as a question.",
+        "chapters":
+            "Cut the chapters at the POINTS WHERE THE EVIDENCE TURNS. The "
+            "first label must not give away the ending. Each is a concrete "
+            "noun phrase of 2-5 words.",
+    },
+    "argument": {
+        "desc":
+            "DESCRIPTION: the first sentence states the disagreement itself, "
+            "naming both sides. Then exactly two paragraphs: the strongest "
+            "case for the opposing side, and what answers it. Never "
+            "caricature either position.",
+        "tags":
+            "TAGS: 15 comma-separated, lower-case. Mix the field, the two "
+            "named positions, the people who hold them, and long-tail "
+            "phrases someone types when they are arguing about it.",
+        "chapters":
+            "Cut the chapters alternately between the two sides, in the "
+            "order the video takes them. Each label is a claim in 2-5 words.",
+    },
+}
+
+# Запасной вариант ровно тот, что был общим до этого разделения — канал без
+# script_shape не должен остаться совсем без инструкций.
+SEO_SHAPE_DEFAULT = {
+    "desc":
+        "DESCRIPTION: first sentence under 120 characters — it is all that "
+        "shows in search and above the fold, so it must stand alone and "
+        "restate the hook without answering it. Then 2 short paragraphs of "
+        "real context. Do NOT spoil the ending.",
+    "tags":
+        "TAGS: 15 comma-separated, lower-case. Mix three kinds: 3-4 broad "
+        "(the genre/field), 6-7 specific (names, places, events actually in "
+        "the script), 4-5 long-tail phrases someone would really type.",
+    "chapters":
+        "Labels are 2-5 words, concrete, no numbering.",
+}
+
+
 def gen_seo(script_text: str, api_key: str = "", log=print,
             lang: str = "английский", srt: Path | None = None,
-            formula: str = "") -> str:
+            formula: str = "", channel: dict | None = None) -> str:
     """Названия, описание, теги и главы для YouTube по готовому сценарию.
 
     Язык раньше был ЗАШИТ английским — русский сценарий получал английское
     описание, и это тихо портило выдачу. Теперь берётся язык ролика.
 
+    Всё остальное тоже было общим на три канала: одна форма описания, один
+    рецепт тегов, одна нарезка глав (см. SEO_SHAPES — там замер). Теперь
+    канал приходит целиком и решает четыре вещи: формула заголовка
+    (topic_formula), форма описания/тегов/глав (script_shape), регистр речи
+    (tone) и запреты канала (avoid). Поле avoid до сих пор не доезжало сюда
+    вовсе, хотя у двух каналов из трёх оно написано ровно про SEO: у abyss —
+    «не выдавать версии за доказанное», у estoico-es — «без лозунгов
+    самопомощи, в этой нише такое проваливается в 100 раз».
+
     Сценарий отдаётся началом И концом: заголовок должен отражать вопрос,
     поставленный в начале, а описание — не спойлерить развязку; по одному
     только началу модель не видит, чем всё кончилось."""
-    log("[Агент] Генерирую названия, описание, теги и главы...")
+    ch = channel or {}
+    lang = ch.get("lang") or lang
+    formula = formula or ch.get("topic_formula", "")
+    shape = SEO_SHAPES.get((ch.get("script_shape") or "").strip().lower(),
+                           SEO_SHAPE_DEFAULT)
+    tone = TONES.get(ch.get("tone", ""), "")
+    avoid = (ch.get("avoid") or "").strip()
+    name = (ch.get("name") or "").strip()
+    log("[Агент] Генерирую названия, описание, теги и главы"
+        + (f" — под канал «{name}»" if name else "") + "...")
     lang_name = LANGS.get(lang, "English")
     body = script_text[:5000]
     if len(script_text) > 9000:
@@ -2254,15 +2510,23 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
                 "give away the ending. Format one per line as 'M:SS Label' "
                 f"(the video is {int(total // 60)}:{int(total % 60):02d} long, "
                 "so spread them across that whole span, never past it). "
-                "Labels are 2-5 words, concrete, no numbering.\n")
+                + shape["chapters"] + "\n")
         except Exception:
             chapters_note = ""
-    return llm_chat(
+    out = llm_chat(
         [{"role": "system", "content":
-          "You are a YouTube strategist for documentary channels. You write "
-          "for curiosity, never for clickbait you cannot deliver on."},
+          "You are a YouTube strategist for one specific channel"
+          + (f", «{name}»" if name else "") + ". You write for that "
+          "channel's own audience, never a generic template that would fit "
+          "any documentary."
+          + (f" {tone}" if tone else "")},
          {"role": "user", "content":
-          f"Based on this documentary script, write everything in {lang_name}.\n\n"
+          # Язык вынесен в первую строку И повторён в конце: замерено на
+          # прогоне estoico-es — при одном упоминании в начале модель
+          # съезжала на английский в тегах, считая их «поисковыми словами».
+          f"Write EVERY section below in {lang_name} — the titles, the "
+          f"description, the tags AND the chapter labels. Tags in {lang_name} "
+          "too: this channel's viewers search in their own language.\n\n"
           + (("WHAT WORKS ON THIS CHANNEL'S NICHE — measured on competing "
               "channels, follow this pattern for the titles, it matters more "
               f"than anything else here:\n{formula}\n\n") if formula.strip() else "")
@@ -2282,22 +2546,32 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
           "truncated). Forbidden: ALL-CAPS words, 'You won't believe', "
           "'SHOCKING', 'This is why', trailing '...', any promise the script "
           "does not actually keep.\n\n"
-          "DESCRIPTION: first sentence under 120 characters — it is all that "
-          "shows in search and above the fold, so it must stand alone and "
-          "restate the hook without answering it. Then 2 short paragraphs of "
-          "real context. Do NOT spoil the ending. No hashtag spam, no 'like "
-          "and subscribe', no links.\n\n"
-          "TAGS: 15 comma-separated, lower-case. Mix three kinds: 3-4 broad "
-          "(the genre/field), 6-7 specific (names, places, events actually in "
-          "the script), 4-5 long-tail phrases someone would really type.\n"
-          + chapters_note +
-          "\nUse these exact section headers: TITLES:, DESCRIPTION:, TAGS:"
+          + shape["desc"] +
+          " No hashtag spam, no 'like and subscribe', no links.\n\n"
+          + shape["tags"] + "\n"
+          + chapters_note
+          + (f"\nTHIS CHANNEL REFUSES TO DO THIS — it applies to the titles, "
+             f"the description and the tags exactly as it applies to the "
+             f"script:\n{avoid}\n" if avoid else "")
+          + f"\nEverything is in {lang_name}."
+          + "\nUse these exact section headers (in English, they are "
+          "structure, not content): TITLES:, DESCRIPTION:, TAGS:"
           + (", CHAPTERS:" if chapters_note else "") +
           "\n\nScript:\n" + body}],
         # лимит с большим запасом: у gemini-2.5-flash «размышления» тратят
         # тот же бюджет maxOutputTokens, и на 2500 ответ обрывался прямо на
         # главах — последней секции («CHAPTERS:\n00:00 T» и конец)
         api_key, 0.8, 8000)
+    # Язык проверяем ПОСЛЕ, а не надеемся на инструкцию: заголовок и теги —
+    # это то, по чему ролик находят, и чужой язык здесь стоит всей выдачи.
+    # Не переписываем и не роняем — говорим вслух: сама выдача осмысленная,
+    # решение о перегенерации за человеком.
+    bad = lang_mismatch(out, lang)
+    if bad:
+        log(f"[SEO] ⚠ Ролик на языке «{lang}», а {bad}. "
+            "Проверь seo.txt перед публикацией — по чужому языку ролик "
+            "не найдут.", "warn")
+    return out
 
 
 # ---------- Генерация изображений (Agnes -> Gemini) ----------
@@ -2324,6 +2598,14 @@ VISUAL_STYLES = {
         "historical documentary look, fine grain, aged tone, no text.",
     "яркий научпоп":     "Clean bright editorial photo, vivid colors, sharp "
         "detail, modern documentary style, no text or watermarks.",
+    # Значение из профиля abyss. До сих пор этого ключа здесь НЕ БЫЛО, а
+    # `.get(style, "") or IMAGE_STYLE` молча уводил канал в общий
+    # «кинематографичный» — то есть объявленный стиль канала не влиял ни на
+    # один кадр и ни на один фон обложки. Ошибка тихая: строка в channels.json
+    # выглядит рабочей настройкой.
+    "документальный архив": "Archival documentary photograph, neutral "
+        "overcast or worklight, muted desaturated color, fine grain, "
+        "utilitarian framing as if shot for a report, no text or watermarks.",
 }
 
 
@@ -2591,6 +2873,191 @@ VEO_PROBE_S = float(os.getenv("VEO_PROBE_S", "60"))
 # шестикратного замедления.
 VEO_BAD_RATE = float(os.getenv("VEO_BAD_RATE", "0.30"))
 
+# ---------- Суточный лимит КАРТИНОК: сколько и на что беречь ----------
+#
+# Сервис ввёл потолок числа картинок в сутки на аккаунт (2026-08-05, по тарифу:
+# 4 потока — 500). Числа лимита читаются у сервиса (veo_client.image_quota) и
+# здесь НЕ дублируются — он сам предупредил, что «лимиты не окончательные».
+# Здесь только ПОЛИТИКА: кому картинки достаются первому, когда их мало.
+#
+# Порядок именно такой, потому что цена отказа у трёх потребителей разная:
+#
+#   обложка ("cover")  — без неё ролик НЕ ВЫЛОЖИТЬ. Три штуки на ролик, это
+#       мизер против пятисот, и отдаются они первыми при любом остатке.
+#   кадр   ("frame")   — план раскадровки. Нужен ролику, но заменим: не вышло
+#       ИИ-кадром — будет сток или Ken Burns, ролик всё равно выйдет. При
+#       VEO_VIDEO_RATIO=1 этот путь вообще не тратит картинок (всё живое видео).
+#   полировка ("polish") — перегенерация уже готового, но неудачного кадра
+#       (refix_storyboard). Чистая косметика: кадр на месте, ролик собран.
+#       Именно ею жертвуем первой — так уже было решено 2026-08-04, когда
+#       полировка тринадцати кадров заморозила готовый ролик на полтора часа.
+#
+# Резерв под обложки: кадры и полировка не имеют права съесть последние
+# картинки, иначе ролик соберётся, а выложить его будет нечем.
+VEO_IMAGE_COVER_RESERVE = int(os.getenv("VEO_IMAGE_COVER_RESERVE", "3"))
+# Ниже этого остатка косметическая перегенерация выключается совсем. Не «3+1»,
+# а с запасом: полировка идёт пачкой по всем забракованным планам, и разрешать
+# её на последних десятках картинок значит отдать за косметику обложки
+# СЛЕДУЮЩЕГО ролика ночи.
+VEO_IMAGE_POLISH_FLOOR = int(os.getenv("VEO_IMAGE_POLISH_FLOOR", "25"))
+# Как часто перечитывать остаток у сервиса. Спрашивать на каждый кадр — это
+# ровно та «долбёжка сервера запросами», из-за которой уже прилетало от
+# поддержки; кэш на пару минут даёт свежесть без потока запросов.
+VEO_QUOTA_TTL_S = float(os.getenv("VEO_QUOTA_TTL_S", "120"))
+
+# Кэш остатка и отметка «строку про остаток за этот прогон уже написали».
+_QUOTA_CACHE: dict = {}
+_QUOTA_AT = 0.0
+_QUOTA_SAID = False
+
+
+def image_quota(force: bool = False) -> dict:
+    """Остаток суточного лимита картинок, с кэшем на VEO_QUOTA_TTL_S.
+
+    Никогда не бросает: если сервиса нет, вернётся словарь с exact=False, и
+    вызывающий будет работать как раньше, а не встанет.
+    """
+    global _QUOTA_CACHE, _QUOTA_AT
+    now = time.time()
+    if not force and _QUOTA_CACHE and now - _QUOTA_AT < VEO_QUOTA_TTL_S:
+        return _QUOTA_CACHE
+    try:
+        import veo_client
+        q = veo_client.image_quota(api_key=veo_key_now())
+    except Exception as e:
+        q = {"limit": None, "used": None, "remaining": None, "unlimited": False,
+             "resets_in_s": None, "exact": False,
+             "why": f"остаток картинок узнать не удалось ({e})"}
+    _QUOTA_CACHE, _QUOTA_AT = q, now
+    return q
+
+
+def image_quota_line(q: dict | None = None) -> str:
+    """Человеческая строка про остаток. Слово «картинок» в ней обязательно:
+    через месяц никто не должен решить, будто лимит и на видео тоже."""
+    q = q or image_quota()
+    if q.get("unlimited"):
+        return "[Лимит] Лимита на картинки сервис не объявляет — считаю, что их вдоволь"
+    left, limit = q.get("remaining"), q.get("limit")
+    if left is None:
+        return ("[Лимит] Остаток картинок на сегодня неизвестен: "
+                f"{q.get('why') or 'сервис не ответил'} — работаю как раньше")
+    tail = ""
+    reset = q.get("resets_in_s")
+    if reset:
+        tail = f", обнуление через {reset / 3600:.1f} ч"
+    who = ("" if q.get("exact")
+           else " (ОЦЕНКА по собственному счёту, не ответ сервиса: "
+                f"{q.get('why') or 'сервис промолчал'})")
+    return (f"[Лимит] Картинок на сегодня осталось {left} из "
+            f"{limit if limit is not None else '?'}{tail}. Лимит только на "
+            f"КАРТИНКИ — живое видео Veo под него не попадает{who}")
+
+
+def log_image_quota(log=print, force: bool = False) -> dict:
+    """Сказать остаток вслух — один раз на прогон.
+
+    Один раз, потому что строка полезна в начале журнала, а не сотней копий
+    между кадрами: журнал за ночь и так на десятки тысяч строк.
+    """
+    global _QUOTA_SAID
+    q = image_quota()
+    if force or not _QUOTA_SAID:
+        _QUOTA_SAID = True
+        log(image_quota_line(q))
+    return q
+
+
+def image_budget_check(need: int, purpose: str = "frame",
+                       log=print, quiet: bool = False) -> tuple[bool, str]:
+    """Хватит ли картинок на шаг. Спрашивать ДО шага, а не после сотни 429.
+
+    Возвращает (можно, причина). Причина непустая только когда нельзя — её
+    и надо сказать человеку: «не начинаю и вот почему» вместо молчаливого
+    шторма отказов, которым это выяснялось раньше (2412 ответов 429 за сутки
+    на исчерпанных cookie-слотах — та же болезнь, другой лимит).
+
+    Условий ДВА, и они разные по смыслу — их легко перепутать, поэтому здесь
+    они разведены явно:
+
+      РЕЗЕРВ считается ПОСЛЕ траты: сколько картинок останется, когда шаг
+        отработает. Он защищает обложки от кадров и полировки.
+      ЗАПАС считается ДО траты: сколько картинок есть сейчас. Он выключает
+        косметику целиком, когда день на исходе, — даже если сама пачка
+        маленькая и в резерв формально влезает.
+
+    Раньше запас проверялся тоже «после траты», и получалась чушь: при 30
+    оставшихся пачка из 10 отклонялась, хотя после неё осталось бы 20 — то
+    есть запас ещё на шесть роликов обложек.
+    """
+    q = image_quota()
+    if q.get("unlimited") or q.get("remaining") is None:
+        return True, ""      # лимита нет или он неизвестен — не выдумываем
+    left = int(q.get("remaining") or 0)
+    need = max(0, need)
+    reset = q.get("resets_in_s")
+    tail = (f"; лимит обнулится через {reset / 3600:.1f} ч") if reset else ""
+    # Обложка идёт вне очереди: без неё ролик не выложить, поэтому ей
+    # достаётся всё, что осталось, и никакого резерва она не бережёт.
+    reserve = 0 if purpose == "cover" else VEO_IMAGE_COVER_RESERVE
+    if left - need < reserve:
+        if purpose == "cover":
+            why = (f"картинок осталось {left}, а на обложки нужно {need} — "
+                   f"часть будет без ИИ-фона, на тёмной подложке{tail}")
+        else:
+            what = ("перегенерация кадров" if purpose == "polish" else "кадры")
+            why = (f"картинок осталось {left}, а {what} просят {need} при "
+                   f"резерве {reserve} под обложки — без обложек ролик не "
+                   f"выложить, поэтому резерв не трогаю{tail}")
+        if not quiet:
+            log(f"[Лимит] {why}", "warn")
+        return False, why
+    if purpose == "polish" and left < VEO_IMAGE_POLISH_FLOOR:
+        why = (f"картинок осталось {left}, это меньше запаса "
+               f"{VEO_IMAGE_POLISH_FLOOR} — косметическую перегенерацию "
+               f"кадров отключаю: ролик без неё выходит, а обложки "
+               f"следующего ролика важнее{tail}")
+        if not quiet:
+            log(f"[Лимит] {why}", "warn")
+        return False, why
+    return True, ""
+
+
+def _image_quota_spent(log=print) -> bool:
+    """Кончился ли суточный лимит картинок НАСОВСЕМ (до обнуления).
+
+    Отдельная функция, а НЕ проверка внутри _veo_wait_out_limit, хотя туда
+    она просилась. Причина простая и дорогая: _veo_wait_out_limit общий с
+    ВИДЕО (gen_video зовёт его при своём 429), а лимит на видео не
+    распространяется — сервис подтвердил «только картинки». Проверка внутри
+    общего ожидания уводила бы живое видео на запасной генератор Agnes из-за
+    чужого лимита, то есть возвращала бы ровно ту болезнь, от которой
+    VEO_VIDEO_RATIO=1 и лечит: разнородные кадры вместо единого вида канала.
+
+    Пережидание придумано для лимита, который рассасывается за 20 минут
+    (ротация аккаунтов Google на стороне сервиса). Суточный — другой зверь:
+    до обнуления он не рассосётся, и сервис сам говорит когда оно будет.
+    Ждать дольше, чем отведено прогону, незачем: полтора часа тишины
+    закончатся тем же стоком, только на полтора часа позже.
+    """
+    q = image_quota(force=True)
+    if q.get("unlimited"):
+        return False
+    left = q.get("remaining")
+    if left is None or int(left) > 0:
+        return False
+    reset = q.get("resets_in_s") or 0
+    if 0 < reset <= VEO_LIMIT_BUDGET_S:
+        return False        # обнулится раньше, чем кончится бюджет — есть смысл ждать
+    said = (f"[Картинка] Суточный лимит КАРТИНОК исчерпан ({q.get('used')} из "
+            f"{q.get('limit')}), обнуление через {reset / 3600:.1f} ч — это "
+            "дольше, чем отведено прогону. Не жду и больше не стучусь: "
+            "дальше кадры идут со стока. Живого видео Veo это не касается, "
+            "лимит только на картинки.")
+    log(said, "warn")
+    _veo_mark_down(log, why=said)
+    return True
+
 
 def _veo_image_models() -> list[str]:
     """Модели генерации картинок по порядку предпочтения.
@@ -2785,21 +3252,33 @@ def reset_veo_limit() -> None:
     Без этого второй ролик за ночь унаследовал бы исчерпанный бюджет первого
     и ушёл бы на сток с первого же кадра, даже если лимит давно отпустил."""
     global _VEO_LIMIT_UNTIL, _VEO_LIMIT_SPENT, _VEO_LIMIT_SINCE
+    global _QUOTA_CACHE, _QUOTA_AT, _QUOTA_SAID
     _VEO_LIMIT_UNTIL = 0.0
     _VEO_LIMIT_SPENT = 0.0
     _VEO_LIMIT_SINCE = 0.0
+    # Остаток картинок — тоже «на этот ролик»: за предыдущий его потратили, и
+    # начинать следующий с цифрой часовой давности значит планировать по
+    # выдумке. Заодно строка про остаток снова прозвучит вслух.
+    _QUOTA_CACHE, _QUOTA_AT, _QUOTA_SAID = {}, 0.0, False
 
 
-def _veo_mark_down(log=print) -> None:
+def _veo_mark_down(log=print, why: str = "") -> None:
     """Отметить простой сервиса — один раз на пятнадцать минут.
 
     Без этого каждый план ходит в лежащий сервис сам: на ролике в сто
     с лишним ИИ-кадров это сотня заведомо провальных запросов и сотня
     одинаковых строк в журнале, из-за которых настоящие ошибки не видно.
+
+    why — чем именно закрылись. Причин теперь две («лёг 503» и «кончился
+    суточный лимит картинок»), и по журналу их надо различать: первая
+    проходит сама за минуты, вторая держится до обнуления квоты, и лечатся
+    они по-разному. Без параметра сообщение про 503 печаталось бы и там,
+    где никакого 503 не было.
     """
     global _VEO_DOWN_UNTIL
     if not _veo_down():
-        log("[Картинка] У VeoNonStop лёг сервис проверки ключей (503) — "
+        log(why or
+            "[Картинка] У VeoNonStop лёг сервис проверки ключей (503) — "
             "это на ИХ стороне, ключ ни при чём: тот же ответ получает "
             f"выдуманный ключ. Не трогаю его {VEO_DOWN_S / 60:.0f} мин, "
             "кадры пойдут со стока.")
@@ -2807,13 +3286,28 @@ def _veo_mark_down(log=print) -> None:
 
 
 def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
-              style: str = "", wait_on_limit: bool = True) -> Path:
+              style: str = "", wait_on_limit: bool = True,
+              purpose: str = "frame") -> Path:
     """Картинка: VeoNonStop (Banana, ОСНОВНОЙ) -> Agnes -> Gemini (фолбэки,
     если Veo недоступен/ключ истёк/упал). style — единый визуальный стиль
-    проекта (VISUAL_STYLES), добавляется к промпту."""
+    проекта (VISUAL_STYLES), добавляется к промпту.
+
+    purpose — насколько эта картинка обязательна, когда суточный лимит на
+    исходе: "cover" (обложка, отдаём последнюю), "frame" (кадр раскадровки),
+    "polish" (косметическая перегенерация, отключается первой). См.
+    VEO_IMAGE_COVER_RESERVE.
+    """
     if not _veo_keys():
         raise RuntimeError("Нет VEO_API_KEY — картинки генерирует только "
                            "VeoNonStop (.env или «Настройки API»).")
+    # Спрашиваем ДО первого запроса. Без этой проверки исчерпанный суточный
+    # лимит выяснялся единственным способом — получить отказ, и так на каждом
+    # плане: ровно отсюда брались сотни одинаковых 429 в журнале и просьба
+    # поддержки не долбить сервер. Кэш внутри image_quota делает проверку
+    # почти бесплатной, а отказ здесь — мгновенный и с внятной причиной.
+    ok, why = image_budget_check(1, purpose, log, quiet=True)
+    if not ok:
+        raise RuntimeError(f"Суточный лимит картинок: {why}")
     # ТОЛЬКО VeoNonStop. Раньше при его отказе шли фолбэки на Agnes и Gemini,
     # но три разных генератора в одном ролике дают визуально разнородные
     # кадры — а весь смысл в том, чтобы канал выглядел одним фильмом, а не
@@ -2875,6 +3369,11 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
         if not wait_on_limit:
             log("[Картинка] Лимит исчерпан, а кадр необязательный — "
                 "не жду, оставляю как есть")
+            break
+        # Ждать имеет смысл только пока лимит МИНУТНЫЙ. Если сервис говорит,
+        # что суточная квота картинок выбрана до обнуления, ожидание — это
+        # просто отложенный сток, и проверять это ещё сотней 429 не надо.
+        if _image_quota_spent(log):
             break
         if not _veo_wait_out_limit(log):
             break              # бюджет прогона исчерпан — только теперь сток
@@ -3156,6 +3655,18 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
             level="критично")
         return 0
     pexels_get, pixabay_get = _stock_getters(pexels, pixabay, log)
+    # Решаем ОДИН РАЗ на всю пачку, а не по кадру. Перегенерация — самое
+    # необязательное, что тратит картинки: забракованный кадр уже лежит в
+    # ролике, и ролик без этой правки выходит. Поэтому при скудном остатке
+    # честнее сразу уйти на сток по всем планам, чем на каждом из десятков
+    # получать отказ и писать о нём отдельную строку.
+    if prefer_ai:
+        ok, why = image_budget_check(len(bad), "polish", log, quiet=True)
+        if not ok:
+            prefer_ai = False
+            log(f"[Кадры] Перегенерация ИИ-кадрами отключена: {why}. "
+                f"Забракованные планы ({len(bad)}) заменю стоком — это "
+                "косметика, ролик из-за неё не встанет.", "warn")
     used = _load_used()
     fixed = 0
     for rec in bad:
@@ -3198,7 +3709,8 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
                 jpg = dest.with_suffix(".ai.jpg")
                 # wait_on_limit=False: это полировка уже готового ролика.
                 # Не вышло — остаётся прежний клип, конвейер идёт дальше.
-                gen_image(q, jpg, "", log, visual_style, wait_on_limit=False)
+                gen_image(q, jpg, "", log, visual_style, wait_on_limit=False,
+                          purpose="polish")
                 tmp_mp4 = dest.with_suffix(".ai.mp4")
                 ken_burns(jpg, tmp_mp4, duration=max(need, 6), fps=25)
                 dest.unlink(missing_ok=True)
@@ -3359,54 +3871,206 @@ def _frange(start: float, stop: float, step: float):
         t += step
 
 
+# ВИЗУАЛЬНЫЙ ЯЗЫК ОБЛОЖКИ — СВОЙ У КАЖДОГО КАНАЛА.
+#
+# Замер по готовым папкам: abyss/thumbs/thumb1.jpg и estoico-es/thumbs/
+# thumb1.jpg отличаются только словами и фотографией. Всё остальное
+# совпадает до пикселя — золотая рамка #f5c451 по краю, белый Arial Black
+# капсом слева, золотая черта под текстом. Акценты каналов при этом в
+# channels.json прописаны разные (#b83a2b, #3f9e6b, #c8873a) и просто не
+# доезжали до обложки: render_thumbnail брал значение по умолчанию.
+#
+# Ключ — palette канала, та же, по которой render.PALETTES выбирает склейки
+# и движение камеры. Это не совпадение и не экономия на новом поле: обложка
+# — обещание того, что внутри. Канал, который рубит склейками (harsh),
+# не может обещать созерцание, и наоборот.
+#
+# `words` уходит в промпт концепций, `bg` — в промпт фона, `case`
+# определяет, капсом ли текст (капс — не универсальное решение: у
+# созерцательного канала он ломает интонацию), `layouts` — какие раскладки
+# каналу вообще разрешены.
+THUMB_STYLES = {
+    # Хроника. Обложка должна выглядеть как страница отчёта, а не как афиша.
+    "harsh": {
+        "words":
+            "The headline names the OBJECT and what happened to it — a "
+            "structure, a place, a mechanism. Flat and factual, the way an "
+            "inquiry report would put it. Never an exclamation, never a "
+            "number of dead, never a word like SHOCKING or HORROR.",
+        "bg":
+            "The background is the structure itself or the site: concrete, "
+            "steel, scaffolding, a span, a shaft, an empty site after the "
+            "event. Overcast daylight or worklight, cold and documentary, no "
+            "drama lighting, no people posing, no faces to camera.",
+        "case": "upper",
+        "layouts": ("bottom", "split"),
+    },
+    # Тёплый рассказ. Здесь обложка продаёт цену и результат, а не мрачность.
+    "warm": {
+        "words":
+            "The headline carries the NUMBER — the price or the money saved "
+            "— plus what it fixes. That pairing is the measured difference "
+            "between this niche's hits and its flops. Keep the currency sign "
+            "in it, it is the whole hook.",
+        "bg":
+            "The background is the object being fixed or the material doing "
+            "the fixing, close up on a real surface in a real home: a hand, "
+            "a jar, a joint, a tool on a wooden table. Warm daylight through "
+            "a window, lived-in, nothing sterile or studio-lit.",
+        "case": "upper",
+        "layouts": ("left", "split"),
+    },
+    # Созерцание. Единственный из трёх, где капс запрещён: в этой нише
+    # обложка выглядит как корешок книги, а не как крик.
+    "contemplative": {
+        "words":
+            "The headline says what happened TO THE THINKER — third person, "
+            "past tense. NEVER address the viewer, never use 'tú', 'usted', "
+            "'your' or an imperative: on the reference channel the same "
+            "author scored 199,346 views on 'the book that drove HIM to the "
+            "abyss' and 538 on 'the book that reveals YOUR demons'. Use "
+            "sentence case, not capitals.",
+        "bg":
+            "The background is a place or an object from the life: a study, "
+            "a window, a manuscript, a street of the period, a landscape. "
+            "Low, slanted light and deep shadow, painterly and still. No "
+            "modern objects, no text, no faces to camera.",
+        "case": "sentence",
+        "layouts": ("left", "bottom"),
+    },
+}
+
+THUMB_STYLE_DEFAULT = {
+    "words":
+        "The headline is the hook of the video in the fewest possible words.",
+    "bg":
+        "The background is a place, an object or a scene from the narration.",
+    "case": "upper",
+    "layouts": ("left", "bottom", "split"),
+}
+
+
+def thumb_style(channel: dict | None) -> dict:
+    """Визуальный язык обложки по палитре канала (см. THUMB_STYLES)."""
+    key = ((channel or {}).get("palette") or "").strip().lower()
+    return THUMB_STYLES.get(key, THUMB_STYLE_DEFAULT)
+
+
 def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
-                        count: int = 3) -> list[dict]:
+                        count: int = 3,
+                        channel: dict | None = None) -> list[dict]:
     """Идеи обложек по сценарию: короткий текст на картинку + промпт фона.
 
     Текст обложки — НЕ заголовок ролика: в ленте YouTube карточка шириной
     ~210px, туда влезает 2-4 крупных слова, а не предложение. Поэтому
     просим отдельно и коротко. Возвращает [{headline, bg_prompt, layout}],
-    пустой список при любом сбое (обложки — не критичный этап)."""
+    пустой список при любом сбое (обложки — не критичный этап).
+
+    Канал сюда не приходил ВООБЩЕ — ни языком, ни палитрой, ни формулой
+    ниши. Отсюда две поломки сразу. Первая: язык обложки был отдан на
+    усмотрение модели, и испанский ролик мог получить английский текст на
+    картинке — та же болезнь, что кириллица в англоязычном ролике
+    (ХЕНДОВЕР, п.3), только заметная не в кадре, а в ленте YouTube. Вторая:
+    все три канала просили «documentary thumbnail», и обложки выходили
+    одинаковой формы (см. THUMB_STYLES — там замер по готовым файлам)."""
     text = (script_text or "").strip()
     if not text:
         return []
+    ch = channel or {}
+    lang = ch.get("lang") or "английский"
+    lang_name = LANGS.get(lang, "English")
+    st = thumb_style(ch)
+    formula = (ch.get("topic_formula") or "").strip()
+    avoid = (ch.get("avoid") or "").strip()
+    layouts = st["layouts"]
+    upper = st["case"] == "upper"
     try:
         out = llm_chat(
             [{"role": "system", "content":
-              "You design YouTube thumbnails for documentary channels. "
-              "Curiosity-driven, never clickbait that the video doesn't deliver."},
+              "You design YouTube thumbnails for one specific channel, not "
+              "for documentaries in general. Curiosity-driven, never "
+              "clickbait that the video doesn't deliver."},
              {"role": "user", "content":
               f"Based on this narration, propose {count} DIFFERENT thumbnail "
-              "concepts.\n\nRules for `headline`:\n"
-              "- 2 to 4 words TOTAL, uppercase, no punctuation except ? or !\n"
-              "- it must be readable at 210px wide, so short is mandatory\n"
+              f"concepts. Everything you write — the headline above all — "
+              f"must be in {lang_name}: this is what the channel's viewers "
+              "read in their feed.\n\n"
+              + (f"WHAT WORKS IN THIS CHANNEL'S NICHE, measured on competing "
+                 f"channels:\n{formula}\n\n" if formula else "")
+              + "Rules for `headline`:\n"
+              "- 2 to 4 words TOTAL, no punctuation except ? or !\n"
+              + ("- write it in CAPITALS\n" if upper else
+                 "- sentence case, NOT capitals — capitals read as shouting "
+                 "and this channel does not shout\n")
+              + "- it must be readable at 210px wide, so short is mandatory\n"
               "- use \\n to split it into at most 2 lines\n"
-              "- it is NOT the video title — it is the hook ON the image\n\n"
+              "- it is NOT the video title — it is the hook ON the image\n"
+              f"- {st['words']}\n\n"
               "Rules for `bg_prompt`: one sentence describing a photographic "
-              "background image for that concept — a place, an object or a "
-              "scene from the narration. No text, no words in the image, no "
-              "collage, no watermark.\n\n"
-              "`layout` must be one of: left, bottom, split.\n\n"
+              f"background image for that concept. {st['bg']} No text, no "
+              "words in the image, no collage, no watermark. Write the "
+              "bg_prompt in English — it goes to an image model, not to a "
+              "viewer.\n\n"
+              + (f"THIS CHANNEL REFUSES TO DO THIS, on the cover exactly as "
+                 f"in the script:\n{avoid}\n\n" if avoid else "")
+              + f"`layout` must be one of: {', '.join(layouts)}.\n\n"
               "Reply with ONLY a JSON array, no markdown fences:\n"
-              '[{"headline":"...","bg_prompt":"...","layout":"left"}]\n\n'
+              '[{"headline":"...","bg_prompt":"...","layout":"'
+              + layouts[0] + '"}]\n\n'
               f"NARRATION:\n{text[:5000]}"}],
-            api_key, 0.9, 900)
+            # 900 токенов хватало, пока промпт был общий и короткий. С
+            # формулой ниши и правилами канала модель стала думать дольше, а
+            # у gemini-2.5-flash «размышления» тратят ТОТ ЖЕ бюджет
+            # maxOutputTokens: замерено на abyss — ответ обрывался прямо
+            # внутри первой концепции ('[{"headline":"THE WALKWAY\\nCOLLAPSE",
+            # "bg_prompt":"Archival photographic view of suspended concrete
+            # walkways inside a vas'), закрывающей скобки не было, и разбор
+            # JSON молча возвращал ноль концепций — то есть обложек не было
+            # вовсе.
+            api_key, 0.9, 3000)
         m = re.search(r"\[.*\]", out or "", re.S)
         if not m:
-            log(f"[Обложка] Не нашёл JSON в ответе: {(out or '')[:120]!r}")
+            # Разделяем две разные беды: модель ответила не тем — и модель
+            # ответила тем, но не дописала. Раньше обе выглядели как
+            # «не нашёл JSON» плюс 120 символов, и обрыв по лимиту токенов
+            # читался как отказ фильтра.
+            why = ("ответ оборван на середине (упёрся в лимит токенов)"
+                   if (out or "").lstrip().startswith("[")
+                   else "ответ не похож на JSON")
+            log(f"[Обложка] {why}: {(out or '')[:120]!r}")
             return []
         ideas = []
         for it in json.loads(m.group(0)):
             head = str(it.get("headline", "")).strip()
             if not head:
                 continue
+            head = head.replace("\\n", "\n")
+            # Регистр доводим руками, а не надеемся на просьбу. Капс делает
+            # сама композиция (text-transform), а вот «sentence case» модель
+            # понимает как «не капс» и присылает всё строчными: замерено на
+            # estoico-es — вернулось «la trampa \ndel alma», то есть обложка
+            # без единой заглавной. Заодно убираем пробел перед переносом,
+            # который там же и приехал: в макете он даёт висящий отступ.
+            head = "\n".join(s.strip() for s in head.split("\n"))
+            if not upper and head[:1].islower():
+                head = head[0].upper() + head[1:]
+            got = str(it.get("layout", "")).strip().lower()
             ideas.append({
-                "headline": head.replace("\\n", "\n")[:60],
+                "headline": head[:60],
                 "bg_prompt": str(it.get("bg_prompt", "")).strip()[:400],
-                "layout": (str(it.get("layout", "left")).strip().lower()
-                           if str(it.get("layout", "")).strip().lower()
-                           in ("left", "bottom", "split") else "left"),
+                # раскладка не из набора канала — берём первую разрешённую,
+                # а не общую «left»: иначе harsh-канал молча получал бы
+                # раскладку созерцательного при любой опечатке модели
+                "layout": got if got in layouts else layouts[0],
             })
+        # Язык проверяем по СЛОВАМ обложек, а не по всему ответу: bg_prompt
+        # мы сами просили писать по-английски (он идёт в модель картинок),
+        # и он бы перевесил статистику на любом канале.
+        bad = lang_mismatch(" ".join(i["headline"] for i in ideas), lang)
+        if bad:
+            log(f"[Обложка] ⚠ Канал на языке «{lang}», а {bad}. "
+                "Текст на обложке читает зритель — проверь thumbs/ перед "
+                "публикацией.", "warn")
         return ideas[:count]
     except Exception as e:
         log(f"[Обложка] Не вышло придумать концепции ({_redact(e)})")
@@ -3457,10 +4121,15 @@ def gen_topic(channel: dict, api_key: str = "", log=print) -> str:
 
 
 def gen_variant_theme(topic: str, kind: str, api_key: str = "",
-                      log=print) -> str:
+                      log=print, style: str = "") -> str:
     """Художественное описание НОВОГО оверлея под тему ролика — то, что потом
     получит генератор кода. Придумывает LLM, а не мы: захардкоженный список
     тем быстро исчерпается и библиотека начнёт наполняться близнецами.
+
+    style — почерк КАНАЛА (семейство цветов, тон, акцент). Параметра сначала
+    не было, и вид придумывался под одну лишь тему ролика: библиотека канала
+    пополнялась плашками в случайных цветах, и принадлежность каналу
+    оставалась записью в файле, а не тем, что видно на экране.
 
     Пустая строка при любом сбое — вызывающий тогда просто не пополнит
     библиотеку, на сам ролик это не влияет."""
@@ -3470,7 +4139,8 @@ def gen_variant_theme(topic: str, kind: str, api_key: str = "",
               "You are an art director for documentary motion graphics."},
              {"role": "user", "content":
               f'A documentary video about: "{topic or "an unknown subject"}".\n\n'
-              f'Invent ONE fresh visual treatment for its "{kind}" on-screen '
+              + (style + "\n\n" if style else "")
+              + f'Invent ONE fresh visual treatment for its "{kind}" on-screen '
               "graphic. Describe the LOOK and the MOTION in 2-3 sentences: "
               "what physical object or material it evokes, how it is built up "
               "on screen, and how it enters and leaves.\n"
@@ -4497,13 +5167,54 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
                 target.unlink()
             src.rename(target)
     srt = subs_dir / "voiceover.srt"
-    _srt_text_from_script(srt, out_dir / "script.txt", log)
+    _srt_text_from_script(srt, out_dir / "script.txt", log, max_line_width)
     strip_srt_punctuation(srt)
     log(f"[Субтитры] Готово: {srt}")
     return srt
 
 
-def _srt_text_from_script(srt: Path, script: Path, log=print) -> None:
+def _wrap_srt_line(text: str, width: int, lines: int = 2) -> str:
+    """Фраза субтитра в НЕСКОЛЬКО строк по ширине кадра.
+
+    Whisper это делает сам (--max_line_width/--max_line_count), но его текст
+    мы выбрасываем и подставляем сценарный (см. _srt_text_from_script) — а
+    переносы вместе с ним не переносили, и в файл уходила одна длинная
+    строка. Замерено на готовых роликах 2026-08-05: КАЖДЫЙ блок в одну
+    строку, медиана 81 знак, максимум 115 — при том что каналы просят 38,
+    42 и 46 (channels.sub_width). Дальше эту строку ломал уже libass, по
+    своей ширине колонки, и субтитр расползался на три строки вверх по
+    кадру — прямо в зону плашек.
+
+    Балансируем по словам: сначала считаем, во сколько строк фраза
+    просится, потом раскладываем по РАВНОЙ длине. Жадный перенос по
+    ширине давал вторую строку в четыре слова под первой во всю ширину —
+    в кадре это читается как оборванная мысль.
+
+    Потолок в lines строк важнее точного соблюдения width: текст мы не
+    режем никогда, поэтому длинная фраза даёт две строки чуть шире
+    заказанной, а не три коротких. Три строки субтитра поднимают блок в
+    середину кадра, где стоят плашки, — ровно то, от чего уходим."""
+    words = text.split()
+    if not words:
+        return ""
+    n = min(max(lines, 1), max(1, -(-len(text) // max(width, 8))))
+    goal = len(text) / n            # цель по длине строки, чтобы вышли ровные
+    out, cur = [], ""
+    for w in words:
+        # последняя строка добирает остаток: без этого хвост уезжал бы в
+        # лишнюю (n+1)-ю строку
+        if cur and len(out) < n - 1 and len(cur) + 1 + len(w) > goal:
+            out.append(cur)
+            cur = w
+        else:
+            cur = f"{cur} {w}" if cur else w
+    if cur:
+        out.append(cur)
+    return "\n".join(out)
+
+
+def _srt_text_from_script(srt: Path, script: Path, log=print,
+                          width: int = 42) -> None:
     """Заменить РАСПОЗНАННЫЙ текст субтитров текстом СЦЕНАРИЯ, оставив
     тайминги Whisper.
 
@@ -4558,7 +5269,10 @@ def _srt_text_from_script(srt: Path, script: Path, log=print) -> None:
         chunk = " ".join(words[a:b]).strip()
         if not chunk:                     # хвост кончился — оставляем пустым,
             chunk = ""                    # лучше пусто, чем чужая фраза
-        out.append(f"{i}\n{start} --> {end}\n{chunk}\n")
+        # Переносы — обязательная часть подмены, а не украшение: без них
+        # ширина строки канала (channels.sub_width) не доезжает до кадра
+        # вообще, см. _wrap_srt_line.
+        out.append(f"{i}\n{start} --> {end}\n{_wrap_srt_line(chunk, width)}\n")
     srt.write_text("\n".join(out), encoding="utf-8")
     log(f"[Субтитры] Текст взят из сценария ({len(words)} слов), "
         f"тайминги из распознавания")
@@ -5738,9 +6452,25 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
             return (i, False, e)
 
     if veo_key:
+        # Остаток суточного лимита КАРТИНОК — вслух и в самом начале работы
+        # с кадрами. Раньше про упор в лимит узнавали из потока отказов
+        # посреди ночи; теперь число видно до первого запроса.
+        log_image_quota(log)
         try:
             import veo_client
             usage = veo_client.account_usage(api_key=veo_key)
+            # ВНИМАНИЕ: 2026-08-05 сервис поменял ответ /account/usage — теперь
+            # это квота картинок (image_used/image_limit/image_remaining), а
+            # прежних полей про слоты (cookies_allocated, active_tasks,
+            # completed_tasks, failed_tasks, max_concurrent_tasks) в нём БОЛЬШЕ
+            # НЕТ. Проверено живым запросом на обоих доменах. Весь расчёт ниже
+            # поэтому читает нули и сводится к «жать некуда, беру тариф» — это
+            # не сломано (ровно так же он вёл себя при cookies_allocated=0,
+            # см. журнал 2026-08-04/05), но душить параллельность ему теперь
+            # нечем. Трогать не стал: число потоков — про ВИДЕО, а лимит на
+            # видео не распространяется, и лезть в него этой правкой значило
+            # бы менять то, о чём не просили.
+            #
             # Лимит берём из /account/info (контрактный лимит тарифа), а НЕ из
             # /account/usage: когда аккаунт простаивает, usage отдаёт
             # max_concurrent_tasks=0, и расчёт давал 1 поток вместо 4 — то

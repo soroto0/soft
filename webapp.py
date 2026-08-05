@@ -12,6 +12,7 @@ import os
 import re
 import json
 import hashlib
+import shutil
 import time
 import threading
 import traceback
@@ -31,6 +32,7 @@ import render
 import overlays
 import gen_remotion_gemini
 import channels as channels_mod
+import night_plan
 import quality
 
 APP_TITLE = "Контент-фабрика"
@@ -56,6 +58,36 @@ TONE_TO_MOOD = {
     "топ-лист": "upbeat",
     "мотивация": "epic",
     "мистика/хоррор": "dark",
+}
+
+# Семейство цветов канала — по полю palette из channels.json. Тот же признак,
+# по которому разведены монтаж (render.PALETTES), воздух кадра
+# (core.ATMOSPHERE) и звук (core.SOUND_PALETTES): вторая независимая настройка
+# означала бы канал, настроенный наполовину.
+#
+# Вынесено в модуль, а не оставлено внутри функции, потому что читателей стало
+# двое: палитра плашек на ролик (_regen_overlay_theme) и описание НОВОГО вида
+# плашки, который ИИ пишет каналу (_grow_variant_library). Разъедься эти два
+# описания — и канал получал бы виды не в своих цветах.
+PALETTE_FAMILY = {
+    "harsh": "cold, hard, industrial: steel blues, slate greys, "
+             "warning oranges. No soft pastels.",
+    "warm": "warm and domestic: honey, timber, brick, warm greys. "
+            "No clinical blues.",
+    "contemplative": "muted and contemplative: dusty greens, stone, "
+                     "faded indigo, parchment. No saturated neons.",
+}
+
+# Какие типы плашек канал использует ЧАЩЕ ОСТАЛЬНЫХ — их разнообразие для него
+# важнее. Разбор разрушения живёт штампами, вымарываниями, шкалами и
+# таймлайнами; бережливый быт — счётчиками цены и сравнениями «было/стало»;
+# документалка о философах — цитатами и маркером. Список не запрещает
+# остальные типы, он только решает спор при равном покрытии: пополнять
+# сначала то, что канал показывает каждый ролик.
+CHANNEL_SIGNATURE = {
+    "harsh": ("stamp", "redact", "bars", "timeline", "callout"),
+    "warm": ("counter", "compare", "collage", "banner"),
+    "contemplative": ("quote", "marker", "titlecard", "kinetic"),
 }
 
 
@@ -276,15 +308,15 @@ class Api:
         (self._project / "meta.json").write_text(
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # Сколько слов сценария приходится на минуту готового ролика. Замер, а не
-    # оценка: у собранного abyss/2026-08-04 сценарий 2320 слов, а видео идёт
-    # 14.3 минуты — 162 слова на минуту.
-    WORDS_PER_MINUTE = 162
-    # Ниже какой доли от нужного объёма сценарий считается чужим. 0.6 — с
-    # запасом вниз: настоящий сценарий abyss дал 110% от расчёта, а найденные
-    # обрезки — 27% (Home Vault) и 11% (испанский). Между этими группами
-    # огромный зазор, порог посередине ничего пограничного не заденет.
-    SCRIPT_MIN_RATIO = 0.6
+    # ОДНО значение на весь конвейер, а не копия. Тем же самым «короткий ли
+    # сценарий» меряет и планировщик ночи (night_plan.script_too_short), и эта
+    # проверка в цепочке. Копия жила здесь ровно один коммит, и разъехаться ей
+    # было достаточно одной правки: планировщик считал бы, что по лежащему
+    # сценарию делать почти нечего, а цепочка тут же выбросила бы его и начала
+    # ролик заново — то есть ночь распределялась бы по числу, которого сама же
+    # не придерживается.
+    WORDS_PER_MINUTE = night_plan.WORDS_PER_MINUTE
+    SCRIPT_MIN_RATIO = night_plan.SCRIPT_MIN_RATIO
 
     def _stale_script(self, text: str, ch: dict | None, p: dict) -> str:
         """Почему лежащий в папке script.txt НЕ относится к этому ролику.
@@ -347,14 +379,12 @@ class Api:
         if extra:
             bad.append("Обложки прошлого ролика (thumbs/"
                        + ", ".join(extra) + ")")
-        mix = d / "audio" / "voiceover_music.mp3"
-        voice = d / "audio" / "voiceover.mp3"
-        try:
-            if (mix.exists() and voice.exists()
-                    and mix.stat().st_mtime < voice.stat().st_mtime):
-                bad.append("Музыка (audio/voiceover_music.mp3)")
-        except OSError:
-            pass
+        # Через core.mix_is_stale, а не своим сравнением дат: ту же дорожку по
+        # тому же правилу выбирает рендер (core.voice_track). Две копии одного
+        # сравнения дают худшее из возможного — ролик едет с одной дорожкой, а
+        # предупреждение человеку про другую.
+        if core.mix_is_stale(d):
+            bad.append("Музыка (audio/voiceover_music.mp3)")
         if bad:
             self.log("[Остатки] В папке лежат файлы ПРОШЛОГО ролика — их шаги "
                      "в этот раз не отработали: " + ", ".join(bad)
@@ -1265,9 +1295,21 @@ class Api:
         # параметр никто не передавал — код был мёртвым. Берём из профиля
         # канала, чтобы у каждого был свой знак присутствия автора.
         ch = self._channel()
+        # Пауза между плашками и НАБОР ТИПОВ — из профиля канала. Оба поля
+        # существовали и оба сюда не доезжали: min_gap лежит в channels.json
+        # (5 / 7 / 11 с у трёх каналов), а сюда уходило умолчание 5.0 для
+        # всех, потому что параметр просто не передавали. Из-за этого
+        # 70-минутная философская документалка получала плотность разбора
+        # аварии, а разница в темпе между каналами существовала только на
+        # бумаге. Палитра решает, КАКИМИ типами канал говорит
+        # (overlays.TYPE_MIX).
+        gap = (ch or {}).get("min_gap")
+        palette = ((ch or {}).get("palette") or "").strip().lower()
         text = overlays.suggest_overlays_auto(
             core.parse_srt(srt), manifest, self._project, self.log,
-            watermark=(ch or {}).get("watermark", ""))
+            min_gap=float(gap) if gap else 5.0,
+            watermark=(ch or {}).get("watermark", ""),
+            palette=palette)
         if text.strip():
             ov.write_text(text.strip() + "\n", encoding="utf-8")
             # метка «эта расстановка — под эти субтитры»: по ней повторный
@@ -1305,14 +1347,7 @@ class Api:
         # Узнаваемость канала — это в первую очередь его цвет, и он должен
         # держаться из ролика в ролик, меняясь внутри своего семейства.
         ch = self._channel() or {}
-        family = {
-            "harsh": "cold, hard, industrial: steel blues, slate greys, "
-                     "warning oranges. No soft pastels.",
-            "warm": "warm and domestic: honey, timber, brick, warm greys. "
-                    "No clinical blues.",
-            "contemplative": "muted and contemplative: dusty greens, stone, "
-                             "faded indigo, parchment. No saturated neons.",
-        }.get((ch.get("palette") or "").strip(), "")
+        family = PALETTE_FAMILY.get((ch.get("palette") or "").strip(), "")
         theme = (f"Documentary video about: {topic}. Tone/genre: {tone}. "
                  + (f"This video belongs to the channel «{ch.get('name') or ch.get('id')}», "
                     f"whose permanent visual family is: {family} "
@@ -1393,26 +1428,47 @@ class Api:
                 pass   # нет активных задач/недоступен — не критично при Стопе
 
     def _grow_variant_library(self, topic: str = "") -> str | None:
-        """Один НОВЫЙ вариант оверлея под тему этого ролика — так библиотека
-        растёт сама, от видео к видео, а не только когда её пополняют руками.
+        """Библиотека плашек ЭТОГО канала — на каждый ролик чуть богаче.
 
-        Тип берём тот, у которого вариантов МЕНЬШЕ всего: иначе ИИ будет
-        снова и снова обогащать banner, а popup/collage так и останутся с
-        одним видом. Движки чередуем по чётности размера библиотеки.
-        Любой провал молча пропускается — ролик от этого не зависит."""
+        Рост идёт двумя путями, и они не заменяют друг друга.
+
+        Механический (variant_factory) держит нижнюю планку: у канала не может
+        остаться тип с одним-двумя видами. Бесплатный, мгновенный, надёжный —
+        нужен потому, что принадлежность плашек каналу без него означала бы
+        бедность: разделить общую библиотеку на три и есть тот самый способ
+        «ограничить каналы», против которого владелец возражал прямо.
+
+        Дорогой (ИИ) добавляет штучный вид, какого нет ни у кого: своя
+        материя, своя техника появления. Один на ролик — этого достаточно,
+        чтобы за месяц у канала набралась своя, ни на что не похожая колода.
+
+        Тип для ИИ берём тот, у которого СВОИХ видов меньше всего (иначе он
+        будет снова и снова обогащать banner), а при равенстве — тот, что
+        канал показывает каждый ролик. Любой провал молча пропускается: ролик
+        от пополнения не зависит."""
+        ch = self._channel()
+        cid = ch["id"] if ch else ""
+        palette = (ch or {}).get("palette", "").strip().lower()
+        # Планка — ДО генерации: даже если ключа нет или ИИ откажет, канал
+        # выйдет из этого шага с полным набором своих видов.
+        if cid:
+            try:
+                import variant_factory
+                variant_factory.ensure(cid, log=self.log)
+            except Exception as e:
+                self.log(f"[Цепочка] Планку видов канала выставить не "
+                         f"удалось: {e}", "warn")
         key = (self._settings.get("gemini_key", "")
                or self._settings.get("agnes_key", ""))
         if not key:
             return None
         meta = gen_remotion_gemini.load_variants_meta()
         kinds = list(gen_remotion_gemini.TYPE_BRIEF)
-        ch0 = self._channel()
         # считаем покрытие ПО ЭТОМУ КАНАЛУ: у соседнего канала может быть
         # десяток вариантов popup, но этому от них ни холодно ни жарко —
         # он их не увидит, значит и добирать надо свои
         counts = {k: len(overlays.BASE_VARIANTS.get(k, ("classic",)))
-                  + len(overlays._library_variants(k, None,
-                                                   ch0["id"] if ch0 else ""))
+                  + len(overlays._library_variants(k, None, cid))
                   for k in kinds}
         use_hf = (len(meta) % 2 == 1) and overlays.hyperframes_available()
         eng = "HyperFrames" if use_hf else "Remotion"
@@ -1424,17 +1480,32 @@ class Api:
         # следующего кандидата, а если в паузе оказались все — работаем как
         # раньше, пусть отобьётся на своём уровне.
         engine_id = "hyperframes" if use_hf else "remotion"
-        order = sorted(kinds, key=lambda k: (counts[k], k))
+        signature = CHANNEL_SIGNATURE.get(palette, ())
+        order = sorted(kinds,
+                       key=lambda k: (counts[k], 0 if k in signature else 1, k))
         kind = next(
             (k for k in order
              if not gen_remotion_gemini._fail_cooldown(k, engine_id,
                                                        lambda *_: None)),
             order[0])
-        theme = core.gen_variant_theme(topic, kind, key, self.log)
+        # Стиль канала уходит в запрос вместе с темой ролика. Без него ИИ
+        # придумывал вид «под тему видео», и вид этот с равной вероятностью
+        # оказывался в чужих цветах: библиотека канала пополнялась плашками,
+        # которые к каналу не имеют отношения — то есть принадлежность
+        # соблюдалась формально, а на экране каналы снова смешивались.
+        style = ""
+        if ch:
+            family = PALETTE_FAMILY.get(palette, "")
+            style = (f"This overlay belongs to the channel "
+                     f"«{ch.get('name') or cid}» ({ch.get('lang', '')}, tone: "
+                     f"{ch.get('tone', '')}). Its permanent visual family is: "
+                     f"{family} Its accent colour is {ch.get('accent', '')}. "
+                     "Stay inside that family: the look must be recognisable "
+                     "as this channel and must NOT be usable on a different "
+                     "channel with a different family.")
+        theme = core.gen_variant_theme(topic, kind, key, self.log, style=style)
         if not theme:
             return None
-        ch = self._channel()
-        cid = ch["id"] if ch else ""
         self.log(f"[Цепочка] Новый оверлей «{kind}» через {eng} "
                  f"(у типа сейчас {counts[kind]} видов)"
                  + (f", канал «{ch['name']}»" if ch else "") + "…")
@@ -1499,13 +1570,29 @@ class Api:
             return []
         key = (self._settings.get("gemini_key", "")
                or self._settings.get("agnes_key", ""))
-        ideas = core.gen_thumbnail_ideas(text, key, self.log, count)
+        # Канал целиком, а не «ещё один параметр»: язык обложки, формула
+        # ниши, запреты и палитра решают, что на ней будет написано и как
+        # это будет выглядеть. До сих пор сюда не доезжало НИЧЕГО из этого,
+        # и три канала получали обложки одной формы (см. core.THUMB_STYLES).
+        ch = self._channel() or {}
+        ideas = core.gen_thumbnail_ideas(text, key, self.log, count,
+                                         channel=ch)
         if not ideas:
             self.log("[Обложка] Не удалось придумать концепции", "warn")
             return []
+        # Сказать ЗАРАНЕЕ, что фонов не будет, а не выяснять это тремя
+        # отказами подряд. Обложки при этом всё равно делаются — на тёмной
+        # подложке: текст на плашке лучше, чем отсутствие обложки вовсе.
+        core.image_budget_check(len(ideas), "cover", self.log)
         out_dir = self._project / "thumbs"
         out_dir.mkdir(parents=True, exist_ok=True)
-        style = self._read_meta().get("visual_style", "")
+        # meta.json ролика заполняет мастер, и visual_style там есть не
+        # всегда: в готовых папках всех трёх каналов лежит meta.json из двух
+        # полей (channel, topic). Без отката к профилю канала фон обложки
+        # генерировался общим «кинематографичным» стилем даже там, где у
+        # канала прописан свой.
+        style = (self._read_meta().get("visual_style")
+                 or ch.get("visual_style", ""))
         made = []
         for i, idea in enumerate(ideas, 1):
             head = idea["headline"]
@@ -1517,17 +1604,30 @@ class Api:
                     # лимит нельзя: 2026-08-04 прогон встал здесь на полтора
                     # часа уже ПОСЛЕ того, как всё видео было собрано.
                     # Не вышло — обложка делается на тёмной подложке.
+                    #
+                    # purpose="cover" — высший приоритет в суточном лимите
+                    # картинок: без обложки ролик не выложить, а кадр или
+                    # косметическую перегенерацию пережить можно. Резерв под
+                    # эти три штуки держат все остальные потребители
+                    # (core.VEO_IMAGE_COVER_RESERVE).
                     bg = core.gen_image(idea["bg_prompt"],
                                         out_dir / f".bg{i}.jpg", key,
-                                        self.log, style, wait_on_limit=False)
+                                        self.log, style, wait_on_limit=False,
+                                        purpose="cover")
                 except Exception as e:
                     self.log(f"[Обложка] Фон не сгенерировался ({e}) — "
                              "делаю на тёмной подложке", "warn")
             dest = out_dir / f"thumb{i}.jpg"
             try:
+                # accent и palette канала: цвет — признак канала, форма —
+                # его жанр. Оба поля лежали в channels.json и не доезжали
+                # до обложки, поэтому все каналы выходили с одной золотой
+                # рамкой #f5c451 (значение по умолчанию render_thumbnail).
                 overlays.render_thumbnail(head, dest, bg,
                                           idea.get("layout", "left"),
-                                          log=self.log)
+                                          ch.get("accent") or "#f5c451",
+                                          log=self.log,
+                                          style=ch.get("palette", ""))
             except Exception as e:
                 self.log(f"[Обложка] Рендер {i} не вышел: {e}", "warn")
                 continue
@@ -1573,7 +1673,11 @@ class Api:
             self._project / "subs" / "voiceover.srt",
             # формула заголовков из разбора ниши — она решает больше всего:
             # на канале-образце разброс между лучшим и худшим в тысячу раз
-            formula=(ch or {}).get("topic_formula", ""))
+            formula=(ch or {}).get("topic_formula", ""),
+            # а канал целиком решает остальное: форму описания, набор тегов
+            # и нарезку глав (script_shape), регистр речи (tone) и запреты
+            # канала (avoid). Раньше всё это было общим на три канала
+            channel=ch)
         (self._project / "seo.txt").write_text(out, encoding="utf-8")
         self.log("[SEO] Сохранено: seo.txt")
         return out
@@ -1719,14 +1823,32 @@ class Api:
             disk_script = self._read("script.txt")
             stale = self._stale_script(disk_script, ch, p) if disk_script else ""
             if stale:
-                # Старый текст не затираем молча: переименовываем рядом.
-                # Он может оказаться нужным, а восстановить его будет неоткуда.
+                # Старый текст не затираем молча: кладём копию рядом. Он может
+                # оказаться нужным, а восстановить его будет неоткуда.
+                #
+                # КОПИЯ, А НЕ ПЕРЕИМЕНОВАНИЕ. script.txt — точка отсчёта для
+                # всего конвейера: по его времени правки решается, чьи в папке
+                # озвучка, кадры и обложки (night_plan.fresh_for_script). Унеси
+                # его — и отсчитывать станет не от чего: fresh_for_script
+                # честно отвечает «сравнивать не с чем», и весь хлам прошлого
+                # ролика разом становится «своим». Проверено: после
+                # переименования галочки интерфейса показывали готовыми
+                # озвучку, субтитры, раскадровку, оверлеи, SEO и обложки,
+                # done_fraction давал 0.81, а _warn_stale не находил ничего —
+                # то есть ровно та беда, ради которой всё это писалось.
+                # Окно между «унесли» и «написали новый» не теоретическое: в
+                # нём стоит запрос к LLM, а он падает по квоте регулярно, и
+                # тогда папка остаётся в этом состоянии до следующей ночи.
+                # С копией старый сценарий лежит на месте, всё сделанное по
+                # нему по-прежнему честно считается сделанным по НЕМУ, а
+                # save_script ниже перебьёт файл новым текстом и разом сделает
+                # чужим то, что чужим и стало.
                 keep = self._project / f"script_чужой_{int(time.time())}.txt"
                 try:
-                    (self._project / "script.txt").rename(keep)
+                    shutil.copy2(self._project / "script.txt", keep)
                 except OSError:
                     pass
-                self.log(f"[Сценарий] {stale}. Отложил его в {keep.name} "
+                self.log(f"[Сценарий] {stale}. Отложил копию в {keep.name} "
                          "и пишу новый — иначе вышел бы ролик чужой длины "
                          "и не по теме", "warn")
                 disk_script = ""
@@ -1766,9 +1888,15 @@ class Api:
             self._tts_step(p)
             self._stop_check()
             self.log("[Цепочка] Шаг 2/4 — субтитры…")
+            # Ширина строки субтитра — из профиля канала, а не 42 на всех.
+            # Она и заведена под почерк канала (channels.sub_width: 38, 42 и
+            # 46 у трёх каналов), но в автоцепочке стояло число, и настройка
+            # не доезжала до кадра НИ РАЗУ — все три канала получали одну и
+            # ту же разбивку.
             core.transcribe_whisper(self._project / "audio" / "voiceover.mp3",
                                     p.get("whisper", "tiny.en"),
-                                    self._project, self.log, 42,
+                                    self._project, self.log,
+                                    int(p.get("sub_width") or 42),
                                     p.get("lang", "английский"))
             self._stop_check()
             self.log("[Цепочка] Шаг 3/4 — стоки по таймлайну…")
@@ -2000,8 +2128,16 @@ class Api:
         def job():
             started = datetime.now()
             results = []
+            # Остаток картинок спрашиваем ОДИН раз на всю ночь и отдаём в план.
+            # Ночь — это несколько роликов подряд, и делить между ними надо то
+            # число, что есть на старте: если картинок хватает на один ролик,
+            # второй не должен начинаться и падать на обложках под утро.
+            quota = np.image_quota()
+            self.log(core.image_quota_line(quota))
             plan = np.dry_run(chans, night_h, per, fit_only,
-                              force_new=force_new)
+                              force_new=force_new,
+                              images_left=(None if quota.get("unlimited")
+                                           else quota.get("remaining")))
             self.log(f"[Автопилот] Ночь началась: {len(chans)} канал(ов) x "
                      f"{per}, в ночи {night_h:.0f} ч. План:")
             for line in np.format_plan(plan).splitlines():
@@ -2009,11 +2145,11 @@ class Api:
             deadline = time.time() + night_h * 3600 if night_h > 0 else 0.0
             by_id = {c.get("id"): c for c in chans}
             taken = set()
-            # Сколько ещё каналов впереди — по этому числу делится остаток
-            # ночи. Считаем от плана, а не от len(chans): пропущенные доли
-            # не занимают.
-            left_n = sum(1 for s in plan if s["action"] != "skip")
-
+            # Счётчика «сколько каналов впереди» здесь больше нет: по нему
+            # делился остаток ночи поровну, а деление убрано (см.
+            # night_plan.budget_for). Ролику нужно своё время ЦЕЛИКОМ, иначе он
+            # бесполезен, и очередь до последнего канала стоит дешевле, чем
+            # три оборванных ролика.
             for step in plan:
                 ch = by_id.get(step["id"])
                 nm = step["channel"]
@@ -2029,7 +2165,12 @@ class Api:
                 if pick["mode"] == "done":
                     self.log(f"[Автопилот] «{nm}» пропущен: {pick['why']}",
                              "warn")
+                    # ch кладём в КАЖДУЮ строку итога: без профиля канала
+                    # утренняя сводка не может отличить «работа сделана» от
+                    # «работа сделана по сценарию, который цепочка выбросит»
+                    # (night_plan.format_report -> stage_of).
                     results.append({"channel": nm, "mode": "done", "dir": d,
+                                    "ch": ch,
                                     "file": None, "size": 0, "sec": 0.0,
                                     "why": pick["why"]})
                     continue
@@ -2042,12 +2183,34 @@ class Api:
                            f"до утра {left_s / 3600:.1f} ч")
                     self.log(f"[Автопилот] «{nm}» пропущен: {why}", "warn")
                     results.append({"channel": nm, "mode": "skip", "dir": d,
+                                    "ch": ch,
                                     "file": None, "size": 0, "sec": 0.0,
                                     "why": why})
-                    left_n = max(0, left_n - 1)
                     continue
-                budget = np.budget_for(ch, left_s, max(1, left_n), proj)
-                left_n = max(0, left_n - 1)
+                # Остаток картинок перечитываем ПЕРЕД КАЖДЫМ каналом, а не
+                # верим плану: план строился до первого ролика, а картинки с
+                # тех пор потрачены — и не только этой ночью (лимит суточный и
+                # общий на аккаунт). Ролик, которому не хватит на обложки, не
+                # начинаем: доделать его следующей ночью стоит минут, а встать
+                # на обложках в четыре утра — это ролик, который некуда
+                # выложить. Видео этой проверки не касается: лимит только на
+                # картинки, и раскадровка живым видео пойдёт при любом остатке.
+                q_img = np.image_quota()
+                need_img = np.images_per_video(ch)
+                left_img = q_img.get("remaining")
+                if (not q_img.get("unlimited") and left_img is not None
+                        and need_img > int(left_img)):
+                    why = (f"суточный лимит картинок: нужно ~{need_img}, "
+                           f"осталось {left_img}"
+                           + (f", обнуление через "
+                              f"{q_img['resets_in_s'] / 3600:.1f} ч"
+                              if q_img.get("resets_in_s") else ""))
+                    self.log(f"[Автопилот] «{nm}» не начинаю — {why}", "warn")
+                    results.append({"channel": nm, "mode": "skip", "dir": d,
+                                    "ch": ch, "file": None, "size": 0,
+                                    "sec": 0.0, "why": why})
+                    continue
+                budget = np.budget_for(ch, left_s, proj)
                 t0 = time.time()
                 try:
                     results.append(self._autopilot_one(
@@ -2058,7 +2221,8 @@ class Api:
                     # неработающей, либо тихо кончает ночь после первого
                     # таймаута.
                     results.append({"channel": nm, "mode": pick["mode"],
-                                    "dir": d, "file": None, "size": 0,
+                                    "dir": d, "ch": ch,
+                                    "file": None, "size": 0,
                                     "sec": time.time() - t0,
                                     "why": "остановлено вручную"})
                     self._finish_night(results, started, np)
@@ -2085,7 +2249,8 @@ class Api:
                     if not by_timer:
                         self._log_raw(traceback.format_exc().rstrip(), "dim")
                     results.append({"channel": nm, "mode": pick["mode"],
-                                    "dir": d, "file": None, "size": 0,
+                                    "dir": d, "ch": ch,
+                                    "file": None, "size": 0,
                                     "sec": time.time() - t0, "why": why})
                 # Отдельная проверка после КАЖДОГО канала. Ловить «Стоп» только
                 # по исключению мало: цепочка местами глушит сбои через
@@ -2192,7 +2357,7 @@ class Api:
         out = d / "output_final.mp4"
         size = out.stat().st_size if out.exists() else 0
         finished = np.is_finished(d)
-        return {"channel": nm, "mode": pick["mode"], "dir": d,
+        return {"channel": nm, "mode": pick["mode"], "dir": d, "ch": ch,
                 "file": out if finished else None,
                 "size": size, "sec": time.time() - t0,
                 "why": ("" if finished else

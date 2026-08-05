@@ -1379,6 +1379,27 @@ def _group_concat_fallback(seg_files: list[Path], durs: list[float],
 
 SUB_SIZES = {"мелкие": 15, "средние": 19, "крупные": 24, "огромные": 36}
 
+# Сетка координат в стилях субтитров. Числа в force_style — НЕ пиксели:
+# ffmpeg отдаёт srt библиотеке libass через свой конвертер в ASS, а тот
+# пишет в заголовок PlayResX 384, PlayResY 288 и не спрашивает, какого
+# размера кадр. libass растягивает эту сетку на весь кадр, то есть 384 —
+# это ширина кадра целиком, 288 — высота целиком, при любом разрешении.
+# Замерено на СОБРАННОМ mp4 1920x1080 (стиль bold_box, размер «крупные»):
+# MarginL=90 дал отступ 439 px (90 * 1920/384 = 450 минус боковой вынос
+# глифа), MarginR=90 — 437 px, MarginV=60 — 218 px снизу (60 * 1080/288 =
+# 225). То есть отступы были впятеро больше, чем читались по числу.
+#
+# Чем это плохо. Отступы 439+437 оставляли тексту 1020 px из 1920 — 53%
+# кадра. Строка субтитра из настоящего ролика abyss (87 знаков) в такой
+# колонке разваливалась на ТРИ строки и занимала y 596..861, то есть
+# лезла в середину кадра, где стоят одиннадцать из семнадцати типов
+# плашек. Отсюда и «поверх субтитра ложится другой элемент».
+SUB_GRID_X, SUB_GRID_Y = 384, 288
+# Доли кадра, а не пиксели: единица сетки сама масштабируется под 1080p и
+# 4K. 6% по бокам — 115 px на 1920, колонка 1690 px (было 1020).
+SUB_MARGIN_X = round(SUB_GRID_X * 0.06)     # 23 -> 115 px на ширине 1920
+SUB_MARGIN_V = round(SUB_GRID_Y * 0.07)     # 20 -> 75 px на высоте 1080
+
 
 def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box",
                       font: str = "") -> str:
@@ -1402,7 +1423,8 @@ def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box",
     name = (font or "Segoe UI Black").strip()
     bold = 0 if "Black" in name or "Impact" in name else 1
     common = (f"FontName={name},FontSize={size},Bold={bold},"
-              "Alignment=2,MarginV=60,MarginL=90,MarginR=90,Spacing=0.3")
+              f"Alignment=2,MarginV={SUB_MARGIN_V},MarginL={SUB_MARGIN_X},"
+              f"MarginR={SUB_MARGIN_X},Spacing=0.3")
     if style_name == "pill":            # текст на полупрозрачной плашке
         # BorderStyle=3 — сплошной прямоугольник по строке. Было 4 с
         # Outline=14: такая обводка рисуется вокруг КАЖДОГО знака, наплывы
@@ -1430,7 +1452,8 @@ def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box",
         # сильнее всех прочих. Замерено по пикселям: 8 -> центр 362 из 720,
         # 6 -> 174. Менять только вместе с повторным замером.
         style = (common.replace("Alignment=2", "Alignment=6")
-                 .replace("MarginV=60", "MarginV=50")
+                 .replace(f"MarginV={SUB_MARGIN_V}",
+                          f"MarginV={round(SUB_GRID_Y * 0.055)}")
                  + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00151515,"
                  "BorderStyle=1,Outline=1.8,Shadow=0.6")
     else:  # bold_box — по умолчанию: белый, аккуратная обводка + мягкая тень
@@ -1448,8 +1471,8 @@ def build_karaoke_ass(srt_path: Path, words_path: Path, dest: Path,
                       accent: str = "29d9ff", font: str = "") -> Path | None:
     """Цветные субтитры с пословной подсветкой (караоке-заливка) точно в
     такт озвучке: слово подсвечивается акцентным цветом в момент, когда его
-    произносят. Границы и текст фраз — как в voiceover.srt (уже ровно
-    разбиты Whisper'ом на строки <=42 симв.); таймкоды каждого слова —
+    произносят. Границы и текст фраз — как в voiceover.srt (строки уже
+    разбиты по ширине канала, см. core._wrap_srt_line); таймкоды слов —
     из voiceover.json (--word_timestamps). Если слов меньше, чем в тексте
     фразы (несовпадение токенизации), остаток распределяется поровну —
     видимый текст никогда не обрезается.
@@ -1475,6 +1498,18 @@ def build_karaoke_ass(srt_path: Path, words_path: Path, dest: Path,
     kfont = (font or "Segoe UI Black").strip()
     kbold = 0 if "Black" in kfont or "Impact" in kfont else 1
 
+    # Здесь заголовок пишем МЫ, и PlayRes равен кадру — значит все числа
+    # стиля это настоящие пиксели, а не сетка 384x288 из _subtitles_filter
+    # (см. SUB_GRID_Y). Одно и то же слово «средние» давало поэтому два
+    # РАЗНЫХ субтитра. Замерено на собранных mp4 1920x1080 по одному и тому
+    # же тексту: bold_box, размер 19 — высота букв 73 px; караоке, размер
+    # 19 — 18 px, то есть вчетверо мельче и с экрана нечитаемо. А караоке —
+    # это стиль целого канала (The Home Vault), то есть так выходил КАЖДЫЙ
+    # его ролик. Переводим размер и отступы в пиксели по той же сетке.
+    k = H / SUB_GRID_Y
+    ksize = round(size * k)
+    kmar_x, kmar_v = round(W * 0.06), round(H * 0.07)
+
     header = f"""[Script Info]
 ScriptType: v4.00+
 WrapStyle: 0
@@ -1487,8 +1522,9 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, \
 OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, \
 ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, \
 MarginR, MarginV, Encoding
-Style: Karaoke,{kfont},{size},{primary},{secondary},{outline},\
-&H64000000,{kbold},0,0,0,100,100,0.3,0,1,2.0,0.6,2,90,90,60,1
+Style: Karaoke,{kfont},{ksize},{primary},{secondary},{outline},\
+&H64000000,{kbold},0,0,0,100,100,0.3,0,1,{2.0 * k:.1f},{0.6 * k:.1f},2,\
+{kmar_x},{kmar_x},{kmar_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
