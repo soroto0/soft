@@ -795,7 +795,8 @@ def _render_watermark(item: dict, W: int, H: int, fps: int, dest_dir: Path,
 
 def render_thumbnail(headline: str, dest: Path, bg: Path | None = None,
                      layout: str = "left", accent: str = "#f5c451",
-                     log=print, style: str = "") -> Path:
+                     log=print, style: str = "",
+                     extra: dict | None = None) -> Path:
     """Обложка для YouTube (1280x720 JPG) композицией Thumbnail.
 
     Отдельная функция, а не тип оверлея: у обложки противоположные
@@ -805,15 +806,25 @@ def render_thumbnail(headline: str, dest: Path, bg: Path | None = None,
     не разрешится.
 
     style — палитра канала (harsh/warm/contemplative, то же поле, по
-    которому render.PALETTES выбирает склейки). Решает шрифт, регистр,
-    геометрию акцента и форму затемнения. Без него обложки трёх каналов
+    которому render.PALETTES выбирает склейки). Решает не цвет, а УСТРОЙСТВО
+    обложки: набор схем вёрстки, гарнитуру, обработку фона и то, какие
+    элементы каналу вообще положены. Без него обложки трёх каналов
     совпадали до пикселя: замер по abyss/thumbs/thumb1.jpg и
     estoico-es/thumbs/thumb1.jpg — одна золотая рамка, один Arial Black
-    капсом, одна золотая черта; разными были только слова и фотография."""
+    капсом, одна золотая черта; разными были только слова и фотография.
+
+    extra — остальные поля концепции (sub, badges, ribbon, focusX/focusY).
+    Отдельным словарём, а не пятью аргументами: набор элементов у каналов
+    РАЗНЫЙ, и половина из них на любом конкретном канале не используется
+    (см. core.THUMB_STYLES, ключ parts)."""
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     props = {"headline": headline, "layout": layout, "accent": accent,
              "style": style, "bg": ""}
+    for k in ("sub", "badges", "ribbon", "focusX", "focusY"):
+        v = (extra or {}).get(k)
+        if v:
+            props[k] = v
     if bg and Path(bg).exists():
         # Фон ужимаем до размера обложки ПЕРЕД вставкой: генератор отдаёт
         # апскейл до 2K (6+ МБ), а в base64 это раздувало props.json до
@@ -2679,8 +2690,15 @@ def _type_budget(n_rows: int, min_gap: float, palette: str = "") -> str:
         return max(lo, round(want * pct / 100))
     mix = TYPE_MIX.get((palette or "").strip().lower())
     if mix:
-        listed = ", ".join(f"{k} {share(v)}" for k, v in sorted(
-            mix.items(), key=lambda kv: (-kv[1], kv[0])))
+        # Порог в одну штуку — только для СВОИХ типов канала (доля от 5%).
+        # Для чужих его нет намеренно: с ним на коротком куске все двенадцать
+        # типов округлялись до единицы, список выходил плоским, и разницы
+        # между каналами в запросе не оставалось. Тип с нулём здесь не
+        # запрещён — строкой ниже прямо сказано, что это цели, а не потолки.
+        listed = ", ".join(
+            f"{k} {share(v) if v >= 5 else round(want * v / 100)}"
+            for k, v in sorted(mix.items(), key=lambda kv: (-kv[1], kv[0]))
+            if v >= 5 or round(want * v / 100) > 0)
         return (
             f"Aim for roughly this MIX across this span (~{want} moments). "
             "These are targets, not hard caps — a long video with only three "

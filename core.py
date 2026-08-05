@@ -2307,7 +2307,12 @@ def lang_mismatch(text: str, lang: str) -> str:
     # ругалось бы на каждый испанский текст.
     if best > max(mine * 2, 3):
         return f"текст похож на {top} ({best} служебных слов против {mine})"
-    if mine == 0:
+    # «Ни одного своего служебного слова» — признак только для СВЯЗНОГО
+    # текста. На заголовке обложки он даёт ложную тревогу: там одни
+    # знаменательные слова и служебных не бывает по замыслу. Замерено на
+    # home-vault — «STOP SAGGING / $8 STEEL FIX / HOLDS 50 YEARS» честно
+    # английский, а признак сработал.
+    if mine == 0 and len(text) >= 120:
         return f"в тексте нет ни одного служебного слова языка ({want})"
     return ""
 
@@ -3886,57 +3891,113 @@ def _frange(start: float, stop: float, step: float):
 # не может обещать созерцание, и наоборот.
 #
 # `words` уходит в промпт концепций, `bg` — в промпт фона, `case`
-# определяет, капсом ли текст (капс — не универсальное решение: у
-# созерцательного канала он ломает интонацию), `layouts` — какие раскладки
-# каналу вообще разрешены.
+# определяет, капсом ли текст, `layouts` — какие раскладки каналу разрешены,
+# `parts` — какие ДОПОЛНИТЕЛЬНЫЕ элементы у этого канала вообще бывают
+# (подзаголовок, столбик выгод, лента). Пустой parts — не бедность, а жанр:
+# у документалки о философе галочки «что ты получишь» проваливаются.
+#
+# Тексты ниже не выдуманы: обложки лидеров и провалов каждой ниши скачаны
+# по id из .niche_cache (i.ytimg.com/vi/{id}/maxresdefault.jpg) и разобраны
+# глазами. Что именно замерено — в комментарии к каждому ключу.
 THUMB_STYLES = {
-    # Хроника. Обложка должна выглядеть как страница отчёта, а не как афиша.
+    # ХРОНИКА (abyss). Разбор по Fascinating Horror, 1.45M подписчиков,
+    # медиана 375 328. Победители x8.85 (Soyuz 11), x7.32 (Ronan Point),
+    # x4.71 (AA191): выцветший архивный кадр с тяжёлой виньеткой, антиква
+    # капителью с чёрной обводкой, текст колонкой справа или лентой по
+    # верху. Ни стрелок, ни галочек, ни плашек. Заголовок — ЦЕЛАЯ ФРАЗА
+    # («They Used Newspaper Instead of Cement…»), а не два слова.
     "harsh": {
         "words":
-            "The headline names the OBJECT and what happened to it — a "
-            "structure, a place, a mechanism. Flat and factual, the way an "
-            "inquiry report would put it. Never an exclamation, never a "
-            "number of dead, never a word like SHOCKING or HORROR.",
+            "The headline is a full sentence of 4-7 words naming the OBJECT "
+            "and the specific thing that was wrong with it — the shape that "
+            "won this niche is 'They Used Newspaper Instead of Cement…', not "
+            "a two-word label. Flat and factual, the way an inquiry report "
+            "would put it. Never an exclamation, never a number of dead, "
+            "never a word like SHOCKING or HORROR. Split it with \\n into 2-4 "
+            "short lines.",
         "bg":
-            "The background is the structure itself or the site: concrete, "
-            "steel, scaffolding, a span, a shaft, an empty site after the "
-            "event. Overcast daylight or worklight, cold and documentary, no "
-            "drama lighting, no people posing, no faces to camera.",
+            "The background looks like recovered archive footage, not a "
+            "fresh photograph: the structure or the site after the event, "
+            "faded colour, overcast daylight or worklight, grain, slight "
+            "softness. No people posing, no faces to camera, no drama "
+            "lighting.",
         "case": "upper",
         "layouts": ("bottom", "split"),
+        # sub — имя рубрики мелко под заголовком, как «Fascinating Horror»
+        # у победителей; больше ничего этому каналу не положено
+        "parts": ("sub",),
+        "sub_ask":
+            "`sub` is the series name, 2-3 words, the same on every video "
+            "of the channel (e.g. the channel's own name).",
     },
-    # Тёплый рассказ. Здесь обложка продаёт цену и результат, а не мрачность.
+    # БЕРЕЖЛИВЫЙ БЫТ (home-vault). Образец владельца + пара с канала-образца
+    # Elias Yoder: x29.05 «KILL EVERY Mosquito The AMISH Way» против x0.14
+    # «Unclog Any Kitchen Sink With Baking Soda and Vinegar» — 212 раз
+    # разницы при одном ведущем и одном формате. Отличались пять вещей:
+    # тревога на лице вместо улыбки, тёмные сумерки вместо ровного света
+    # кухни, жирная красная стрелка на предмет, НЕОЧЕВИДНЫЙ предмет
+    # (самоделка из вёдер) вместо знакомой канистры уксуса, и обещание
+    # избавления от беды вместо выполнения дела.
     "warm": {
         "words":
-            "The headline carries the NUMBER — the price or the money saved "
-            "— plus what it fixes. That pairing is the measured difference "
-            "between this niche's hits and its flops. Keep the currency sign "
-            "in it, it is the whole hook.",
+            "The headline is THREE lines separated by \\n, in three steps: "
+            "line 1 a short verb phrase (1-2 words), line 2 the loudest word "
+            "in the frame including the PRICE, line 3 the payoff (2-4 "
+            "words). Promise the END OF A THREAT, not the completion of a "
+            "chore: 'KILL EVERY Mosquito' beat 'Unclog Any Kitchen Sink' by "
+            "212x on the reference channel with the same host and format.",
         "bg":
-            "The background is the object being fixed or the material doing "
-            "the fixing, close up on a real surface in a real home: a hand, "
-            "a jar, a joint, a tool on a wooden table. Warm daylight through "
-            "a window, lived-in, nothing sterile or studio-lit.",
+            "The background is the problem and the remedy in one frame, shot "
+            "in DARK dramatic light — dusk, a storm sky, a shadowed corner — "
+            "never an evenly lit clean kitchen: that lighting difference "
+            "separated the 1.9M-view video from the 9k one. The remedy must "
+            "be a NON-OBVIOUS contraption, something improvised whose "
+            "workings are not instantly readable, not a familiar supermarket "
+            "bottle.",
         "case": "upper",
         "layouts": ("left", "split"),
+        "parts": ("sub", "badges", "ribbon", "focus"),
+        "sub_ask":
+            "`sub` is one line under the headline, 5-9 words, naming what "
+            "the fix saves — keep a number in it.\n"
+            "`badges` are 4 benefits of 2-3 words each, uppercase.\n"
+            "`ribbon` is 3 phrases of 3-4 words for the strip along the "
+            "bottom — what the problem costs and what the fix prevents.",
     },
-    # Созерцание. Единственный из трёх, где капс запрещён: в этой нише
-    # обложка выглядит как корешок книги, а не как крик.
+    # СОЗЕРЦАНИЕ (estoico-es). Разбор по Philosophy Origins Español, медиана
+    # 19 864. Победители x16.63 (Schopenhauer), x14.71 (Spinoza), x11.42
+    # (Dostoyevski) и провалы x0.09-0.03 сделаны ОДНИМ шрифтом и одними
+    # цветами — жёлтый и белый тяжёлым гротеском. Значит решает не
+    # оформление, а две вещи:
+    #   * у победителей самое крупное слово — ИМЯ МЫСЛИТЕЛЯ, у провалов —
+    #     отвлечённое понятие («EXISTENCIALISMO FILOSÓFICO») или цитата;
+    #   * у победителей за текстом настоящая СЦЕНА с глубиной и предметами
+    #     (комната, лампа, рукописи, собор), у провалов — вырезанные бюсты
+    #     на чёрной пустоте.
+    # Текст занимает один угол, остальное отдано сцене.
     "contemplative": {
         "words":
-            "The headline says what happened TO THE THINKER — third person, "
-            "past tense. NEVER address the viewer, never use 'tú', 'usted', "
-            "'your' or an imperative: on the reference channel the same "
+            "The headline is TWO lines separated by \\n. Line 1 is the "
+            "THINKER'S SURNAME alone, nothing else — on the reference "
+            "channel the name is the largest word in every winning cover, "
+            "while every flop put an abstract -ism or a quotation there "
+            "instead. Line 2 is 2-4 words saying what happened TO HIM or to "
+            "his world: third person, past tense. NEVER address the viewer, "
+            "never 'tú', 'usted', 'tus', never an imperative — the same "
             "author scored 199,346 views on 'the book that drove HIM to the "
-            "abyss' and 538 on 'the book that reveals YOUR demons'. Use "
-            "sentence case, not capitals.",
+            "abyss' and 538 on 'the book that reveals YOUR demons'.",
         "bg":
-            "The background is a place or an object from the life: a study, "
-            "a window, a manuscript, a street of the period, a landscape. "
-            "Low, slanted light and deep shadow, painterly and still. No "
-            "modern objects, no text, no faces to camera.",
-        "case": "sentence",
+            "The background is a real SCENE with depth and props from the "
+            "life — a study with a lamp and manuscripts, a cathedral "
+            "interior, a period street, a cell — with the thinker inside it, "
+            "absorbed in his work rather than looking at the camera. NEVER a "
+            "cut-out bust floating on a black void and never several men "
+            "side by side: that is exactly what the flops of this niche did. "
+            "Low slanted light, painterly, deep shadow.",
+        "case": "upper",
         "layouts": ("left", "bottom"),
+        "parts": (),
+        "sub_ask": "",
     },
 }
 
@@ -3948,6 +4009,49 @@ THUMB_STYLE_DEFAULT = {
     "case": "upper",
     "layouts": ("left", "bottom", "split"),
 }
+
+
+def _json_fix_quotes(raw: str) -> str:
+    """Экранировать кавычки ВНУТРИ строковых значений JSON.
+
+    Модель регулярно пишет кавычки в тексте обложки, и весь ответ перестаёт
+    разбираться целиком: замерено на home-vault — «Expecting ',' delimiter:
+    line 1 column 415», то есть три готовые концепции выброшены из-за одного
+    знака. Ронять их из-за пунктуации нельзя: это единственный шаг, где
+    рождается текст обложки.
+
+    Правило простое и по делу: кавычка закрывает строку, только если
+    следующий значащий символ — один из `,:}]`. Всё прочее внутри строки
+    экранируем."""
+    out, in_str, esc = [], False, False
+    for i, c in enumerate(raw):
+        if esc:
+            out.append(c)
+            esc = False
+            continue
+        if c == "\\":
+            out.append(c)
+            esc = True
+            continue
+        if c == '"':
+            if not in_str:
+                in_str = True
+            else:
+                nxt = next((ch for ch in raw[i + 1:] if not ch.isspace()), "")
+                if nxt in ",:}]" or nxt == "":
+                    in_str = False
+                else:
+                    out.append("\\")       # кавычка внутри текста
+        out.append(c)
+    return "".join(out)
+
+
+def _json_array(raw: str):
+    """Массив объектов из ответа модели, с починкой кавычек при сбое."""
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return json.loads(_json_fix_quotes(raw))
 
 
 def thumb_style(channel: dict | None) -> dict:
@@ -3984,6 +4088,20 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
     avoid = (ch.get("avoid") or "").strip()
     layouts = st["layouts"]
     upper = st["case"] == "upper"
+    parts = st.get("parts", ())
+    # Форма ответа собирается ПОД КАНАЛ: лишние поля не просто балласт —
+    # попроси у документалки о философе «выгоды с галочками», и она их
+    # придумает, а потом кто-нибудь их нарисует.
+    shape = ['"headline":"..."', '"bg_prompt":"..."',
+             f'"layout":"{layouts[0]}"']
+    if "sub" in parts:
+        shape.append('"sub":"..."')
+    if "badges" in parts:
+        shape.append('"badges":["...","...","...","..."]')
+    if "ribbon" in parts:
+        shape.append('"ribbon":["...","...","..."]')
+    if "focus" in parts:
+        shape.append('"focusX":68,"focusY":52')
     try:
         out = llm_chat(
             [{"role": "system", "content":
@@ -3998,25 +4116,32 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
               + (f"WHAT WORKS IN THIS CHANNEL'S NICHE, measured on competing "
                  f"channels:\n{formula}\n\n" if formula else "")
               + "Rules for `headline`:\n"
-              "- 2 to 4 words TOTAL, no punctuation except ? or !\n"
               + ("- write it in CAPITALS\n" if upper else
                  "- sentence case, NOT capitals — capitals read as shouting "
                  "and this channel does not shout\n")
-              + "- it must be readable at 210px wide, so short is mandatory\n"
-              "- use \\n to split it into at most 2 lines\n"
+              + "- it is read at 210px wide, so every line stays short\n"
               "- it is NOT the video title — it is the hook ON the image\n"
               f"- {st['words']}\n\n"
-              "Rules for `bg_prompt`: one sentence describing a photographic "
+              + (st.get("sub_ask", "") + "\n\n" if st.get("sub_ask") else "")
+              + ("`focusX`/`focusY` say WHERE in your described background "
+                 "the object of the video sits, in percent of width and "
+                 "height. An arrow and a magnified inset are drawn to that "
+                 "point, so name the spot where the remedy or the damage "
+                 "actually is.\n\n" if "focus" in parts else "")
+              + "Rules for `bg_prompt`: one sentence describing a photographic "
               f"background image for that concept. {st['bg']} No text, no "
-              "words in the image, no collage, no watermark. Write the "
-              "bg_prompt in English — it goes to an image model, not to a "
-              "viewer.\n\n"
+              "words in the image, no collage, no watermark. Say explicitly "
+              "that the image carries NO date stamp, NO printed caption and "
+              "NO photo border with a date: an image model asked for an "
+              "archival photograph adds an invented date by itself, and on a "
+              "documentary channel an invented date on the cover is a stated "
+              "fact that is wrong. Write the bg_prompt in English — it goes "
+              "to an image model, not to a viewer.\n\n"
               + (f"THIS CHANNEL REFUSES TO DO THIS, on the cover exactly as "
                  f"in the script:\n{avoid}\n\n" if avoid else "")
               + f"`layout` must be one of: {', '.join(layouts)}.\n\n"
               "Reply with ONLY a JSON array, no markdown fences:\n"
-              '[{"headline":"...","bg_prompt":"...","layout":"'
-              + layouts[0] + '"}]\n\n'
+              "[{" + ",".join(shape) + "}]\n\n"
               f"NARRATION:\n{text[:5000]}"}],
             # 900 токенов хватало, пока промпт был общий и короткий. С
             # формулой ниши и правилами канала модель стала думать дольше, а
@@ -4040,7 +4165,7 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
             log(f"[Обложка] {why}: {(out or '')[:120]!r}")
             return []
         ideas = []
-        for it in json.loads(m.group(0)):
+        for it in _json_array(m.group(0)):
             head = str(it.get("headline", "")).strip()
             if not head:
                 continue
@@ -4055,13 +4180,39 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
             if not upper and head[:1].islower():
                 head = head[0].upper() + head[1:]
             got = str(it.get("layout", "")).strip().lower()
+
+            def _list(key: str, n: int, cap: int) -> list[str]:
+                """Список коротких строк для плашек. Фильтруем по КАНАЛУ, а
+                не по наличию в ответе: модель охотно придумывает выгоды и
+                тогда, когда её об этом не просили, а «SAVES YOU THOUSANDS»
+                на разборе обрушения — ложь про жанр."""
+                if key not in parts:
+                    return []
+                raw = it.get(key) or []
+                if isinstance(raw, str):
+                    raw = [raw]
+                return [" ".join(str(v).split())[:cap]
+                        for v in raw if str(v).strip()][:n]
+
+            def _pct(key: str, default: float) -> float:
+                try:
+                    return min(94.0, max(6.0, float(it.get(key, default))))
+                except (TypeError, ValueError):
+                    return default
+
             ideas.append({
-                "headline": head[:60],
+                "headline": head[:80],
                 "bg_prompt": str(it.get("bg_prompt", "")).strip()[:400],
                 # раскладка не из набора канала — берём первую разрешённую,
                 # а не общую «left»: иначе harsh-канал молча получал бы
                 # раскладку созерцательного при любой опечатке модели
                 "layout": got if got in layouts else layouts[0],
+                "sub": (" ".join(str(it.get("sub", "")).split())[:70]
+                        if "sub" in parts else ""),
+                "badges": _list("badges", 4, 26),
+                "ribbon": _list("ribbon", 3, 30),
+                "focusX": _pct("focusX", 68.0),
+                "focusY": _pct("focusY", 52.0),
             })
         # Язык проверяем по СЛОВАМ обложек, а не по всему ответу: bg_prompt
         # мы сами просили писать по-английски (он идёт в модель картинок),
