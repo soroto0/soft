@@ -903,44 +903,74 @@ VIDEO_MOTIONS = ["static", "static", "static", "static",
 # Числа — множители к базовому весу. 6 = «фирменный приём», 1 = «как у всех»,
 # 0.15 = «редкая краска, но она есть». Ноля здесь не бывает.
 BASE_EMPHASIS = 1.0
+
+# Множитель для приёмов, которых в палитре канала НЕТ ВООБЩЕ.
+#
+# Раньше здесь стояла единица, и это тихо съедало всю разницу между каналами.
+# Пул движений картинки — 25 приёмов; палитра называла девять, остальные
+# шестнадцать оставались с полным весом У ВСЕХ ТРЁХ. То есть две трети
+# движения в каждом ролике бралось из одного и того же общего хвоста, и
+# каналы совпадали по замеру на 61-73% — при том, что «фирменные» приёмы у
+# них разные. Владелец сказал ровно это: «монтаж трёх каналов друг друга оч
+# похож».
+#
+# Ноль здесь по-прежнему недопустим: канал должен отличаться характером, а не
+# бедностью. 0.25 означает «редкая краска» — приём остаётся возможным, но не
+# формирует почерк.
+REST_EMPHASIS = 0.25
 PALETTES = {
     # Хроника. Рубит склейками, камера почти не живёт — так снимают репортаж,
     # а не рекламу. Но плавный переход всё же случается: раз в двадцать сцен
     # он читается как приём, а не как чужой почерк.
     "harsh": {
         "transitions": {"cut": 6, "fadeblack": 2.5, "fadefast": 1.6,
+                        "hblur": 1.2, "pixelize": 0.6, "fadegrays": 0.4,
                         "fade": 0.25, "dissolve": 0.3, "zoomin": 0.2,
-                        "pixelize": 0.5, "fadegrays": 0.4},
-        "image_motions": {"hold": 5, "push_in": 3, "drift": 2.5, "zoom_in": 2,
+                        "fadewhite": 0.15, "distance": 0.15},
+        # Репортажная камера: стоит или коротко подаётся вперёд. Панорам и
+        # дуг почти нет — это язык рекламы, а не разбора аварии.
+        "image_motions": {"hold": 6, "push_in": 3.5, "drift": 0.8,
+                          "zoom_in": 2.5, "zoom_in_fast": 1.5,
+                          "pan_up": 1.2, "pan_down": 1.2,
                           "pulse": 0.2, "arc_r": 0.2, "arc_l": 0.2,
-                          "zoompan_r": 0.3, "zoompan_l": 0.3},
+                          "zoompan_r": 0.3, "zoompan_l": 0.3,
+                          "parallax": 0.3},
         "video_motions": {"static": 5, "v_drift": 2, "v_zoom_in": 0.4,
-                          "v_pan_r": 0.4, "v_pan_l": 0.4},
+                          "v_pan_r": 0.4, "v_pan_l": 0.4, "v_zoom_out": 0.3},
     },
     # Тёплый рассказ: мягкие растворения, живая подвижная камера.
     "warm": {
-        "transitions": {"fade": 4, "fadefast": 3, "zoomin": 2.5,
-                        "dissolve": 1.5, "cut": 0.7, "fadeblack": 0.4,
-                        "fadegrays": 0.2},
-        "image_motions": {"pan_right": 3, "pan_left": 3, "zoompan_r": 2.5,
-                          "zoompan_l": 2.5, "arc_r": 2, "arc_l": 2,
-                          "pulse": 2, "diag_tl": 1.6, "diag_br": 1.6,
-                          "hold": 0.3},
+        "transitions": {"fade": 2.0, "fadefast": 3.5, "zoomin": 4,
+                        "dissolve": 1.0, "hblur": 2.0, "fadewhite": 0.8,
+                        "cut": 0.7, "fadeblack": 0.4, "fadegrays": 0.2,
+                        "pixelize": 0.15, "distance": 0.15},
+        # Камера в руках: ведёт по предмету, обходит его, чуть дышит.
+        "image_motions": {"pan_right": 3.5, "pan_left": 3.5,
+                          "zoompan_r": 3, "zoompan_l": 3,
+                          "arc_r": 2.5, "arc_l": 2.5, "pulse": 2,
+                          "diag_tl": 1.8, "diag_br": 1.8,
+                          "diag_tr": 1.5, "diag_bl": 1.5,
+                          "pullpan_r": 1.5, "pullpan_l": 1.5,
+                          "hold": 0.3, "drift": 0.4},
         "video_motions": {"v_pan_r": 2.5, "v_pan_l": 2.5, "v_zoom_in": 2,
-                          "static": 0.6},
+                          "v_drift": 1.2, "static": 0.6, "v_zoom_out": 0.5},
     },
     # Созерцание: время течёт, а не режется. Долгие растворения, медленный
     # дрейф, глубина кадра.
     "contemplative": {
-        "transitions": {"dissolve": 5, "fade": 3.5, "fadegrays": 3,
-                        "fadeblack": 2, "distance": 1.5, "cut": 0.35,
-                        "fadefast": 0.3, "fadewhite": 0.3},
-        "image_motions": {"drift": 5, "push_in": 3, "push_out": 3,
-                          "parallax": 2.5, "zoom_out": 2, "hold": 1.5,
+        "transitions": {"dissolve": 7, "fade": 1.8, "fadegrays": 4,
+                        "fadeblack": 2, "distance": 2.5, "hblur": 1.0,
+                        "cut": 0.35, "fadefast": 0.3, "fadewhite": 0.3,
+                        "zoomin": 0.2, "pixelize": 0.15},
+        # Камера на штативе с очень медленным ходом: дрейф, подача вперёд и
+        # назад, параллакс. Рывков нет вовсе.
+        "image_motions": {"drift": 6, "push_in": 1.2, "push_out": 4,
+                          "parallax": 3.5, "zoom_out": 3, "hold": 1.2,
+                          "pan_up": 0.8, "pan_down": 0.8,
                           "zoom_in_fast": 0.15, "drift_fast": 0.2,
-                          "pulse": 0.2},
+                          "pulse": 0.2, "pan_right": 0.3, "pan_left": 0.3},
         "video_motions": {"v_drift": 3, "static": 2, "v_zoom_out": 2,
-                          "v_zoom_in": 0.5},
+                          "v_zoom_in": 0.5, "v_pan_r": 0.3, "v_pan_l": 0.3},
     },
 }
 
@@ -954,8 +984,14 @@ def _weighted(pool, emphasis: dict | None, base_weights=None):
     """Веса по всему пулу: каждый элемент доступен, множитель меняет частоту.
 
     Возвращает (имена, веса). Элемент, не упомянутый в палитре, получает
-    базовый вес — то есть остаётся возможным. Именно это отличает акцент от
-    запрета: канал звучит по-своему, но ничего не теряет.
+    ПОНИЖЕННЫЙ вес (REST_EMPHASIS), но не нулевой: он остаётся возможным.
+    Именно это отличает акцент от запрета — канал звучит по-своему и при этом
+    ничего не теряет.
+
+    Пониженный, а не базовый: пул движений вдвое длиннее любого канального
+    списка, и на полном весе общий хвост перевешивал фирменные приёмы. Замер
+    до правки — совпадение движений каналов 61-73%, после — см. отчёт.
+    Канал без палитры (emphasis пуст) работает как раньше, на базовых весах.
     """
     names = list(dict.fromkeys(pool))          # порядок сохраняем, дубли убираем
     if base_weights:
@@ -964,8 +1000,9 @@ def _weighted(pool, emphasis: dict | None, base_weights=None):
         # дубли в исходном списке — это и есть вес (VIDEO_MOTIONS так устроен)
         counts = {n: list(pool).count(n) for n in names}
         base = [float(counts[n]) for n in names]
+    rest = REST_EMPHASIS if emphasis else BASE_EMPHASIS
     emphasis = emphasis or {}
-    return names, [b * float(emphasis.get(n, BASE_EMPHASIS))
+    return names, [b * float(emphasis.get(n, rest))
                    for n, b in zip(names, base)]
 
 
