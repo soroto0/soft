@@ -2051,11 +2051,22 @@ class Api:
                     # оборвал бы ночь на первом же сбое.
                     if isinstance(e, (KeyboardInterrupt, SystemExit)):
                         raise      # Ctrl+C — это человек, а не сбой канала
-                    self._log_raw(f"[Автопилот] «{nm}» упал: {e}", "err")
-                    self._log_raw(traceback.format_exc().rstrip(), "dim")
+                    # Остановку по потолку сторож делает тем же «Стопом», что и
+                    # человек, поэтому сюда прилетает «Остановлено
+                    # пользователем» — и утром в журнале читалось «abyss упал:
+                    # Остановлено пользователем» про ночь, когда владелец спал.
+                    # Отличаем по флагу: он взводится только настоящим нажатием.
+                    by_timer = (isinstance(e, Stopped)
+                                and not self._stop_by_user.is_set())
+                    why = ("остановлен по потолку времени — работа на диске, "
+                           "доделается ключом --resume" if by_timer else str(e))
+                    self._log_raw(f"[Автопилот] «{nm}»: {why}",
+                                  "warn" if by_timer else "err")
+                    if not by_timer:
+                        self._log_raw(traceback.format_exc().rstrip(), "dim")
                     results.append({"channel": nm, "mode": pick["mode"],
                                     "dir": d, "file": None, "size": 0,
-                                    "sec": time.time() - t0, "why": str(e)})
+                                    "sec": time.time() - t0, "why": why})
                 # Отдельная проверка после КАЖДОГО канала. Ловить «Стоп» только
                 # по исключению мало: цепочка местами глушит сбои через
                 # `except Exception`, и нажатие могло выйти наружу обычной
