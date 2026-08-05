@@ -38,7 +38,7 @@
     "youtube_url": "",
     "notes": "True crime. Конвейерная модель ниши: Abyssal Detective 475k, 56 мин, раз в 3 дня, медиана 253k. Решает ШИРОТА предмета: широкие визуальные темы x6-11, узкие бытовые x0.17.",
     "id": "abyss",
-    "intensity": "средняя",
+    "intensity": "документальная 5с",
     "look": "documentary",
     "min_gap": 5.0,
     "sfx": true,
@@ -47,18 +47,19 @@
     "grain": true,
     "vignette": true,
     "sand": true,
-    "light_leak": true,
-    "bloom": true,
+    "light_leak": null,
+    "bloom": null,
     "stars": false,
-    "flicker": false,
-    "palette": "harsh"
+    "flicker": null,
+    "palette": "harsh",
+    "dust": null
   },
   {
     "name": "The Home Vault",
     "folder": "",
     "lang": "английский",
     "tone": "образовательный",
-    "minutes": 20,
+    "minutes": 22,
     "voice": "en-US-AndrewNeural",
     "rate": 0,
     "visual_style": "тёплый уют",
@@ -80,7 +81,8 @@
       "Stop Paying $100 for Drain Cleaners — This $2 Fix Works FOREVER (They Don't Tell You This)",
       "The $5 Secret That Stops Bathroom Mold FOREVER (The Restoration Industry Hates This)",
       "Rats):* * \"The $2 Amish Trick That Banishes Mice FOREVER (Why Exterminators Hope You Never Learn This",
-      "The $4 Solution That Keeps Your Windows Fog-Free FOREVER (The Glass Industry Hates This)"
+      "The $4 Solution That Keeps Your Windows Fog-Free FOREVER (The Glass Industry Hates This)",
+      "Wood Decay/Rot/Sealing):* The $4 Amish Oil Recipe That Stops Wood Rot FOREVER (The Lumber Industry Hates This)"
     ],
     "series": "",
     "series_next": 1,
@@ -96,11 +98,12 @@
     "grain": false,
     "vignette": false,
     "sand": true,
-    "light_leak": true,
-    "bloom": true,
+    "light_leak": null,
+    "bloom": null,
     "stars": false,
-    "flicker": false,
-    "palette": "warm"
+    "flicker": null,
+    "palette": "warm",
+    "dust": null
   },
   {
     "name": "Pensamiento Estoico - ES",
@@ -139,12 +142,13 @@
     "script_shape": "biography",
     "reference": "https://www.youtube.com/@PhilosophyOriginsEspanol",
     "sand": true,
-    "light_leak": true,
-    "bloom": true,
+    "light_leak": null,
+    "bloom": null,
     "stars": false,
     "grain": false,
-    "flicker": false,
+    "flicker": null,
     "vignette": true,
-    "palette": "contemplative"
+    "palette": "contemplative",
+    "dust": null
   }
 ]
