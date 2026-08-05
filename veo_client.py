@@ -5,6 +5,7 @@
 import os
 import time
 import base64
+import hashlib
 import json
 import threading
 from pathlib import Path
@@ -50,14 +51,49 @@ def configure_task_store(project_dir: Path | str | None) -> None:
         _TASK_STORE = (Path(project_dir) / "veo_tasks.json") if project_dir else None
 
 
+def _complain(what: str, why: str = "", hint: str = "",
+              level: str = "заметно") -> None:
+    """Сказать в сводку прогона, что с генерацией видео что-то пошло не так.
+
+    Обёртка нужна, потому что журнал (callback log) есть далеко не у всех
+    функций этого файла, а сводка деградаций одна на прогон и печатается
+    последними строками. Сюда идёт то, что видно зрителю (кадр вышел хуже
+    качеством) или стоит денег и слотов Veo — по правилу quality.py.
+    """
+    try:
+        import quality
+        quality.degraded("Видео Veo", what, why=why, hint=hint, level=level)
+    except Exception:
+        pass
+
+
 def _load_tasks() -> dict:
     if not _TASK_STORE or not _TASK_STORE.exists():
-        return {}
+        return {}                      # задач ещё не ставили — норма
     try:
         data = json.loads(_TASK_STORE.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
+    except (OSError, ValueError) as e:
+        # Испорченный журнал раньше был неотличим от пустого, и это стоило
+        # денег: незавершённые задачи Veo остаются жить на сервере, «Стоп»
+        # ищет их ТОЛЬКО по этому файлу, а следующий запуск, не найдя записи,
+        # ставит те же кадры заново. То есть кадр оплачивается дважды, а
+        # первый висит в лимите конкурентных задач (их всего два слота).
+        _complain("журнал незавершённых задач Veo потерян — уже отправленные "
+                  "кадры будут сгенерированы заново",
+                  why=f"{_TASK_STORE.name}: {e}",
+                  hint="нажми «Отменить все задачи Veo» в интерфейсе — иначе "
+                       "прежние задачи будут держать слоты до своего таймаута",
+                  level="критично")
         return {}
+    if not isinstance(data, dict):
+        _complain("журнал незавершённых задач Veo потерян — уже отправленные "
+                  "кадры будут сгенерированы заново",
+                  why=f"{_TASK_STORE.name}: ожидался объект, "
+                      f"а лежит {type(data).__name__}",
+                  hint="нажми «Отменить все задачи Veo» в интерфейсе",
+                  level="критично")
+        return {}
+    return data
 
 
 def _save_tasks(tasks: dict) -> None:
@@ -138,19 +174,40 @@ def pending_tasks() -> list[dict]:
 
 def cancel_pending_tasks(api_key: str = "") -> int:
     """Отменяет только задачи текущего проекта, а не всего аккаунта Veo."""
-    cancelled = 0
+    cancelled, lost = 0, 0
     for item in pending_tasks():
         task_id = str(item.get("task_id", ""))
         if not task_id:
             continue
+        drop = True
         try:
             cancel_task(task_id, api_key)
             cancelled += 1
+        except VeoError as e:
+            # Разбираем ОТКАЗ ПО КОДУ, а не «любая ошибка — забыли и пошли
+            # дальше». 4xx кроме 429 означает, что задачи на сервере уже нет
+            # (готова, отменена, истекла) — запись можно смело убирать.
+            # А 429, 5xx и обрыв связи означают ровно обратное: задача жива и
+            # ЖРЁТ ОДИН ИЗ ДВУХ СЛОТОВ. Раньше запись стиралась и в этом
+            # случае, и отменить такую задачу становилось нечем — «Стоп»
+            # ходит только по журналу. Человек видел «остановлено», а Veo
+            # продолжал считать оплаченный кадр до серверного таймаута.
+            drop = bool(e.status) and e.status != 429 and e.status < 500
+            if not drop:
+                lost += 1
         except Exception:
-            # Уже готовая/удалённая задача не должна блокировать отмену.
-            pass
+            drop = False
+            lost += 1
         finally:
-            finish_task(Path(str(item["dest"])))
+            if drop:
+                finish_task(Path(str(item["dest"])))
+    if lost:
+        _complain(f"не удалось отменить задач Veo: {lost}",
+                  why="сервер не ответил на отмену — эти задачи продолжают "
+                      "считаться и держать слоты генерации",
+                  hint="повтори «Стоп» через минуту; записи о них оставлены "
+                       "в veo_tasks.json, поэтому отмена ещё возможна",
+                  level="заметно")
     return cancelled
 
 
@@ -318,15 +375,25 @@ def wait_for_completion(task_id: str, api_key: str = "", poll_s: int = 10,
             if e.status and e.status != 429 and e.status < 500:
                 raise
             errors += 1
+            # Три причины ждать выглядят одинаково («не удалось»), а означают
+            # РАЗНОЕ и лечатся по-разному: лимит надо переждать или сменить
+            # ключ, лежащий сервер — только переждать, обрыв связи — починить
+            # сеть. По журналу они были неотличимы, и разбор ночного прогона
+            # каждый раз начинался с гадания, во что именно упёрлись.
+            kind = ("упёрся в лимит запросов (429)" if e.status == 429
+                    else f"сервер VeoNonStop не отвечает ({e.status or 'без кода'})")
             if errors > 5:
+                log(f"[VeoNonStop] {task_id}: {kind}, 6 попыток подряд — "
+                    f"сдаюсь ({e})")
                 raise
-            log(f"[VeoNonStop] {task_id}: опрос статуса не удался ({e}) — "
-                f"повтор {errors}/5")
+            log(f"[VeoNonStop] {task_id}: {kind} — повтор {errors}/5 ({e})")
             time.sleep(poll_s)
             continue
         except requests.RequestException as e:
             errors += 1
             if errors > 5:
+                log(f"[VeoNonStop] {task_id}: связь с VeoNonStop не "
+                    f"восстановилась за 6 попыток — сдаюсь ({e})")
                 raise
             log(f"[VeoNonStop] {task_id}: связь оборвалась ({e}) — "
                 f"повтор {errors}/5")
@@ -373,6 +440,18 @@ def generate_video_and_wait(prompt: str, dest: Path, aspect_ratio: str = "16:9",
         finish_task(dest)
         raise
     videos = data.get("videos") or []
+    if upscale and not (videos and videos[0].get("mediaGenerationId")):
+        # Сервер сказал «готово», но не дал, ЧТО апскейлить. Кадр останется
+        # 720p и в ролике будет заметно мягче соседних — а раньше об этом не
+        # говорилось ни строчки: ветка апскейла просто не выполнялась.
+        log(f"[VeoNonStop] {task_id}: ответ без mediaGenerationId — "
+            "апскейл до 1080p невозможен, беру 720p")
+        _complain("часть кадров осталась в 720p вместо 1080p",
+                  why="VeoNonStop вернул готовую задачу без "
+                      "mediaGenerationId, апскейлить нечего",
+                  hint="кадр мягче соседних; если таких много — перегенерируй "
+                       "эти планы позже, апскейл обычно работает",
+                  level="заметно")
     if upscale and videos and videos[0].get("mediaGenerationId"):
         last_err = None
         for attempt in range(2):
@@ -406,9 +485,161 @@ def generate_video_and_wait(prompt: str, dest: Path, aspect_ratio: str = "16:9",
                     log(f"[VeoNonStop] Апскейл до 1080p не вышел с первой попытки "
                         f"({e}) — пробую ещё раз")
         log(f"[VeoNonStop] Апскейл до 1080p не удался ({last_err}) — беру оригинал 720p")
+        # Это ВИДНО ЗРИТЕЛЮ: 720p-кадр растягивается рендером до 1080p и в
+        # ролике читается заметно мягче соседних, снятых или апскейленных.
+        # Раньше про откат говорила одна строка среди сотен, а «готово» в
+        # конце выглядело одинаково и с апскейлом, и без него.
+        _complain("часть кадров осталась в 720p вместо 1080p",
+                  why=f"апскейл не прошёл с двух попыток: {last_err}",
+                  hint="чаще всего это занятые слоты Veo или таймаут — "
+                       "перегенерируй эти планы, когда очередь освободится",
+                  level="заметно")
     result = download_video(task_id, dest, api_key=api_key)
     finish_task(dest)
     return result
+
+
+# ---------- Суточный лимит КАРТИНОК ----------
+#
+# С 2026-08-05 VeoNonStop ограничивает число картинок в сутки по тарифу
+# (4 потока — 500, 12 — 1500, 24 — 3000): «есть лимиты на генерацию на самих
+# аккаунтах гугл, а также аккаунтов дефицит».
+#
+# ЛИМИТ ТОЛЬКО НА КАРТИНКИ. Владелец спросил сервис прямо — ответ дословно
+# «только картинки», и /account/usage это подтверждает живьём: video_limit и
+# video_remaining приходят null, а image_limit — числом. Поэтому здесь нет и
+# не должно быть НИ ОДНОЙ проверки для text_to_video: при VEO_VIDEO_RATIO=1
+# вся раскадровка идёт живым видео, и «на всякий случай» придушенное видео
+# означало бы возврат к стоковым роликам, с которыми боролись неделю.
+#
+# Числа НЕ зашиты: сервис прямо предупредил, что «лимиты не окончательные и
+# возможно будут изменяться в лучшую сторону». Всё берём из ответа, а из
+# констант — только политика (сколько беречь под что), и та с env.
+#
+# Живой ответ /account/usage на 2026-08-05 (одинаковый на основном домене и
+# на европейском зеркале):
+#   {"video_used": 0, "video_limit": null, "video_remaining": null,
+#    "image_used": 19, "image_limit": 500, "image_remaining": 481,
+#    "unlimited": false, "resets_in_seconds": 53726}
+#
+# ВНИМАНИЕ на будущее: этим же ответом сервис ВЫКИНУЛ прежние поля
+# (cookies_allocated, active_tasks, completed_tasks, failed_tasks,
+# max_concurrent_tasks). Код, который их читал, теперь везде получает 0 —
+# см. подбор числа потоков в core.
+
+# Оценка расхода живёт рядом с кодом, а не в папке ролика: лимит суточный и
+# общий на аккаунт, а роликов за ночь несколько.
+_IMAGE_LEDGER = Path(__file__).resolve().parent / ".veo_image_usage.json"
+_IMAGE_LOCK = threading.RLock()
+
+
+def _key_id(api_key: str = "") -> str:
+    """Короткий отпечаток ключа: лимит считается НА АККАУНТ, а ключей у нас
+    несколько (VEO_API_KEY, VEO_API_KEY2, ...) и они ротируются. Храним хеш,
+    а не сам ключ и не его хвост — файл лежит на диске рядом с кодом."""
+    key = (api_key or VEO_API_KEY).strip()
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()[:12] if key else "-"
+
+
+def _as_int(v) -> int | None:
+    """None остаётся None: у «сервис не сказал» и «сказал ноль» разный смысл —
+    первое значит «считай сам», второе «картинок больше нет»."""
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def note_images_spent(n: int = 1, api_key: str = "") -> None:
+    """Отметить потраченные картинки в местной оценке.
+
+    Нужна ТОЛЬКО как запасной путь: если сервис перестанет отдавать остаток
+    (уберёт поля, отдаст 503), софт всё равно должен понимать, сколько
+    израсходовал сам, — и честно называть это оценкой, а не фактом.
+    """
+    if n <= 0:
+        return
+    day = time.strftime("%Y-%m-%d")
+    with _IMAGE_LOCK:
+        data = {}
+        try:
+            data = json.loads(_IMAGE_LEDGER.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        if not isinstance(data, dict) or data.get("day") != day:
+            data = {"day": day, "spent": {}}   # новые сутки — счёт с нуля
+        spent = data.setdefault("spent", {})
+        kid = _key_id(api_key)
+        spent[kid] = int(spent.get(kid, 0) or 0) + int(n)
+        try:
+            tmp = _IMAGE_LEDGER.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, _IMAGE_LEDGER)
+        except OSError:
+            pass       # оценка — не повод ронять генерацию
+
+
+def images_spent_today(api_key: str = "") -> int:
+    """Сколько картинок этот ключ потратил за сегодня ПО НАШЕМУ СЧЁТУ."""
+    day = time.strftime("%Y-%m-%d")
+    with _IMAGE_LOCK:
+        try:
+            data = json.loads(_IMAGE_LEDGER.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return 0
+    if not isinstance(data, dict) or data.get("day") != day:
+        return 0
+    try:
+        return int((data.get("spent") or {}).get(_key_id(api_key), 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def image_quota(api_key: str = "") -> dict:
+    """Остаток суточного лимита КАРТИНОК одним понятным словарём.
+
+    Всегда возвращает словарь, никогда не бросает: остаток нужен для решения
+    «начинать ли шаг», и падение на этой проверке было бы хуже самого лимита.
+
+      exact=True   — числа пришли от сервиса, это факт;
+      exact=False  — сервис промолчал, remaining посчитан по нашей оценке
+                     расхода и подписан как оценка;
+      unlimited    — лимита нет (сервис снял или ещё не ввёл).
+    """
+    out = {"limit": None, "used": None, "remaining": None, "unlimited": False,
+           "resets_in_s": None, "exact": False, "why": ""}
+    data = {}
+    try:
+        data = account_usage(api_key) or {}
+    except Exception as e:
+        out["why"] = f"сервис не ответил про лимит ({e})"
+    limit = _as_int(data.get("image_limit"))
+    used = _as_int(data.get("image_used"))
+    left = _as_int(data.get("image_remaining"))
+    if left is None and limit is not None and used is not None:
+        left = max(0, limit - used)
+    # «Безлимит» опознаём и по флагу, и по отсутствию чисел при живом ответе:
+    # если сервис снимет лимит, он скорее уберёт image_limit, чем выставит
+    # unlimited — а нам нельзя при этом считать, что картинок ноль.
+    if data and (data.get("unlimited") is True
+                 or (limit is None and left is None)):
+        out.update(unlimited=True, exact=True,
+                   why=out["why"] or "сервис лимита на картинки не объявляет")
+        return out
+    out["resets_in_s"] = _as_int(data.get("resets_in_seconds"))
+    if left is not None:
+        out.update(limit=limit, used=used, remaining=left, exact=True)
+        return out
+    # Сервис не сказал — считаем сами. Это ОЦЕНКА: чужие запуски и ручные
+    # генерации мимо этого софта в неё не попадают.
+    spent = images_spent_today(api_key)
+    out.update(limit=limit, used=spent,
+               remaining=(max(0, limit - spent) if limit is not None else None),
+               exact=False,
+               why=out["why"] or "сервис не вернул остаток картинок")
+    return out
 
 
 # ---------- Картинки: Banana (синхронно) ----------
@@ -433,13 +664,31 @@ def banana_generate(prompt: str, num_images: int = 1, aspect_ratio: str = "16:9"
             "image_base64": _b64_file(im["path"]),
             "mime_type": im.get("mime_type", "image/jpeg"),
         } for im in reference_images]
-    return _request("POST", "/image/banana/generate", api_key, json=body, timeout=120)
+    data = _request("POST", "/image/banana/generate", api_key, json=body, timeout=120)
+    # ЕДИНСТВЕННАЯ ТОЧКА, ГДЕ ТРАТИТСЯ КАРТИНКА. Через неё проходят все пути
+    # без исключения: обложки, кадры раскадровки и «картинка → видео» (там
+    # картинка сперва рождается здесь, а image_to_video уже видеозадача и под
+    # лимит не попадает). Поэтому счётчик стоит здесь, а не у вызывающих: их
+    # можно забыть обновить при следующей правке, а этот вызов — нельзя.
+    # Считаем ФАКТИЧЕСКИ выданные картинки, а не заказанные: сервис вправе
+    # вернуть меньше, и списывать с себя лишнее незачем.
+    try:
+        note_images_spent(len(data.get("media") or []) or num_images, api_key)
+    except Exception:
+        pass       # учёт вспомогательный, генерацию он ронять не должен
+    return data
 
 
 def banana_upscale(media_id: str, project_id: str,
                     target_resolution: str = "UPSAMPLE_IMAGE_RESOLUTION_2K",
                     api_key: str = "") -> bytes:
-    """Возвращает сырые байты JPEG апскейленного изображения."""
+    """Возвращает сырые байты JPEG апскейленного изображения.
+
+    В местную оценку расхода апскейл НЕ засчитывается: объявлен лимит на
+    «генерацию изображений», а увеличение готовой картинки — не генерация.
+    Проверить это можно было бы только потратив картинку, поэтому оставлено
+    как есть; на фактический остаток от сервиса такое допущение не влияет,
+    а по умолчанию (VEO_UPSCALE=local) сюда вообще не заходят."""
     body = {"media_id": media_id, "project_id": project_id,
             "target_resolution": target_resolution}
     data = _request("POST", "/image/banana/upscale", api_key, json=body, timeout=120)

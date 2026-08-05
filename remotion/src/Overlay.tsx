@@ -14,14 +14,14 @@ export type { OverlayProps };
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#00C8D4',
-  accentLight: '#7EE8D0',
-  accentRgb: '0,200,212',
-  bannerFrom: '#D6EAF7',
-  bannerTo: '#BDD8E8',
-  bannerText: '#0A1F2E',
-  kickerFrom: '#0E2A35',
-  kickerTo: '#163D4D',
+  accent: '#6B7F4A',
+  accentLight: '#A8B88E',
+  accentRgb: '107,127,74',
+  bannerFrom: '#D4DCC6',
+  bannerTo: '#C2CCB2',
+  bannerText: '#2C3324',
+  kickerFrom: '#343E2B',
+  kickerTo: '#262E20',
 };
 
 const useExit = (dur: number) => {
@@ -1171,6 +1171,21 @@ const OverlayCore: React.FC<OverlayProps> = (p) => {
   }
 };
 
+// Есть ли вообще что рисовать. У текстовых типов содержимое — это
+// p.content, у popup — картинка, у collage/gallery — набор карточек.
+// Оверлей без содержимого рисовать НЕЛЬЗЯ: у половины видов подложка
+// непрозрачная и рисуется безусловно, поэтому «пусто» на экране означает не
+// пустоту, а большую тёмную плашку посреди кадра. Ровно это и попало в
+// ролик, когда вариант banner/ai_f3e5 брал текст из props.children, которых
+// ему никто не передаёт.
+const hasPayload = (p: OverlayProps): boolean => {
+  if (p.type === 'popup') return Boolean((p.img ?? '').trim());
+  if (p.type === 'collage' || p.type === 'gallery') {
+    return (p.items ?? []).some((it) => it && Boolean(it.img));
+  }
+  return Boolean((p.content ?? '').trim());
+};
+
 export const Overlay: React.FC<OverlayProps> = (p) => {
   // Декоративный слой ищем ОТДЕЛЬНО от заменяющих вариантов: у DECOR та же
   // ключевая схема "тип/вариант", но найденный здесь компонент не отменяет
@@ -1178,6 +1193,9 @@ export const Overlay: React.FC<OverlayProps> = (p) => {
   // оно полезло бы искать тот же ключ в VARIANTS и ничего не нашло бы.
   const exit = useExit(p.dur);
   const enter = useEnter(p.dur);
+  // Хуки выше вызваны безусловно — правило хуков не терпит раннего выхода
+  // перед ними, даже когда рисовать нечего.
+  if (!hasPayload(p)) return <AbsoluteFill />;
   const Decor = p.variant ? DECOR[`${p.type}/${p.variant}`] : undefined;
   if (!Decor) return <OverlayCore {...p} />;
   const core = { ...p, variant: undefined };

@@ -1,7 +1,15 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { DISPLAY } from '../fonts';
 
+// Banner, вариант «телеэкран». Историческая ошибка: содержимое экрана
+// бралось из `props.children`, которых оверлею НИКТО НЕ ПЕРЕДАЁТ — ядро
+// рисует вариант как <Generated {...p} />, без вложенных узлов. Поэтому в
+// кадре появлялся большой тёмный прямоугольник со скруглёнными углами и
+// пустой серединой; на канале home-vault, где этот вид выпал баннеру, это
+// случалось 11 раз за ролик. Текст берётся из p.content, как у всех
+// остальных типов.
 export const BannerAiF3E5: React.FC<VariantProps> = (p) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
@@ -72,7 +80,11 @@ export const BannerAiF3E5: React.FC<VariantProps> = (p) => {
     extrapolateRight: 'clamp',
   });
 
-  const { children } = p as React.PropsWithChildren<VariantProps>;
+  const text = (p.content || '').trim();
+  // Кегль под длину фразы: баннеры приходят и в три слова, и в целое
+  // предложение, а ширина экрана фиксирована — без этого длинная строка
+  // вылезала бы за скруглённую рамку.
+  const fontSize = text.length > 64 ? 40 : text.length > 34 ? 52 : 64;
 
   return (
     <AbsoluteFill style={{ background: 'transparent', pointerEvents: 'none' }}>
@@ -199,18 +211,25 @@ export const BannerAiF3E5: React.FC<VariantProps> = (p) => {
         <div
           style={{
             position: 'absolute',
-            inset: '36px 10px 36px 10px',
+            inset: '28px 34px',
             display: 'flex',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             justifyContent: 'center',
+            textAlign: 'center',
             transform: `scale(${scale}) translateY(${driftY * 0.3}px)`,
             opacity: textIn * flicker,
+            fontFamily: DISPLAY,
+            fontSize,
+            lineHeight: 1.15,
+            letterSpacing: '0.01em',
+            color: '#eafcff',
+            textTransform: 'uppercase',
             textShadow: aberration > 0.5
               ? `-${aberration}px 0 rgba(255,0,200,0.7), ${aberration}px 0 rgba(0,255,255,0.7), 0 0 ${aberration * 2}px rgba(255,255,255,0.3)`
               : 'none',
           }}
         >
-          {children}
+          {text}
         </div>
       </div>
     </AbsoluteFill>

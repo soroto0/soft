@@ -74,6 +74,32 @@ import { BoreholeDataMapScene } from './scenes/borehole_data_map';
 import { DifferentialSettlementViewScene } from './scenes/differential_settlement_view';
 import { ShearPlaneLubricationScene } from './scenes/shear_plane_lubrication';
 import { MicroscopicClayStructureScene } from './scenes/microscopic_clay_structure';
+import { PorePressureAnimationScene } from './scenes/pore_pressure_animation';
+import { UnderpinningRepairPlanScene } from './scenes/underpinning_repair_plan';
+import { ArtesianAquiferCrossSectionScene } from './scenes/artesian_aquifer_cross_section';
+import { LineGraphScene } from './scenes/line_graph';
+import { CrossSectionScene } from './scenes/cross_section';
+import { MolecularDiagramScene } from './scenes/molecular_diagram';
+import { TimeLapseAnimationScene } from './scenes/time_lapse_animation';
+import { CrossSectionAnimationScene } from './scenes/cross_section_animation';
+import { MolecularGeometryScene } from './scenes/molecular_geometry';
+import { MolecularAlignmentScene } from './scenes/molecular_alignment';
+import { NucleationAnimationScene } from './scenes/nucleation_animation';
+import { CrystallizationZoomScene } from './scenes/crystallization_zoom';
+import { GeologicalStratigraphyScene } from './scenes/geological_stratigraphy';
+import { RotationalStabilityAnalysisScene } from './scenes/rotational_stability_analysis';
+import { SubsurfaceGeologyInteractionScene } from './scenes/subsurface_geology_interaction';
+import { MolecularClayStructureScene } from './scenes/molecular_clay_structure';
+import { PorePressureProcessScene } from './scenes/pore_pressure_process';
+import { ShearFailureDiagramScene } from './scenes/shear_failure_diagram';
+import { UnderpinningProcessScene } from './scenes/underpinning_process';
+import { AquiferCrossSectionScene } from './scenes/aquifer_cross_section';
+import { HydrostaticFailureSimulationScene } from './scenes/hydrostatic_failure_simulation';
+import { ThermalBridgeFlowScene } from './scenes/thermal_bridge_flow';
+import { WindowSpacerConductionScene } from './scenes/window_spacer_conduction';
+import { MaterialMoistureSeepageScene } from './scenes/material_moisture_seepage';
+import { SurfaceTensionComparisonScene } from './scenes/surface_tension_comparison';
+import { ThermalViscosityTrapScene } from './scenes/thermal_viscosity_trap';
 export type { SceneProps };
 
 // Точка входа для СЦЕН — планов, которые целиком нарисованы, а не сняты.
@@ -255,6 +281,58 @@ const pickScene = (props: SceneProps): React.ReactElement | null => {
       return <ShearPlaneLubricationScene {...props} />;
     case 'microscopic_clay_structure':
       return <MicroscopicClayStructureScene {...props} />;
+    case 'pore_pressure_animation':
+      return <PorePressureAnimationScene {...props} />;
+    case 'underpinning_repair_plan':
+      return <UnderpinningRepairPlanScene {...props} />;
+    case 'artesian_aquifer_cross_section':
+      return <ArtesianAquiferCrossSectionScene {...props} />;
+    case 'line_graph':
+      return <LineGraphScene {...props} />;
+    case 'cross_section':
+      return <CrossSectionScene {...props} />;
+    case 'molecular_diagram':
+      return <MolecularDiagramScene {...props} />;
+    case 'time_lapse_animation':
+      return <TimeLapseAnimationScene {...props} />;
+    case 'cross_section_animation':
+      return <CrossSectionAnimationScene {...props} />;
+    case 'molecular_geometry':
+      return <MolecularGeometryScene {...props} />;
+    case 'molecular_alignment':
+      return <MolecularAlignmentScene {...props} />;
+    case 'nucleation_animation':
+      return <NucleationAnimationScene {...props} />;
+    case 'crystallization_zoom':
+      return <CrystallizationZoomScene {...props} />;
+    case 'geological_stratigraphy':
+      return <GeologicalStratigraphyScene {...props} />;
+    case 'rotational_stability_analysis':
+      return <RotationalStabilityAnalysisScene {...props} />;
+    case 'subsurface_geology_interaction':
+      return <SubsurfaceGeologyInteractionScene {...props} />;
+    case 'molecular_clay_structure':
+      return <MolecularClayStructureScene {...props} />;
+    case 'pore_pressure_process':
+      return <PorePressureProcessScene {...props} />;
+    case 'shear_failure_diagram':
+      return <ShearFailureDiagramScene {...props} />;
+    case 'underpinning_process':
+      return <UnderpinningProcessScene {...props} />;
+    case 'aquifer_cross_section':
+      return <AquiferCrossSectionScene {...props} />;
+    case 'hydrostatic_failure_simulation':
+      return <HydrostaticFailureSimulationScene {...props} />;
+    case 'thermal_bridge_flow':
+      return <ThermalBridgeFlowScene {...props} />;
+    case 'window_spacer_conduction':
+      return <WindowSpacerConductionScene {...props} />;
+    case 'material_moisture_seepage':
+      return <MaterialMoistureSeepageScene {...props} />;
+    case 'surface_tension_comparison':
+      return <SurfaceTensionComparisonScene {...props} />;
+    case 'thermal_viscosity_trap':
+      return <ThermalViscosityTrapScene {...props} />;
     default:
       return null;
   }

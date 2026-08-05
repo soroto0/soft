@@ -132,10 +132,21 @@ def main() -> int:
             print(f"Канал «{args.channel}» не найден", file=sys.stderr)
             return 2
 
+    # Остаток картинок читаем ЗДЕСЬ и отдаём в план: сам dry_run в сеть не
+    # ходит (иначе его нельзя было бы прогнать всухую и без ключей), а план
+    # ночи обязан показывать те же пропуски, что сделает настоящий прогон.
+    quota = night_plan.image_quota()
     plan = night_plan.dry_run(chans, args.night, args.videos, args.fit,
-                              force_new=not args.resume)
+                              force_new=not args.resume,
+                              images_left=(None if quota.get("unlimited")
+                                           else quota.get("remaining")))
     print(f"План ночи ({len(chans)} канал(ов) x {args.videos}, "
           f"в ночи {args.night:.0f} ч):")
+    if quota.get("remaining") is not None:
+        print(f"Картинок на сегодня осталось {quota['remaining']} из "
+              f"{quota.get('limit', '?')} (лимит только на КАРТИНКИ, "
+              f"живое видео Veo под него не попадает)"
+              + ("" if quota.get("exact") else " — ОЦЕНКА, а не ответ сервиса"))
     print(night_plan.format_plan(plan))
     if args.plan:
         # Сухой прогон намеренно НЕ импортирует webapp: его импорт сам по себе

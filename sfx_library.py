@@ -90,34 +90,101 @@ def _license_ok(url: str) -> bool:
     return "zero" in u or "publicdomain" in u or "/by/" in u
 
 
-def load_ledger() -> dict:
+def _read_ledger() -> tuple[dict, str]:
+    """Разбор library.json: (записи, причина отказа).
+
+    Различать «файла нет» и «файл испорчен» здесь обязательно, потому что
+    ОБА раньше давали пустой словарь, а дальше по коду пустой словарь
+    означает «библиотека ещё не качалась». И fetch(), и process() в конце
+    ПЕРЕЗАПИСЫВАЮТ ledger целиком — то есть один битый байт стирал опись всех
+    скачанных эффектов. Файлы при этом остаются на диске, но роли, лицензии и
+    длительности к ним уже не привязать, и docking пойдёт качать всё заново.
+
+    Слышно это в ролике сразу: без готовых эффектов рендер откатывается на
+    три синтезированных звука, и «вжух» снова звучит каждые четырнадцать
+    секунд — ровно та беда, ради которой библиотека и заводилась.
+    """
     try:
-        return json.loads(LEDGER.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+        raw = LEDGER.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}, ""                 # библиотека ещё не качалась — норма
+    except OSError as e:
+        return {}, f"{LEDGER} не читается: {e}"
+    try:
+        data = json.loads(raw)
+    except ValueError as e:
+        return {}, f"{LEDGER} испорчен (не разбирается как JSON): {e}"
+    if not isinstance(data, dict):
+        return {}, (f"{LEDGER} испорчен: ожидался объект, "
+                    f"а лежит {type(data).__name__}")
+    return data, ""
+
+
+def load_ledger(log=None) -> dict:
+    """Опись библиотеки. Пусто — библиотека не скачана (это норма)."""
+    data, err = _read_ledger()
+    if err and log:
+        log(f"[Звуки] ВНИМАНИЕ: {err}")
+    return data
+
+
+def _ledger_for_write() -> dict:
+    """Опись для тех, кто её потом ПЕРЕЗАПИШЕТ.
+
+    Отдельный вход, потому что цена ошибки разная: читателю (pool, report)
+    испорченный файл стоит одного неверного ответа, а писателю — всей описи
+    целиком. Поэтому писателю мы вместо пустого словаря отдаём отказ.
+    """
+    data, err = _read_ledger()
+    if err:
+        raise RuntimeError(
+            f"{err}. Перезаписать опись сейчас — значит потерять роли и "
+            "лицензии всех уже скачанных эффектов; почини файл или удали "
+            "его вместе с папкой assets/sfx, если библиотеку не жалко")
+    return data
+
+
+# Чем кончилась последняя докачка. Отдельно от возвращаемого числа, потому
+# что «скачано 0» — это ДВА противоположных случая: библиотека уже полная
+# (всё хорошо) и источник недоступен (не сделано ничего). Раньше оба
+# заканчивались бодрым «скачано новых: 0» и нулевым кодом возврата.
+_LAST_FETCH: dict = {}
 
 
 def fetch(limit_per_role: int = 14, log=print) -> int:
     """Скачать короткие CC0-эффекты, разложив по ролям."""
-    ledger = load_ledger()
+    ledger = _ledger_for_write()
     got = 0
     by_role: dict[str, int] = {}
     for r in ledger.values():
         by_role[r["role"]] = by_role.get(r["role"], 0) + 1
 
+    stat = {"tried": 0, "unreachable": 0, "denied": 0, "full": 0,
+            "files_failed": 0}
+    _LAST_FETCH.clear()
+    _LAST_FETCH.update(stat)
     items = list(CATEGORIES.items())
     random.shuffle(items)          # чтобы повторный запуск брал другое
     for ident, role in items:
         if by_role.get(role, 0) >= limit_per_role:
+            stat["full"] += 1
             continue
+        stat["tried"] += 1
         try:
             meta = requests.get(f"https://archive.org/metadata/{ident}",
                                 headers=UA, timeout=90).json()
         except Exception as e:
-            log(f"[Звуки] {ident}: {type(e).__name__}")
+            # Раньше здесь оставалось только имя класса исключения, и
+            # «archive.org не отвечает» выглядело так же, как «в коллекции
+            # ничего не подошло». Пишем причину целиком: недоступный источник
+            # лечится повтором позже, а не переборкой ролей.
+            stat["unreachable"] += 1
+            log(f"[Звуки] {ident}: источник не ответил — "
+                f"{type(e).__name__}: {str(e)[:150]}")
             continue
         lic = str((meta.get("metadata") or {}).get("licenseurl") or "")
         if not _license_ok(lic):
+            stat["denied"] += 1
             log(f"[Звуки] {ident}: лицензия {lic or '?'} — пропускаю")
             continue
         files = [f for f in (meta.get("files") or [])
@@ -140,9 +207,15 @@ def fetch(limit_per_role: int = 14, log=print) -> int:
             try:
                 resp = requests.get(url, headers=UA, timeout=120)
                 if resp.status_code != 200 or len(resp.content) < 2000:
+                    # Сорванная закачка отдельного файла — мелочь, пока их
+                    # единицы. Но молчать про них нельзя: когда source лежит,
+                    # ТАК выглядят все триста файлов, и роль остаётся пустой
+                    # при бодром «скачано новых: 0».
+                    stat["files_failed"] += 1
                     continue
                 dest.write_bytes(resp.content)
             except Exception:
+                stat["files_failed"] += 1
                 continue
             ledger[key] = {"role": role, "file": str(dest.relative_to(SFX_DIR)),
                            "seconds": round(_secs(f.get("length")), 2),
@@ -155,17 +228,38 @@ def fetch(limit_per_role: int = 14, log=print) -> int:
     SFX_DIR.mkdir(parents=True, exist_ok=True)
     LEDGER.write_text(json.dumps(ledger, ensure_ascii=False, indent=2),
                       encoding="utf-8")
+    _LAST_FETCH.update(stat, got=got)
+    if stat["unreachable"]:
+        log(f"[Звуки] ИСТОЧНИК НЕДОСТУПЕН: не ответил на "
+            f"{stat['unreachable']} коллекций(ю) из {stat['tried']}. "
+            "Библиотека пополнена не полностью — повтори --fetch позже")
+    if stat["files_failed"]:
+        log(f"[Звуки] не скачалось отдельных файлов: {stat['files_failed']}")
+    if stat["denied"]:
+        log(f"[Звуки] отклонено по лицензии (NC/ND нельзя): {stat['denied']}")
     return got
 
 
-def _ffmpeg(args: list[str]) -> bool:
+def _ffmpeg(args: list[str]) -> tuple[bool, str]:
+    """(получилось, причина отказа).
+
+    Причина возвращается наружу, потому что «этот файл не обработался» и
+    «ffmpeg вообще не установлен» раньше выглядели одинаково: во втором
+    случае получалось двести одинаковых строк «не обработался» и ноль
+    готовых эффектов — а ролик после этого молча звучал на трёх
+    синтезированных звуках.
+    """
     import subprocess
     try:
         r = subprocess.run(["ffmpeg", "-v", "error", *args, "-y"],
                            capture_output=True, timeout=120)
-        return r.returncode == 0
-    except Exception:
-        return False
+        if r.returncode == 0:
+            return True, ""
+        return False, (r.stderr or b"").decode("utf-8", "replace")[-160:]
+    except FileNotFoundError:
+        return False, "ffmpeg не найден"
+    except Exception as e:
+        return False, f"{type(e).__name__}: {str(e)[:150]}"
 
 
 def process(log=print) -> int:
@@ -184,7 +278,7 @@ def process(log=print) -> int:
         не слышно под голосом;
       * сводим в моно 44.1 кГц — как остальная звуковая дорожка.
     """
-    led = load_ledger()
+    led = _ledger_for_write()
     # дубли: тот же звук в разных форматах = одинаковое имя без расширения
     seen: dict[str, str] = {}
     dropped = 0
@@ -201,16 +295,20 @@ def process(log=print) -> int:
 
     out_dir = SFX_DIR / "ready"
     out_dir.mkdir(parents=True, exist_ok=True)
-    made = 0
+    made, failed, missing = 0, 0, 0
     for key, rec in led.items():
         src = SFX_DIR / rec["file"]
         if not src.exists():
+            # Опись знает про файл, а файла нет: его удалили руками или
+            # закачка сорвалась. Молчать нельзя — звук просто не попадёт в
+            # ролик, и роль незаметно опустеет.
+            missing += 1
             continue
         dest = out_dir / f"{rec['role']}_{Path(rec['file']).stem[:40]}.wav"
         # silenceremove убирает тишину в начале (атака оказывается в нуле),
         # atrim берёт первые 0.9 c, afade гасит хвост — чтобы звук не тянулся
         # под следующий оверлей. loudnorm выравнивает громкость.
-        ok = _ffmpeg([
+        ok, err = _ffmpeg([
             "-i", str(src),
             "-af", ("silenceremove=start_periods=1:start_threshold=-45dB:"
                     "start_silence=0.02,"
@@ -221,11 +319,31 @@ def process(log=print) -> int:
         if ok and dest.exists() and dest.stat().st_size > 4000:
             rec["ready"] = str(dest.relative_to(SFX_DIR))
             made += 1
+        elif err == "ffmpeg не найден":
+            # Дальше идти незачем: каждый следующий файл упрётся в то же
+            # самое. Останавливаемся сразу и говорим ОДНУ понятную фразу
+            # вместо двухсот «не обработался».
+            raise RuntimeError(
+                "ffmpeg не найден — обработать звуки нечем. Поставь ffmpeg и "
+                f"повтори; сырые записи ({len(led)} шт.) остались на месте, "
+                "опись не тронута")
         else:
-            log(f"[Звуки] не обработался: {src.name}")
+            failed += 1
+            log(f"[Звуки] не обработался: {src.name}"
+                + (f" — {err}" if err else ""))
     LEDGER.write_text(json.dumps(led, ensure_ascii=False, indent=2),
                       encoding="utf-8")
     log(f"[Звуки] дублей выброшено: {dropped}; готовых эффектов: {made}")
+    if missing:
+        log(f"[Звуки] ВНИМАНИЕ: записано в описи, но нет на диске: {missing} "
+            "— эти эффекты в ролик не попадут, перекачай их через --fetch")
+    if failed:
+        log(f"[Звуки] ВНИМАНИЕ: не обработалось файлов: {failed} — "
+            "на столько вариантов звука в ролике будет меньше")
+    if not made:
+        log("[Звуки] ВНИМАНИЕ: готовых эффектов НЕТ — рендер вернётся к трём "
+            "синтезированным звукам, и один и тот же «вжух» будет звучать "
+            "каждые четырнадцать секунд")
     return made
 
 
@@ -336,7 +454,7 @@ def _write(dest, buf, sr: int) -> None:
 def pool(role: str) -> list[Path]:
     """Все скачанные звуки этой роли, которые лежат на диске."""
     out = []
-    for rec in load_ledger().values():
+    for rec in load_ledger(log=print).values():
         if rec.get("role") != role:
             continue
         p = SFX_DIR / rec["file"]
@@ -346,7 +464,14 @@ def pool(role: str) -> list[Path]:
 
 
 def report() -> int:
-    led = load_ledger()
+    data, err = _read_ledger()
+    if err:
+        # «Пусто» и «испорчено» — разные беды с разным лечением, и отчёт
+        # обязан их различать: во втором случае звуки на диске ЕСТЬ, и
+        # запускать --fetch поверх испорченной описи значит потерять их.
+        print(f"опись библиотеки не читается: {err}")
+        return 2
+    led = data
     if not led:
         print("библиотека пуста — запусти: python sfx_library.py --fetch")
         return 1
@@ -376,7 +501,16 @@ def main() -> int:
         ap.error("нужен --fetch или --report")
     n = fetch(args.limit)
     print(f"\nскачано новых: {n}")
-    return report()
+    report()
+    # Код возврата ЧЕСТНЫЙ. Раньше главным был report(), и он отдавал 0, пока
+    # в описи есть хоть что-то, — то есть докачка при лежащем archive.org
+    # выглядела успешной и для человека, и для любого скрипта, который её
+    # запустил бы по расписанию.
+    if _LAST_FETCH.get("unreachable"):
+        print(f"\nисточник не ответил на {_LAST_FETCH['unreachable']} "
+              f"коллекций(ю) — библиотека пополнена НЕ ПОЛНОСТЬЮ")
+        return 3
+    return 0 if load_ledger() else 1
 
 
 if __name__ == "__main__":

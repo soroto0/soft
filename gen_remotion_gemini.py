@@ -764,6 +764,18 @@ def _contract_check_variant(code: str, component: str) -> str:
     if re.search(r"placeholder|your content here|TODO|FIXME", code, re.I):
         return ("the file contains a placeholder/TODO instead of a finished "
                 "design — write the COMPLETE visual, every element drawn out")
+    # Вариант обязан ЧИТАТЬ то, ради чего его зовут. Проверка появилась после
+    # живого ролика: banner/ai_f3e5 брал содержимое из `props.children`,
+    # которых оверлею никто не передаёт (ядро рисует его как
+    # <Generated {...p} />). Компилировался, был анимирован, корень прозрачный,
+    # кадр не пустой — все прочие проверки прошёл. А в ролике одиннадцать раз
+    # появлялся большой тёмный экран без единой буквы.
+    if not re.search(r"\b(?:p\.)?(?:content|items|img)\b", body):
+        return ("the component never reads its payload — none of `p.content`, "
+                "`p.items`, `p.img` appears in the body. There are no "
+                "`children`: the core renders you as `<Generated {...p} />`, "
+                "so anything you draw around `props.children` comes out EMPTY. "
+                "Read the text from `p.content` and put it in the frame.")
     # Незажатый interpolate ПРОДОЛЖАЕТ экстраполировать за краем диапазона:
     # scale, заданный как [0,30] -> [0.8,1], после 30-го кадра растёт без
     # предела. Оверлей раздувается на весь экран и не уходит. Компилируется,

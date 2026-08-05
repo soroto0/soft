@@ -1,380 +1,119 @@
 {
-  "abyss/cross_section_diagram": {
-    "kind": "cross_section_diagram",
-    "channel": "abyss",
-    "title": "Waterproof Diaphragm Box",
-    "quote": "To keep the surrounding soil from collapsing and the Rhine’s high water table from flooding the pit, engineers constructed a massive underground box using reinforced concrete diaphragm walls.",
-    "brief": "A cross-section shows the Rhine river level, the high water table, and the concrete walls acting as a barrier preventing water ingress into the dry pit."
+  "abyss/cross_section": {
+    "kind": "cross_section",
+    "title": "Разрез",
+    "brief": "три слоя с границами"
   },
-  "abyss/defect_cutaway": {
-    "kind": "defect_cutaway",
+  "abyss/geological_stratigraphy": {
+    "kind": "geological_stratigraphy",
     "channel": "abyss",
-    "title": "Hidden Structural Void",
-    "quote": "Instead of halting the pour to clear the blockage, the crew made a decision that would remain hidden beneath ninety feet of earth for five years: they poured the concrete anyway, leaving a pocket of l",
-    "brief": "A close-up cross-section reveals the concrete wall with a visible pocket of loose gravel and mud where the concrete failed to fill the gap."
+    "title": "Subterranean Soil Layers",
+    "quote": "The data returned by the lab showed a layer of soft, blue clay at a depth of sixteen meters—a layer that should have been flagged as a liquefaction risk.",
+    "brief": "A vertical soil profile diagram highlighting the specific 'soft blue clay' layer at depth compared to the stable surface soil.",
+    "vision": "ok"
   },
-  "abyss/pour_sequence_animation": {
-    "kind": "pour_sequence_animation",
+  "abyss/rotational_stability_analysis": {
+    "kind": "rotational_stability_analysis",
     "channel": "abyss",
-    "title": "Failed Concrete Pour",
-    "quote": "Concrete poured over the mud, capping it like liquid stone over a soft core of silt and loose gravel.",
-    "brief": "An animation shows the tremie pipe failing to displace mud, resulting in a concrete layer sitting on top of an unstable, unreinforced sediment base."
+    "title": "Shifting Center of Gravity",
+    "quote": "As the structure tilted, the center of gravity shifted further outside the footprint of the foundation.",
+    "brief": "An animation showing the building tilting and the center-of-gravity vector moving outside the foundation's base, demonstrating the risk of toppling.",
+    "vision": "ok"
   },
-  "abyss/erosion_void_diagram": {
-    "kind": "erosion_void_diagram",
+  "abyss/subsurface_geology_interaction": {
+    "kind": "subsurface_geology_interaction",
     "channel": "abyss",
-    "title": "Subsurface Erosion Void",
-    "quote": "That is eighty cubic meters of empty space now sitting directly beneath the foundations of the adjacent Cologne Historical Archive.",
-    "brief": "A 3D cross-section shows the building foundation with a growing, empty cavern underneath it as sand is pumped out of the nearby pit."
+    "title": "The Soil Stopper Effect",
+    "quote": "New surveys conducted hours after the initial tilt revealed that the elevator had encountered a subterranean layer of denser, more compacted soil that acted as a makeshift stopper.",
+    "brief": "A diagram showing the tilted foundation hitting a denser, resistant soil layer, acting as a physical pivot or barrier.",
+    "vision": "ok"
   },
-  "abyss/pressure_force_diagram": {
-    "kind": "pressure_force_diagram",
+  "abyss/molecular_clay_structure": {
+    "kind": "molecular_clay_structure",
     "channel": "abyss",
-    "title": "Hydrostatic Pressure Failure",
-    "quote": "Groundwater from the Rhine, elevated by heavy seasonal rainfall, exerted a hydrostatic pressure head exceeding 2.8 bar against the outer face of slurry wall panel eleven.",
-    "brief": "Arrows represent the immense water pressure pushing against the wall, highlighting the localized structural failure at the joint."
+    "title": "Clay Particle Microstructure",
+    "quote": "Under a microscope, these clay particles look like tiny, flat plates carrying negative electrical charges that trap water molecules between them.",
+    "brief": "An animated microscopic view showing flat plates with trapped water molecules and electrical charge indicators.",
+    "vision": "ok"
   },
-  "abyss/soil_liquefaction_flow": {
-    "kind": "soil_liquefaction_flow",
+  "abyss/pore_pressure_process": {
+    "kind": "pore_pressure_process",
     "channel": "abyss",
-    "title": "Ground Liquefaction Process",
-    "quote": "The excavation shaft acted like an unpaved drain, pulling the ground from under Severinstraße at a rate of several metric tons per second.",
-    "brief": "A cross-section shows soil particles losing friction and flowing like a liquid from under the building into the open construction pit."
+    "title": "Excess Pore Water Pressure",
+    "quote": "When the Canadian Pacific Railway packed the bins with one million bushels of wheat, they loaded the soil far too quickly for this trapped water to escape.",
+    "brief": "An animation showing water being squeezed out from between clay plates as weight is applied, representing the pressure increase.",
+    "vision": "ok"
   },
-  "home-vault/chemical_signaling_diagram": {
-    "kind": "chemical_signaling_diagram",
+  "abyss/shear_failure_diagram": {
+    "kind": "shear_failure_diagram",
+    "channel": "abyss",
+    "title": "Circular Shear Failure",
+    "quote": "This effectively lubricated the clay, causing a sudden, catastrophic shear failure along a circular slip plane.",
+    "brief": "A cross-section diagram showing the building sliding along a curved, subterranean 'slip plane' path.",
+    "vision": "ok"
+  },
+  "abyss/underpinning_process": {
+    "kind": "underpinning_process",
+    "channel": "abyss",
+    "title": "Proposed Pier Restoration",
+    "quote": "The salvage team... planned to sink seventy concrete piers down to solid limestone bedrock, fifty-four feet below the surface, and use them as fulcrums to jack the massive structure back to vertical.",
+    "brief": "A diagram showing the proposed concrete piers extending down to bedrock, illustrating how they would act as jacks to lift the tilted structure.",
+    "vision": "ok"
+  },
+  "abyss/aquifer_cross_section": {
+    "kind": "aquifer_cross_section",
+    "channel": "abyss",
+    "title": "Hidden Artesian Aquifer",
+    "quote": "Directly above the bedrock lay a highly pressurized, water-bearing gravel stratum—an artesian aquifer.",
+    "brief": "A cross-section showing the pressurized water layer trapped beneath the clay, illustrating why digging into it is dangerous.",
+    "vision": "ok"
+  },
+  "abyss/hydrostatic_failure_simulation": {
+    "kind": "hydrostatic_failure_simulation",
+    "channel": "abyss",
+    "title": "Artesian Water Breach",
+    "quote": "If a single excavation pierced the thin clay barrier separating the shafts from this gravel, water would rush upward under immense pressure.",
+    "brief": "An animation showing a drill hitting the aquifer and water rapidly forcing its way up into the excavation shaft.",
+    "vision": "ok"
+  },
+  "home-vault/thermal_bridge_flow": {
+    "kind": "thermal_bridge_flow",
     "channel": "home-vault",
-    "title": "The Rodent Chemical Highway",
-    "quote": "The grease contains pheromones that tell every other rodent in the colony exactly who passed by, when they passed, and whether they found food at the end of the hall.",
-    "brief": "A cross-section of a baseboard shows glowing pheromone particles being deposited by a mouse, with icons representing 'Time,' 'Identity,' and 'Food Source' floating in the grease trail."
+    "title": "The Thermal Bridge Effect",
+    "quote": "Glass is a terrible insulator. It’s essentially a frozen liquid that serves as a thermal bridge, pulling the warmth out of your living room and inviting the cold in.",
+    "brief": "Red arrows representing heat flow from the interior through a glass pane to the outside, while blue 'cold' arrows creep inward along the window's edge.",
+    "vision": "ok"
   },
-  "home-vault/thermal_attraction_map": {
-    "kind": "thermal_attraction_map",
+  "home-vault/window_spacer_conduction": {
+    "kind": "window_spacer_conduction",
     "channel": "home-vault",
-    "title": "Foam Acts as Heat Beacon",
-    "quote": "Instead of blocking the rodent, that warm foam patch acts like a radiant heat beacon in sub-zero weather, pulling mice from twenty feet away straight toward the exact point you tried to seal.",
-    "brief": "A thermal imaging view of a house wall showing the foam plug glowing bright red, with arrows indicating mice outside being drawn toward the heat source."
+    "title": "Spacer Bar Cold-Sink",
+    "quote": "This is because the aluminum spacer bars holding the two panes of glass together are incredibly conductive. They act as a cold-sink, chilling the edges of the glass faster than the center.",
+    "brief": "A cutaway of a double-pane window highlights the internal aluminum spacer bar glowing bright blue as cold temperatures conduct rapidly into the glass edges.",
+    "vision": "ok"
   },
-  "home-vault/thermal_draft_diagram": {
-    "kind": "thermal_draft_diagram",
+  "home-vault/material_moisture_seepage": {
+    "kind": "material_moisture_seepage",
     "channel": "home-vault",
-    "title": "The Kitchen Chimney Effect",
-    "quote": "The continuous heat generated by the refrigerator compressor creates a natural chimney effect, pulling draft air up from under your subfloor and sweeping it into the kitchen.",
-    "brief": "A cross-section of a kitchen showing warm air rising from the floor behind a refrigerator, with swirling arrows demonstrating the airflow that carries scent trails."
+    "title": "Sub-Surface Moisture Absorption",
+    "quote": "The rest is currently soaking into the porous wood of your sash or the gypsum of your drywall.",
+    "brief": "A microscopic cross-section of wood and drywall shows blue liquid molecules migrating into the jagged internal pores of the material fibers.",
+    "vision": "ok"
   },
-  "abyss/hoop_stress_diagram": {
-    "kind": "hoop_stress_diagram",
-    "channel": "abyss",
-    "title": "Hoop Stress Mechanics",
-    "quote": "For a cylindrical vessel under internal pressure, hoop stress equals internal pressure multiplied by inside diameter, divided by twice the wall thickness.",
-    "brief": "A cross-section of a cylinder showing internal pressure arrows pushing outward against the shell wall to visualize the stress formula."
+  "home-vault/surface_tension_comparison": {
+    "kind": "surface_tension_comparison",
+    "channel": "home-vault",
+    "title": "Surface Tension Modification",
+    "quote": "This film lowers the surface tension of the glass, causing water vapor to spread into a thin, transparent sheet rather than beading up...",
+    "brief": "A split-screen view compares a high-tension water bead on untreated glass against a flattened, horizontal sheet of water on a soap-treated surface.",
+    "vision": "ok"
   },
-  "abyss/energy_comparison_scale": {
-    "kind": "energy_comparison_scale",
-    "channel": "abyss",
-    "title": "Stored Energy Comparison",
-    "quote": "Compressed gas acts like a compressed mechanical spring, storing forty-four times more kinetic energy at the exact same pressure reading on the control gauge.",
-    "brief": "Two side-by-side containers—one with water and one with gas—using a spring-compression icon to show the difference in potential energy."
-  },
-  "abyss/ultrasonic_calibration_error": {
-    "kind": "ultrasonic_calibration_error",
-    "channel": "abyss",
-    "title": "Ultrasonic Probe Miscalibration",
-    "quote": "Logbook entry 412 showed that this exact bend had passed its annual ultrasonic thickness survey just nineteen days earlier.",
-    "brief": "A split-screen showing a probe calibrated for thick steel failing to detect a thin, cracked wall compared to a correctly calibrated probe."
-  },
-  "abyss/blast_panel_failure": {
-    "kind": "blast_panel_failure",
-    "channel": "abyss",
-    "title": "Bolted Blast Panels",
-    "quote": "The blueprints uncovered during the discovery phase show the blast-relief panels were incorrectly installed. They were bolted shut with high-tensile steel, turning a safety feature into a containment ",
-    "brief": "An animation showing a pressure wave hitting a panel designed to pop out, but instead staying fixed, causing the building walls to buckle."
-  },
-  "abyss/chemical_injection_flow": {
-    "kind": "chemical_injection_flow",
-    "channel": "abyss",
-    "title": "Neutralization Process Cross-Section",
-    "quote": "Vessel 83-D was the heart of this process—a twenty-foot-tall, eight-foot-wide stainless steel vessel designed to neutralize highly acidic solutions by injecting superheated ammonia gas directly into a",
-    "brief": "A cutaway of the vessel showing ammonia gas entering through a submerged nozzle and reacting with the acid bath."
-  },
-  "abyss/wall_thickness_differential": {
-    "kind": "wall_thickness_differential",
-    "channel": "abyss",
-    "title": "Corrosion Allowance Deficit",
-    "quote": "He calculated the load capacity based on a nominal wall thickness of twenty-five millimeters, neglecting to subtract the three-millimeter corrosion allowance required for vessels handling acidic feeds",
-    "brief": "A close-up cross-section of the steel wall showing a 25mm block shrinking to 22mm as an 'acid' layer eats into the interior surface."
-  },
-  "abyss/stress_concentration_heatmap": {
-    "kind": "stress_concentration_heatmap",
-    "channel": "abyss",
-    "title": "Nozzle Stress Concentration",
-    "quote": "Stress near an unreinforced opening does not distribute evenly across the metal; it multiplies.",
-    "brief": "A heat-map overlay on a nozzle weld showing stress lines bunching and turning bright red at the sharp interior corners."
-  },
-  "abyss/strength_vs_temp_graph": {
-    "kind": "strength_vs_temp_graph",
-    "channel": "abyss",
-    "title": "Yield Strength Degradation",
-    "quote": "Warm steel loses yield strength. By the time operators opened the nitrogen feed valve, the safety margin didn't just shrink; the structural capacity of the steel fell below the very pressure the test ",
-    "brief": "An animated line graph where a 'Material Strength' line plunges downward as a 'Temperature' thermometer rises to 82 degrees Celsius."
-  },
-  "abyss/jacket_pressure_bypass": {
-    "kind": "jacket_pressure_bypass",
-    "channel": "abyss",
-    "title": "Undetected Jacket Pressurization",
-    "quote": "He did not realize that the nitrogen was leaking into the outer jacket of the reactor, creating a localized pressure pocket that the main sensors were incapable of detecting.",
-    "brief": "A cross-section showing nitrogen gas bypassing the inner chamber and filling the narrow gap between the vessel wall and the outer jacket."
-  },
-  "abyss/ultrasonic_miscalibration": {
-    "kind": "ultrasonic_miscalibration",
-    "channel": "abyss",
-    "title": "Ultrasonic Echo Error",
-    "quote": "The instrument read four millimeters of sound backing metal when, in reality, localized chloride stress cracking had already eaten away seventy percent of the wall thickness.",
-    "brief": "An animation of sound waves bouncing off a phantom depth due to incorrect material calibration, ignoring the actual cracks in the path."
-  },
-  "abyss/longitudinal_failure_sequence": {
-    "kind": "longitudinal_failure_sequence",
-    "channel": "abyss",
-    "title": "Catastrophic Unzipping",
-    "quote": "The fracture propagated along the longitudinal weld line at the speed of sound.",
-    "brief": "A 3D model of the vessel showing a vertical seam splitting instantly from top to bottom, represented by a glowing red line."
-  },
-  "abyss/relief_panel_failure": {
-    "kind": "relief_panel_failure",
-    "channel": "abyss",
-    "title": "Disabled Blast Relief",
-    "quote": "They were bolted shut with high-tensile steel, turning a safety feature into a containment lid.",
-    "brief": "A blueprint view of a wall panel showing the intended 'blow-out' direction blocked by animated red X's over the high-tensile bolts."
-  },
-  "abyss/hoop_stress_formula_diagram": {
-    "kind": "hoop_stress_formula_diagram",
-    "channel": "abyss",
-    "title": "Hoop Stress Calculation",
-    "quote": "For a cylindrical vessel under internal pressure, hoop stress equals internal pressure multiplied by inside diameter, divided by twice the wall thickness.",
-    "brief": "Outward pressure vectors expand against a cross-section of a cylindrical shell, illustrating how diameter and wall thickness alter internal stress."
-  },
-  "abyss/energy_storage_comparison": {
-    "kind": "energy_storage_comparison",
-    "channel": "abyss",
-    "title": "Hydrostatic vs Pneumatic Energy",
-    "quote": "Compressed gas acts like a compressed mechanical spring, storing forty-four times more kinetic energy at the exact same pressure reading on the control gauge.",
-    "brief": "An animated comparative graph expands rapidly to show pneumatic compressed gas storing 44 times more kinetic energy than incompressible water at identical pressure."
-  },
-  "abyss/weld_line_catastrophic_split": {
-    "kind": "weld_line_catastrophic_split",
-    "channel": "abyss",
-    "title": "Supersonic Fracture Propagation",
-    "quote": "The fracture propagated along the longitudinal weld line at the speed of sound.",
-    "brief": "A bright fault line rips along the vessel's longitudinal weld seam at supersonic speed, showing stress concentration tearing the metal lattice apart."
-  },
-  "abyss/bolted_blast_panel_failure": {
-    "kind": "bolted_blast_panel_failure",
-    "channel": "abyss",
-    "title": "Restricted Blast Venting",
-    "quote": "While the initial assessment claimed the room was built to withstand a minor release, the blueprints uncovered during the discovery phase show the blast-relief panels were incorrectly installed.",
-    "brief": "Red bolt overlays lock the blast panel seams in place, causing internal pressure shockwaves to bounce back into the building instead of venting outward."
-  },
-  "abyss/bourdon_tube_mechanism": {
-    "kind": "bourdon_tube_mechanism",
-    "channel": "abyss",
-    "title": "Bourdon Tube Pressure Gauge",
-    "quote": "LeBlanc’s manual reading relied on a mechanical Bourdon tube gauge mounted directly to the vessel's side, where internal pressure physically bent a curved brass pipe inside the dial, rotating a physic",
-    "brief": "A 3D cross-section of the gauge shows high pressure entering the curved brass tube, causing it to straighten slightly and pull the mechanical linkage that rotates the indicator needle."
-  },
-  "abyss/diaphragm_transmitter_operation": {
-    "kind": "diaphragm_transmitter_operation",
-    "channel": "abyss",
-    "title": "Rosemount Transmitter Operation",
-    "quote": "The control room’s digital reading relied on a Rosemount transmitter, which converted pressure against a metal diaphragm into an electrical current between four and twenty milliamperes.",
-    "brief": "A schematic diagram shows fluid pressure flexing a metal diaphragm, altering internal electrical capacitance to scale a glowing current wave from 4 to 20 milliamperes."
-  },
-  "abyss/hydrostatic_vs_pneumatic_energy": {
-    "kind": "hydrostatic_vs_pneumatic_energy",
-    "channel": "abyss",
-    "title": "Stored Kinetic Energy Comparison",
-    "quote": "Compressed gas acts like a compressed mechanical spring, storing forty-four times more kinetic energy at the exact same pressure reading on the control gauge.",
-    "brief": "Side-by-side animated comparison shows a water-filled vessel barely reacting to a rupture, while a gas-filled vessel compresses like a giant coiled spring and violently releases massive kinetic energy."
-  },
-  "abyss/steam_jacket_heating": {
-    "kind": "steam_jacket_heating",
-    "channel": "abyss",
-    "title": "Thermal Degradation of Steel",
-    "quote": "Steam tracing lines in the outer jacket had been running for six hours to clear residual polymers, heating the shell metal to eighty-two degrees.",
-    "brief": "A cross-section of the vessel wall shows hot steam flowing through outer jacket lines, with a heat-map gradient spreading into the carbon steel, causing the metal's molecular structure to weaken."
-  },
-  "abyss/nitrogen_jacket_leak": {
-    "kind": "nitrogen_jacket_leak",
-    "channel": "abyss",
-    "title": "Undetected Pressure Pocket",
-    "quote": "He did not realize that the nitrogen was leaking into the outer jacket of the reactor, creating a localized pressure pocket that the main sensors were incapable of detecting.",
-    "brief": "A cutaway of the double-walled reactor shows nitrogen gas escaping the inner vessel and building up high pressure in the outer jacket space, bypassing the main internal sensors."
-  },
-  "abyss/crack_propagation": {
-    "kind": "crack_propagation",
-    "channel": "abyss",
-    "title": "Microscopic Crack Propagation",
-    "quote": "A hair-thin crack, measuring less than eleven millimeters long on the outer surface, was propagating inward through the four-millimeter wall of the 316-L stainless steel pipe.",
-    "brief": "A microscopic cross-section of the 4mm pipe wall shows a tiny surface crack branching and eating its way inward through the crystalline grain structure of the steel."
-  },
-  "abyss/insulated_pipe_leak": {
-    "kind": "insulated_pipe_leak",
-    "channel": "abyss",
-    "title": "Corrosion Under Insulation",
-    "quote": "As the pressure gauge in the unit control room climbed past thirty-eight bar, fluid was not leaking into the open air—it was collecting under the aluminum jacketing, building a hidden pocket of superh",
-    "brief": "A cross-section of the insulated pipe shows high-pressure fluid weeping through the crack and expanding to fill the gap between the steel pipe and the outer aluminum jacket."
-  },
-  "abyss/longitudinal_fracture_propagation": {
-    "kind": "longitudinal_fracture_propagation",
-    "channel": "abyss",
-    "title": "Longitudinal Weld Failure",
-    "quote": "The fracture propagated along the longitudinal weld line at the speed of sound.",
-    "brief": "A slow-motion 3D animation shows a tiny crack at the bottom of the vessel instantly unzipping vertically along the welded seam line as stress lines tear apart."
-  },
-  "abyss/blast_relief_panel_failure": {
-    "kind": "blast_relief_panel_failure",
-    "channel": "abyss",
-    "title": "Improperly Installed Relief Panels",
-    "quote": "While the initial assessment claimed the room was built to withstand a minor release, the blueprints uncovered during the discovery phase show the blast-relief panels were incorrectly installed.",
-    "brief": "A 3D blueprint animation zooms in on the blast-relief panels, showing high-tensile steel bolts locking them rigid instead of allowing them to swing open to vent the internal pressure wave."
-  },
-  "abyss/comparison_diagram": {
-    "kind": "comparison_diagram",
-    "channel": "abyss",
-    "title": "Modification Comparison",
-    "quote": "Instead of one long, unbroken rod, they suggested using two separate, shorter rods.",
-    "brief": "Side-by-side animation comparing the single rod design versus the two-rod modification."
-  },
-  "abyss/force_vector_flow": {
-    "kind": "force_vector_flow",
-    "channel": "abyss",
-    "title": "Modified Load Path",
-    "quote": "By splitting the rod, the fourth-floor beam became a load-bearing element in itself.",
-    "brief": "Arrows showing the second-floor weight now terminating at the fourth-floor beam, creating a new load point."
-  },
-  "abyss/stress_indicator": {
-    "kind": "stress_indicator",
-    "channel": "abyss",
-    "title": "Doubled Load Force",
-    "quote": "This effectively doubled the force acting on the connection point at the fourth floor.",
-    "brief": "A visual indicator showing the force at the fourth-floor connection turning red and doubling in magnitude."
-  },
-  "abyss/mechanical_failure_animation": {
-    "kind": "mechanical_failure_animation",
-    "channel": "abyss",
-    "title": "Nut Pull-Through Failure",
-    "quote": "As the weight of the second floor pulled downward, the nut began to pull through the bottom flange of the fourth-floor beam like a hot wire through butter.",
-    "brief": "Close-up animation of the nut deforming and tearing through the steel flange of the box beam."
-  },
-  "abyss/geography_layout": {
-    "kind": "geography_layout",
-    "channel": "abyss",
-    "title": "Atrium Layout",
-    "quote": "The lobby floor, designed to be a grand social space, was now a tomb for those caught in the collapse.",
-    "brief": "A top-down architectural floor plan showing the location of the walkways relative to the lobby floor."
-  },
-  "abyss/lab_test_simulation": {
-    "kind": "lab_test_simulation",
-    "channel": "abyss",
-    "title": "NBS Forensic Testing",
-    "quote": "Investigators placed an exact replica of the connection into a universal testing machine.",
-    "brief": "A diagram of the hydraulic press applying force to the replica connection, showing the buckling beam."
-  },
-  "abyss/safety_factor_gauge": {
-    "kind": "safety_factor_gauge",
-    "channel": "abyss",
-    "title": "Safety Factor Deficit",
-    "quote": "The safety factor for this connection, which should have been at least 1.67, was calculated to be less than 0.6.",
-    "brief": "A gauge needle dropping from the green 'safe' zone into the red 'failure' zone."
-  },
-  "abyss/strength_temperature_curve": {
-    "kind": "strength_temperature_curve",
-    "channel": "abyss",
-    "title": "Steel Yield Strength Decline",
-    "quote": "Warm steel loses yield strength.",
-    "brief": "A line graph showing the structural capacity of steel dropping sharply as the temperature axis rises from 20 to 82 degrees Celsius."
-  },
-  "abyss/internal_warping_view": {
-    "kind": "internal_warping_view",
-    "channel": "abyss",
-    "title": "Internal Structural Warping",
-    "quote": "The vessel was no longer being tested as a single unit; it was being torn apart from the inside out by uneven, shifting forces.",
-    "brief": "An exaggerated cross-section animation showing the vessel walls distorting and bulging unevenly due to localized nitrogen pockets."
-  },
-  "abyss/ultrasonic_error_diagram": {
-    "kind": "ultrasonic_error_diagram",
-    "channel": "abyss",
-    "title": "Ultrasonic Miscalculation",
-    "quote": "The instrument read four millimeters of sound backing metal when, in reality, localized chloride stress cracking had already eaten away seventy percent of the wall thickness.",
-    "brief": "A visual showing the ultrasonic probe pulse reflecting off the wrong layer due to incorrect calibration, masking the true thinness of the metal."
-  },
-  "abyss/vapor_expansion_sequence": {
-    "kind": "vapor_expansion_sequence",
-    "channel": "abyss",
-    "title": "Vapor Cloud Expansion",
-    "quote": "The sudden loss of containment did not relieve the system pressure—it converted fifty thousand gallons of volatile fluid into an expanding vapor cloud inside the enclosed process bay.",
-    "brief": "An animation showing the vessel wall splitting and a rapid volumetric expansion of gas filling the entire building enclosure."
-  },
-  "abyss/unzipping_failure_diagram": {
-    "kind": "unzipping_failure_diagram",
-    "channel": "abyss",
-    "title": "Catastrophic Unzipping",
-    "quote": "The fracture propagated along the longitudinal weld line at the speed of sound.",
-    "brief": "A 3D view of the vessel with a high-speed 'zipper' effect following the weld line, showing the metal peeling back instantly."
-  },
-  "abyss/shockwave_pathway_diagram": {
-    "kind": "shockwave_pathway_diagram",
-    "channel": "abyss",
-    "title": "Shockwave Through Foundation",
-    "quote": "The shockwave didn't just travel through the air; it traveled through the foundations, tearing the primary electrical conduits from their moorings.",
-    "brief": "A cutaway of the plant floor showing the shockwave pulse traveling through the concrete and snapping electrical conduits underground."
-  },
-  "abyss/thermal_gradient_map": {
-    "kind": "thermal_gradient_map",
-    "channel": "abyss",
-    "title": "Heating the Reactor Shell",
-    "quote": "Steam tracing lines in the outer jacket had been running for six hours to clear residual polymers, heating the shell metal to eighty-two degrees.",
-    "brief": "A cross-section showing heat radiating from the steam jacket into the steel wall, with a color gradient shifting from blue (cold) to red (hot)."
-  },
-  "abyss/leak_pathway_diagram": {
-    "kind": "leak_pathway_diagram",
-    "channel": "abyss",
-    "title": "Hidden Pressure Pocket",
-    "quote": "He did not realize that the nitrogen was leaking into the outer jacket of the reactor, creating a localized pressure pocket that the main sensors were incapable of detecting.",
-    "brief": "A cutaway view showing nitrogen gas escaping the inner vessel and accumulating in a trapped, bulging pocket behind the outer jacket."
-  },
-  "abyss/fluid_collection_diagram": {
-    "kind": "fluid_collection_diagram",
-    "channel": "abyss",
-    "title": "Hidden Condensate Trap",
-    "quote": "fluid was not leaking into the open air—it was collecting under the aluminum jacketing, building a hidden pocket of superheated condensate against the cold outer metal.",
-    "brief": "A cross-section showing liquid pooling between the insulation and the outer pipe wall, creating a hidden corrosive environment."
-  },
-  "abyss/ultrasonic_sensor_diagram": {
-    "kind": "ultrasonic_sensor_diagram",
-    "channel": "abyss",
-    "title": "Ultrasonic Inspection Failure",
-    "quote": "The instrument read four millimeters of sound backing metal when, in reality, localized chloride stress cracking had already eaten away seventy percent of the wall thickness.",
-    "brief": "A diagram showing ultrasonic waves bouncing off the wrong surface due to incorrect calibration, masking the true extent of the wall thinning."
-  },
-  "abyss/fracture_propagation_animation": {
-    "kind": "fracture_propagation_animation",
-    "channel": "abyss",
-    "title": "Supersonic Fracture",
-    "quote": "Steel does not simply stretch and leak when it fails under these conditions; it tears at twice the speed of sound.",
-    "brief": "A 3D pipe segment showing a jagged crack line racing along the weld seam faster than the pressure release can occur."
-  },
-  "abyss/vapor_cloud_expansion": {
-    "kind": "vapor_cloud_expansion",
-    "channel": "abyss",
-    "title": "Vapor Cloud Expansion",
-    "quote": "The sudden loss of containment did not relieve the system pressure—it converted fifty thousand gallons of volatile fluid into an expanding vapor cloud inside the enclosed process bay.",
-    "brief": "A cross-section of the plant building showing the vessel rupture and a rapid, expanding sphere of vapor filling the room."
-  },
-  "abyss/seismic_shock_diagram": {
-    "kind": "seismic_shock_diagram",
-    "channel": "abyss",
-    "title": "Structural Shockwave Path",
-    "quote": "The shockwave didn't just travel through the air; it traveled through the foundations, tearing the primary electrical conduits from their moorings.",
-    "brief": "A cutaway showing the shockwave traveling through the concrete slab foundation, causing the conduits underneath to snap and pull apart."
+  "home-vault/thermal_viscosity_trap": {
+    "kind": "thermal_viscosity_trap",
+    "channel": "home-vault",
+    "title": "Temperature-Induced Solution Failure",
+    "quote": "If the pane feels cold to the touch—specifically under fifty-five degrees Fahrenheit—the liquid solution thickens instantly upon contact, trapping microscopic water vapor under",
+    "brief": "As the solution hits a cold glass surface, the liquid molecules stop moving and cluster together, trapping blue vapor bubbles underneath the layer.",
+    "vision": "ok"
   }
 }

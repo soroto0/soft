@@ -340,6 +340,52 @@ Reply with ONLY a JSON object, no markdown:
  "why": "<one sentence>"}"""
 
 
+def _complain(what: str, why: str = "", hint: str = "",
+              level: str = "заметно") -> None:
+    """Сказать в сводку прогона, что с нарисованными сценами вышло хуже.
+
+    Журнал (log) здесь есть не везде и виден только в момент прогона, а
+    сводка деградаций печатается последними строками и отвечает на вопрос
+    «чего в ролике не хватает». Сцена — это целый план на экране, поэтому её
+    подмена обычным кадром или непроверенная схема в кадре зрителю видны.
+    """
+    try:
+        import quality
+        quality.degraded("Сцены", what, why=why, hint=hint, level=level)
+    except Exception:
+        pass
+
+
+def _read_json_map(path: Path) -> tuple[dict, str]:
+    """Разбор JSON-словаря на диске: (данные, причина отказа).
+
+    Отдельная функция на два файла (scenes.json и scenes_audit.json), потому
+    что беда у них одна и та же и очень дорогая. Раньше и «файла ещё нет», и
+    «файл испорчен» давали пустой словарь, а оба файла в конце работы
+    ПЕРЕЗАПИСЫВАЮТСЯ ЦЕЛИКОМ. То есть один битый байт:
+      * в scenes_audit.json — стирал все вердикты зрения, и сцены, про
+        которые модель уже сказала «нарисовано не то», молча возвращались в
+        ролики (библиотека общая, такая сцена кочует из ролика в ролик);
+      * в scenes.json — стирал замыслы («что сцена обязана изобразить»).
+        Замысел больше нигде не хранится, в .tsx его нет, и без него
+        досмотр судит сцену по одному только имени.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}, ""                  # ещё не заводили — норма
+    except OSError as e:
+        return {}, f"{path.name} не читается: {e}"
+    try:
+        data = json.loads(raw)
+    except ValueError as e:
+        return {}, f"{path.name} испорчен (не разбирается как JSON): {e}"
+    if not isinstance(data, dict):
+        return {}, (f"{path.name} испорчен: ожидался объект, "
+                    f"а лежит {type(data).__name__}")
+    return data, ""
+
+
 def _strip_fences(s: str) -> str:
     s = s.strip()
     s = re.sub(r"^```[a-zA-Z]*\s*", "", s)
@@ -676,7 +722,16 @@ def check_vision(kind: str, title: str, subject: str, dur: float = 6.0,
 
 
 def register(kind: str, component: str) -> None:
-    """Дописать сцену в диспетчер Scene.tsx."""
+    """Дописать сцену в диспетчер Scene.tsx.
+
+    Правка идёт по двум якорям в чужом файле, и если якорь однажды
+    переименуют, str.replace просто ничего не сделает — БЕЗ ЕДИНОГО СЛОВА.
+    Последствие не в том, что сцена не появится: kind, которого нет в
+    switch, попадает в ветку default, а она возвращает null. То есть рендер
+    отдаст ПУСТОЙ кадр, приёмка забракует его как «залит одним цветом», и
+    три попытки подряд модель будет переписывать совершенно нормальный код,
+    а в журнале будет стоять неверная причина. Поэтому проверяем результат.
+    """
     src = REGISTRY.read_text(encoding="utf-8")
     imp = f"import {{ {component} }} from './scenes/{kind}';"
     if imp not in src:
@@ -685,6 +740,12 @@ def register(kind: str, component: str) -> None:
     case = f"    case '{kind}':\n      return <{component} {{...props}} />;"
     if f"case '{kind}':" not in src:
         src = src.replace("    default:", f"{case}\n    default:")
+    if imp not in src or f"case '{kind}':" not in src:
+        raise RuntimeError(
+            f"{REGISTRY.name} не принял сцену «{kind}»: не нашлось места для "
+            "вставки (якоря «export type { SceneProps };» и «    default:»). "
+            "Без записи в диспетчер сцена рисовала бы пустой кадр, а приёмка "
+            "винила бы в этом код сцены")
     REGISTRY.write_text(src, encoding="utf-8")
 
 
@@ -704,12 +765,21 @@ def typecheck() -> tuple[bool, str]:
 
 # ---------- Журнал вердиктов зрения по библиотеке сцен ----------
 
-def audit_load() -> dict:
-    try:
-        data = json.loads(AUDIT.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+def audit_load(log=None) -> dict:
+    """Накопленные вердикты зрения. Пусто — досмотра ещё не было (норма)."""
+    data, err = _read_json_map(AUDIT)
+    if err:
+        # Молчать нельзя: без вердиктов quarantined() пуст, и сцена, про
+        # которую зрение уже сказало «на кадре не то», снова уходит в ролик.
+        _complain("вердикты зрения по сценам потеряны — забракованные схемы "
+                  "снова считаются годными",
+                  why=err,
+                  hint=f"почини {AUDIT.name} или удали его и прогони "
+                       "gen_scenes.py --audit заново",
+                  level="критично")
+        if log:
+            log(f"[Сцены] ВНИМАНИЕ: {err}", "warn")
+    return data
 
 
 def audit_mark(kind: str, verdict: str, why: str = "", subject: str = "",
@@ -723,7 +793,19 @@ def audit_mark(kind: str, verdict: str, why: str = "", subject: str = "",
     переписать.
     """
     from datetime import datetime
-    data = audit_load()
+    data, err = _read_json_map(AUDIT)
+    if err:
+        # НЕ ПИШЕМ поверх нечитаемого файла: запись сохранила бы один свежий
+        # вердикт вместо всех накопленных, то есть потеря была бы
+        # окончательной. Один несохранённый вердикт — потеря обратимая:
+        # сцену досмотрят следующим --audit. Прогон при этом не роняем, иначе
+        # битый файл вердиктов лишал бы ролик всех нарисованных сцен разом.
+        _complain(f"вердикт зрения по сцене «{kind}» не сохранён",
+                  why=err,
+                  hint=f"почини {AUDIT.name} — пока он битый, досмотр "
+                       "библиотеки не копится",
+                  level="критично")
+        return
     rec = data.get(kind) or {}
     rec.update({"verdict": verdict, "why": why[:400],
                 "checked": datetime.now().strftime("%Y-%m-%d %H:%M")})
@@ -785,6 +867,18 @@ def accept(kind: str, code: str, title: str, dur: float, log=print,
             log(f"[Сцены] {kind}: зрение недоступно ({why[:120]}) — принимаю "
                 "НЕПРОВЕРЕННОЙ, пометил в scenes_audit.json", "warn")
             audit_mark(kind, VISION_BLIND, why, subject, title)
+            # В ролик уходит схема, на которую никто не смотрел. Именно так и
+            # доехал до готового ролика розовый прямоугольник под подписью
+            # «steam jacket cross-section»: ступени 1-3 говорят лишь «код
+            # рабочий». Пропуск ступени — это пропуск ШАГА ПРИЁМКИ, и он
+            # обязан быть в итоге прогона, а не только строкой в журнале.
+            _complain("в ролике есть нарисованная схема, которую зрение не "
+                      "проверило",
+                      why=f"«{kind}»: {why[:140]}",
+                      hint="досмотри позже: python gen_scenes.py --audit "
+                           "--limit 5 — забракованные сцены будут переписаны "
+                           "при следующем ролике",
+                      level="заметно")
         else:
             audit_mark(kind, VISION_OK, why, subject, title)
 
@@ -795,6 +889,16 @@ def accept(kind: str, code: str, title: str, dur: float, log=print,
 
 
 # ---------- Рендер сцены в клип раскадровки ----------
+
+def _no_scene(kind: str, why: str) -> None:
+    """Сцена не доехала до кадра — план заменён обычной съёмкой."""
+    _complain("нарисованная схема заменена обычным кадром",
+              why=f"«{kind}» не отрисовалась: {why}",
+              hint="это самый заметный вид потери: вместо схемы в кадре "
+                   "стоковое видео не по теме — проверь, что Remotion "
+                   "собирается (npx remotion render в папке remotion)",
+              level="критично")
+
 
 def render_scene(kind: str, dest: Path, seconds: float, *, title: str = "",
                  items: list | None = None, lat=None, lon=None,
@@ -817,6 +921,7 @@ def render_scene(kind: str, dest: Path, seconds: float, *, title: str = "",
 
     npx = ov._npx()
     if not npx:
+        _no_scene(kind, "Node.js/npx не найден — рисовать сцены нечем")
         raise RuntimeError("нет npx — Node.js не установлен")
     dest.parent.mkdir(parents=True, exist_ok=True)
     cmd = [npx, "remotion", "render", "Scene", str(dest),
@@ -826,17 +931,32 @@ def render_scene(kind: str, dest: Path, seconds: float, *, title: str = "",
                        encoding="utf-8", errors="replace", timeout=900,
                        env=ov._node_env())
     if r.returncode != 0 or not dest.exists():
+        # Жалуемся ЗДЕСЬ, хотя ошибку ловит вызывающий (core: «сцена не
+        # отрисовалась — беру обычный кадр»). Там она превращается в строку
+        # журнала, и подмена уезжает в ролик молча: вместо схемы «нагрузка
+        # перешла на три опоры» зритель видит стоковую стройку. Место
+        # подмены знает только этот файл, поэтому и говорит он.
+        _no_scene(kind, (r.stderr or "")[-200:])
         raise RuntimeError(f"сцена {kind} не отрисовалась: {r.stderr[-300:]}")
     log(f"[Сцена] {kind} -> {dest.name} ({seconds:.1f} c)")
     return dest
 
 
 def available_scenes() -> list[str]:
-    """Какие сцены сейчас есть в диспетчере Scene.tsx."""
+    """Какие сцены сейчас есть в диспетчере Scene.tsx.
+
+    Пустой список раньше означал сразу две противоположные вещи: «сцен ещё
+    не писали» и «диспетчер не прочитался». Во втором случае grow() считает
+    НОВОЙ каждую сцену и переписывает существующие поверх, а audit() бодро
+    сообщает «сцен в диспетчере: 0; годных 0» — то есть библиотека выглядит
+    проверенной, ни разу её не открыв.
+    """
     try:
         src = REGISTRY.read_text(encoding="utf-8")
-    except OSError:
-        return []
+    except OSError as e:
+        raise RuntimeError(
+            f"не читается диспетчер сцен {REGISTRY}: {e}. Пока он недоступен, "
+            "нельзя ни понять, какие сцены уже есть, ни добавить новую") from e
     return re.findall(r"case '([a-z0-9_]+)':", src)
 
 
@@ -864,8 +984,21 @@ def propose(script_text: str, channel: dict, count: int = 8,
     except ValueError:
         log("[Сцены] Модель ответила не JSON — сцен в этом ролике не будет",
             "warn")
+        # Молчаливый возврат [] означал бы «в сценарии не нашлось моментов под
+        # схему» — а это совсем другое дело. Здесь моменты, возможно, есть, но
+        # ни один не будет нарисован, и весь ролик пойдёт одной съёмкой.
+        _complain("нарисованных схем в ролике не будет совсем",
+                  why=f"модель ответила не JSON: {str(out)[:120]}",
+                  hint="обычно лечится повтором; если повторяется — кончилась "
+                       "квота модели, попробуй позже",
+                  level="заметно")
         return []
     if not isinstance(ideas, list):
+        _complain("нарисованных схем в ролике не будет совсем",
+                  why=f"модель вернула {type(ideas).__name__} вместо списка "
+                      "замыслов",
+                  hint="обычно лечится повтором",
+                  level="заметно")
         return []
     good = []
     for it in ideas:
@@ -934,11 +1067,20 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
     ideas = propose(script_text, channel, count, api_key, log)
     if not ideas:
         return []
-    lib = {}
-    try:
-        lib = json.loads(LIBRARY.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        pass
+    lib, lib_err = _read_json_map(LIBRARY)
+    if lib_err:
+        # Читать не вышло — значит и ПИСАТЬ нельзя (см. конец функции):
+        # запись положила бы в scenes.json только сцены этого ролика, стерев
+        # замыслы всех остальных. Замысел живёт только здесь, и без него
+        # досмотр сцены вырождается в «судим по имени файла».
+        _complain("библиотека замыслов сцен не прочитана — новые сцены в неё "
+                  "не запишутся",
+                  why=lib_err,
+                  hint=f"почини {LIBRARY.name}; пока он битый, досмотр "
+                       "старых сцен идёт по одному их названию",
+                  level="критично")
+        log(f"[Сцены] ВНИМАНИЕ: {lib_err} — библиотеку не переписываю, "
+            "чтобы не потерять замыслы остальных сцен", "warn")
 
     accepted = []
     have = set(available_scenes())
@@ -946,6 +1088,7 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
     # Библиотека ОБЩАЯ и переиспользуемая, поэтому один розовый прямоугольник
     # без такой проверки кочует из ролика в ролик неограниченно долго.
     quar = quarantined()
+    seen_verdicts = audit_load()
     for idea in ideas:
         kind = idea["kind"]
         redo = ""
@@ -956,7 +1099,21 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
                 # Так библиотека канала копится между роликами, а не
                 # переделывается заново каждую ночь.
                 accepted.append(idea)
-                log(f"[Сцены] {kind}: уже в библиотеке — беру готовую")
+                was = (seen_verdicts.get(kind) or {}).get("verdict")
+                log(f"[Сцены] {kind}: уже в библиотеке — беру готовую"
+                    + ("" if was == VISION_OK else " (зрением НЕ проверена)"))
+                if was != VISION_OK:
+                    # Готовая сцена берётся В КАДР как есть, и никакая ступень
+                    # приёмки её больше не смотрит: приёмка работает только
+                    # над свежим кодом. Одной строкой со счётчиком — сколько
+                    # схем в этом ролике никто не видел глазами.
+                    _complain("готовые схемы взяты из библиотеки без досмотра "
+                              "зрением",
+                              why="вердикта в scenes_audit.json по ним нет — "
+                                  "проверялось только то, что код рабочий",
+                              hint="python gen_scenes.py --audit --limit 5 "
+                                   "(квота зрения мала, поэтому понемногу)",
+                              level="мелочь")
                 continue
             log(f"[Сцены] {kind}: помечена на перегенерацию ({redo[:120]}) — "
                 "пишу заново вместо того, чтобы брать готовую", "warn")
@@ -1023,9 +1180,22 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
                     "остаётся помеченной на перегенерацию, но сборка "
                     "Remotion не разваливается", "warn")
 
-    LIBRARY.write_text(json.dumps(lib, ensure_ascii=False, indent=2),
-                       encoding="utf-8")
+    if not lib_err:
+        LIBRARY.write_text(json.dumps(lib, ensure_ascii=False, indent=2),
+                           encoding="utf-8")
     log(f"[Сцены] Принято {len(accepted)} из {len(ideas)}")
+    if len(accepted) < len(ideas):
+        # Каждая непринятая сцена — это план, который зритель увидит обычной
+        # съёмкой вместо схемы: «нагрузка перешла на три опоры» под стоковым
+        # кадром стройки. Раньше про это говорила строка в середине журнала,
+        # а итог прогона был таким же, как у ролика со всеми сценами.
+        _complain(f"нарисованных схем в ролике меньше задуманного: "
+                  f"{len(accepted)} из {len(ideas)}",
+                  why="остальные не прошли приёмку — причины по каждой выше "
+                      "в журнале, строки «[Сцены] … отклонена»",
+                  hint="эти моменты остались обычными кадрами; чаще всего "
+                       "помогает перезапуск — модель пишет сцену заново",
+                  level="заметно")
     return accepted
 
 
@@ -1041,9 +1211,13 @@ def library_subjects() -> dict:
     попавшийся замысел — они по определению про одно и то же.
     """
     out = {}
-    try:
-        lib = json.loads(LIBRARY.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    lib, err = _read_json_map(LIBRARY)
+    if err:
+        # Замыслов нет — досмотр будет судить сцены по названию (_claim_of).
+        # Это заметно слабее, и говорим об этом прямо, иначе аудит выглядел бы
+        # полноценным.
+        print(f"[Аудит] ВНИМАНИЕ: {err} — сцены будут проверяться по одному "
+              "лишь названию, без замысла")
         return out
     for rec in lib.values():
         if not isinstance(rec, dict):
@@ -1074,6 +1248,25 @@ def _claim_of(kind: str, subjects: dict) -> tuple[str, str]:
     return rec.get("title", ""), subject
 
 
+def _is_quota(why: str) -> bool:
+    """Упёрлись ли в квоту модели — по тем же признакам, что и весь проект.
+
+    Проверка была `"429" in why`, и этого мало: у Gemini суточная квота
+    приходит и словами (RESOURCE_EXHAUSTED, «quota exceeded»), а до сюда
+    текст доезжает уже склеенным из двух провайдеров. Не опознав квоту,
+    досмотр не останавливался, а продолжал рендерить кадр за кадром и
+    складывать «не удалось посмотреть» — по виду работа, по сути перевод
+    времени. Одно место истины — core._is_rate_limit.
+    """
+    try:
+        import core
+        return core._is_rate_limit(str(why))
+    except Exception:
+        w = str(why).lower()
+        return ("429" in w or "quota" in w or "rate limit" in w
+                or "resource_exhausted" in w)
+
+
 def audit(only: list | None = None, limit: int = 0, recheck: bool = False,
           dur: float = 6.0, api_key: str = "", log=print) -> dict:
     """Прогнать УЖЕ ЛЕЖАЩИЕ в библиотеке сцены через ступень зрения.
@@ -1091,7 +1284,7 @@ def audit(only: list | None = None, limit: int = 0, recheck: bool = False,
     очередной ролик их закажет (см. quarantined() в grow).
     """
     subjects = library_subjects()
-    known = audit_load()
+    known = audit_load(log)
     kinds = [k for k in available_scenes() if k not in BUILTIN_SCENES]
     skipped = len(available_scenes()) - len(kinds)
     if only:
@@ -1117,7 +1310,7 @@ def audit(only: list | None = None, limit: int = 0, recheck: bool = False,
         mark = {VISION_OK: "годится", VISION_BAD: "НА ПЕРЕГЕНЕРАЦИЮ",
                 VISION_BLIND: "не удалось посмотреть"}[verdict]
         log(f"[Аудит] {i}/{len(todo)} {k}: {mark} — {why[:200]}")
-        if verdict == VISION_BLIND and "429" in why:
+        if verdict == VISION_BLIND and _is_quota(why):
             # Квота выбрана: остальные пойдут тем же путём, а каждый из них
             # стоит ещё и рендера кадра. Останавливаемся и говорим об этом
             # вслух, чтобы досмотр продолжили завтра, а не считали, что
@@ -1285,13 +1478,26 @@ def main(argv=None) -> int:
     try:
         from dotenv import load_dotenv
         load_dotenv(BASE / ".env")
-    except Exception:
-        pass
+    except Exception as e:
+        # Раньше здесь стояло молчаливое pass — ровно та дыра, от которой
+        # соседний комментарий и предостерегает: без ключей зрение отвечает
+        # «недоступно» на КАЖДУЮ сцену, и досмотр честно проставляет всей
+        # библиотеке «непроверено», выглядя при этом отработавшим.
+        print(f"[Аудит] ВНИМАНИЕ: .env не прочитан ({type(e).__name__}: {e}) — "
+              "если ключей нет и в окружении, зрение будет недоступно, и все "
+              "сцены получат вердикт «не удалось посмотреть»")
 
     if a.selftest:
         return selftest()
     if a.list:
-        data = audit_load()
+        data, err = _read_json_map(AUDIT)
+        if err:
+            # «Пусто» и «испорчено» отвечают на разные вопросы: в первом
+            # случае досмотра не было, во втором — он был, а его результат
+            # больше не читается, и сцены с вердиктом «на перегенерацию»
+            # прямо сейчас снова считаются годными.
+            print(f"вердикты не читаются: {err}")
+            return 2
         if not data:
             print(f"{AUDIT.name}: пока пусто — запустите --audit")
             return 0

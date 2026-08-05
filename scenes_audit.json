@@ -1,84 +1,115 @@
 {
-  "wall_thickness_differential": {
+  "cross_section": {
     "verdict": "ok",
-    "why": "a grey rectangle and a smaller red rectangle with a dashed border, with dimension lines indicating a total width of 25mm and a reduced width of 22mm",
-    "checked": "2026-08-05 03:31",
-    "subject": "A close-up cross-section of the steel wall showing a 25mm block shrinking to 22mm as an 'acid' layer eats into the interior surface.",
-    "title": "Corrosion Allowance Deficit"
-  },
-  "stress_concentration_heatmap": {
-    "verdict": "ok",
-    "why": "A schematic nozzle outline with horizontal red lines curving and bunching into sharp inner corners, overlaid with glowing heat-map spots.",
-    "checked": "2026-08-05 03:32",
-    "subject": "A heat-map overlay on a nozzle weld showing stress lines bunching and turning bright red at the sharp interior corners.",
-    "title": "Nozzle Stress Concentration"
-  },
-  "comparison_diagram": {
-    "verdict": "ok",
-    "why": "one continuous horizontal red bar on the left and two shorter horizontal yellow bars separated by a gap on the right",
-    "checked": "2026-08-05 03:33",
-    "subject": "Side-by-side animation comparing the single rod design versus the two-rod modification.",
-    "title": "Modification Comparison"
+    "why": "видно три слоя"
   },
   "thermal_gradient_map": {
     "verdict": "bad",
-    "why": "на кадре видно «a single flat reddish-orange rectangle outlined in white, a dashed yellow line underneath it, and text labels above and below»; не хватает: The drawing consists of a single flat-colored block without any color gradient shifting from blue to red, heat radiation arrows, or distinct layers representing the steam jacket and steel wall.",
-    "checked": "2026-08-05 03:34",
-    "subject": "A cross-section showing heat radiating from the steam jacket into the steel wall, with a color gradient shifting from blue (cold) to red (hot).",
-    "title": "Heating the Reactor Shell"
+    "why": "плоская заливка"
   },
-  "vessel_cross_section": {
+  "probe_scene": {
     "verdict": "ok",
-    "why": "a vessel outline containing a dark filled region for liquid level, small yellow dots inside, an inlet pipe at the bottom, and a 20 FT height dimension line",
-    "checked": "2026-08-05 03:36",
-    "subject": "the diagram is named \"vessel cross section\" — the drawing must show exactly that"
+    "why": "видно три слоя и границы",
+    "checked": "2026-08-05 10:23",
+    "subject": "три слоя с границами",
+    "title": "Разрез"
   },
-  "thermal_gradient_cross_section": {
-    "verdict": "bad",
-    "why": "на кадре видно «a horizontal rectangle divided into a flat reddish section containing a yellow dot and a flat dark gray section, with a text label 'Yield Strength: 50 MPa' and an L-shaped line beneath.»; не хватает: The drawing shows flat solid colors and a yield strength label, missing any thermal color gradient, temperature values, or cross-sectional layer details.",
-    "checked": "2026-08-05 03:37",
-    "subject": "the diagram is named \"thermal gradient cross section\" — the drawing must show exactly that"
-  },
-  "structural_load_distribution": {
+  "geological_stratigraphy": {
     "verdict": "ok",
-    "why": "A rectangular block representing a raft sitting on a larger rectangular block representing soil, with five identical yellow arrows pointing downward from the raft into the soil.",
-    "checked": "2026-08-05 04:09",
-    "subject": "Show a cross-section of the raft foundation with arrows radiating downward to represent the pressure being spread evenly across the soil.",
-    "title": "Foundation Load Distribution"
+    "why": "a vertical rectangular column divided into horizontal segments of different colours, with a depth scale on the left (0m to 32m) and labels on the right indicating soil types.",
+    "checked": "2026-08-05 10:59",
+    "subject": "A vertical soil profile diagram highlighting the specific 'soft blue clay' layer at depth compared to the stable surface soil.",
+    "title": "Subterranean Soil Layers"
   },
-  "geological_cross_section": {
+  "rotational_stability_analysis": {
     "verdict": "ok",
-    "why": "A vertical stack of four distinct rectangular colored layers, with horizontal dashed lines separating the middle layers and leader lines pointing to each section.",
-    "checked": "2026-08-05 04:12",
-    "subject": "A cross-section diagram showing labeled layers of soil, highlighting the specific dense clay layer beneath the foundation.",
-    "title": "Soil Composition"
+    "why": "A tilted rectangle divided into three horizontal bands, a horizontal axis with numerical markings (-8m to +8m), a dashed vertical line extending from the rectangle to a red dot below the axis.",
+    "checked": "2026-08-05 11:01",
+    "subject": "An animation showing the building tilting and the center-of-gravity vector moving outside the foundation's base, demonstrating the risk of toppling.",
+    "title": "Shifting Center of Gravity"
   },
-  "force_vector_diagram": {
+  "subsurface_geology_interaction": {
     "verdict": "ok",
-    "why": "A white rectangle with three horizontal arrows pointing outward from each side and three vertical arrows pointing downward from the bottom edge.",
-    "checked": "2026-08-05 04:14",
-    "subject": "Display the silo with arrows pushing outward on the walls (lateral) and downward into the ground (vertical) to visualize the dual stress.",
-    "title": "Lateral vs Vertical Forces"
+    "why": "Three horizontal soil layers separated by dashed lines with a tilted yellow rectangle extending into the bedrock layer.",
+    "checked": "2026-08-05 11:03",
+    "subject": "A diagram showing the tilted foundation hitting a denser, resistant soil layer, acting as a physical pivot or barrier.",
+    "title": "The Soil Stopper Effect"
   },
-  "borehole_data_map": {
+  "molecular_clay_structure": {
     "verdict": "ok",
-    "why": "A vertical column divided into four colored layers (brown, beige, blue, and dark grey) with a depth scale on the left ranging from 0m to 31.25m, where the blue layer is highlighted with a red dashed outline and a pointer label reading '16m: Soft Blue'.",
-    "checked": "2026-08-05 04:16",
-    "subject": "Show a vertical borehole diagram highlighting the 'soft blue clay' layer at 16 meters that the engineers ignored.",
-    "title": "Hidden Soil Risk"
+    "why": "Four horizontal light-blue bars stacked vertically, with small dark circles labeled 'H2O' positioned between them, and small red circles with minus signs at the ends of each bar.",
+    "checked": "2026-08-05 11:07",
+    "subject": "An animated microscopic view showing flat plates with trapped water molecules and electrical charge indicators.",
+    "title": "Clay Particle Microstructure"
   },
-  "differential_settlement_view": {
+  "pore_pressure_process": {
     "verdict": "ok",
-    "why": "A rectangular area divided by a diagonal dashed line, with a vertical axis on the left labeled with depth measurements (0cm, 40cm, 80cm, 120cm) and labels for 'SOUTH' and 'NORTH' sides.",
-    "checked": "2026-08-05 04:21",
-    "subject": "A simple diagram comparing the depth of the north and south sides of the foundation to show the initiation of the tilt.",
-    "title": "Uneven Sinking"
+    "why": "a red rectangle above four horizontal grey bars, with several small blue dots scattered between the bars and to the right, and a yellow line indicating an exit path to the right.",
+    "checked": "2026-08-05 11:08",
+    "subject": "An animation showing water being squeezed out from between clay plates as weight is applied, representing the pressure increase.",
+    "title": "Excess Pore Water Pressure"
   },
-  "shear_plane_lubrication": {
+  "shear_failure_diagram": {
     "verdict": "ok",
-    "why": "Two offset grey rectangular blocks labeled 'RDEN' and 'BASE' with a thin yellow horizontal layer labeled 'VEIN' between them, containing a red arrow labeled 'SHEAR FORCE', and a friction scale at the bottom reading 'FRICTION: 0.43'.",
-    "checked": "2026-08-05 04:23",
-    "subject": "A zoom-in on the shear plane showing the thin clay vein acting as a 'slip' layer, reducing friction between the raft and the earth.",
-    "title": "Subterranean Lubrication"
+    "why": "A rectangular cross-section divided into three horizontal layers labeled Topsoil, Clay Layer, and Bedrock, with a tilted red rectangle labeled 'BUILDING' resting on the surface, and a dashed yellow curved line extending from the surface down through the layers to a red arrow labeled 'Slip Plane'.",
+    "checked": "2026-08-05 11:10",
+    "subject": "A cross-section diagram showing the building sliding along a curved, subterranean 'slip plane' path.",
+    "title": "Circular Shear Failure"
+  },
+  "underpinning_process": {
+    "verdict": "ok",
+    "why": "A horizontal structure sitting above a soil layer and a bedrock layer, with four vertical yellow columns extending from the bedrock through the soil to the structure, topped by red triangles and a dimension line labeled 54 ft.",
+    "checked": "2026-08-05 11:13",
+    "subject": "A diagram showing the proposed concrete piers extending down to bedrock, illustrating how they would act as jacks to lift the tilted structure.",
+    "title": "Proposed Pier Restoration"
+  },
+  "aquifer_cross_section": {
+    "verdict": "ok",
+    "why": "A stack of four horizontal rectangular layers labeled Topsoil, Clay Cap, Gravel Aquifer, and Bedrock, with a vertical dashed yellow line and a red dot indicating a point of penetration through the clay into the aquifer.",
+    "checked": "2026-08-05 11:15",
+    "subject": "A cross-section showing the pressurized water layer trapped beneath the clay, illustrating why digging into it is dangerous.",
+    "title": "Hidden Artesian Aquifer"
+  },
+  "hydrostatic_failure_simulation": {
+    "verdict": "ok",
+    "why": "A vertical cross-section of three horizontal layers (topsoil, clay barrier, aquifer) with a central shaft containing upward-pointing arrows and a red dot at the base of the shaft.",
+    "checked": "2026-08-05 11:18",
+    "subject": "An animation showing a drill hitting the aquifer and water rapidly forcing its way up into the excavation shaft.",
+    "title": "Artesian Water Breach"
+  },
+  "thermal_bridge_flow": {
+    "verdict": "ok",
+    "why": "A vertical white bar between two dark rectangles, with red arrows pointing right and blue arrows pointing left at the top and bottom edges.",
+    "checked": "2026-08-05 13:41",
+    "subject": "Red arrows representing heat flow from the interior through a glass pane to the outside, while blue 'cold' arrows creep inward along the window's edge.",
+    "title": "The Thermal Bridge Effect"
+  },
+  "window_spacer_conduction": {
+    "verdict": "ok",
+    "why": "Two vertical rectangles connected by a horizontal bar, a vertical axis with temperature markings from -10°C to 21°C, downward arrows, and a color gradient from light gray to blue in the vertical shapes.",
+    "checked": "2026-08-05 13:43",
+    "subject": "A cutaway of a double-pane window highlights the internal aluminum spacer bar glowing bright blue as cold temperatures conduct rapidly into the glass edges.",
+    "title": "Spacer Bar Cold-Sink"
+  },
+  "material_moisture_seepage": {
+    "verdict": "ok",
+    "why": "Two groups of irregular horizontal shapes with a blue-to-grey color gradient, a horizontal axis with millimeter markings, small blue dots, and a legend identifying moisture and substrate.",
+    "checked": "2026-08-05 13:46",
+    "subject": "A microscopic cross-section of wood and drywall shows blue liquid molecules migrating into the jagged internal pores of the material fibers.",
+    "title": "Sub-Surface Moisture Absorption"
+  },
+  "surface_tension_comparison": {
+    "verdict": "ok",
+    "why": "a split screen with a semi-circular shape on a horizontal bar on the left, a thin flat rectangle on a horizontal bar on the right, directional arrows, and numerical angle values (105° and 12°).",
+    "checked": "2026-08-05 13:52",
+    "subject": "A split-screen view compares a high-tension water bead on untreated glass against a flattened, horizontal sheet of water on a soap-treated surface.",
+    "title": "Surface Tension Modification"
+  },
+  "thermal_viscosity_trap": {
+    "verdict": "ok",
+    "why": "a grey vertical bar, a brown rectangle, small blue circles at the interface, rows of larger white circles, and a temperature scale with a pointer at 47.3°F",
+    "checked": "2026-08-05 14:08",
+    "subject": "As the solution hits a cold glass surface, the liquid molecules stop moving and cluster together, trapping blue vapor bubbles underneath the layer.",
+    "title": "Temperature-Induced Solution Failure"
   }
 }
