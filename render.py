@@ -62,6 +62,22 @@ GROUP_SIZE = 8          # сегментов в одной xfade-команде
 # выходе 4.33 с вместо 8.23; offset 3.900 (запас 2 кадра) — верные 8.17.
 # 0.1 с это три кадра при 30 fps, с запасом на округление таймбазы.
 XFADE_GUARD = 0.1
+
+# ---- Дотяжка коротких клипов (см. _fill_gap) ----
+# Длительность плана задаёт озвучка, а ИИ-клип выдаётся фиксированной длины
+# (8 с у Veo, 5 с у части моделей). Разницу раньше закрывал
+# tpad=stop_mode=clone — то есть застывший последний кадр. Замерено на
+# готовых роликах 2026-08-05: abyss — 56 планов из 86 с паузой, суммарно
+# 105.8 с заморозки; home-vault — 106 из 138, 192.6 с. Это те самые «паузы
+# на 2-3 секунды, когда ИИ-видео заканчивается».
+FILL_SLOW_SOFT = 1.15   # замедление, которого глаз не ловит (24 fps -> ~21)
+FILL_SLOW_MAX = 1.6     # дальше дубли кадров уже читаются как рывки
+# Сколько секунд материала разрешено развернуть назад. Ограничение не
+# художественное, а по памяти: фильтр reverse держит ВЕСЬ разворачиваемый
+# кусок в RAM распакованными кадрами (~3 МБ на кадр 1080p), 3 с при 30 fps
+# это ~280 МБ. Что не влезло в бумеранг — добирается замедлением.
+FILL_TAIL_MAX = 3.0
+
 CRF_SEGMENT = "18"      # качество/пресеты подменяются в черновом режиме
 CRF_FINAL = "19"
 PRESET_SEG = "fast"
@@ -953,12 +969,93 @@ def _weighted(pool, emphasis: dict | None, base_weights=None):
                    for n, b in zip(names, base)]
 
 
+def _fill_gap(have: float, need: float,
+              fps: int) -> tuple[str, str, str, float]:
+    """Чем закрыть нехватку длины клипа, ЧТОБЫ КАРТИНКА НЕ ВСТАВАЛА.
+
+    have — сколько секунд настоящего материала осталось от точки входа,
+    need — сколько требует план. Возвращает четыре вещи:
+      loop  — фильтр удлинения материала (бумеранг), «» если не нужен;
+      slow  — фильтр замедления, «» если не нужен;
+      note  — человеческая пометка для лога, «» если ничего не делали;
+      ext   — сколько секунд материала получится ПОСЛЕ loop, до slow.
+    Loop и slow отданы порознь не для красоты: zoompan выставляет кадрам
+    СВОИ временные метки по своему параметру fps= и тем самым стирает
+    предшествующий setpts. Замерено: план 11.08 с давал сегмент 9.60 с —
+    ровно длину бумеранга без замедления. Поэтому для зума замедление
+    вешается ПОСЛЕ zoompan, а для проездов (они читают t) — до.
+
+    Почему не заморозка последнего кадра. Длину плана диктует озвучка, её
+    подвинуть нельзя, а клип короче — и tpad=clone честно добивал разницу
+    копиями последнего кадра. Для зрителя это выглядит как зависший плеер:
+    голос идёт, картинка мёртвая. Ровно на это и пожаловался владелец.
+
+    Почему именно замедление + бумеранг, а не что-то одно.
+      * Одно замедление. Чтобы закрыть 8 с -> 11.4 с нужен коэффициент 1.43;
+        при 24 fps исходника это ~17 уникальных кадров в секунду, каждый
+        третий кадр — дубль, движение начинает дёргаться. Мягкие 1.15 глаз
+        не ловит, поэтому маленькие нехватки закрываем только им.
+      * Один бумеранг. Он бесшовен (стык идёт по тому же кадру, с которого
+        начинается разворот) и даёт настоящее движение, но разворачивать
+        приходится ровно столько, сколько не хватает, а reverse держит это
+        в памяти целиком. На 5-секундном клипе под 10-секундный план это
+        4 с распакованного 1080p.
+    Поэтому сначала берём бесплатные 15% замедления, остаток закрываем
+    разворотом, и только если и этого мало (план длиннее двух клипов) —
+    добираем замедлением до предела.
+
+    Порядок слоёв важен: развернутый хвост клеится к исходному материалу ДО
+    замедления, иначе коэффициент пришлось бы пересчитывать под уже
+    растянутый поток.
+    """
+    frame = 1.0 / max(fps, 1)
+    if have <= frame * 3 or need <= have + 0.04:
+        return "", "", "", have
+    # Целимся на два кадра ДЛИННЕЕ плана: длина считается в секундах, а
+    # выдаётся кадрами, и округление вниз оставляло сегмент короче плана на
+    # кадр-другой (замерено на зуме: 11.03 с при плане 11.08). Лишнее срежет
+    # -t, а вот недостача уводит стык xfade за край входа.
+    need += frame * 2
+
+    # 1) незаметное замедление — если хватает его одного, на этом и стоим
+    slow = min(need / have, FILL_SLOW_SOFT)
+    tail = 0.0
+    if have * slow < need - 0.02:
+        # 2) сколько ИСХОДНОГО материала надо развернуть назад
+        tail = min(need / slow - have, have - frame, FILL_TAIL_MAX)
+        if (have + tail) * slow < need - 0.02:
+            # 3) плана хватило бы на два клипа — добираем замедлением
+            slow = min(need / (have + tail), FILL_SLOW_MAX)
+
+    loop, note = "", []
+    if tail > frame:
+        # Бумеранг ровно на нужный хвост, а не на весь клип: и памяти в
+        # разы меньше, и назад отыгрывается только та часть, которой не
+        # хватило. trim=start_frame=1 убирает кадр-близнец на стыке —
+        # reverse отдаёт первым тот же кадр, которым закончился прямой ход.
+        loop = (
+            f"setpts=PTS-STARTPTS,"       # своя база времени для trim ниже
+            f"split[fw][bk];"
+            f"[bk]trim=start={max(have - tail, 0.0):.3f},setpts=PTS-STARTPTS,"
+            f"reverse,trim=start_frame=1,setpts=PTS-STARTPTS[bwd];"
+            f"[fw][bwd]concat=n=2:v=1:a=0,")
+        note.append(f"бумеранг {tail:.1f} c")
+    slow_f = ""
+    if slow > 1.002:
+        slow_f = f"setpts={slow:.5f}*PTS,"
+        note.append(f"замедление x{slow:.2f}")
+    if not note:
+        return "", "", "", have
+    return loop, slow_f, ", ".join(note), have + tail
+
+
 def render_segment(src: Path, kind: str, dur: float, dest: Path,
                    w: int, h: int, fps: int, rng: random.Random,
                    motion: str | None = None, extra_vf: str = "",
-                   palette: dict | None = None):
+                   palette: dict | None = None) -> str:
     """Один сегмент: картинка с движением или обрезанное видео. Без звука.
-    extra_vf — доп. фильтр (например, цветокор по главам)."""
+    extra_vf — доп. фильтр (например, цветокор по главам).
+    Возвращает пометку о дотяжке короткого клипа для лога («» — не тянули)."""
     dur = max(dur, 0.2)
     tail_vf = ((extra_vf + "," if extra_vf else "")
                + COLOR_FIX + ",format=yuv420p,setsar=1")
@@ -999,7 +1096,7 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
                 _console(f"[{dest.stem}] parallax не получился "
                          f"({str(e)[:80]}) — заглушка")
                 _placeholder(dest, dur, w, h, fps)
-            return
+            return ""
         vf = (f"scale={int(w * 1.6)}:-2:flags=lanczos,"
               f"zoompan={_motion_expr(motion, frames, fps)}"
               f":d={frames}:s={w}x{h}:fps={fps},"
@@ -1016,6 +1113,7 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
             _console(f"[{dest.stem}] картинка не закодировалась "
                      f"({str(e)[:80]}) — заглушка")
             _placeholder(dest, dur, w, h, fps)
+        return ""      # картинка и так рисуется ровно на нужную длину
     else:
         src_dur = _video_dur(src) or audio_duration(src) or dur
         offset = rng.uniform(0, src_dur - dur) if src_dur > dur + 0.5 else 0
@@ -1024,39 +1122,71 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
                                (palette or {}).get("video_motions"))
             motion = rng.choices(_n, weights=_w)[0]
         D = max(dur, 0.5)
-        if motion in ("v_pan_r", "v_pan_l", "v_drift", "v_shake"):
+        pans = {
+            "v_pan_r": f"x='(iw-{w})*min(t/{D:.3f},1)':y='(ih-{h})/2'",
+            "v_pan_l": f"x='(iw-{w})*(1-min(t/{D:.3f},1))':y='(ih-{h})/2'",
+            "v_drift": (f"x='(iw-{w})/2+{max(int(w * 0.012), 6)}*sin(t*0.6)':"
+                        f"y='(ih-{h})/2+{max(int(h * 0.012), 5)}*sin(t*0.42)'"),
+            "v_shake": (f"x='(iw-{w})/2+5*sin(t*11)+3*sin(t*6.3)':"
+                        f"y='(ih-{h})/2+4*sin(t*13.7)'"),
+        }
+        if motion in pans:
             # запас 8% и окно постоянного размера w x h с анимированным x/y
             w2 = int(w * 1.08) // 2 * 2
             h2 = int(h * 1.08) // 2 * 2
-            pans = {
-                "v_pan_r": f"x='(iw-{w})*min(t/{D:.3f},1)':y='(ih-{h})/2'",
-                "v_pan_l": f"x='(iw-{w})*(1-min(t/{D:.3f},1))':y='(ih-{h})/2'",
-                "v_drift": (f"x='(iw-{w})/2+{max(int(w * 0.012), 6)}*sin(t*0.6)':"
-                            f"y='(ih-{h})/2+{max(int(h * 0.012), 5)}*sin(t*0.42)'"),
-                "v_shake": (f"x='(iw-{w})/2+5*sin(t*11)+3*sin(t*6.3)':"
-                            f"y='(ih-{h})/2+4*sin(t*13.7)'"),
-            }
-            vf = (f"scale={w2}:{h2}:force_original_aspect_ratio=increase,"
-                  f"crop={w2}:{h2},fps={fps},"
-                  f"crop={w}:{h}:{pans[motion]},")
-        elif motion in ("v_zoom_in", "v_zoom_out"):
-            frames = max(int(round(D * fps)), 2)
-            zexpr = _motion_expr(
-                "zoom_in" if motion == "v_zoom_in" else "zoom_out", frames, fps)
-            vf = (f"scale={w}:{h}:force_original_aspect_ratio=increase,"
-                  f"crop={w}:{h},fps={fps},"
-                  f"zoompan={zexpr}:d=1:s={w}x{h}:fps={fps},")
-        else:  # static
-            vf = (f"scale={w}:{h}:force_original_aspect_ratio=increase,"
-                  f"crop={w}:{h},fps={fps},")
-        if src_dur - offset < dur + 0.05:
-            # исходник короче сцены — замораживаем последний кадр, иначе
-            # сегмент выйдет коротким и xfade-склейка оборвёт видеодорожку
-            vf += "tpad=stop_mode=clone:stop=-1,"
+            pre = (f"scale={w2}:{h2}:force_original_aspect_ratio=increase,"
+                   f"crop={w2}:{h2},fps={fps},")
+        else:
+            pre = (f"scale={w}:{h}:force_original_aspect_ratio=increase,"
+                   f"crop={w}:{h},fps={fps},")
+        zoom = motion in ("v_zoom_in", "v_zoom_out")
+        note = ""
 
-        def enc(off: float, pad: bool = False):
-            v = vf
-            if pad and "tpad" not in v:
+        def enc(off: float, pad: bool = False, plain: bool = False):
+            # Дотяжка стоит МЕЖДУ приведением кадра и движением камеры.
+            # До неё — потому что бумерангу и замедлению нужен поток уже
+            # постоянного размера и частоты (исходники приходят и 1088x832,
+            # и 1920x1080). До движения — потому что проезд камеры считается
+            # по t/номеру кадра и должен идти ровно на всю длину плана, а не
+            # заканчиваться там, где кончился исходный материал.
+            nonlocal note
+            loop, slow, note, ext = ("", "", "", 0.0) if plain else _fill_gap(
+                max(src_dur - off, 0.0), dur, fps)
+            # Замедление растягивает МЕТКИ ВРЕМЕНИ, кадров от этого не
+            # прибавляется — поток становится переменной частоты. Замерено
+            # без этой строки: сегмент под план 11.400 c вышел 11.367 c и
+            # 297 кадров вместо 342, то есть 26.1 кадра в секунду посреди
+            # тридцатикадрового ролика. И то и другое опасно: недостача в
+            # кадр уводит стык xfade за край входа (см. XFADE_GUARD), а
+            # разнобой частоты внутри группы xfade считает по первому входу.
+            # fps= достраивает недостающие кадры дублями и возвращает поток
+            # к постоянной частоте.
+            if slow:
+                slow += f"fps={fps},"
+            if zoom:
+                # У зума арка считается в КАДРАХ, и кадров после бумеранга
+                # ровно ext*fps — по плановой длительности их было бы больше,
+                # и зум не доезжал бы до конца. А замедление идёт после
+                # zoompan: он выставляет свои метки времени и стёр бы его.
+                frames = max(int(round((ext or max(dur, 0.5)) * fps)), 2)
+                zexpr = _motion_expr(
+                    "zoom_in" if motion == "v_zoom_in" else "zoom_out",
+                    frames, fps)
+                post = f"zoompan={zexpr}:d=1:s={w}x{h}:fps={fps}," + slow
+                mid = loop
+            elif motion in pans:
+                post = f"crop={w}:{h}:{pans[motion]},"
+                mid = loop + slow
+            else:                                   # static
+                post = ""
+                mid = loop + slow
+            v = pre + mid + post
+            if note or pad or src_dur - off < dur + 0.05:
+                # Страховка, а не основной механизм: длину исходника мы знаем
+                # со слов ffprobe, и если он приврал на пару кадров, сегмент
+                # выйдет короче плана и xfade оборвёт видеодорожку. Когда
+                # длины хватает, -t режет поток раньше, чем tpad вообще
+                # что-нибудь склонирует, — то есть заморозки здесь не будет.
                 v += "tpad=stop_mode=clone:stop=-1,"
             _run_enc(lambda vv: ["ffmpeg", "-y", "-ss", f"{off:.2f}",
                                  "-i", str(src), "-t", f"{dur:.3f}",
@@ -1072,11 +1202,26 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
                 raise
             _console(f"[{dest.stem}] не закодировался ({str(e)[:100]})")
             ok = False
+        if not ok and note:
+            # Дотяжка — надстройка над рабочим механизмом, и она не имеет
+            # права ронять сегмент: reverse может не влезть в память, граф
+            # может не собраться на редкой сборке ffmpeg. Тогда откатываемся
+            # на старое поведение (заморозка) — это хуже на вид, но это
+            # готовый сегмент, а не дыра в ролике.
+            _console(f"[{dest.stem}] дотяжка ({note}) не собралась — "
+                     "откат на заморозку последнего кадра")
+            try:
+                enc(offset, pad=True, plain=True)
+                ok = _has_video(dest)
+            except RuntimeError:
+                if CANCEL.is_set():
+                    raise
+                ok = False
         if not ok:
             _console(f"[{dest.stem}] пустой сегмент (offset {offset:.1f} c "
                      f"за концом видеопотока {src.name}?) — пробую с начала")
             try:
-                enc(0, pad=True)
+                enc(0, pad=True, plain=True)
                 ok = _has_video(dest)
             except RuntimeError as e:
                 if CANCEL.is_set():
@@ -1086,6 +1231,7 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
             _console(f"[{dest.stem}] исходник не читается — ставлю заглушку, "
                      "рендер продолжается")
             _placeholder(dest, dur, w, h, fps)
+        return note
 
 
 # ---------- 3. Переходы ----------
@@ -1433,6 +1579,49 @@ LOOKS = {
 }
 
 
+def _screen_luma(opacity: float) -> str:
+    """Свечение поверх кадра: screen ТОЛЬКО по яркости, цвет кадра не трогаем.
+
+    Это и была причина розово-сиреневого налива во всех роликах 04–05.08.
+    `blend=all_mode=screen` применяет screen ко ВСЕМ плоскостям, включая U и V,
+    а в YUV нейтральный серый — это 128, а не 0. Формула screen ничего не знает
+    про смещённую середину: screen(128,128) = 255-(255-128)²/255 = 192. То есть
+    любое «свечение» тащит U и V к 192 — к синему И красному разом, то есть в
+    мадженту. Зелёный в YUV живёт на противоходе (G = Y - 0.19·U' - 0.47·V'),
+    поэтому чем сильнее свет, тем сильнее гаснет зелень — ровно то, что видел
+    владелец: «залито розовым, зелень гаснет».
+
+    Замер на пятисекундном куске beat_001 (собранный mp4, кадр на 2 c):
+      без эффектов         Y 138.09  U 137.47  V 123.74
+      засветка             Y 140.79  U 144.13  V 131.21
+      bloom                Y 139.58  U 147.08  V 133.85
+      песок                Y 141.42  U 141.10  V 127.73
+      все три (умолчание)  Y 145.60  U 156.94  V 144.75
+    Три слоя разом дают +19 к U и +21 к V. По одному сдвиг мал — потому
+    проверка каждого эффекта в отдельности их и оправдала; беда в СУММЕ,
+    а sand+light_leak+bloom с 04.08 включены по умолчанию всем каналам.
+    В среднем RGB (кадр ужат до 160x90) те же три слоя дают G−R с +8.5 до
+    −43.5 и G−B с −19.2 до −69.6, устойчиво на всех трёх проверенных кадрах.
+    В готовом ролике владельца разрыв R−G был +38.2 — тот же профиль.
+
+    Отдельно проверено и ОПРОВЕРГНУТО прежнее объяснение «в PNG дефекта не
+    видно». Видно: та же цепочка, выгруженная кадром, даёт R 176.0 G 132.4
+    B 201.7, а собранная в mp4 — R 175.7 G 132.2 B 201.8. Совпадает до
+    десятых. Ловушка была не в PNG, а в том, ЧТО с чем сравнивали: сличали
+    кадр старой версии засветки с кадром новой (R 146.8 G 136.2 B 174.7
+    против почти того же), они и вправду одинаковы — обе версии были
+    сломаны одинаково. Сравнивать надо было с кадром БЕЗ эффектов.
+
+    Починка: c0 (яркость) — screen с нужной прозрачностью, c1/c2 (цвет) —
+    normal с opacity=1. У blend вход #0 называется «top», и при opacity=1
+    остаётся именно он, а первым входом во всех наших эффектах идёт КАДР.
+    Проверено: та же засветка после правки даёт Y 140.80 U 137.48 V 123.73 —
+    яркость выросла ровно как раньше, цвет вернулся к исходному до сотых.
+    """
+    return (f"blend=c0_mode=screen:c0_opacity={opacity}:"
+            f"c1_mode=normal:c1_opacity=1:c2_mode=normal:c2_opacity=1")
+
+
 def _style_chain(opts: dict, wh: tuple[int, int] = (1920, 1080)) -> list[str]:
     chain = []
     if opts.get("vhs"):
@@ -1454,22 +1643,17 @@ def _style_chain(opts: dict, wh: tuple[int, int] = (1920, 1080)) -> list[str]:
         # угол — гладкий, без видимой границы) и сводим screen-блендом на
         # низкой прозрачности — тот же приём, что и bloom ниже.
         w, h = wh
-        # format=gray -> format=yuv420p ОБЯЗАТЕЛЬНЫ, и это не косметика.
-        # Без них белый слой рождается в RGB, а blend смешивает потоки
-        # ПОПЛОСКОСТНО: яркость с красным, а цветовые плоскости — с зелёным и
-        # синим. U и V уезжают в максимум, и весь кадр заливает равномерным
-        # розово-сиреневым. Именно это зритель и увидел в готовых роликах
-        # 2026-08-04 и 2026-08-05; метки BT.709 тут ни при чём, они были уже
-        # правильные. Через gray слой становится одноплоскостным, а перевод в
-        # yuv420p ставит U и V ровно в 128 — нейтральную середину, и screen
-        # добавляет только СВЕТ, не цвет.
-        # Та же ошибка уже ловилась на шуме (см. комментарий у «песка» ниже) —
-        # там её починили, а здесь нет.
+        # format=gray -> format=yuv420p приводят слой к формату кадра, чтобы
+        # blend не смешивал яркость с красным. Это гигиена, но НЕ лечение
+        # розового: перевод в yuv420p ставит U и V слоя в 128, а screen с
+        # нейтралью 128 всё равно тащит цвет кадра к 192 (см. _screen_luma).
+        # Замерено: с этими двумя format засветка давала U 137.47 -> 144.13.
+        # Лечит именно поплоскостной режим смешивания в _screen_luma.
         chain.append(
             f"null[llbase];color=c=white:s={w}x{h},format=gray[llwhite];"
             f"[llwhite]vignette=angle=PI/2.15:x0=w*0.85:y0=h*0.2:aspect=1,"
             f"format=yuv420p[llv];"
-            f"[llbase][llv]blend=all_mode=screen:all_opacity=0.12")
+            f"[llbase][llv]" + _screen_luma(0.12))
     if opts.get("bloom"):
         # Свечение светлых участков — деликатный кинематографичный «glow».
         # Стиль-цепочка идёт ПОСЛЕДНИМ слоем (поверх титров/субтитров), а
@@ -1480,7 +1664,7 @@ def _style_chain(opts: dict, wh: tuple[int, int] = (1920, 1080)) -> list[str]:
         # гало, а реально светлые пятна (небо, огни) мягко светятся.
         chain.append("split[a][b];"
                      "[b]curves=all='0/0 0.72/0 1/1',gblur=sigma=9[bl];"
-                     "[a][bl]blend=all_mode=screen:all_opacity=0.16")
+                     "[a][bl]" + _screen_luma(0.16))
     if opts.get("dust"):
         # редкие крапинки-пылинки, как на старой плёнке
         chain.append("noise=alls=3:allf=t+u,eq=contrast=1.02")
@@ -1499,7 +1683,7 @@ def _style_chain(opts: dict, wh: tuple[int, int] = (1920, 1080)) -> list[str]:
             f"null[sdb];color=c=gray:s={w}x{h},format=gray,"
             f"noise=c0s=64:c0f=t+u,boxblur=1:1,eq=contrast=2.2,"
             f"format=yuv420p,colorbalance=rm=0.18:gm=0.06:bm=-0.16[sdn];"
-            f"[sdb][sdn]blend=all_mode=screen:all_opacity=0.07")
+            f"[sdb][sdn]" + _screen_luma(0.07))
     if opts.get("stars"):
         # Редкие светлые точки — «звёзды»/искры. Порог по яркости оставляет
         # только самые светлые крапины, иначе выходит сплошной шум.
@@ -1515,7 +1699,7 @@ def _style_chain(opts: dict, wh: tuple[int, int] = (1920, 1080)) -> list[str]:
             f"colorbalance=rm=-0.04:gm=0:bm=0.06[stn];"
             # all_opacity — ЧИСЛО, выражение оно не принимает («Unable to
             # parse option value»). Мерцание даёт временной шум c0f=t.
-            f"[stb][stn]blend=all_mode=screen:all_opacity=0.85")
+            f"[stb][stn]" + _screen_luma(0.85))
     if opts.get("embers"):
         # Тёплые угольки в луче света — плотнее звёзд, для тёмных сцен.
         w, h = wh
@@ -1524,7 +1708,7 @@ def _style_chain(opts: dict, wh: tuple[int, int] = (1920, 1080)) -> list[str]:
             f"noise=c0s=90:c0f=t,lutyuv=y='if(gt(val,240),val,0)',"
             f"boxblur=2:1,format=yuv420p,"
             f"colorbalance=rm=0.45:gm=0.12:bm=-0.35[emn];"
-            f"[emb][emn]blend=all_mode=screen:all_opacity=0.5")
+            f"[emb][emn]" + _screen_luma(0.5))
     if opts.get("vignette"):
         chain.append("vignette=angle=PI/5")
     if opts.get("letterbox"):
@@ -2118,6 +2302,7 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
         return "colortemperature=temperature=5800,eq=saturation=1.04"
 
     seg_files, seg_durs = [], []
+    n_filled = 0        # сколько планов пришлось дотягивать (см. _fill_gap)
     for i, sc in enumerate(scenes):
         dur = sc["end"] - sc["start"]
         tail = 0.0
@@ -2144,13 +2329,21 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
         dest = tmp / f"seg_{i:04d}.mp4"
         extra = (_chapter_grade(sc["start"] / total)
                  if opts.get("chapters_grade") else "")
-        render_segment(sc["file"], sc["kind"], dur + tail, dest, w, h, fps,
-                       rng, extra_vf=extra, palette=pal)
+        fill_note = render_segment(sc["file"], sc["kind"], dur + tail, dest,
+                                   w, h, fps, rng, extra_vf=extra, palette=pal)
         seg_files.append(dest)
         seg_durs.append(dur)
+        if fill_note:
+            n_filled += 1
         log(f"[Рендер] Сегмент {i + 1}/{len(scenes)}: "
-            f"{sc['file'].name} ({dur:.1f} c, {sc['kind']})")
+            f"{sc['file'].name} ({dur:.1f} c, {sc['kind']}"
+            f"{', ' + fill_note if fill_note else ''})")
         tick()
+    if n_filled:
+        # Отдельной строкой, потому что это главный показатель «живости»
+        # ролика: раньше ровно столько планов заканчивались застывшим кадром.
+        log(f"[Рендер] Клип короче плана у {n_filled} сцен из {len(scenes)} — "
+            "длина добрана движением (бумеранг/замедление), без заморозки")
 
     # 3. группы (границы групп склеиваются встык — стык прячем в fadeblack)
     group_files = []
