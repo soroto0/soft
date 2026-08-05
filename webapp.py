@@ -1298,12 +1298,32 @@ class Api:
         topic, tone = meta.get("topic", ""), meta.get("tone", "документальный")
         if not topic:
             return
+        # Канал в запросе обязателен. Раньше сюда уходили только тема и жанр,
+        # и палитра получалась своя у каждого РОЛИКА, но никакая у КАНАЛА:
+        # три канала подряд могли выйти в одинаковой бирюзе, потому что
+        # подбирали цвет независимо и про существование друг друга не знали.
+        # Узнаваемость канала — это в первую очередь его цвет, и он должен
+        # держаться из ролика в ролик, меняясь внутри своего семейства.
+        ch = self._channel() or {}
+        family = {
+            "harsh": "cold, hard, industrial: steel blues, slate greys, "
+                     "warning oranges. No soft pastels.",
+            "warm": "warm and domestic: honey, timber, brick, warm greys. "
+                    "No clinical blues.",
+            "contemplative": "muted and contemplative: dusty greens, stone, "
+                             "faded indigo, parchment. No saturated neons.",
+        }.get((ch.get("palette") or "").strip(), "")
         theme = (f"Documentary video about: {topic}. Tone/genre: {tone}. "
-                "Invent a distinctive color palette that fits THIS specific "
-                "topic — a video about something cold/scientific should not "
-                "look like one about crime or myth, etc. Avoid a generic "
-                "dark-charcoal-plus-amber default; pick colors that make "
-                "sense here.")
+                 + (f"This video belongs to the channel «{ch.get('name') or ch.get('id')}», "
+                    f"whose permanent visual family is: {family} "
+                    "Stay inside that family — the channel must stay "
+                    "recognisable across its videos — but pick a distinct "
+                    "shade within it for THIS topic. " if family else "")
+                 + "Invent a distinctive color palette that fits THIS specific "
+                   "topic — a video about something cold/scientific should not "
+                   "look like one about crime or myth, etc. Avoid a generic "
+                   "dark-charcoal-plus-amber default; pick colors that make "
+                   "sense here.")
         self.log("[Цепочка] Палитра оверлеев — прошу Agnes подобрать под эту тему...")
         try:
             gen_remotion_gemini.apply_theme_palette(theme, agnes_key, self.log)
