@@ -1454,9 +1454,21 @@ def _style_chain(opts: dict, wh: tuple[int, int] = (1920, 1080)) -> list[str]:
         # угол — гладкий, без видимой границы) и сводим screen-блендом на
         # низкой прозрачности — тот же приём, что и bloom ниже.
         w, h = wh
+        # format=gray -> format=yuv420p ОБЯЗАТЕЛЬНЫ, и это не косметика.
+        # Без них белый слой рождается в RGB, а blend смешивает потоки
+        # ПОПЛОСКОСТНО: яркость с красным, а цветовые плоскости — с зелёным и
+        # синим. U и V уезжают в максимум, и весь кадр заливает равномерным
+        # розово-сиреневым. Именно это зритель и увидел в готовых роликах
+        # 2026-08-04 и 2026-08-05; метки BT.709 тут ни при чём, они были уже
+        # правильные. Через gray слой становится одноплоскостным, а перевод в
+        # yuv420p ставит U и V ровно в 128 — нейтральную середину, и screen
+        # добавляет только СВЕТ, не цвет.
+        # Та же ошибка уже ловилась на шуме (см. комментарий у «песка» ниже) —
+        # там её починили, а здесь нет.
         chain.append(
-            f"null[llbase];color=c=white:s={w}x{h}[llwhite];"
-            f"[llwhite]vignette=angle=PI/2.15:x0=w*0.85:y0=h*0.2:aspect=1[llv];"
+            f"null[llbase];color=c=white:s={w}x{h},format=gray[llwhite];"
+            f"[llwhite]vignette=angle=PI/2.15:x0=w*0.85:y0=h*0.2:aspect=1,"
+            f"format=yuv420p[llv];"
             f"[llbase][llv]blend=all_mode=screen:all_opacity=0.12")
     if opts.get("bloom"):
         # Свечение светлых участков — деликатный кинематографичный «glow».
@@ -1602,12 +1614,25 @@ def _bake_overlays(base_input: list[str], ovls: list[dict], dest: Path,
     log(f"[Рендер] Запекаю {len(ovls)} оверлеев отдельным проходом "
         "(в один ffmpeg столько входов не влезает)")
     try:
-        run_tree(cmd, 5400, cwd=str(base_dir))
+        r = run_tree(cmd, 5400, cwd=str(base_dir))
     except Exception as e:
         log(f"[Рендер] Запекание не вышло ({str(e)[:120]}) — обрежу оверлеи "
             "по потолку", "warn")
         return False
-    return dest.exists() and dest.stat().st_size > 100_000
+    # ПОЧЕМУ НЕ ВЫШЛО — обязательно вслух. run_tree исключение по коду выхода
+    # НЕ бросает, он просто отдаёт CompletedProcess, и до этой строки причину
+    # знал только ffmpeg: наружу уходило «запекание не удалось (причина строкой
+    # выше)», а строкой выше стояло «Запекаю N оверлеев». Цена молчания —
+    # тринадцать плашек готового ролика, потерянных 05.08, и совет «перезапусти
+    # рендер» вместо настоящей причины. До правки run_tree эта ветка вообще не
+    # исполнялась ни разу (NameError), так что её отказ никто и не видел.
+    ok = dest.exists() and dest.stat().st_size > 100_000
+    if not ok:
+        tail = [s for s in (r.stderr or "").strip().splitlines() if s.strip()]
+        log(f"[Рендер] Запекание не дало файла (код {r.returncode}): "
+            + (" | ".join(tail[-3:])[:400] if tail else "ffmpeg промолчал")
+            + " — обрежу оверлеи по потолку", "warn")
+    return ok
 
 
 def assemble(group_files: list[Path], audio: Path, srt: Path | None,
