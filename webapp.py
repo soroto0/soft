@@ -1780,6 +1780,63 @@ class Api:
               + (1 - cfg["short_prob"]) * sum(cfg["long"]) / 2)
         return min(beat, avg)
 
+    def _own_brief(self, ch: dict) -> str:
+        """Как зашли СВОИ ролики — из YouTube Analytics.
+
+        Разбор ниши (_niche_brief) смотрит на ЧУЖИЕ каналы: он говорит,
+        что работает в нише вообще. О том, что работает у ЭТОГО канала,
+        софт не знал ничего — и подбирал темы, ни разу не взглянув на
+        собственные результаты.
+
+        Замерено на abyss: «The Chilling Mystery of This Reddit Account» —
+        126 просмотров и досмотр 32.3%, а соседний «Cannibal Stories» — 7
+        просмотров и 2.3%. Разница в восемнадцать раз на одном канале, и
+        до сих пор она никак не влияла на выбор следующей темы.
+
+        Тихо возвращает пустое, если доступа нет или роликов ещё нет: без
+        своей статистики ролик сделать можно, а падать на этом нельзя.
+        """
+        try:
+            import yt_stats
+            ok, _ = yt_stats.ready()
+            if not ok:
+                return ""
+            cid = ch.get("id") or ""
+            rows = yt_stats.overview(log=lambda *a: None, channel=cid)
+            if len(rows) < 2:
+                return ""          # на одном ролике сравнивать не с чем
+            names = {v["id"]: v["title"] for v in
+                     yt_stats.my_videos(limit=50, log=lambda *a: None,
+                                        channel=cid)}
+        except Exception as e:
+            self.log(f"[Своя статистика] Не вышло ({e}) — тема подбирается "
+                     "только по чужой нише", "warn")
+            return ""
+        rows = [r for r in rows if r.get("views")]
+        rows.sort(key=lambda r: -(r.get("averageViewPercentage") or 0))
+        def _line(r):
+            return (f"  {names.get(r.get('video',''), '?')[:70]} — "
+                    f"{r.get('views',0)} views, "
+                    f"{r.get('averageViewPercentage',0):.0f}% watched")
+        # Списки не должны пересекаться: при двух роликах «лучшие» и
+        # «худшие» брали ОДИН И ТОТ ЖЕ, и модель получала его как пример и
+        # успеха, и провала разом. Делим ровно пополам, а на совсем малом
+        # числе оставляем один сверху и один снизу.
+        half = max(1, min(3, len(rows) // 2))
+        best, worst = rows[:half], rows[len(rows) - half:]
+        self.log(f"[Своя статистика] {len(rows)} роликов с цифрами; лучший "
+                 f"досмотр {rows[0].get('averageViewPercentage',0):.0f}%, "
+                 f"худший {rows[-1].get('averageViewPercentage',0):.0f}% — "
+                 "тема учитывает и их")
+        return ("\n\nTHIS CHANNEL'S OWN RESULTS — these are YOUR videos, not "
+                "the reference channel's. They outrank niche averages "
+                "wherever the two disagree.\n"
+                "WATCHED LONGEST:\n" + "\n".join(_line(r) for r in best) +
+                "\nABANDONED FASTEST:\n" + "\n".join(_line(r) for r in worst) +
+                "\nWork out what the top ones promised that the bottom ones "
+                "did not, and carry that difference into the new topic. Never "
+                "repeat a subject already listed above.")
+
     def _niche_brief(self, ch: dict) -> str:
         """Свежий разбор ниши под ЭТОТ ролик — не текст, вписанный однажды.
 
@@ -1872,6 +1929,10 @@ class Api:
             brief = self._niche_brief(ch)
             if brief:
                 p["topic_formula"] = (p.get("topic_formula") or "") + brief
+            # И СВОИ результаты — они важнее чужой ниши там, где расходятся.
+            own = self._own_brief(ch)
+            if own:
+                p["topic_formula"] = (p.get("topic_formula") or "") + own
         opts = self._render_opts(p)
         # Поле «Оверлеи» интерфейс заполняет ИЗ ФАЙЛА проекта, а файл для
         # нового ролика остался от прошлого (папка канала одна на все ролики).
