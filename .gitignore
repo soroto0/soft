@@ -123,3 +123,6 @@ analytics/*.xlsx
 analytics/*.zip
 analytics/client_secret*.json
 analytics/token.json
+
+# Архив старых файлов из корней каналов — рабочий мусор, не код
+/_архив_из_корней/
