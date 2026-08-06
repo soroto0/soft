@@ -101,6 +101,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description="Ночной автопилот: ролик на каждый канал")
     ap.add_argument("--channel", help="только этот канал (id или имя)")
+    # Очередь каналов защищает ВЫКЛАДКУ, а не сборку: YouTube видит
+    # публикации, а не то, что лежит на диске. Раз ролики уходят
+    # черновиками и выходят по календарю, собирать можно все каналы
+    # разом — риск создаёт одновременная публикация, а не одновременный
+    # рендер. Для набора запаса это ключ --all.
+    ap.add_argument("--all", action="store_true",
+                    help="все каналы за один прогон, в обход очереди")
     ap.add_argument("--videos", type=int, default=1,
                     help="сколько роликов на канал (по умолчанию 1)")
     ap.add_argument("--draft", action="store_true",
@@ -160,6 +167,8 @@ def main() -> int:
     p = _params(args.draft)
     p.update({"videos": args.videos, "night_h": args.night,
               "fit_only": args.fit, "channel": args.channel or "",
+              # rotate=False — очередь каналов выключена, идут все разом
+              "rotate": not args.all,
               # Без этой строки сухой прогон показывал бы одно, а ночь делала
               # другое: план строится здесь, а сама работа идёт в webapp, и
               # ключ должен доехать до неё.
