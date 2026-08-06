@@ -961,8 +961,14 @@ def render_thumbnail(headline: str, dest: Path, bg: Path | None = None,
     build = _remotion_bundle(log)
     try:
         r = run_tree(
-            [_npx(), "remotion", "still", str(build), "Thumbnail", str(dest),
-             f"--props={props_file}", "--log=error"], 300,
+            # АБСОЛЮТНЫЕ пути: команда запускается с cwd=REMOTION_DIR, а
+            # props_file и dest лежат в папке проекта. Относительный путь
+            # оттуда не виден, и Remotion отвечает «--props не валидный JSON
+            # и не путь к файлу» — то есть жалуется на содержимое, хотя не
+            # смог его открыть.
+            [_npx(), "remotion", "still", str(build), "Thumbnail",
+             str(Path(dest).resolve()),
+             f"--props={props_file.resolve()}", "--log=error"], 300,
             cwd=REMOTION_DIR, env=_node_env())
     finally:
         props_file.unlink(missing_ok=True)
