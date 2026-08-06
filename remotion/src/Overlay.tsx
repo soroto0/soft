@@ -14,14 +14,14 @@ export type { OverlayProps };
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#6B7F4A',
-  accentLight: '#A8B88E',
-  accentRgb: '107,127,74',
-  bannerFrom: '#D4DCC6',
-  bannerTo: '#C2CCB2',
-  bannerText: '#2C3324',
-  kickerFrom: '#343E2B',
-  kickerTo: '#262E20',
+  accent: '#3d6b6e',
+  accentLight: '#7fa3a5',
+  accentRgb: '61,107,110',
+  bannerFrom: '#d4c8b0',
+  bannerTo: '#bfb49a',
+  bannerText: '#1e2528',
+  kickerFrom: '#1f2d30',
+  kickerTo: '#2e4043',
 };
 
 const useExit = (dur: number) => {
@@ -55,10 +55,26 @@ const _lum = (hex: string): number => {
   return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
 };
 
-// Чернила, читаемые НА заданном фоне: тёмные на светлом, белые на тёмном.
-// Порог 0.35 — по замеру контраста против обоих вариантов.
-const inkOn = (bg: string): [number, number, number] =>
-  _lum(bg) > 0.35 ? [8, 26, 30] : [255, 255, 255];
+// Чернила, читаемые НА заданном фоне.
+//
+// Раньше выбор шёл ПОРОГОМ: _lum(bg) > 0.35 -> тёмные, иначе белые. Порог
+// подвёл ровно на середине шкалы. У коричнево-золотого акцента светимость
+// чуть выше 0.35, поэтому брались тёмные чернила — а тёмное на среднем
+// коричневом даёт около 2:1, то есть текст не читается. Владелец прислал
+// такой кадр: слова маркера почти сливаются с подложкой, разобрать можно
+// только последнее.
+//
+// Теперь не порог, а ЗАМЕР: считаем контраст по WCAG для обоих вариантов
+// и берём лучший. Порог угадывает, отношение — вычисляется.
+const _contrast = (l1: number, l2: number): number =>
+  (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+
+const inkOn = (bg: string): [number, number, number] => {
+  const b = _lum(bg);
+  // светимости кандидатов: почти чёрный (8,26,30) и чистый белый
+  const dark = 0.2126 * 0.00304 + 0.7152 * 0.00961 + 0.0722 * 0.01096;
+  return _contrast(b, dark) >= _contrast(b, 1) ? [8, 26, 30] : [255, 255, 255];
+};
 
 const formatCounter = (value: number) => {
   if (value < 1000) return Math.floor(value).toString();
