@@ -141,7 +141,6 @@ import { PhScaleCompatibilityScene } from './scenes/ph_scale_compatibility';
 import { HierarchyOfInfinitiesScene } from './scenes/hierarchy_of_infinities';
 import { SetDerivationProcessScene } from './scenes/set_derivation_process';
 import { DimensionMapping1d2dScene } from './scenes/dimension_mapping_1d_2d';
-import { HierarchicalInfinitesDiagramScene } from './scenes/hierarchical_infinites_diagram';
 export type { SceneProps };
 
 // Точка входа для СЦЕН — планов, которые целиком нарисованы, а не сняты.
@@ -457,8 +456,6 @@ const pickScene = (props: SceneProps): React.ReactElement | null => {
       return <SetDerivationProcessScene {...props} />;
     case 'dimension_mapping_1d_2d':
       return <DimensionMapping1d2dScene {...props} />;
-    case 'hierarchical_infinites_diagram':
-      return <HierarchicalInfinitesDiagramScene {...props} />;
     default:
       return null;
   }
