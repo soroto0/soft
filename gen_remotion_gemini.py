@@ -764,6 +764,18 @@ def _contract_check_variant(code: str, component: str) -> str:
     if re.search(r"placeholder|your content here|TODO|FIXME", code, re.I):
         return ("the file contains a placeholder/TODO instead of a finished "
                 "design — write the COMPLETE visual, every element drawn out")
+    # Шрифты — ТОЛЬКО из '../fonts'. @remotion/google-fonts выглядит невинно
+    # и компилируется, но держит лишь список ссылок: сам .woff2 браузер тянет
+    # с fonts.gstatic.com в момент рендера. Замер 2026-08-05 15:54 —
+    # ERR_NAME_NOT_RESOLVED, весь оверлей упал, плашку дорисовал Pillow, и
+    # ролик молча вышел с чужой гарнитурой. Ради этого файлы шрифтов и
+    # переехали в remotion/public/fonts (см. remotion/src/fonts.ts).
+    if re.search(r"google-fonts|fonts\.(?:gstatic|googleapis)\.com", code):
+        return ("fonts must come from `../fonts` (DISPLAY, TEXT, SERIF) and "
+                "from nowhere else. @remotion/google-fonts downloads the font "
+                "file from fonts.gstatic.com DURING the render: when the "
+                "network blinks the whole overlay fails. Import "
+                "`import { DISPLAY } from '../fonts';` instead.")
     # Вариант обязан ЧИТАТЬ то, ради чего его зовут. Проверка появилась после
     # живого ролика: banner/ai_f3e5 брал содержимое из `props.children`,
     # которых оверлею никто не передаёт (ядро рисует его как

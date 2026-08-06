@@ -793,10 +793,99 @@ def _render_watermark(item: dict, W: int, H: int, fps: int, dest_dir: Path,
     return x1 - x0, y1 - y0, x0, y0
 
 
+# ----- Вырезанный предмет поверх готовой обложки -----
+#
+# Почему предмет вклеивает Pillow ПОСЛЕ рендера, а не сама композиция
+# Thumbnail.tsx, где ему место по-хорошему: файл Thumbnail.tsx в этот момент
+# правит другая задача, и лезть в него нельзя. Вклейка здесь даёт тот же
+# кадр и переживает любые правки композиции, потому что работает с готовым
+# JPEG. Перенести в React можно в любой момент — размеры ниже взяты прямо из
+# Thumbnail.tsx и совпадают с ним.
+#
+# Куда ставить. Свободного места на обложке home-vault почти нет: слева
+# колонка заголовка, справа сверху столбик выгод, справа снизу круглая
+# зум-врезка, по низу лента. Поэтому места считаются, а не назначаются: два
+# кандидата, берём тот, где предмет выходит крупнее, и если крупнее 170 px
+# не выходит нигде — предмет не ставим вовсе. Мелкая вырезка в ленте
+# шириной 210 px всё равно не читается, а мусора добавляет.
+THUMB_W, THUMB_H = 1280, 720
+CUTOUT_MIN_H = 170          # ниже этого предмет не ставим
+
+
+# Правый край текстовой колонки. Не из аргумента layout: раскладку от модели
+# композиция использует лишь как затравку, а схему выбирает сама (pick по
+# хешу заголовка, см. Thumbnail.tsx). Поэтому берём САМУЮ ШИРОКУЮ из схем
+# канала — 'panel', left:44 + width:660 = 704 — и добавляем запас 40 на
+# подзаголовок: он набран с whiteSpace:nowrap и вылезает за колонку.
+# Замерено на home-vault/2026-08-06/thumbs/thumb1.jpg: колонка 520, а строка
+# «STOP WASTING $40 ON SPRAYS THAT NEVER WORK.» дотянулась до x≈715.
+TEXT_RIGHT = 744
+BADGES_LEFT = 1280 - 30 - 486        # 764 — левый край столбика выгод
+INSET_LEFT = 1280 - 40 - 176         # 1064 — левый край круглой зум-врезки
+
+
+def _cutout_slot(extra: dict) -> list[tuple[int, int, int, int]]:
+    """Свободные прямоугольники (x1, y1, x2, y2) под предмет. Числа — из
+    Thumbnail.tsx: badges (right:30, top:34, width:486), зум-врезка
+    (right:40, bottom:132, 176x176), лента (bottom:20).
+
+    Врезку считаем присутствующей всегда: она рисуется у того же канала и
+    ровно при том же условии, при котором мы вообще заказываем предмет —
+    когда есть ИИ-фон."""
+    badges = [b for b in (extra.get("badges") or []) if b]
+    ribbon = [r for r in (extra.get("ribbon") or []) if r]
+    bottom = 720 - (76 if ribbon else 24)
+    if not badges:
+        return [(TEXT_RIGHT, 24, INSET_LEFT - 14, bottom)]
+    return [s for s in (
+        # между текстовой колонкой и столбиком выгод
+        (TEXT_RIGHT, 24, BADGES_LEFT - 14, bottom),
+        # под выгодами и левее круглой врезки: 56 px на строку выгоды —
+        # кегль 30 + отбивка 11 + поля плашки
+        (BADGES_LEFT, 34 + len(badges) * 56 + 16, INSET_LEFT - 14, bottom),
+    ) if s[2] - s[0] > 40 and s[3] - s[1] > 40]
+
+
+def _paste_cutout(dest: Path, cutout: Path, extra: dict,
+                  log=print) -> None:
+    """Вклеить PNG-вырезку в готовую обложку. Ничего не роняет: обложка
+    без предмета лучше, чем отсутствие обложки."""
+    from PIL import Image, ImageFilter
+    cov = Image.open(dest).convert("RGB")
+    if cov.size != (THUMB_W, THUMB_H):
+        cov = cov.resize((THUMB_W, THUMB_H), Image.LANCZOS)
+    obj0 = Image.open(cutout).convert("RGBA")
+    best = None
+    for x1, y1, x2, y2 in _cutout_slot(extra):
+        k = min((x2 - x1) / obj0.width, (y2 - y1) / obj0.height)
+        h = round(obj0.height * k)
+        if best is None or h > best[0]:
+            best = (h, round(obj0.width * k), x1, y1, x2, y2)
+    if not best or best[0] < CUTOUT_MIN_H:
+        log("[Обложка] Предмету не хватает места на макете — "
+            "оставляю обложку без него")
+        return
+    h, w, x1, y1, x2, y2 = best
+    obj = obj0.resize((max(w, 1), max(h, 1)), Image.LANCZOS)
+    x = x1 + (x2 - x1 - w) // 2
+    y = y2 - h                       # предмет СТОИТ на нижней границе места
+    # Тень: без неё вырезка выглядит наклейкой, приклеенной поверх кадра.
+    # Силуэт той же формы, размытый и смещённый вниз.
+    sh = Image.new("RGBA", cov.size, (0, 0, 0, 0))
+    sh.paste(Image.new("RGBA", obj.size, (0, 0, 0, 150)), (x + 6, y + 12),
+             obj.getchannel("A"))
+    cov = Image.alpha_composite(
+        cov.convert("RGBA"), sh.filter(ImageFilter.GaussianBlur(14)))
+    cov.paste(obj, (x, y), obj)
+    cov.convert("RGB").save(dest, format="JPEG", quality=92)
+    log(f"[Обложка] Предмет вклеен: {w}x{h} в точке {x},{y}")
+
+
 def render_thumbnail(headline: str, dest: Path, bg: Path | None = None,
                      layout: str = "left", accent: str = "#f5c451",
                      log=print, style: str = "",
-                     extra: dict | None = None) -> Path:
+                     extra: dict | None = None,
+                     cutout: Path | None = None) -> Path:
     """Обложка для YouTube (1280x720 JPG) композицией Thumbnail.
 
     Отдельная функция, а не тип оверлея: у обложки противоположные
@@ -816,7 +905,10 @@ def render_thumbnail(headline: str, dest: Path, bg: Path | None = None,
     extra — остальные поля концепции (sub, badges, ribbon, focusX/focusY).
     Отдельным словарём, а не пятью аргументами: набор элементов у каналов
     РАЗНЫЙ, и половина из них на любом конкретном канале не используется
-    (см. core.THUMB_STYLES, ключ parts)."""
+    (см. core.THUMB_STYLES, ключ parts).
+
+    cutout — PNG с прозрачностью: предмет, вырезанный core.chroma_cutout.
+    Вклеивается ПОСЛЕ рендера, см. _paste_cutout."""
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     props = {"headline": headline, "layout": layout, "accent": accent,
@@ -861,6 +953,11 @@ def render_thumbnail(headline: str, dest: Path, bg: Path | None = None,
         props_file.unlink(missing_ok=True)
     if r.returncode != 0 or not dest.exists():
         raise RuntimeError(f"remotion still: {r.stderr[-300:]}")
+    if cutout and Path(cutout).exists():
+        try:
+            _paste_cutout(dest, Path(cutout), extra or {}, log)
+        except Exception as e:
+            log(f"[Обложка] Предмет не вклеился ({e}) — обложка без него")
     return dest
 
 

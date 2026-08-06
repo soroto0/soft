@@ -31,7 +31,8 @@
       "The Dam That Failed Due To A Forgotten Drainage Pipe",
       "The Tunnel That Flooded During Concrete Pouring",
       "The Chemical Plant That Exploded During A Routine Pressure Test",
-      "The Grain Elevator That Collapsed Due To Undetected Soil Instability"
+      "The Grain Elevator That Collapsed Due To Undetected Soil Instability",
+      "The Power Station That Collapsed During The Cooling Tower Construction"
     ],
     "series": "Findings",
     "series_next": 3,
@@ -82,7 +83,8 @@
       "The $5 Secret That Stops Bathroom Mold FOREVER (The Restoration Industry Hates This)",
       "Rats):* * \"The $2 Amish Trick That Banishes Mice FOREVER (Why Exterminators Hope You Never Learn This",
       "The $4 Solution That Keeps Your Windows Fog-Free FOREVER (The Glass Industry Hates This)",
-      "Wood Decay/Rot/Sealing):* The $4 Amish Oil Recipe That Stops Wood Rot FOREVER (The Lumber Industry Hates This)"
+      "Wood Decay/Rot/Sealing):* The $4 Amish Oil Recipe That Stops Wood Rot FOREVER (The Lumber Industry Hates This)",
+      "The $3 Spray That Kills Driveway Weeds FOREVER (The Landscaping Industry Hates This)"
     ],
     "series": "",
     "series_next": 1,
@@ -128,7 +130,8 @@
     "script_extra": "Spanish-language documentary about a philosopher or a single work.\n\nSHAPE: follow one mind through time. What happened to this person, and what it made them think. Alternate between the life and the idea it produced, so neither runs dry. There is no withheld mystery here — the pull is watching a worldview being forged and what it cost the person who forged it.\n\nNEVER address the viewer's own life. No 'you', no advice, no lessons to apply. This is measured, not taste: on the reference channel the same author scored 199,346 views when the subject was his ordeal and 538 when the subject was the viewer's demons.\n\nName dates, places, correspondents, book titles and the year of publication out loud — they are the spine of a documentary.\n\nSTYLE: calm, unhurried, Castilian Spanish. The tone of someone recounting a life they have studied for years, not selling insight. End where the idea outlives the person.\n\nVISUAL CUES: directing notes in SQUARE BRACKETS — period, location, where archive material belongs. They are stripped before the voice-over.",
     "topic_formula": "Spanish-language long-form documentaries about philosophers, their lives and the ideas those lives produced.\n\nMEASURED on the reference channel (54 videos, median 19,738 views, spread 17x between best and worst):\n  WON  330k-166k : why intelligence leads to loneliness (Schopenhauer); the philosopher who reinvented God (Spinoza); the genius who descended into the darkness of the human soul (Dostoyevsky); the book that drove Jung to the edge of the abyss; the warning the world refused to hear (Orwell)\n  LOST 1.7k-538  : existentialist philosophy explained; HOW TO BECOME the man Nietzsche admired; HOW TO BUILD a just society (Rousseau); the book that reveals YOUR inner demons (Jung)\n\nThe distinguishing variable is exact, and it is NOT the thinker's name: Jung appears in both halves — 199,346 views for 'the book that drove HIM to the abyss' and 538 for 'the book that reveals YOUR demons'. Same author, same length, same format.\n\nA video WINS when the promise is about what happened TO THE THINKER or TO THE WORLD — third person, past tense, a catastrophe or a cost.\nA video FAILS when the promise is about what the VIEWER should do or get — 'how to become', 'how to build', 'your demons'. Never write a title in the second person.\n\nAlready covered on the reference channel, do NOT repeat: Schopenhauer, Spinoza, Dostoyevsky, Nietzsche, Jung's Red Book, Orwell's 1984, Musashi.\n\nLength is table stakes, not an advantage: the failures run 52-86 minutes too. Target 45 minutes — the short edge of this niche (reference channel runs 43-109 min). Do NOT pad to reach length: a tight 45 beats a padded 70. Win on the promise, not the runtime.",
     "used_topics": [
-      "El pensador que vio el colapso de la civilización antes que nadie"
+      "El pensador que vio el colapso de la civilización antes que nadie",
+      "El hombre que lo perdió todo ante el tirano al que educó"
     ],
     "series": "",
     "series_next": 1,

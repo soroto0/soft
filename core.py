@@ -392,6 +392,35 @@ def audio_duration(path: Path) -> float | None:
 
 # ---------- Озвучка ----------
 
+# Громкость выравнивается ВСЕГДА, а окраска голоса — по желанию. Раньше и то
+# и другое висело на одной галке «Глубокий голос»: снял её — и ролик уезжал
+# вообще без нормализации, то есть с той громкостью, какую отдал синтезатор.
+# Слышно это сразу, потому что музыка подмешивается по фиксированному -14 dB
+# относительно голоса, а не относительно измеренной громкости.
+VOICE_LOUDNORM = "loudnorm=I=-16:TP=-1.5:LRA=11"     # стандарт громкости YouTube
+VOICE_TONE = (
+    "highpass=f=80,"                                  # убрать гул
+    "equalizer=f=110:t=q:w=1:g=2.5,"                  # тепло/глубина низов
+    "equalizer=f=6500:t=q:w=2:g=-3,"                  # де-эссер (мягче «с»)
+    "acompressor=threshold=-20dB:ratio=4:attack=6:release=180:makeup=3,"
+    "equalizer=f=3000:t=q:w=2:g=2")                   # presence — разборчивость
+
+
+def voice_chain(enhance: bool = True, sample_rate: int = 0) -> str:
+    """Фильтры обработки голоса одной строкой для -af.
+
+    sample_rate != 0 дописывает пересэмплирование в конец. Оно нужно из-за
+    свойства loudnorm: внутри он работает на 192 кГц и отдаёт результат тоже
+    на 192 кГц, поэтому mp3 на выходе получается 48 кГц, хотя Edge TTS отдаёт
+    24 кГц (замер 2026-08-06: voiceover.mp3 всех трёх каналов — 48000 Гц,
+    96 кбит/с). Выше 12 кГц там пусто по построению, и лишние килогерцы —
+    это только размер файла."""
+    parts = ([VOICE_TONE] if enhance else []) + [VOICE_LOUDNORM]
+    if sample_rate:
+        parts.append(f"aresample={sample_rate}")
+    return ",".join(parts)
+
+
 def enhance_voice(mp3: Path, log=print) -> Path:
     """Делает голос глубоким и «дикторским», как в документалках: сильная
     компрессия (плотность), лёгкий подъём низов (глубина), де-эссер (убрать
@@ -401,13 +430,7 @@ def enhance_voice(mp3: Path, log=print) -> Path:
     if not mp3.exists():
         return mp3
     tmp = mp3.with_name(mp3.stem + "_enh.mp3")
-    chain = (
-        "highpass=f=80,"                                  # убрать гул
-        "equalizer=f=110:t=q:w=1:g=2.5,"                  # тепло/глубина низов
-        "equalizer=f=6500:t=q:w=2:g=-3,"                  # де-эссер (мягче «с»)
-        "acompressor=threshold=-20dB:ratio=4:attack=6:release=180:makeup=3,"
-        "equalizer=f=3000:t=q:w=2:g=2,"                   # presence — разборчивость
-        "loudnorm=I=-16:TP=-1.5:LRA=11")                  # громкость под YouTube
+    chain = voice_chain(True)
     try:
         _run_child(["ffmpeg", "-y", "-i", str(mp3), "-af", chain,
                     "-c:a", "libmp3lame", "-q:a", "2", str(tmp)],
@@ -448,74 +471,342 @@ def strip_cues(text: str) -> tuple[str, list[str]]:
     return clean.strip(), [c.strip() for c in cues if c.strip()]
 
 
+# Сокращения, после которых точка НЕ кончает предложение. Без списка «Mr. Ash
+# went...» разрывался надвое, и в шов уезжала пауза посреди имени.
+_TTS_ABBR = frozenset("""mr mrs ms dr prof st sr jr no vs inc ltd fig approx
+sq ft ave rd blvd dept est ca cf approx sra srta ee uu art cap pag num
+""".split())
+
+# Служебные слова не считаются признаком «та же тема»: они есть в любых двух
+# кусках текста и размывают меру связности до нуля.
+_TTS_STOP = frozenset("""the and for that with this from they them their there
+here what when where which while would could should have has had was were are
+being but not you your yours our ours its about into over under after before
+then than also just only more most some such very much many each other another
+every both same these those upon within without will shall must because
+para pero como este esta estos estas porque cuando donde entre sobre desde
+hasta segun aunque tambien solo mismo mismos cada todo todos toda todas
+mas menos muy sino hacia ante bajo tras durante mediante entonces
+""".split())
+
+# Длина пауз задаётся НЕ числом, а множителем к собственной межфразовой паузе
+# голоса. Числом было нельзя: голоса расходятся вдвое. Замер 2026-08-06 на
+# одинаковых кусках по 4.5 минуты — у en-US-AndrewNeural 64 паузы, ни одной
+# длиннее 0.56 c; у en-US-ChristopherNeural 41 пауза, из них 31 длиннее 0.8 c
+# (до 1.12 c). Фиксированные 0.55 c улучшали Эндрю и ПОРТИЛИ Кристофера:
+# число пауз длиннее 0.8 c падало с 31 до 22, то есть речь становилась
+# суетливее, чем была. Множители же осмысленны для любого голоса: пауза между
+# мыслями заметно длиннее межфразовой, смена темы — ещё длиннее.
+PAUSE_MULT = {"thought": 1.35, "topic": 1.75, "chapter": 2.60}
+# Потолки — чтобы у голоса с длинными паузами (Кристофер) граница главы не
+# превратилась в 3.5 c: столько тишины в документалке читается как обрыв файла.
+PAUSE_CAP = {"thought": 1.20, "topic": 1.65, "chapter": 2.20}
+PAUSE_FLOOR = {"thought": 0.55, "topic": 0.90, "chapter": 1.40}
+
+
+def strip_markup(text: str) -> str:
+    """Убрать SSML-подобную разметку, которую Edge TTS зачитал бы ВСЛУХ.
+
+    Проверено на edge_tts 7.2.8 через WordBoundary: текст
+    'First thought. <break time="900ms"/> Second thought.' озвучивается как
+    «First thought break time = 900ms / Second thought» — тег произносится
+    словами, а не превращается в паузу. То же с <prosody>. Своих тегов мы не
+    ставим, но модель их иногда добавляет сама, а человек — копирует из
+    примеров SSML, и цена ошибки высока: брак слышен только после полной
+    начитки."""
+    return re.sub(r"[ \t]{2,}", " ",
+                  re.sub(r"</?(?:speak|break|prosody|emphasis|say-as|voice|"
+                         r"phoneme|sub|s|p|mstts:[\w-]+)\b[^>]*/?>", " ",
+                         text or "", flags=re.I)).strip()
+
+
+def _tts_sentences(text: str) -> list[str]:
+    """Текст -> предложения. Куски короче 25 символов приклеиваются к
+    предыдущему: «Он умер. В 1978.» — это одна мысль, и пауза внутри неё
+    звучит как сбой, а не как воздух."""
+    parts = re.split(r"(?<=[.!?…])[ \t]+(?=[\"«“(\[]?[A-ZА-ЯЁÁÉÍÓÚÑÜ¿¡0-9])",
+                     " ".join(text.split()))
+    out: list[str] = []
+    for s in parts:
+        s = s.strip()
+        if not s:
+            continue
+        prev = out[-1] if out else ""
+        tail = re.search(r"([A-Za-zА-Яа-яЁё]+)\.$", prev)
+        if out and (len(prev) < 25 or (tail and tail.group(1).lower() in _TTS_ABBR)):
+            out[-1] = prev + " " + s
+        else:
+            out.append(s)
+    return out
+
+
+def _tts_content_words(s: str) -> set:
+    return {w for w in re.findall(r"[a-zA-ZÀ-ÿА-Яа-яЁё']{4,}", s.lower())
+            if w not in _TTS_STOP}
+
+
+def speech_plan(text: str, group_chars: int = 420) -> list[dict]:
+    """Разложить сценарий на куски начитки: что произнести, сколько молчать
+    после и на сколько отклонить темп/высоту голоса на этом куске.
+
+    Зачем не по абзацам. Абзацы — единственная разметка, которая была, и её
+    в сценариях фактически нет: замер 2026-08-06 по всем семи собранным
+    роликам — ноль переносов строки в script.txt, то есть ветка с паузами в
+    tts_edge не отрабатывала НИ РАЗУ, и ролики шли сплошным потоком. В
+    23-минутном home-vault самая длинная пауза за весь ролик — 0.50 с.
+    Поэтому режем по предложениям и собираем в группы примерно по абзацу.
+
+    Откуда берётся длина паузы. «Пауза перед сменой темы длиннее» требует
+    признака смены темы. Он есть и без ИИ: доля общих значащих слов у двух
+    соседних групп (мера Жаккара). Внутри одной главы соседние куски делят
+    имена, числа и термины, на стыке тем — почти ничего. Порог берём по
+    самому тексту (нижняя четверть значений), а не числом: абсолютный
+    уровень зависит от языка и длины группы (замер: медиана 0.037 у abyss и
+    0.023 у испанского estoico-es).
+
+    Отклонения темпа. Замедление на открытии главы даёт слушателю
+    перестроиться, замедление на её закрытии — «посадить» мысль. Величины
+    маленькие (4-6%) сознательно: на слух проверить нельзя, а заметное
+    расхождение темпа между соседними кусками звучит как склейка."""
+    paras = [p.strip() for p in re.split(r"\n\s*\n", text or "") if p.strip()]
+    groups: list[dict] = []
+    for pi, para in enumerate(paras):
+        cur: list[str] = []
+        for s in _tts_sentences(para):
+            cur.append(s)
+            if sum(len(x) for x in cur) >= group_chars:
+                groups.append({"text": " ".join(cur), "para": pi})
+                cur = []
+        if cur:
+            groups.append({"text": " ".join(cur), "para": pi})
+    if not groups:
+        return []
+
+    # связность с СЛЕДУЮЩЕЙ группой: по ней ставится пауза после текущей
+    for i, g in enumerate(groups):
+        if i + 1 < len(groups):
+            a = _tts_content_words(g["text"])
+            b = _tts_content_words(groups[i + 1]["text"])
+            g["coh"] = len(a & b) / len(a | b) if (a | b) else 1.0
+        else:
+            g["coh"] = 1.0
+    inner = sorted(g["coh"] for i, g in enumerate(groups[:-1])
+                   if g["para"] == groups[i + 1]["para"])
+    # порог имеет смысл только когда есть из чего выбирать: на пяти группах
+    # «нижняя четверть» — это одно случайное значение
+    thr = inner[max(0, int(len(inner) * 0.25) - 1)] if len(inner) >= 8 else -1.0
+
+    plan = []
+    for i, g in enumerate(groups):
+        nxt = groups[i + 1] if i + 1 < len(groups) else None
+        first = i == 0 or groups[i - 1]["para"] != g["para"]
+        last = nxt is None or nxt["para"] != g["para"]
+        if nxt is None:
+            kind = ""
+        elif last:
+            kind = "chapter"
+        elif g["coh"] <= thr:
+            kind = "topic"
+        else:
+            kind = "thought"
+        d_rate = 0
+        d_pitch = 0
+        if last and nxt is not None:
+            d_rate, d_pitch = -6, -3      # закрытие главы: голос садится
+        elif first and i:
+            d_rate = -4                   # открытие главы: дать перестроиться
+        plan.append({"text": g["text"], "gap": kind,
+                     "d_rate": d_rate, "d_pitch": d_pitch})
+    return plan
+
+
+def _natural_pause(parts: list[Path], limit: int = 8) -> float:
+    """Собственная пауза голоса между предложениями, в секундах.
+
+    Меряем по уже синтезированным кускам, а не отдельным запросом: лишний
+    вызов синтезатора — это лишняя точка отказа на ровном месте. Берём медиану,
+    потому что распределение перекошено: внутри куска попадаются и короткие
+    запятые, и длинные точки. Диапазон 0.20-2.00 c отсекает и придыхания, и
+    случайную тишину."""
+    vals = []
+    for p in parts[:limit]:
+        try:
+            r = _run_child(["ffmpeg", "-v", "info", "-nostats", "-i", str(p),
+                            "-af", "silencedetect=n=-32dB:d=0.20",
+                            "-f", "null", "-"], timeout=120)
+            vals += [float(x) for x in
+                     re.findall(r"silence_duration: ([0-9.]+)", r.stderr or "")]
+        except Exception:                                    # noqa: BLE001
+            continue
+    vals = sorted(v for v in vals if 0.20 <= v <= 2.00)
+    return vals[len(vals) // 2] if len(vals) >= 5 else 0.0
+
+
+def pause_ladder(natural: float) -> dict:
+    """Длины пауз для конкретного голоса. natural=0 — замерить не удалось,
+    берём пол значений (он рассчитан на голос с короткими паузами)."""
+    if natural <= 0:
+        return dict(PAUSE_FLOOR)
+    return {k: round(min(PAUSE_CAP[k], max(PAUSE_FLOOR[k], natural * m)), 2)
+            for k, m in PAUSE_MULT.items()}
+
+
+# Обрезка собственных полей Edge TTS. Замер 2026-08-06: каждый вызов
+# Communicate добавляет 0.205-0.208 с тишины в начале и 0.893-0.921 с в конце.
+# Без обрезки любая «пауза 0.55 с» на стыке превращалась бы в 1.66 с, то есть
+# длина паузы вообще не управлялась бы. Порог -50 dB по пику: проверено, что
+# энергия речи не теряется (0.000% на обоих тестовых кусках).
+_TTS_TRIM = ("silenceremove=start_periods=1:start_duration=0:"
+             "start_threshold=-50dB:detection=peak,areverse,"
+             "silenceremove=start_periods=1:start_duration=0:"
+             "start_threshold=-50dB:detection=peak,areverse")
+
+
 def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
-             enhance: bool = False, pauses: bool = True) -> Path:
+             enhance: bool = False, pauses: bool = True,
+             pitch: int = 0) -> Path:
     """Бесплатная озвучка через Edge TTS (голоса Microsoft, ключи не нужны).
     rate — отклонение темпа в процентах; enhance — «дикторская» обработка;
-    pauses — паузы между абзацами.
+    pauses — размеченные паузы между мыслями; pitch — сдвиг высоты голоса в
+    герцах.
 
-    Паузы делаются НАРЕЗКОЙ по абзацам со вставкой тишины, а не через SSML:
-    edge_tts.Communicate принимает только plain text, теги <break/> он
-    зачитал бы вслух. Раньше пауз в этом движке не было вовсе (они были
-    только у Polly) — начитка шла сплошным потоком без воздуха между
-    мыслями, что для документалки слышно сразу."""
+    Что Edge TTS реально умеет (замер на edge_tts 7.2.8, а не по документации):
+    из просодии принимаются только rate, pitch и volume, и все три работают —
+    rate -20% удлинил фразу с 9.000 до 11.256 с, pitch -15Hz опустил медианную
+    f0 со 114.3 до 103.9 Гц, +30Hz поднял до 136.8 Гц. SSML НЕ работает
+    никакой: и <break/>, и <prosody> зачитываются словами (см. strip_markup).
+    Поэтому паузы делаются нарезкой со вставкой тишины, а разная просодия —
+    отдельным вызовом на каждый кусок.
+
+    Формат на выходе синтезатора неуправляем: audio-24khz-48kbitrate-mono-mp3
+    зашит в edge_tts (constants.MP3_BITRATE_BPS, communicate.py). Это потолок,
+    и поднять его нельзя — зато можно не терять сверх него: куски сшиваются
+    через WAV и кодируются в mp3 ОДИН раз. Прежняя сшивка mp3 без -c copy
+    перекодировала звук умолчаниями ffmpeg, а они для 24 кГц дают 32 кбит/с —
+    треть исходных 48 кбит/с в мусор (замер 2026-08-06)."""
     import asyncio
     import edge_tts
 
+    text = strip_markup(text)
     if not text.strip():
         raise RuntimeError("Пустой сценарий — озвучивать нечего. Сначала "
                            "сгенерируй/вставь текст на вкладке «Сценарий».")
     audio_dir = out_dir / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
     final = audio_dir / "voiceover.mp3"
-    paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    if not pauses or len(paras) < 2:
+    raw = audio_dir / "_raw.wav"
+
+    def _say(txt: str, dest: Path, r: int, p: int):
+        """Один вызов синтезатора с тремя попытками. Кусков на ролик —
+        десятки, и обрыв соединения на любом из них раньше валил бы весь шаг
+        целиком, уже после нескольких минут работы."""
+        last = None
+        for attempt in (1, 2, 3):
+            try:
+                async def run():
+                    await edge_tts.Communicate(
+                        txt, voice, rate=f"{r:+d}%", pitch=f"{p:+d}Hz"
+                    ).save(str(dest))
+
+                asyncio.run(run())
+                if dest.exists() and dest.stat().st_size > 500:
+                    return
+                last = RuntimeError("синтезатор вернул пустой файл")
+            except Exception as e:                      # noqa: BLE001
+                last = e
+            if attempt < 3:
+                _sleep_cancel(2.0 * attempt)
+        raise RuntimeError(f"Edge TTS не отдал кусок за три попытки: {last}")
+
+    plan = speech_plan(text) if pauses else []
+    if len(plan) < 2:
         log(f"[Озвучка] Edge TTS, голос {voice}, темп {rate:+d}%, "
-            f"{len(text)} символов...")
-
-        async def run():
-            await edge_tts.Communicate(
-                text, voice, rate=f"{rate:+d}%").save(str(final))
-
-        asyncio.run(run())
+            f"высота {pitch:+d} Гц, {len(text)} символов...")
+        _say(text, raw, rate, pitch)
     else:
-        log(f"[Озвучка] Edge TTS, голос {voice}, темп {rate:+d}%, "
-            f"{len(text)} символов -> {len(paras)} абзацев с паузами...")
+        kinds = [g["gap"] for g in plan[:-1]]
+        log(f"[Озвучка] Edge TTS, голос {voice}, темп {rate:+d}%, высота "
+            f"{pitch:+d} Гц, {len(text)} символов -> {len(plan)} кусков; "
+            f"пауз {len(kinds)} (смен темы {kinds.count('topic')}, "
+            f"границ глав {kinds.count('chapter')})")
         parts = []
-        for i, para in enumerate(paras, 1):
-            # между абзацами — единственное безопасное место обрыва: сшивка
+        for i, seg in enumerate(plan, 1):
+            # между кусками — единственное безопасное место обрыва: сшивка
             # ещё не началась, готовый voiceover.mp3 не тронут
             _stop_check()
-            p = audio_dir / f"part_{i:03d}.mp3"
-
-            async def run(txt=para, dest=p):
-                await edge_tts.Communicate(
-                    txt, voice, rate=f"{rate:+d}%").save(str(dest))
-
-            asyncio.run(run())
-            parts.append(p)
-            if i % 10 == 0:
-                log(f"[Озвучка] абзац {i}/{len(paras)}...")
-        gap = audio_dir / "_gap.mp3"
-        _run_child(
-            ["ffmpeg", "-y", "-f", "lavfi", "-i",
-             "anullsrc=r=24000:cl=mono", "-t", "0.55", "-q:a", "9", str(gap)],
-            timeout=120, check=True)
+            p = audio_dir / f"part_{i:03d}.wav"
+            tmp = audio_dir / f"part_{i:03d}.mp3"
+            _say(seg["text"], tmp, rate + seg["d_rate"], pitch + seg["d_pitch"])
+            # обрезаем собственные поля синтезатора, иначе заказанная пауза
+            # складывается с ними и перестаёт что-либо значить
+            _run_child(["ffmpeg", "-y", "-v", "error", "-i", str(tmp),
+                        "-af", _TTS_TRIM, "-c:a", "pcm_s16le", str(p)],
+                       timeout=300, check=True)
+            tmp.unlink(missing_ok=True)
+            parts.append((p, seg["gap"]))
+            if i % 10 == 0 or i == len(plan):
+                log(f"[Озвучка] кусок {i}/{len(plan)}...")
+        # Длина пауз — от самого голоса, и померить её можно только теперь,
+        # когда куски готовы: у Кристофера собственная межфразовая пауза вдвое
+        # длиннее, чем у Эндрю, и общее число секунд было бы неверно для обоих.
+        nat = _natural_pause([p for p, _ in parts])
+        ladder = pause_ladder(nat)
+        log(f"[Озвучка] Своя пауза голоса между фразами {nat:.2f} с -> "
+            f"между мыслями {ladder['thought']:.2f}, на смене темы "
+            f"{ladder['topic']:.2f}, на границе главы {ladder['chapter']:.2f} с")
+        parts = [(p, ladder.get(k, 0.0)) for p, k in parts]
+        # тишина нужной длины: одинаковых пауз всего три вида, поэтому файлов
+        # тоже три, а не по одному на каждый стык
+        silence = {}
+        for _, g in parts:
+            if g and g not in silence:
+                s = audio_dir / f"_gap_{int(g * 100):03d}.wav"
+                _run_child(["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                            "-i", "anullsrc=r=24000:cl=mono", "-t", f"{g:.2f}",
+                            "-c:a", "pcm_s16le", str(s)],
+                           timeout=120, check=True)
+                silence[g] = s
         seq = []
-        for i, p in enumerate(parts):
-            if i:
-                seq.append(gap)
+        for p, g in parts:
             seq.append(p)
+            if g:
+                seq.append(silence[g])
         concat = audio_dir / "concat.txt"
         concat.write_text("\n".join(f"file '{p.name}'" for p in seq),
                           encoding="utf-8")
-        _run_child(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                    "-i", str(concat), str(final)],
+        _run_child(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
+                    "-i", str(concat), "-c:a", "pcm_s16le", str(raw)],
                    timeout=1800, check=True, cwd=audio_dir)
-        for p in parts + [gap, concat]:
+        for p, _ in parts:
             p.unlink(missing_ok=True)
-    if enhance:
-        enhance_voice(final, log)
+        for s in silence.values():
+            s.unlink(missing_ok=True)
+        concat.unlink(missing_ok=True)
+
+    # Единственное сжатие в mp3 за весь шаг — и обработка голоса делается
+    # здесь же, чтобы не гонять звук через кодек второй раз.
+    try:
+        _run_child(["ffmpeg", "-y", "-v", "error", "-i", str(raw),
+                    "-af", voice_chain(enhance, 24000),
+                    "-c:a", "libmp3lame", "-q:a", "2", str(final)],
+                   timeout=3600, check=True)
+    except Cancelled:
+        final.unlink(missing_ok=True)     # обрывок никому не нужен, начитка цела
+        raise
+    except Exception as e:                # noqa: BLE001
+        # Начитка уже сделана и стоила десятков сетевых вызовов — терять её
+        # из-за сбоя фильтра нельзя. Пишем без обработки и говорим об этом.
+        log(f"[Озвучка] Обработку голоса пропустил ({e.__class__.__name__})")
+        _run_child(["ffmpeg", "-y", "-v", "error", "-i", str(raw),
+                    "-c:a", "libmp3lame", "-q:a", "2", str(final)],
+                   timeout=3600, check=True)
+        import quality
+        quality.degraded(
+            "Озвучка", "голос остался сырым: без дикторской плотности и без "
+            "нормализации громкости под YouTube",
+            why=f"обработка ffmpeg не прошла ({e.__class__.__name__})",
+            level="заметно")
+    raw.unlink(missing_ok=True)
     log(f"[Озвучка] Готово: {final}")
     return final
 
@@ -1915,7 +2206,23 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
     # если совместить неск. коротких глав с ретраем на расширение
     limit = round(target_words * 1.2)
     if words > limit:
-        cut = " ".join(text.split()[:limit])
+        # РЕЖЕМ ПО СМЕЩЕНИЮ, А НЕ ЧЕРЕЗ " ".join(text.split()). Тот вариант
+        # схлопывал ВСЕ пробельные символы, включая пустые строки между
+        # главами, — и сценарий уезжал дальше одной строкой. Замер 2026-08-06:
+        # у всех семи собранных роликов в script.txt ноль переносов, при этом
+        # у пяти длина совпадает с этим потолком до 25 слов, то есть обрезка
+        # срабатывает почти всегда. Ценой были не только паузы в озвучке
+        # (tts_edge режет по пустым строкам и на одном абзаце не вставлял их
+        # вовсе), но и раскадровка: gen_scenes_ai видит один абзац на весь
+        # ролик и уже держит для этого отдельный костыль. Та же ошибка уже
+        # чинилась в _strip_echo — здесь она осталась.
+        end, seen = len(text), 0
+        for m in re.finditer(r"\S+", text):
+            seen += 1
+            if seen > limit:
+                end = m.start()
+                break
+        cut = text[:end].rstrip()
         m = list(re.finditer(r"[.!?](?:\s|$)", cut))
         if m:
             cut = cut[:m[-1].end()].rstrip()
@@ -3956,7 +4263,14 @@ THUMB_STYLES = {
             "bottle.",
         "case": "upper",
         "layouts": ("left", "split"),
-        "parts": ("sub", "badges", "ribbon", "focus"),
+        # cutout — ВТОРАЯ картинка на обложку: сам предмет, вырезанный и
+        # поставленный поверх фона. В образце владельца товар стоит именно
+        # так, отдельным объектом с читаемой этикеткой, а не растворён в
+        # сцене. Положен только этому каналу: у продающего ролика предмет —
+        # и есть обещание, а на разборе обрушения вырезанный объект посреди
+        # архивного кадра — тот самый «cut-out bust on a black void», на
+        # котором проваливались конкуренты (см. contemplative ниже).
+        "parts": ("sub", "badges", "ribbon", "focus", "cutout"),
         "sub_ask":
             "`sub` is one line under the headline, 5-9 words, naming what "
             "the fix saves — keep a number in it.\n"
@@ -4102,6 +4416,8 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
         shape.append('"ribbon":["...","...","..."]')
     if "focus" in parts:
         shape.append('"focusX":68,"focusY":52')
+    if "cutout" in parts:
+        shape.append('"object_prompt":"..."')
     try:
         out = llm_chat(
             [{"role": "system", "content":
@@ -4123,13 +4439,29 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
               "- it is NOT the video title — it is the hook ON the image\n"
               f"- {st['words']}\n\n"
               + (st.get("sub_ask", "") + "\n\n" if st.get("sub_ask") else "")
+              + ("`object_prompt` names the ONE object the video is about — "
+                 "the remedy itself, the thing the viewer would hold in his "
+                 "hands — in 4-10 English words, e.g. 'a glass bottle of "
+                 "white vinegar with a paper label'. It is photographed "
+                 "separately, cut out and stood on top of the cover, so: one "
+                 "object only, no hands, no people, no background scenery, "
+                 "and NOTHING GREEN about the object itself (it is shot "
+                 "against a green screen and green parts would be cut away "
+                 "with the backdrop). Write it in English — it goes to an "
+                 "image model.\n\n" if "cutout" in parts else "")
               + ("`focusX`/`focusY` say WHERE in your described background "
                  "the object of the video sits, in percent of width and "
                  "height. An arrow and a magnified inset are drawn to that "
                  "point, so name the spot where the remedy or the damage "
                  "actually is.\n\n" if "focus" in parts else "")
               + "Rules for `bg_prompt`: one sentence describing a photographic "
-              f"background image for that concept. {st['bg']} No text, no "
+              f"background image for that concept. {st['bg']} "
+              + ("The remedy itself must NOT be in this background: it is "
+                 "photographed separately (`object_prompt`) and stood on top "
+                 "of the cover, and the same thing twice in one frame reads "
+                 "as a mistake. Describe the place and the problem only.\n"
+                 if "cutout" in parts else "")
+              + "No text, no "
               "words in the image, no collage, no watermark. Say explicitly "
               "that the image carries NO date stamp, NO printed caption and "
               "NO photo border with a date: an image model asked for an "
@@ -4211,6 +4543,12 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
                         if "sub" in parts else ""),
                 "badges": _list("badges", 4, 26),
                 "ribbon": _list("ribbon", 3, 30),
+                # Как и badges, фильтруем по КАНАЛУ, а не по наличию в
+                # ответе: модель придумывает предмет и там, где её не
+                # просили, а каждый предмет — вторая картинка из суточных 500
+                "object_prompt": (
+                    " ".join(str(it.get("object_prompt", "")).split())[:200]
+                    if "cutout" in parts else ""),
                 "focusX": _pct("focusX", 68.0),
                 "focusY": _pct("focusY", 52.0),
             })
@@ -5166,6 +5504,132 @@ def rembg_cutout(image_path: Path, log=print) -> Path:
     dest = image_path.with_name(f"cutout_{image_path.stem}.png")
     dest.write_bytes(result)
     log(f"[Вырезка] Готово: {dest} — используй её в popup-оверлеях")
+    return dest
+
+
+# ---------- Вырезание предмета с ровного хромакея (без rembg) ----------
+#
+# Зачем второй способ, когда выше уже есть rembg. Тот работает нейросетью и
+# тянет onnxruntime плюс модель ~170 МБ, а в этом окружении не установлен ни
+# сам rembg, ни onnxruntime (проверено: importlib.util.find_spec вернул None
+# на оба). Ставить их ради обложки — лишние сотни мегабайт на машине, которая
+# и так занята рендером ночами.
+#
+# Здесь фон не «угадывается», а ЗАДАЁТСЯ: предмет заказывается генератору
+# сразу на ровном хромакее, и вырезать его можно обычным colorkey. Проверено
+# на настоящей выдаче VeoNonStop (бутылка уксуса, запрос «backdrop is a
+# completely flat uniform chroma green»): фон вышел ровный, разброс по рамке
+# кадра ±10 по каждому каналу, после вырезки непрозрачными остались 6.9%
+# пикселей — ровно силуэт бутылки, этикетка читается, зелёной каймы по краю
+# нет.
+#
+# Прозрачный фон прямо от генератора получить нельзя, и это не догадка:
+# у veo_client.banana_generate в теле запроса всего пять полей (prompt,
+# num_images, aspect_ratio, model_key, use_all_ref_images), поля про альфу
+# нет, а ответ приходит JPEG (замер: PIL сообщил format=JPEG, mode=RGB) —
+# формат, в котором прозрачности не бывает в принципе.
+
+# Насколько далеко от цвета фона пиксель ещё считается фоном. 0.30 — не
+# круглое число «на глаз»: на 0.20 по краю бутылки оставалась зелёная кайма
+# от сглаживания и JPEG, на 0.40 начинало проедать светлые места этикетки.
+CHROMA_SIMILARITY = 0.30
+CHROMA_BLEND = 0.10        # мягкость края: 0 даёт «пилу» на скруглениях
+# Доля непрозрачного, при которой вырезке верим. Меньше — вырезали пустоту
+# (фон оказался неровным и съел предмет), больше — фон не сработал вовсе и
+# мы собираемся налепить на обложку почти весь кадр целиком.
+CUTOUT_MIN_SHARE = 0.015
+CUTOUT_MAX_SHARE = 0.60
+
+
+def cutout_prompt(desc: str) -> str:
+    """Промпт предмета для последующей вырезки по цвету.
+
+    Живёт рядом с chroma_cutout намеренно: это две половины одного приёма.
+    Стоит смягчить формулировку про фон — и вырезка начнёт промахиваться,
+    а понять это по одному промпту в другом файле было бы невозможно.
+
+    Модель называет только сам предмет; всё про хромакей, поля и свет
+    дописывается здесь и одинаково для всех предметов."""
+    return (
+        f"{desc.strip().rstrip('.')}. Single object, centred, upright, "
+        "photographed as a product shot: sharp edges, even studio light, "
+        "the whole object inside the frame with empty margin on every side. "
+        "The BACKDROP IS A COMPLETELY FLAT UNIFORM CHROMA GREEN #00B140 — "
+        "no gradient, no vignette, no texture, no floor line, no shadow "
+        "falling on the backdrop, no reflections, nothing else in the "
+        "picture at all. Nothing green on the object itself. No text "
+        "anywhere except a label that belongs to the object.")
+
+
+def _flat_backdrop(im) -> tuple[int, int, int]:
+    """Цвет ровного фона по рамке кадра. Бросает, если рамка не ровная.
+
+    Цвет НЕ берём тот, что просили в промпте: генератор отдаёт свой оттенок
+    (просили #00B140 — пришёл #03A748), и вырезка по заказанному цвету
+    промахнулась бы на весь этот сдвиг."""
+    w, h = im.size
+    px = im.load()
+    edge = ([(x, y) for x in range(0, w, 7) for y in (0, 1, h - 2, h - 1)]
+            + [(x, y) for y in range(0, h, 7) for x in (0, 1, w - 2, w - 1)])
+    vals = [px[x, y][:3] for x, y in edge]
+    mid = tuple(sorted(v[i] for v in vals)[len(vals) // 2] for i in range(3))
+    near = sum(1 for v in vals
+               if max(abs(v[i] - mid[i]) for i in range(3)) <= 28)
+    if near < len(vals) * 0.9:
+        raise RuntimeError(
+            f"фон не ровный: по рамке кадра только {near * 100 // len(vals)}% "
+            "пикселей одного цвета, вырезать по цвету нечего")
+    return mid
+
+
+def chroma_cutout(src: Path, dest: Path | None = None, log=print) -> Path:
+    """Предмет с ровного цветного фона -> PNG с прозрачностью, обрезанный
+    по силуэту. Бросает исключение, если вырезать не вышло, — вызывающий
+    обязан пережить это и сделать обложку без предмета."""
+    from PIL import Image
+    src = Path(src)
+    dest = Path(dest) if dest else src.with_name(f"cut_{src.stem}.png")
+    with Image.open(src) as im:
+        key = _flat_backdrop(im.convert("RGB"))
+    r, g, b = key
+    vf = (f"colorkey=0x{r:02X}{g:02X}{b:02X}:"
+          f"{CHROMA_SIMILARITY}:{CHROMA_BLEND}")
+    # despill убирает зелёный/синий налёт, который фон даёт на самом предмете
+    # (полупрозрачное стекло, светлые края). Только для зелёного и синего:
+    # у фильтра других типов нет, а на белом фоне он испортил бы цвета.
+    if g > r + 40 and g > b + 40:
+        vf += ",despill=type=green:mix=0.5:expand=0"
+    elif b > r + 40 and b > g + 40:
+        vf += ",despill=type=blue:mix=0.5:expand=0"
+    r_ = subprocess.run(["ffmpeg", "-v", "error", "-i", str(src),
+                         "-vf", vf, str(dest), "-y"],
+                        capture_output=True, timeout=180,
+                        creationflags=CREATE_NO_WINDOW)
+    if r_.returncode != 0 or not dest.exists():
+        raise RuntimeError(f"ffmpeg colorkey: "
+                           f"{r_.stderr.decode('utf-8', 'replace')[-200:]}")
+    with Image.open(dest) as im:
+        im = im.convert("RGBA")
+        box = im.getbbox()          # None = прозрачно всё, предмет съело
+        # Считаем по гистограмме альфы, а не по пикселям в цикле: кадр
+        # генератора — 2752x1536, это 4.2 млн проверок на питоне.
+        opaque = sum(im.getchannel("A").histogram()[201:])
+        share = opaque / float(im.width * im.height)
+        if not box or not (CUTOUT_MIN_SHARE <= share <= CUTOUT_MAX_SHARE):
+            dest.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"вырезка непохожа на предмет: непрозрачными остались "
+                f"{share * 100:.1f}% кадра")
+        # Обрезаем по силуэту: дальше вырезку ставят на обложку по её
+        # собственным краям, а не по краям исходного кадра — с полями
+        # предмет уехал бы от нужного места на треть кадра.
+        im = im.crop(box)
+        if im.height > 1440:        # обложка 1280x720, больше незачем
+            im = im.resize((round(im.width * 1440 / im.height), 1440),
+                           Image.LANCZOS)
+        im.save(dest)
+    log(f"[Вырезка] Предмет вырезан по фону #{r:02x}{g:02x}{b:02x}: "
+        f"{im.width}x{im.height}, {share * 100:.1f}% кадра")
     return dest
 
 
