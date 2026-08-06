@@ -75,10 +75,38 @@ ATTEMPTS = 3
 # ещё до затухания p.exit.
 VISION_AT = 0.72
 
+# Почерк СХЕМ у каждого канала свой — как у плашек и монтажа. Раньше сюда
+# уходили только имя канала, жанр и язык, поэтому разбор аварии и разбор
+# философа рисовались одинаково: те же линии, те же подписи, тот же ритм.
+# Ключ — palette, тот же, по которому разведены склейки (render.PALETTES),
+# плашки и обложки.
+SCENE_LOOK = {
+    "harsh": (
+        "Draw like an ENGINEERING REPORT: orthogonal projections, section "
+        "cuts, dimension lines with figures, load arrows, callout leaders "
+        "with part names. Thin technical strokes, steel grey and slate, one "
+        "signal-orange accent on the failure point only. No curves for "
+        "decoration, no glow, no gradients. It must look measured, not "
+        "designed."),
+    "warm": (
+        "Draw like a PRACTICAL GUIDE: before-and-after halves, a labelled "
+        "cutaway of the everyday object, a cost figure counting down, simple "
+        "step arrows. Rounded corners, honey and brick tones on cream, thick "
+        "friendly strokes. It must look like something a person sketched to "
+        "explain a fix, not like an instrument panel."),
+    "contemplative": (
+        "Draw like a MAP OF AN IDEA: a life laid along a slow line, "
+        "concepts as circles that overlap, a quotation given room. Hairline "
+        "strokes, dusty green and stone on faded indigo, wide empty space. "
+        "No arrows shouting, no numbers unless a date. It must feel unhurried "
+        "— the viewer is here for an hour."),
+}
+
+
 PROPOSE_PROMPT = """You are a documentary motion-graphics director.
 
 Below is a narration script for a video on the channel "{channel}"
-({tone}, {lang}).
+({tone}, {lang}).{look}
 
 Find up to {count} moments where FOOTAGE CANNOT SHOW what is being said, but a
 drawn animated diagram can. Good candidates:
@@ -983,10 +1011,13 @@ def propose(script_text: str, channel: dict, count: int = 8,
     запрос, он даёт код под выдуманный повод — проверено на оверлеях.
     """
     import core
+    look = SCENE_LOOK.get((channel.get("palette") or "").strip().lower(), "")
     prompt = PROPOSE_PROMPT.format(
         channel=channel.get("name") or channel.get("id", ""),
         tone=channel.get("tone", "документальный"),
         lang=channel.get("lang", "английский"),
+        look=("\n\nHOUSE STYLE OF THIS CHANNEL — follow it exactly:\n"
+              + look) if look else "",
         count=count,
         script=script_text[:14000])
     out = core.llm_chat([{"role": "user", "content": prompt}],
