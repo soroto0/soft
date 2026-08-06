@@ -116,3 +116,8 @@ used_media.json
 .veo_image_usage.json
 .veo_image_usage.json.tmp
 subs2/
+
+# Выгрузки статистики канала — личные данные, в публичный репозиторий им нельзя
+analytics/*.csv
+analytics/*.xlsx
+analytics/*.zip
