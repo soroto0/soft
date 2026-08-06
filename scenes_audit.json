@@ -111,5 +111,292 @@
     "checked": "2026-08-05 14:08",
     "subject": "As the solution hits a cold glass surface, the liquid molecules stop moving and cluster together, trapping blue vapor bubbles underneath the layer.",
     "title": "Temperature-Induced Solution Failure"
+  },
+  "bar_chart_decline": {
+    "verdict": "ok",
+    "why": "a bar graph with a vertical percentage axis comparing a tall white bar for 1914 at 100% and a very short red bar for 1918 at 9%",
+    "checked": "2026-08-05 22:30",
+    "subject": "Un gráfico de barras comparando 1914 y 1918 donde la columna de 1918 cae drásticamente a una pequeña fracción.",
+    "title": "Colapso del suministro de carbón"
+  },
+  "segmented_timeline_phases": {
+    "verdict": "ok",
+    "why": "a horizontal bar with a color gradient, divided by vertical tick marks into four segments with corresponding age ranges and labels",
+    "checked": "2026-08-05 22:36",
+    "subject": "Una línea horizontal dividida en cuatro segmentos etiquetados: Infancia, Juventud, Madurez y Vejez, ilustrando la progresión del organismo.",
+    "title": "Fases de la cultura"
+  },
+  "cross_section_tree_decay": {
+    "verdict": "ok",
+    "why": "Concentric dashed circles forming circular layers around a reddish-brown central gradient, with a white radial line and text labels 'Putrefacción' and 'Corteza Exterior'.",
+    "checked": "2026-08-05 22:37",
+    "subject": "Una sección transversal de un tronco de árbol donde la savia deja de fluir hacia la corteza exterior y el centro comienza a oscurecerse.",
+    "title": "El roble y la putrefacción"
+  },
+  "conversion_diagram": {
+    "verdict": "ok",
+    "why": "a downward-sloping curve connecting a yellow triangle icon at the top left to a red gear-like icon at the bottom right, above a horizontal axis marked 'Inicio' and 'Final'",
+    "checked": "2026-08-05 22:40",
+    "subject": "Un diagrama de flujo que muestra el arte y la espiritualidad transformándose en engranajes y dinero a medida que la curva desciende.",
+    "title": "De cultura a civilización"
+  },
+  "sinusoidal_wave_history": {
+    "verdict": "ok",
+    "why": "Three colored sine waves (white, yellow, and red) plotted against a horizontal time axis labeled 'Tiempo (Siglos)' with tick marks from 0 to 1000, accompanied by a legend for 'Cultura A', 'Cultura B', and 'Cultura C'.",
+    "checked": "2026-08-05 22:41",
+    "subject": "Varias ondas sinusoidales superpuestas que representan diferentes culturas naciendo y muriendo en intervalos de tiempo constantes.",
+    "title": "El ritmo de la historia"
+  },
+  "parallel_timeline_comparison": {
+    "verdict": "ok",
+    "why": "two horizontal parallel bars aligned along a single timeline axis marked from 0y to 2000y, with text labels highlighting structural points below",
+    "checked": "2026-08-05 22:43",
+    "subject": "Dos líneas de tiempo paralelas que alinean el periodo faraónico con la era industrial, resaltando similitudes estructurales.",
+    "title": "Analogía histórica"
+  },
+  "conceptual_structural_diagram": {
+    "verdict": "ok",
+    "why": "A top horizontal bar supported by four grey vertical pillars labeled 'Analogía', 'Poética', 'Metáfora', and 'Intuición', positioned above a faint dashed line labeled 'EVIDENCIA ARQUEOLÓGICA (0.2)'.",
+    "checked": "2026-08-05 22:44",
+    "subject": "Un edificio teórico representado como una estructura que se apoya en pilares de 'conceptos' en lugar de 'datos'.",
+    "title": "Arquitectura de la teoría"
+  },
+  "non_linear_history_map": {
+    "verdict": "ok",
+    "why": "a horizontal time axis labeled 'TIEMPO (AÑOS)' from 0 to 5000, and two isolated circular gradient bubbles labeled 'Grecia' and 'Europa' placed at different positions along time without any line connecting them",
+    "checked": "2026-08-05 22:47",
+    "subject": "Un mapa que muestra los focos de civilización como burbujas independientes que nacen y mueren, en lugar de una línea que sube.",
+    "title": "Historia no lineal"
+  },
+  "symptom_mapping": {
+    "verdict": "ok",
+    "why": "a white curved line, three vertical dashed lines ending in colored dots labeled 'Democracia', 'Parlamentarismo', and 'Cientificismo' intersecting the curve, and a bottom horizontal slider bar labeled 'VITALIDAD: 100%' and 'SENILIDAD: 0%'",
+    "checked": "2026-08-05 22:48",
+    "subject": "Un diagrama médico donde los conceptos políticos modernos son diagnosticados como 'síntomas' de un organismo en declive.",
+    "title": "Síntomas de la senilidad"
+  },
+  "design_vs_actual_load": {
+    "verdict": "ok",
+    "why": "Two vertical column shapes on a horizontal axis marked from 0kN to 200kN: a straight light-blue column labeled DESIGNED (100kN) and a leaning red-orange column labeled ACTUAL (180kN).",
+    "checked": "2026-08-06 00:02",
+    "subject": "A side-by-side comparison diagram shows the designed load distribution on the steel columns versus the actual over-capacity load, causing the columns to bend and glow red under stress.",
+    "title": "Scaffold Load Limits"
+  },
+  "anchor_bolt_pullout": {
+    "verdict": "ok",
+    "why": "a cross-section block divided into Surface, Green Concrete, and Core layers, featuring a downward LOAD arrow, dotted failure lines, crumbling dots, and a yellow vertical bolt extending out the bottom.",
+    "checked": "2026-08-06 00:06",
+    "subject": "A close-up cross-section of the concrete wall shows the anchor bolt slipping out as the surrounding weak, green concrete crumbles under a sudden downward force vector.",
+    "title": "Anchor Bolt Failure"
+  },
+  "progressive_scaffold_collapse": {
+    "verdict": "ok",
+    "why": "a dark vertical rectangle with six horizontal lines attached to its right side; the upper five lines are long red bars with red dots (the top one labeled 100%), and the bottom line is a shorter yellow bar with a white dot labeled 305%.",
+    "checked": "2026-08-06 00:08",
+    "subject": "A wide diagram of the tower wall shows a cascading animation where the failure of the top anchor transfers extreme, unsustainable loads to the lower anchors, popping them out one by one.",
+    "title": "Progressive Failure Sequence"
+  },
+  "concrete_strength_comparison": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"A vertical axis with tick marks from 0 to 3000 PSI and two vertical bars labeled 'Required' at 3000 PSI and 'Actual' at 2000 PSI, with a dash",
+    "checked": "2026-08-06 00:09",
+    "subject": "A bar chart compares the required 3,000 PSI strength curve over 28 days against the actual 2,000 PSI curve of the recovered samples, highlighting the dangerous deficit at the time of collapse.",
+    "title": "Concrete Compressive Strength"
+  },
+  "cement_hydration_microscopic": {
+    "verdict": "ok",
+    "why": "A split-screen diagram divided by a vertical dashed line showing four interlocking white cross shapes on the left side and two isolated orange circles on the right side, along with a color scale bar labeled 'Low Reaction' to 'High Reaction'.",
+    "checked": "2026-08-06 00:11",
+    "subject": "A split-screen microscopic animation shows calcium silicate hydrate crystals rapidly interlocking at normal temperatures, contrasted with stunted, disconnected crystal growth at 38 degrees.",
+    "title": "Portland Cement Hydration"
+  },
+  "osmotic_cellular_collapse": {
+    "verdict": "ok",
+    "why": "a rectangle labelled 'CYTOPLASM' with a 'CELL WALL' boundary, dashed horizontal path lines with circles moving toward a 'HIGH SALT' region, and a salt concentration gradient bar from 0% to 100% at the bottom",
+    "checked": "2026-08-06 02:44",
+    "subject": "Microscopic cellular diagram animates water molecules rushing across cell walls into the external high-salt solution, deflating and collapsing the cells.",
+    "title": "Osmotic Pressure Shift"
+  },
+  "lateral_salt_migration": {
+    "verdict": "ok",
+    "why": "A vertical block labeled 'ROAD' next to three horizontal layers labeled 'Surface', 'Topsoil', and 'Subsoil', with a horizontal axis measuring distance in meters and a large gradient-filled arrow pointing laterally from the road edge through the topsoil layer.",
+    "checked": "2026-08-06 02:45",
+    "subject": "Underground cross-section shows salt ions migrating laterally through soil matrix from driveway edge into nearby grass root zones.",
+    "title": "Subsurface Salt Migration"
+  },
+  "lipid_encapsulation_chemistry": {
+    "verdict": "ok",
+    "why": "A grey square surrounded by ten surfactant molecules with yellow heads and red tails, resting at a dashed orange line labelled 'SEDIMENTATION LAYER' at the bottom of a vertical axis marked 'WATER' and 'BOTTOM'.",
+    "checked": "2026-08-06 02:48",
+    "subject": "Molecular animation shows surfactant molecules enveloping salt crystal surfaces to prevent water contact, causing them to sink as undissolved sediment.",
+    "title": "Premature Soap Addition"
+  },
+  "stomata_closure_temperature": {
+    "verdict": "ok",
+    "why": "A layered block showing leaf structure labeled Cuticle, Epidermis, and Mesophyll containing two touching yellow guard cell shapes, alongside a vertical temperature scale marked from 50°F to 80°F with a current marker at 58°F.",
+    "checked": "2026-08-06 02:55",
+    "subject": "Microscopic view of leaf underside shows stomatal guard cells closing shut as temperature drops below sixty-five degrees.",
+    "title": "Stomata Cold Response"
+  },
+  "comparison_scale": {
+    "verdict": "ok",
+    "why": "A balance scale with a tall stack of gold coins on the lower right side labeled '300M SESTERCIOS' and a red organ shape on the elevated left side labeled 'ASMA CRÓNICA'.",
+    "checked": "2026-08-06 08:06",
+    "subject": "Muestra una balanza donde un lado es una enorme montaña de monedas de oro y el otro un par de pulmones marchitos, ilustrando la inutilidad de su fortuna frente a su asma.",
+    "title": "Riqueza vs. Salud física"
+  },
+  "growth_chart": {
+    "verdict": "ok",
+    "why": "A bar chart with four vertical bars of increasing heights against a numbered vertical axis, and a simple building icon at the top right containing concentric red circles.",
+    "checked": "2026-08-06 08:13",
+    "subject": "Un gráfico de barras que se dispara verticalmente hacia arriba, coincidiendo con un icono de un edificio del Senado que vibra con ondas sonoras.",
+    "title": "Ascenso meteórico"
+  },
+  "flow_diagram": {
+    "verdict": "ok",
+    "why": "A line graph with a vertical axis and a horizontal axis marked T0 to T4, showing two lines diverging from a single point labeled 'Séneca' at T0: a dashed white line sloping downwards labeled 'Virtud', and a solid orange-to-white line curving upwards labeled 'Influencia/Riqueza'.",
+    "checked": "2026-08-06 08:15",
+    "subject": "Un diagrama que muestra dos caminos divergentes: uno etiquetado como 'Virtud' que desciende y otro como 'Influencia/Riqueza' que se expande exponencialmente.",
+    "title": "Contradicción ética"
+  },
+  "process_flow": {
+    "verdict": "ok",
+    "why": "A red box labeled 'ACUSACIÓN ADULTERIO' connected by a white arrow to a yellow box labeled 'PRISIÓN' containing vertical lines, followed by a white arrowhead pointing to a white box labeled 'CÓRCEGA'.",
+    "checked": "2026-08-06 08:19",
+    "subject": "Un diagrama de flujo que muestra la acusación legal conectada directamente a una celda de prisión y luego a una flecha hacia Córcega.",
+    "title": "El camino al exilio"
+  },
+  "cross_section_map": {
+    "verdict": "ok",
+    "why": "A dark blue gridded background containing a single red quadrilateral with a white circle and dot inside it, connected to the top-left edge by a white dashed line, with the label 'Córcega' above it.",
+    "checked": "2026-08-06 08:21",
+    "subject": "Un zoom desde el mapa de Roma hacia la isla de Córcega, destacando la soledad del punto geográfico rodeado de mar.",
+    "title": "Destierro en Córcega"
+  },
+  "hierarchy_chart": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"Three colored circles labeled 'AGRIPINA', 'SÉNECA', and 'NERÓN' arranged in a hierarchy, with dashed white lines connecting the top circle to",
+    "checked": "2026-08-06 08:23",
+    "subject": "Un organigrama donde Agripina está en la cima, manipulando los hilos que conectan a Séneca con el joven Nerón.",
+    "title": "Estructura de poder"
+  },
+  "financial_map": {
+    "verdict": "ok",
+    "why": "Three red dots labeled 'Londinium', 'Eboracum', and 'Deva' connected by dashed lines to a central square labeled 'SÉNECA', alongside a vertical bar scale showing a value of 294M out of 300M.",
+    "checked": "2026-08-06 08:31",
+    "subject": "Un mapa de Britania con líneas de conexión financieras que fluyen hacia la villa de Séneca, mostrando la acumulación de capital.",
+    "title": "Red de usura"
+  },
+  "split_screen_diagram": {
+    "verdict": "ok",
+    "why": "Two stacked rectangular boxes; the top box contains three horizontal lines and a diagonal yellow line resembling a stylus, while the bottom box contains a dark grey circle, a red line with a circular tip, and a red 'X'.",
+    "checked": "2026-08-06 08:34",
+    "subject": "Pantalla dividida: arriba el palacio con Séneca escribiendo, abajo un callejón oscuro con Nerón actuando violentamente.",
+    "title": "Doble vida de Nerón"
+  },
+  "joint_cross_section": {
+    "verdict": "ok",
+    "why": "Rectangular blocks representing a wall-to-floor joint, a red hatched area with a 45mm dimension line, a larger dashed yellow box labeled 150mm, a downward red arrow, and a crossed-out circle with a leader line.",
+    "checked": "2026-08-06 15:00",
+    "subject": "A technical cross-section of the wall-to-floor joint highlights the narrow overlap and the lack of structural steel ties.",
+    "title": "Fatal Design Shortcut"
+  },
+  "construction_timeline_graph": {
+    "verdict": "ok",
+    "why": "a vertical stack of 21 yellow rectangles next to a labeled axis (L0 to TOP) and a grid of red rectangles organized by years (1966-1968) representing a calendar, with a dashed line connecting the top of the stack to a specific month.",
+    "checked": "2026-08-06 15:08",
+    "subject": "A vertical bar chart grows rapidly alongside a calendar to visualize the extreme speed of the assembly process.",
+    "title": "Accelerated Construction Pace"
+  },
+  "relative_scale_comparison": {
+    "verdict": "ok",
+    "why": "A vertical axis with height markers in meters and storeys, two segmented rectangular blocks of different heights (6 segments vs 22 segments), and a horizontal dashed line indicating a limit at the 6th segment.",
+    "checked": "2026-08-06 15:10",
+    "subject": "A silhouette of a 6-story building is placed next to the 22-story Ronan Point to highlight the dangerous scaling of the system.",
+    "title": "Design Limit vs. Reality"
+  },
+  "vector_stress_analysis": {
+    "verdict": "ok",
+    "why": "Two diagrams of a block assembly; the left shows a large vertical arrow (800 kN) pointing down on a stable structure, while the right shows a small horizontal arrow (50 kN) pushing the top block, which is displaced to the side with red diagonal lines at the joint.",
+    "checked": "2026-08-06 15:14",
+    "subject": "A comparison shows the joint successfully handling a vertical load but shattering or sliding under a horizontal force vector.",
+    "title": "Vertical vs. Lateral Resistance"
+  },
+  "wind_load_simulation": {
+    "verdict": "ok",
+    "why": "a vertical rectangle divided into layers, curved horizontal lines passing over its top, a shaded red zone with arrows pointing outward toward four separate yellow blocks, and a vertical scale with a numerical indicator.",
+    "checked": "2026-08-06 15:16",
+    "subject": "A diagram shows high-altitude wind currents hitting the top of the tower and creating a suction effect that pulls on the unanchored panels.",
+    "title": "Atmospheric Pressure Vulnerability"
+  },
+  "geographical_risk_map": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\n  \"shows\": \"An outline map of the UK with five clusters of red dots, regional labels with numbers in parentheses, a large total unit count, and a mult",
+    "checked": "2026-08-06 15:22",
+    "subject": "A map of the United Kingdom populates with thousands of dots representing high-rise blocks sharing the same fatal design flaw.",
+    "title": "UK System-Built Housing Risk"
+  },
+  "pipe_cross_section_buildup": {
+    "verdict": "ok",
+    "why": "Concentric rings of varying colors and textures, a central blue circle, leader lines with labels, and a horizontal timeline axis with a marker at 12.6 years.",
+    "checked": "2026-08-06 17:46",
+    "subject": "A cross-section of a copper pipe shows mineral layers growing inward from the walls, narrowing the water's path over a simulated timeline.",
+    "title": "Internal Pipe Scale Growth"
+  },
+  "faucet_internal_cutaway": {
+    "verdict": "ok",
+    "why": "nested rectangles and a central cylinder with a gradient, an orange oval inside the cylinder, three brown dots with lines pointing at the cylinder, and leader lines with labels",
+    "checked": "2026-08-06 17:50",
+    "subject": "A transparent 3D view of a faucet assembly highlights the specific location of the rubber O-ring and shows it shriveling when touched by chemical icons.",
+    "title": "The Hidden Elastomeric Seal"
+  },
+  "mohs_hardness_comparison": {
+    "verdict": "ok",
+    "why": "a vertical axis numbered 1 to 10 with tick marks, and four colored dots at different heights (8.5, 3.5, 3, 2) connected by horizontal lines to labeled boxes",
+    "checked": "2026-08-06 17:56",
+    "subject": "A vertical scale compares the Mohs hardness of chrome, brass, and calcium carbonate to show the mineral is tougher than the metal.",
+    "title": "Material Hardness Comparison"
+  },
+  "thermal_transfer_efficiency": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"A cross-section with four vertical zones labeled 'HEAT SOURCE', 'STEEL WALL', 'SCALE', and 'WATER FLUID', a red line plotting a temperature g",
+    "checked": "2026-08-06 18:07",
+    "subject": "Heat arrows from a heating element are deflected and blocked by a thin layer of scale, showing the temperature drop on the water side.",
+    "title": "Thermal Insulation Energy Loss"
+  },
+  "galvanic_corrosion_layers": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"A cross-section with three horizontal layers labeled Chrome, Nickel, and Zinc. A thin vertical orange line passes through a gap in the top Ch",
+    "checked": "2026-08-06 18:14",
+    "subject": "A zoomed-in cross-section of plated metal shows the acid bypassing the top chrome layer to dissolve the nickel and zinc layers underneath.",
+    "title": "Microscopic Galvanic Corrosion"
+  },
+  "ph_scale_compatibility": {
+    "verdict": "ok",
+    "why": "A horizontal color-graded bar with a numbered axis from 0 to 14, labels for 'ACIDIC', 'NEUTRAL', and 'ALKALINE', and leader lines from 'LIMESCALE' and 'BLEACH' boxes pointing to the right side of the scale.",
+    "checked": "2026-08-06 18:15",
+    "subject": "A pH slider moves to show bleach and limescale both on the alkaline side, demonstrating why they don't react to dissolve each other.",
+    "title": "The pH Neutralization Scale"
+  },
+  "hierarchy_of_infinities": {
+    "verdict": "ok",
+    "why": "a vertical dashed line with horizontal markers, featuring a tiny dot at the bottom, followed by a small square, a larger square, and a massive gradient-filled rectangle at the top, all centered on the axis and labeled.",
+    "checked": "2026-08-06 22:52",
+    "subject": "A vertical scale of nested geometric dimensions grows exponentially, representing cardinalities from natural numbers up to absolute infinity, to show the levels Cantor conceived.",
+    "title": "Jerarquía de Infinitos"
+  },
+  "set_derivation_process": {
+    "verdict": "ok",
+    "why": "Three horizontal lines representing successive set derivations connected by downward arrows, showing isolated dots disappearing from top to bottom until only clusters of accumulation points remain.",
+    "checked": "2026-08-06 23:00",
+    "subject": "A scattering of dots on a line undergoes iterative cleaning phases where isolated dots blink and disappear, leaving only the core accumulation points.",
+    "title": "Proceso de Derivación"
+  },
+  "dimension_mapping_1d_2d": {
+    "verdict": "ok",
+    "why": "A yellow horizontal line with nodes, a dashed curved trajectory arc, a red square containing a grid of dots, and a horizontal scale numbered from 0.0 to 1.0.",
+    "checked": "2026-08-06 23:10",
+    "subject": "A 1D line segment unfolds and distributes its points across a 2D square, showing a bijective coordinate mapping where every point on the line matches a point in the plane.",
+    "title": "Línea vs Plano Cuadrado"
   }
 }

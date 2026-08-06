@@ -100,6 +100,48 @@ import { WindowSpacerConductionScene } from './scenes/window_spacer_conduction';
 import { MaterialMoistureSeepageScene } from './scenes/material_moisture_seepage';
 import { SurfaceTensionComparisonScene } from './scenes/surface_tension_comparison';
 import { ThermalViscosityTrapScene } from './scenes/thermal_viscosity_trap';
+import { BarChartDeclineScene } from './scenes/bar_chart_decline';
+import { SegmentedTimelinePhasesScene } from './scenes/segmented_timeline_phases';
+import { CrossSectionTreeDecayScene } from './scenes/cross_section_tree_decay';
+import { ConversionDiagramScene } from './scenes/conversion_diagram';
+import { SinusoidalWaveHistoryScene } from './scenes/sinusoidal_wave_history';
+import { ParallelTimelineComparisonScene } from './scenes/parallel_timeline_comparison';
+import { ConceptualStructuralDiagramScene } from './scenes/conceptual_structural_diagram';
+import { NonLinearHistoryMapScene } from './scenes/non_linear_history_map';
+import { SymptomMappingScene } from './scenes/symptom_mapping';
+import { DesignVsActualLoadScene } from './scenes/design_vs_actual_load';
+import { AnchorBoltPulloutScene } from './scenes/anchor_bolt_pullout';
+import { ProgressiveScaffoldCollapseScene } from './scenes/progressive_scaffold_collapse';
+import { ConcreteStrengthComparisonScene } from './scenes/concrete_strength_comparison';
+import { CementHydrationMicroscopicScene } from './scenes/cement_hydration_microscopic';
+import { OsmoticCellularCollapseScene } from './scenes/osmotic_cellular_collapse';
+import { LateralSaltMigrationScene } from './scenes/lateral_salt_migration';
+import { LipidEncapsulationChemistryScene } from './scenes/lipid_encapsulation_chemistry';
+import { StomataClosureTemperatureScene } from './scenes/stomata_closure_temperature';
+import { ComparisonScaleScene } from './scenes/comparison_scale';
+import { GrowthChartScene } from './scenes/growth_chart';
+import { FlowDiagramScene } from './scenes/flow_diagram';
+import { ProcessFlowScene } from './scenes/process_flow';
+import { CrossSectionMapScene } from './scenes/cross_section_map';
+import { HierarchyChartScene } from './scenes/hierarchy_chart';
+import { FinancialMapScene } from './scenes/financial_map';
+import { SplitScreenDiagramScene } from './scenes/split_screen_diagram';
+import { JointCrossSectionScene } from './scenes/joint_cross_section';
+import { ConstructionTimelineGraphScene } from './scenes/construction_timeline_graph';
+import { RelativeScaleComparisonScene } from './scenes/relative_scale_comparison';
+import { VectorStressAnalysisScene } from './scenes/vector_stress_analysis';
+import { WindLoadSimulationScene } from './scenes/wind_load_simulation';
+import { GeographicalRiskMapScene } from './scenes/geographical_risk_map';
+import { PipeCrossSectionBuildupScene } from './scenes/pipe_cross_section_buildup';
+import { FaucetInternalCutawayScene } from './scenes/faucet_internal_cutaway';
+import { MohsHardnessComparisonScene } from './scenes/mohs_hardness_comparison';
+import { ThermalTransferEfficiencyScene } from './scenes/thermal_transfer_efficiency';
+import { GalvanicCorrosionLayersScene } from './scenes/galvanic_corrosion_layers';
+import { PhScaleCompatibilityScene } from './scenes/ph_scale_compatibility';
+import { HierarchyOfInfinitiesScene } from './scenes/hierarchy_of_infinities';
+import { SetDerivationProcessScene } from './scenes/set_derivation_process';
+import { DimensionMapping1d2dScene } from './scenes/dimension_mapping_1d_2d';
+import { HierarchicalInfinitesDiagramScene } from './scenes/hierarchical_infinites_diagram';
 export type { SceneProps };
 
 // Точка входа для СЦЕН — планов, которые целиком нарисованы, а не сняты.
@@ -333,6 +375,90 @@ const pickScene = (props: SceneProps): React.ReactElement | null => {
       return <SurfaceTensionComparisonScene {...props} />;
     case 'thermal_viscosity_trap':
       return <ThermalViscosityTrapScene {...props} />;
+    case 'bar_chart_decline':
+      return <BarChartDeclineScene {...props} />;
+    case 'segmented_timeline_phases':
+      return <SegmentedTimelinePhasesScene {...props} />;
+    case 'cross_section_tree_decay':
+      return <CrossSectionTreeDecayScene {...props} />;
+    case 'conversion_diagram':
+      return <ConversionDiagramScene {...props} />;
+    case 'sinusoidal_wave_history':
+      return <SinusoidalWaveHistoryScene {...props} />;
+    case 'parallel_timeline_comparison':
+      return <ParallelTimelineComparisonScene {...props} />;
+    case 'conceptual_structural_diagram':
+      return <ConceptualStructuralDiagramScene {...props} />;
+    case 'non_linear_history_map':
+      return <NonLinearHistoryMapScene {...props} />;
+    case 'symptom_mapping':
+      return <SymptomMappingScene {...props} />;
+    case 'design_vs_actual_load':
+      return <DesignVsActualLoadScene {...props} />;
+    case 'anchor_bolt_pullout':
+      return <AnchorBoltPulloutScene {...props} />;
+    case 'progressive_scaffold_collapse':
+      return <ProgressiveScaffoldCollapseScene {...props} />;
+    case 'concrete_strength_comparison':
+      return <ConcreteStrengthComparisonScene {...props} />;
+    case 'cement_hydration_microscopic':
+      return <CementHydrationMicroscopicScene {...props} />;
+    case 'osmotic_cellular_collapse':
+      return <OsmoticCellularCollapseScene {...props} />;
+    case 'lateral_salt_migration':
+      return <LateralSaltMigrationScene {...props} />;
+    case 'lipid_encapsulation_chemistry':
+      return <LipidEncapsulationChemistryScene {...props} />;
+    case 'stomata_closure_temperature':
+      return <StomataClosureTemperatureScene {...props} />;
+    case 'comparison_scale':
+      return <ComparisonScaleScene {...props} />;
+    case 'growth_chart':
+      return <GrowthChartScene {...props} />;
+    case 'flow_diagram':
+      return <FlowDiagramScene {...props} />;
+    case 'process_flow':
+      return <ProcessFlowScene {...props} />;
+    case 'cross_section_map':
+      return <CrossSectionMapScene {...props} />;
+    case 'hierarchy_chart':
+      return <HierarchyChartScene {...props} />;
+    case 'financial_map':
+      return <FinancialMapScene {...props} />;
+    case 'split_screen_diagram':
+      return <SplitScreenDiagramScene {...props} />;
+    case 'joint_cross_section':
+      return <JointCrossSectionScene {...props} />;
+    case 'construction_timeline_graph':
+      return <ConstructionTimelineGraphScene {...props} />;
+    case 'relative_scale_comparison':
+      return <RelativeScaleComparisonScene {...props} />;
+    case 'vector_stress_analysis':
+      return <VectorStressAnalysisScene {...props} />;
+    case 'wind_load_simulation':
+      return <WindLoadSimulationScene {...props} />;
+    case 'geographical_risk_map':
+      return <GeographicalRiskMapScene {...props} />;
+    case 'pipe_cross_section_buildup':
+      return <PipeCrossSectionBuildupScene {...props} />;
+    case 'faucet_internal_cutaway':
+      return <FaucetInternalCutawayScene {...props} />;
+    case 'mohs_hardness_comparison':
+      return <MohsHardnessComparisonScene {...props} />;
+    case 'thermal_transfer_efficiency':
+      return <ThermalTransferEfficiencyScene {...props} />;
+    case 'galvanic_corrosion_layers':
+      return <GalvanicCorrosionLayersScene {...props} />;
+    case 'ph_scale_compatibility':
+      return <PhScaleCompatibilityScene {...props} />;
+    case 'hierarchy_of_infinities':
+      return <HierarchyOfInfinitiesScene {...props} />;
+    case 'set_derivation_process':
+      return <SetDerivationProcessScene {...props} />;
+    case 'dimension_mapping_1d_2d':
+      return <DimensionMapping1d2dScene {...props} />;
+    case 'hierarchical_infinites_diagram':
+      return <HierarchicalInfinitesDiagramScene {...props} />;
     default:
       return null;
   }

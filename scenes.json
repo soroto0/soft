@@ -115,5 +115,333 @@
     "quote": "If the pane feels cold to the touch—specifically under fifty-five degrees Fahrenheit—the liquid solution thickens instantly upon contact, trapping microscopic water vapor under",
     "brief": "As the solution hits a cold glass surface, the liquid molecules stop moving and cluster together, trapping blue vapor bubbles underneath the layer.",
     "vision": "ok"
+  },
+  "estoico-es/bar_chart_decline": {
+    "kind": "bar_chart_decline",
+    "channel": "estoico-es",
+    "title": "Colapso del suministro de carbón",
+    "quote": "el suministro de carbón había caído a menos del diez por ciento de lo que la ciudad consumía apenas cuatro años atrás",
+    "brief": "Un gráfico de barras comparando 1914 y 1918 donde la columna de 1918 cae drásticamente a una pequeña fracción.",
+    "vision": "ok"
+  },
+  "estoico-es/segmented_timeline_phases": {
+    "kind": "segmented_timeline_phases",
+    "channel": "estoico-es",
+    "title": "Fases de la cultura",
+    "quote": "las culturas son organismos vivos con una edad fija, un nacimiento, una juventud de fe, una madurez de razón y, finalmente, una vejez de técnica y dinero.",
+    "brief": "Una línea horizontal dividida en cuatro segmentos etiquetados: Infancia, Juventud, Madurez y Vejez, ilustrando la progresión del organismo.",
+    "vision": "ok"
+  },
+  "estoico-es/cross_section_tree_decay": {
+    "kind": "cross_section_tree_decay",
+    "channel": "estoico-es",
+    "title": "El roble y la putrefacción",
+    "quote": "Colapsan porque, al igual que un roble viejo, alcanzan el límite de su savia y simplemente dejan de crecer hacia arriba para empezar a pudrirse hacia adentro.",
+    "brief": "Una sección transversal de un tronco de árbol donde la savia deja de fluir hacia la corteza exterior y el centro comienza a oscurecerse.",
+    "vision": "ok"
+  },
+  "estoico-es/conversion_diagram": {
+    "kind": "conversion_diagram",
+    "channel": "estoico-es",
+    "title": "De cultura a civilización",
+    "quote": "la civilización occidental ya había entrado en su fase senil, el estadio de 'civilización' pura, donde la creatividad muere y solo queda la técnica",
+    "brief": "Un diagrama de flujo que muestra el arte y la espiritualidad transformándose en engranajes y dinero a medida que la curva desciende.",
+    "vision": "ok"
+  },
+  "estoico-es/sinusoidal_wave_history": {
+    "kind": "sinusoidal_wave_history",
+    "channel": "estoico-es",
+    "title": "El ritmo de la historia",
+    "quote": "el destino de las naciones está predeterminado por un ritmo biológico ineludible",
+    "brief": "Varias ondas sinusoidales superpuestas que representan diferentes culturas naciendo y muriendo en intervalos de tiempo constantes.",
+    "vision": "ok"
+  },
+  "estoico-es/parallel_timeline_comparison": {
+    "kind": "parallel_timeline_comparison",
+    "channel": "estoico-es",
+    "title": "Analogía histórica",
+    "quote": "la osadía de Spengler al comparar el Egipto faraónico con el capitalismo industrial inglés",
+    "brief": "Dos líneas de tiempo paralelas que alinean el periodo faraónico con la era industrial, resaltando similitudes estructurales.",
+    "vision": "ok"
+  },
+  "estoico-es/conceptual_structural_diagram": {
+    "kind": "conceptual_structural_diagram",
+    "channel": "estoico-es",
+    "title": "Arquitectura de la teoría",
+    "quote": "una arquitectura construida sobre analogías poéticas en lugar de evidencia arqueológica",
+    "brief": "Un edificio teórico representado como una estructura que se apoya en pilares de 'conceptos' en lugar de 'datos'.",
+    "vision": "ok"
+  },
+  "estoico-es/non_linear_history_map": {
+    "kind": "non_linear_history_map",
+    "channel": "estoico-es",
+    "title": "Historia no lineal",
+    "quote": "Egipto, la India, Grecia y la Europa moderna no eran hitos aislados en una línea de progreso ascendente",
+    "brief": "Un mapa que muestra los focos de civilización como burbujas independientes que nacen y mueren, en lugar de una línea que sube.",
+    "vision": "ok"
+  },
+  "estoico-es/symptom_mapping": {
+    "kind": "symptom_mapping",
+    "channel": "estoico-es",
+    "title": "Síntomas de la senilidad",
+    "quote": "la democracia, el parlamentarismo y el cientificismo no eran los triunfos de la razón, sino los síntomas de una senilidad",
+    "brief": "Un diagrama médico donde los conceptos políticos modernos son diagnosticados como 'síntomas' de un organismo en declive.",
+    "vision": "ok"
+  },
+  "abyss/design_vs_actual_load": {
+    "kind": "design_vs_actual_load",
+    "channel": "abyss",
+    "title": "Scaffold Load Limits",
+    "quote": "The official inquiry later revealed that while the scaffolding system was designed for a specific load distribution, the actual weight of the equipment being hoisted often exceeded the weight limits s",
+    "brief": "A side-by-side comparison diagram shows the designed load distribution on the steel columns versus the actual over-capacity load, causing the columns to bend and glow red under stress.",
+    "vision": "ok"
+  },
+  "abyss/anchor_bolt_pullout": {
+    "kind": "anchor_bolt_pullout",
+    "channel": "abyss",
+    "title": "Anchor Bolt Failure",
+    "quote": "When the loaded bucket placed a dynamic load on the hoisting frame, the upper bolts pulled straight out of the unhardened wall like nails pulled from soft pine.",
+    "brief": "A close-up cross-section of the concrete wall shows the anchor bolt slipping out as the surrounding weak, green concrete crumbles under a sudden downward force vector.",
+    "vision": "ok"
+  },
+  "abyss/progressive_scaffold_collapse": {
+    "kind": "progressive_scaffold_collapse",
+    "channel": "abyss",
+    "title": "Progressive Failure Sequence",
+    "quote": "As that top layer gave way, it ripped out the lower scaffold supports, starting a continuous chain reaction down the face of the tower shell.",
+    "brief": "A wide diagram of the tower wall shows a cascading animation where the failure of the top anchor transfers extreme, unsustainable loads to the lower anchors, popping them out one by one.",
+    "vision": "ok"
+  },
+  "abyss/concrete_strength_comparison": {
+    "kind": "concrete_strength_comparison",
+    "channel": "abyss",
+    "title": "Concrete Compressive Strength",
+    "quote": "While the engineering specifications demanded a concrete strength of 3,000 pounds per square inch at twenty-eight days, the samples recovered from the collapsed section barely reached 2,000.",
+    "brief": "A bar chart compares the required 3,000 PSI strength curve over 28 days against the actual 2,000 PSI curve of the recovered samples, highlighting the dangerous deficit at the time of collapse.",
+    "vision": "unverified"
+  },
+  "abyss/cement_hydration_microscopic": {
+    "kind": "cement_hydration_microscopic",
+    "channel": "abyss",
+    "title": "Portland Cement Hydration",
+    "quote": "In low temperatures, the chemical reaction inside Portland cement slows to a crawl, delaying the crystal growth that transforms a wet slurry into structural rock.",
+    "brief": "A split-screen microscopic animation shows calcium silicate hydrate crystals rapidly interlocking at normal temperatures, contrasted with stunted, disconnected crystal growth at 38 degrees.",
+    "vision": "ok"
+  },
+  "home-vault/osmotic_cellular_collapse": {
+    "kind": "osmotic_cellular_collapse",
+    "channel": "home-vault",
+    "title": "Osmotic Pressure Shift",
+    "quote": "When the salt concentration outside the plant's roots and leaves is vastly higher than the concentration inside, it violently draws water out of the plant's cell walls to balance the equation.",
+    "brief": "Microscopic cellular diagram animates water molecules rushing across cell walls into the external high-salt solution, deflating and collapsing the cells.",
+    "vision": "ok"
+  },
+  "home-vault/lateral_salt_migration": {
+    "kind": "lateral_salt_migration",
+    "channel": "home-vault",
+    "title": "Subsurface Salt Migration",
+    "quote": "It leaches sideways through the soil.",
+    "brief": "Underground cross-section shows salt ions migrating laterally through soil matrix from driveway edge into nearby grass root zones.",
+    "vision": "ok"
+  },
+  "home-vault/lipid_encapsulation_chemistry": {
+    "kind": "lipid_encapsulation_chemistry",
+    "channel": "home-vault",
+    "title": "Premature Soap Addition",
+    "quote": "The sodium lauryl sulfate in liquid soap wraps salt crystals in a lipid membrane, preventing them from dissolving.",
+    "brief": "Molecular animation shows surfactant molecules enveloping salt crystal surfaces to prevent water contact, causing them to sink as undissolved sediment.",
+    "vision": "ok"
+  },
+  "home-vault/stomata_closure_temperature": {
+    "kind": "stomata_closure_temperature",
+    "channel": "home-vault",
+    "title": "Stomata Cold Response",
+    "quote": "Below that threshold, the weed enters a semi-dormant metabolic state where it shuts down its stomata—the microscopic pores on the underside of the leaves—to conserve energy.",
+    "brief": "Microscopic view of leaf underside shows stomatal guard cells closing shut as temperature drops below sixty-five degrees.",
+    "vision": "ok"
+  },
+  "estoico-es/comparison_scale": {
+    "kind": "comparison_scale",
+    "channel": "estoico-es",
+    "title": "Riqueza vs. Salud física",
+    "quote": "Séneca tenía sesenta y nueve años, los pulmones devastados por el asma crónica y una fortuna estimada en trescientos millones de sestercios",
+    "brief": "Muestra una balanza donde un lado es una enorme montaña de monedas de oro y el otro un par de pulmones marchitos, ilustrando la inutilidad de su fortuna frente a su asma.",
+    "vision": "ok"
+  },
+  "estoico-es/growth_chart": {
+    "kind": "growth_chart",
+    "channel": "estoico-es",
+    "title": "Ascenso meteórico",
+    "quote": "su ascenso fue tan meteórico que pronto las columnas del Senado retumbaron con su voz",
+    "brief": "Un gráfico de barras que se dispara verticalmente hacia arriba, coincidiendo con un icono de un edificio del Senado que vibra con ondas sonoras.",
+    "vision": "ok"
+  },
+  "estoico-es/flow_diagram": {
+    "kind": "flow_diagram",
+    "channel": "estoico-es",
+    "title": "Contradicción ética",
+    "quote": "Séneca, el hombre que más tarde escribiría sobre el desprecio a la riqueza, no se retiró cuando su vida corrió peligro. Al contrario, se infiltró en los círculos más íntimos de la familia imperial",
+    "brief": "Un diagrama que muestra dos caminos divergentes: uno etiquetado como 'Virtud' que desciende y otro como 'Influencia/Riqueza' que se expande exponencialmente.",
+    "vision": "ok"
+  },
+  "estoico-es/process_flow": {
+    "kind": "process_flow",
+    "channel": "estoico-es",
+    "title": "El camino al exilio",
+    "quote": "la emperatriz Mesalina decidió que Séneca era un estorbo. Lo acusó de adulterio... que en la Roma de los Césares equivalía a una ejecución sumaria",
+    "brief": "Un diagrama de flujo que muestra la acusación legal conectada directamente a una celda de prisión y luego a una flecha hacia Córcega.",
+    "vision": "ok"
+  },
+  "estoico-es/cross_section_map": {
+    "kind": "cross_section_map",
+    "channel": "estoico-es",
+    "title": "Destierro en Córcega",
+    "quote": "Claudio, en un gesto de supuesta clemencia que resultó ser una tortura psicológica, conmutó la pena de muerte por el destierro perpetuo en Córcega",
+    "brief": "Un zoom desde el mapa de Roma hacia la isla de Córcega, destacando la soledad del punto geográfico rodeado de mar.",
+    "vision": "ok"
+  },
+  "estoico-es/hierarchy_chart": {
+    "kind": "hierarchy_chart",
+    "channel": "estoico-es",
+    "title": "Estructura de poder",
+    "quote": "Agripina la Menor... necesitaba un tutor para su hijo de once años, un niño llamado Lucio Domicio Enobarbo.",
+    "brief": "Un organigrama donde Agripina está en la cima, manipulando los hilos que conectan a Séneca con el joven Nerón.",
+    "vision": "unverified"
+  },
+  "estoico-es/financial_map": {
+    "kind": "financial_map",
+    "channel": "estoico-es",
+    "title": "Red de usura",
+    "quote": "su propia fortuna crecía de forma obscena, alcanzando los trescientos millones de sestercios mediante préstamos usureros en las provincias de Britania",
+    "brief": "Un mapa de Britania con líneas de conexión financieras que fluyen hacia la villa de Séneca, mostrando la acumulación de capital.",
+    "vision": "ok"
+  },
+  "estoico-es/split_screen_diagram": {
+    "kind": "split_screen_diagram",
+    "channel": "estoico-es",
+    "title": "Doble vida de Nerón",
+    "quote": "el joven emperador empezó a escaparse por las noches, disfrazado de esclavo, para frecuentar las tabernas de los barrios bajos",
+    "brief": "Pantalla dividida: arriba el palacio con Séneca escribiendo, abajo un callejón oscuro con Nerón actuando violentamente.",
+    "vision": "ok"
+  },
+  "abyss/joint_cross_section": {
+    "kind": "joint_cross_section",
+    "channel": "abyss",
+    "title": "Fatal Design Shortcut",
+    "quote": "That document identified a specific, fatal shortcut in the building’s joint design that saved the contractors less than ten pounds per unit",
+    "brief": "A technical cross-section of the wall-to-floor joint highlights the narrow overlap and the lack of structural steel ties.",
+    "vision": "ok"
+  },
+  "abyss/construction_timeline_graph": {
+    "kind": "construction_timeline_graph",
+    "channel": "abyss",
+    "title": "Accelerated Construction Pace",
+    "quote": "Between 1966 and 1968, the 22-storey tower rose at a rate of one floor every week.",
+    "brief": "A vertical bar chart grows rapidly alongside a calendar to visualize the extreme speed of the assembly process.",
+    "vision": "ok"
+  },
+  "abyss/relative_scale_comparison": {
+    "kind": "relative_scale_comparison",
+    "channel": "abyss",
+    "title": "Design Limit vs. Reality",
+    "quote": "The Danish engineers who invented the method originally intended it for buildings no higher than six storeys.",
+    "brief": "A silhouette of a 6-story building is placed next to the 22-story Ronan Point to highlight the dangerous scaling of the system.",
+    "vision": "ok"
+  },
+  "abyss/vector_stress_analysis": {
+    "kind": "vector_stress_analysis",
+    "channel": "abyss",
+    "title": "Vertical vs. Lateral Resistance",
+    "quote": "The joints were designed to resist the downward push of the building's own weight, but they had almost zero resistance to an outward force.",
+    "brief": "A comparison shows the joint successfully handling a vertical load but shattering or sliding under a horizontal force vector.",
+    "vision": "ok"
+  },
+  "abyss/wind_load_simulation": {
+    "kind": "wind_load_simulation",
+    "channel": "abyss",
+    "title": "Atmospheric Pressure Vulnerability",
+    "quote": "a severe summer gale or a particularly strong gust of wind could have generated enough lateral pressure to displace the wall panels",
+    "brief": "A diagram shows high-altitude wind currents hitting the top of the tower and creating a suction effect that pulls on the unanchored panels.",
+    "vision": "ok"
+  },
+  "abyss/geographical_risk_map": {
+    "kind": "geographical_risk_map",
+    "channel": "abyss",
+    "title": "UK System-Built Housing Risk",
+    "quote": "more than 30,000 municipal apartments relied on the exact same unreinforced friction joints, housing well over 100,000",
+    "brief": "A map of the United Kingdom populates with thousands of dots representing high-rise blocks sharing the same fatal design flaw.",
+    "vision": "unverified"
+  },
+  "home-vault/pipe_cross_section_buildup": {
+    "kind": "pipe_cross_section_buildup",
+    "channel": "home-vault",
+    "title": "Internal Pipe Scale Growth",
+    "quote": "this rock-hard substance is slowly suffocating your plumbing from the inside out.",
+    "brief": "A cross-section of a copper pipe shows mineral layers growing inward from the walls, narrowing the water's path over a simulated timeline.",
+    "vision": "ok"
+  },
+  "home-vault/faucet_internal_cutaway": {
+    "kind": "faucet_internal_cutaway",
+    "channel": "home-vault",
+    "title": "The Hidden Elastomeric Seal",
+    "quote": "Inside your faucet assembly sits a tiny, fragile elastomeric seal that will completely disintegrate if it comes into contact with the wrong chemical",
+    "brief": "A transparent 3D view of a faucet assembly highlights the specific location of the rubber O-ring and shows it shriveling when touched by chemical icons.",
+    "vision": "ok"
+  },
+  "home-vault/mohs_hardness_comparison": {
+    "kind": "mohs_hardness_comparison",
+    "channel": "home-vault",
+    "title": "Material Hardness Comparison",
+    "quote": "The brass or plastic beneath your faucet's shiny outer plating is actually softer than the mineral deposit itself.",
+    "brief": "A vertical scale compares the Mohs hardness of chrome, brass, and calcium carbonate to show the mineral is tougher than the metal.",
+    "vision": "ok"
+  },
+  "home-vault/thermal_transfer_efficiency": {
+    "kind": "thermal_transfer_efficiency",
+    "channel": "home-vault",
+    "title": "Thermal Insulation Energy Loss",
+    "quote": "A layer of scale just one-sixteenth of an inch thick acts like solid thermal insulation, dropping heat transfer efficiency by twenty-four percent",
+    "brief": "Heat arrows from a heating element are deflected and blocked by a thin layer of scale, showing the temperature drop on the water side.",
+    "vision": "unverified"
+  },
+  "home-vault/galvanic_corrosion_layers": {
+    "kind": "galvanic_corrosion_layers",
+    "channel": "home-vault",
+    "title": "Microscopic Galvanic Corrosion",
+    "quote": "The solution eats straight through microscopic pinholes in the outer chrome layer, stripping the nickel undercoating beneath",
+    "brief": "A zoomed-in cross-section of plated metal shows the acid bypassing the top chrome layer to dissolve the nickel and zinc layers underneath.",
+    "vision": "unverified"
+  },
+  "home-vault/ph_scale_compatibility": {
+    "kind": "ph_scale_compatibility",
+    "channel": "home-vault",
+    "title": "The pH Neutralization Scale",
+    "quote": "To dissolve a base-heavy mineral, you need an acid, not another base.",
+    "brief": "A pH slider moves to show bleach and limescale both on the alkaline side, demonstrating why they don't react to dissolve each other.",
+    "vision": "ok"
+  },
+  "estoico-es/hierarchy_of_infinities": {
+    "kind": "hierarchy_of_infinities",
+    "channel": "estoico-es",
+    "title": "Jerarquía de Infinitos",
+    "quote": "Sobre la mesa de madera astillada de su habitación, una pila de notas garabateadas detalla una jerarquía de infinitos que, según él, no solo existen en el pensamiento, sino que poseen una realidad fís",
+    "brief": "A vertical scale of nested geometric dimensions grows exponentially, representing cardinalities from natural numbers up to absolute infinity, to show the levels Cantor conceived.",
+    "vision": "ok"
+  },
+  "estoico-es/set_derivation_process": {
+    "kind": "set_derivation_process",
+    "channel": "estoico-es",
+    "title": "Proceso de Derivación",
+    "quote": "Se vio obligado a inventar una herramienta nueva: el concepto de conjunto de puntos y el proceso de derivación infinita para limpiarlos sistemáticamente.",
+    "brief": "A scattering of dots on a line undergoes iterative cleaning phases where isolated dots blink and disappear, leaving only the core accumulation points.",
+    "vision": "ok"
+  },
+  "estoico-es/dimension_mapping_1d_2d": {
+    "kind": "dimension_mapping_1d_2d",
+    "channel": "estoico-es",
+    "title": "Línea vs Plano Cuadrado",
+    "quote": "Apenas tres años después de su primera demostración, mientras intentaba comparar los puntos de una línea de un centímetro con los de un plano cuadrado, Cantor encontró que ambos conjuntos tenían exact",
+    "brief": "A 1D line segment unfolds and distributes its points across a 2D square, showing a bijective coordinate mapping where every point on the line matches a point in the plane.",
+    "vision": "ok"
   }
 }

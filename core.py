@@ -4387,11 +4387,37 @@ def _json_fix_quotes(raw: str) -> str:
 
 
 def _json_array(raw: str):
-    """Массив объектов из ответа модели, с починкой кавычек при сбое."""
+    """Массив объектов из ответа модели, с починкой кавычек при сбое.
+
+    Третья ступень — разбор ПО ОДНОМУ ОБЪЕКТУ. Целый массив падает от
+    единственной лишней запятой или незакрытой кавычки в любом из
+    объектов, и тогда терялись ВСЕ концепции разом: ролик home-vault
+    06.08 остался без обложки из-за ошибки на 57-й строке ответа, хотя
+    первые две концепции были целыми. Одна битая идея не должна отменять
+    остальные.
+    """
     try:
         return json.loads(raw)
     except ValueError:
+        pass
+    try:
         return json.loads(_json_fix_quotes(raw))
+    except ValueError:
+        pass
+    out = []
+    for m in re.finditer(r"\{[^{}]*\}", raw, re.S):
+        piece = m.group(0)
+        for candidate in (piece, _json_fix_quotes(piece)):
+            try:
+                obj = json.loads(candidate)
+            except ValueError:
+                continue
+            if isinstance(obj, dict):
+                out.append(obj)
+            break
+    if not out:
+        raise ValueError("не удалось разобрать ни одного объекта")
+    return out
 
 
 def thumb_style(channel: dict | None) -> dict:
