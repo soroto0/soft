@@ -6,7 +6,7 @@
     "tone": "документальный",
     "minutes": 13,
     "voice": "en-US-ChristopherNeural",
-    "rate": -3,
+    "rate": -5,
     "visual_style": "документальный архив",
     "ai_ratio": 0.85,
     "sub_style": "bold_box",
@@ -53,7 +53,8 @@
     "stars": false,
     "flicker": null,
     "palette": "harsh",
-    "dust": null
+    "dust": null,
+    "pitch": -5
   },
   {
     "name": "The Home Vault",
@@ -62,7 +63,7 @@
     "tone": "образовательный",
     "minutes": 22,
     "voice": "en-US-AndrewNeural",
-    "rate": 0,
+    "rate": -8,
     "visual_style": "тёплый уют",
     "ai_ratio": 0.85,
     "sub_style": "karaoke",
@@ -105,7 +106,8 @@
     "stars": false,
     "flicker": null,
     "palette": "warm",
-    "dust": null
+    "dust": null,
+    "pitch": 0
   },
   {
     "name": "Pensamiento Estoico - ES",
@@ -114,7 +116,7 @@
     "tone": "документальный",
     "minutes": 35,
     "voice": "es-ES-AlvaroNeural",
-    "rate": -5,
+    "rate": -15,
     "visual_style": "кинематографичный",
     "ai_ratio": 0.85,
     "sub_style": "pill",
@@ -152,6 +154,7 @@
     "flicker": null,
     "vignette": true,
     "palette": "contemplative",
-    "dust": null
+    "dust": null,
+    "pitch": -3
   }
 ]

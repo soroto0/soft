@@ -851,6 +851,7 @@ class Api:
                      "cues.txt, там лежали ремарки прошлого ролика", "warn")
         voice = p.get("voice")
         rate = int(str(p.get("rate", "0%")).replace("%", "").replace("+", ""))
+        pitch = int(p.get("pitch") or 0)
         if p.get("randomize"):
             # Голос — постоянный признак канала: если профиль его задал, он
             # в channel_locked, и «Разнообразие» перебирает всё остальное,
@@ -879,7 +880,7 @@ class Api:
         mp3 = self._project / "audio" / "voiceover.mp3"
         stamp_file = self._project / "audio" / ".voice_stamp"
         stamp = hashlib.sha1(
-            f"{text}|{voice}|{rate}|{enh}|{p.get('pauses', True)}|"
+            f"{text}|{voice}|{rate}|{pitch}|{enh}|{p.get('pauses', True)}|"
             f"{p.get('engine', '')}|{p.get('polly_engine', '')}"
             .encode("utf-8")).hexdigest()
         if mp3.exists() and mp3.stat().st_size > 10_000:
@@ -897,7 +898,7 @@ class Api:
         # Пустое значение — тоже Edge: это бесплатный путь, к нему и падаем.
         if "edge" in str(p.get("engine") or "Edge").lower():
             core.tts_edge(text, voice, self._project, self.log, rate, enh,
-                          bool(p.get("pauses", True)))
+                          bool(p.get("pauses", True)), pitch)
         else:
             # Движок Polly выбирает ПОЛЬЗОВАТЕЛЬ: цены различаются в 25 раз
             # ($4/млн у standard против $100/млн у long-form — на ролике в
@@ -1633,6 +1634,42 @@ class Api:
                 except Exception as e:
                     self.log(f"[Обложка] Фон не сгенерировался ({e}) — "
                              "делаю на тёмной подложке", "warn")
+            # ВЫРЕЗАННЫЙ ПРЕДМЕТ поверх фона — вторая картинка на ту же
+            # обложку. В образце владельца товар стоит именно так, отдельным
+            # объектом с читаемой этикеткой.
+            #
+            # Три условия, и каждое стоит своих денег. Первое: предмет
+            # положен только каналу, у которого он в parts (сейчас
+            # home-vault) — см. core.THUMB_STYLES. Второе: фон уже есть,
+            # ставить вырезку на тёмную подложку незачем, получится тот
+            # самый «бюст на чёрной пустоте». Третье и главное: обложка с
+            # предметом стоит ДВЕ картинки вместо одной, а их 500 в сутки,
+            # поэтому спрашиваем бюджет с purpose="polish" — это единственная
+            # ступень, которая отключается ПЕРВОЙ и не трогает резерв под
+            # сами обложки (core.VEO_IMAGE_COVER_RESERVE). Не хватило —
+            # обложка выходит как раньше, без предмета.
+            obj = None
+            if bg and idea.get("object_prompt"):
+                ok, why = core.image_budget_check(1, "polish", self.log,
+                                                  quiet=True)
+                if not ok:
+                    self.log(f"[Обложка] Предмет не заказываю: {why}")
+                else:
+                    try:
+                        raw = core.gen_image(
+                            core.cutout_prompt(idea["object_prompt"]),
+                            out_dir / f".obj{i}.jpg", key, self.log,
+                            # style канала здесь НЕ применяем: визуальный
+                            # стиль канала — это про свет и плёнку сцены, а
+                            # предмету нужен ровный хромакей, иначе вырезать
+                            # будет нечего.
+                            "", wait_on_limit=False, purpose="polish")
+                        obj = core.chroma_cutout(
+                            raw, out_dir / f".obj{i}.png", self.log)
+                    except Exception as e:
+                        self.log(f"[Обложка] Предмет не вышел ({e}) — "
+                                 "обложка будет без него", "warn")
+                        obj = None
             dest = out_dir / f"thumb{i}.jpg"
             try:
                 # accent и palette канала: цвет — признак канала, форма —
@@ -1644,7 +1681,7 @@ class Api:
                                           ch.get("accent") or "#f5c451",
                                           log=self.log,
                                           style=ch.get("palette", ""),
-                                          extra=idea)
+                                          extra=idea, cutout=obj)
             except Exception as e:
                 self.log(f"[Обложка] Рендер {i} не вышел: {e}", "warn")
                 continue

@@ -624,31 +624,45 @@ def _natural_pause(parts: list[Path], limit: int = 8) -> float:
     """Собственная пауза голоса между предложениями, в секундах.
 
     Меряем по уже синтезированным кускам, а не отдельным запросом: лишний
-    вызов синтезатора — это лишняя точка отказа на ровном месте. Берём медиану,
-    потому что распределение перекошено: внутри куска попадаются и короткие
-    запятые, и длинные точки. Диапазон 0.20-2.00 c отсекает и придыхания, и
-    случайную тишину."""
+    вызов синтезатора — это лишняя точка отказа на ровном месте.
+
+    Берём 75-й процентиль, а НЕ медиану. Распределение двугорбое: замер
+    2026-08-06 на восьми кусках en-US-ChristopherNeural дал 43 паузы двумя
+    кучами — 0.30-0.39 c (запятые, придаточные) и 0.93-1.16 c (точки), причём
+    коротких больше, и медиана садится на них: 0.38 c против настоящих 1.05 c
+    между предложениями. Лестница пауз, построенная от 0.38, вышла бы КОРОЧЕ
+    собственной паузы голоса — то есть речь стала бы суетливее, чем была.
+    Потолок 2.00 c отсекает случайную тишину, а не речевую паузу."""
     vals = []
     for p in parts[:limit]:
         try:
             r = _run_child(["ffmpeg", "-v", "info", "-nostats", "-i", str(p),
-                            "-af", "silencedetect=n=-32dB:d=0.20",
+                            "-af", "silencedetect=n=-32dB:d=0.30",
                             "-f", "null", "-"], timeout=120)
             vals += [float(x) for x in
                      re.findall(r"silence_duration: ([0-9.]+)", r.stderr or "")]
         except Exception:                                    # noqa: BLE001
             continue
-    vals = sorted(v for v in vals if 0.20 <= v <= 2.00)
-    return vals[len(vals) // 2] if len(vals) >= 5 else 0.0
+    vals = sorted(v for v in vals if 0.30 <= v <= 2.00)
+    return vals[int(len(vals) * 0.75)] if len(vals) >= 8 else 0.0
 
 
 def pause_ladder(natural: float) -> dict:
     """Длины пауз для конкретного голоса. natural=0 — замерить не удалось,
-    берём пол значений (он рассчитан на голос с короткими паузами)."""
+    берём пол значений (он рассчитан на голос с короткими паузами).
+
+    Потолок не имеет права опустить паузу НИЖЕ собственной паузы голоса —
+    иначе стык мыслей звучал бы теснее обычной точки. Ловится это на
+    es-ES-AlvaroNeural: его межфразовая пауза 1.31 c, то есть уже длиннее
+    потолка «между мыслями» (1.20 c)."""
     if natural <= 0:
         return dict(PAUSE_FLOOR)
-    return {k: round(min(PAUSE_CAP[k], max(PAUSE_FLOOR[k], natural * m)), 2)
-            for k, m in PAUSE_MULT.items()}
+    out = {k: min(PAUSE_CAP[k], max(PAUSE_FLOOR[k], natural * m))
+           for k, m in PAUSE_MULT.items()}
+    out["thought"] = max(out["thought"], natural)
+    out["topic"] = max(out["topic"], out["thought"] * 1.25)
+    out["chapter"] = max(out["chapter"], out["topic"] * 1.25)
+    return {k: round(v, 2) for k, v in out.items()}
 
 
 # Обрезка собственных полей Edge TTS. Замер 2026-08-06: каждый вызов
@@ -722,6 +736,7 @@ def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
     if len(plan) < 2:
         log(f"[Озвучка] Edge TTS, голос {voice}, темп {rate:+d}%, "
             f"высота {pitch:+d} Гц, {len(text)} символов...")
+        raw = audio_dir / "_raw.mp3"      # что отдал синтезатор, без пересборки
         _say(text, raw, rate, pitch)
     else:
         kinds = [g["gap"] for g in plan[:-1]]
@@ -785,9 +800,14 @@ def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
 
     # Единственное сжатие в mp3 за весь шаг — и обработка голоса делается
     # здесь же, чтобы не гонять звук через кодек второй раз.
+    # 48 кГц не ради голоса — ему хватает и 24 кГц, которые отдаёт синтезатор.
+    # Дело в том, что на ЭТОТ файл потом подмешиваются музыка и звуки, а
+    # ffmpeg amix берёт частоту дискретизации ПЕРВОГО входа, то есть голоса.
+    # Проверено 2026-08-06: с голосом на 24 кГц готовый voiceover_music.mp3
+    # вышел на 24 кГц, и музыка (44.1 кГц) потеряла всё выше 12 кГц.
     try:
         _run_child(["ffmpeg", "-y", "-v", "error", "-i", str(raw),
-                    "-af", voice_chain(enhance, 24000),
+                    "-af", voice_chain(enhance, 48000),
                     "-c:a", "libmp3lame", "-q:a", "2", str(final)],
                    timeout=3600, check=True)
     except Cancelled:
@@ -996,8 +1016,12 @@ def add_music(voice_mp3: Path, music_path, log, gain_db: int = -14) -> Path:
               "[m][0:a]sidechaincompress=threshold=0.02:ratio=12:attack=25:release=700[duck];"
               "[0:a][duck]amix=inputs=2:duration=first:normalize=0[mix]")
 
+    # -ar задан явно, а не оставлен на усмотрение amix: тот берёт частоту
+    # ПЕРВОГО входа, а первый вход — голос. Стоит голосу оказаться на 24 кГц
+    # (родная частота Edge TTS), и музыка на 44.1 кГц молча обрезается по
+    # 12 кГц — замерено 2026-08-06.
     _run_child(["ffmpeg", "-y", "-i", str(voice_mp3)] + inputs
-               + ["-filter_complex", fc, "-map", "[mix]",
+               + ["-filter_complex", fc, "-map", "[mix]", "-ar", "48000",
                   "-c:a", "libmp3lame", "-q:a", "2", str(dest)],
                timeout=3600, check=True)
     log(f"[Музыка] Готово: {dest} (чистый голос остался в {voice_mp3.name})")
@@ -1122,8 +1146,10 @@ def add_ambience(base_mp3: Path, sfx_path, log, gain_db: int = -19,
     log(f"[ASMR] Звуковой профиль «{snd['name']}»: {n} звуков быта каждые "
         f"~{every:.0f} c (тихо, {gain_db} dB) — эффект присутствия")
     try:
+        # -ar явно — по той же причине, что и в add_music: amix берёт частоту
+        # первого входа, и низкая частота дорожки-основы обрезала бы звуки
         _run_child(["ffmpeg", "-y", "-i", str(base_mp3)] + inputs
-                   + ["-filter_complex", fc, "-map", "[mix]",
+                   + ["-filter_complex", fc, "-map", "[mix]", "-ar", "48000",
                       "-c:a", "libmp3lame", "-q:a", "2", str(dest)],
                    timeout=3600, check=True)
     except Cancelled:
