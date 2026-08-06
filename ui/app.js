@@ -409,7 +409,12 @@ const app = {
     $("gate").classList.remove("open");
     $("channelPop").classList.remove("open");
     forceReload = true; forceProjPath = true;
-    rpc("channel_select", id).then(refresh);
+    // ПОСЛЕ переключения перечитываем каналы у бэкенда. Подпись «Канал»
+    // в боковой панели строится из значения выпадающего списка
+    // (renderChannelPop берёт $("channelSel").value), а список заполняется
+    // только в loadChannels. Без этого вызова подпись оставалась от
+    // ПРОШЛОГО канала: справа «Pensamiento Estoico», в списке «abyss».
+    rpc("channel_select", id).then(() => app.loadChannels(false)).then(refresh);
   },
   skipGate() { $("gate").classList.remove("open"); },
   openGate() { app.renderGate(); $("gate").classList.add("open"); },
@@ -417,7 +422,8 @@ const app = {
     const id = $("channelSel").value;
     app.renderChannelPop();
     if (id) { forceReload = true; forceProjPath = true;
-               rpc("channel_select", id).then(refresh); }
+               rpc("channel_select", id)
+                 .then(() => app.loadChannels(false)).then(refresh); }
   },
   editChannel() {
     const id = $("channelSel").value;
