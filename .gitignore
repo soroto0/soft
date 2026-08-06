@@ -121,3 +121,5 @@ subs2/
 analytics/*.csv
 analytics/*.xlsx
 analytics/*.zip
+analytics/client_secret*.json
+analytics/token.json
