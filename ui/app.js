@@ -167,6 +167,8 @@ let channelsCache = [];
 // переживал переключение и уезжал в новый — так 3-минутный тестовый текст попал
 // в 20-минутный «The Home Vault» и ролик вышел на 3 минуты вместо 20.
 let forceReload = false;
+// Переключили канал — путь проекта обновить безусловно (см. refresh).
+let forceProjPath = false;
 
 async function refresh() {
   const s = await rpc("get_state");
@@ -180,8 +182,15 @@ async function refresh() {
   }
   // Путь не перетираем, пока его правят руками: refresh дёргается и по
   // taskDone, и посреди набора адрес подменялся на текущий проект
-  if (document.activeElement !== $("projPath"))
+  // Путь проекта обычно НЕ перебиваем, пока курсор в поле, — иначе он
+  // затирал бы то, что человек печатает. Но после осознанного переключения
+  // канала обновить обязаны: в поле осталась папка ЧУЖОГО канала, и с ней
+  // же уйдёт следующая генерация. Владелец поймал это дважды подряд —
+  // выбирал abyss, а в поле оставалась estoico-es/2026-08-06.
+  if (forceProjPath || document.activeElement !== $("projPath")) {
     $("projPath").value = state.project || "";
+    forceProjPath = false;
+  }
   $("version").textContent = "v" + (state.version || "3.0");
   renderCards();
   renderProjects();
@@ -399,7 +408,7 @@ const app = {
     $("channelSel").value = id;
     $("gate").classList.remove("open");
     $("channelPop").classList.remove("open");
-    forceReload = true;
+    forceReload = true; forceProjPath = true;
     rpc("channel_select", id).then(refresh);
   },
   skipGate() { $("gate").classList.remove("open"); },
@@ -407,7 +416,8 @@ const app = {
   selectChannel() {
     const id = $("channelSel").value;
     app.renderChannelPop();
-    if (id) { forceReload = true; rpc("channel_select", id).then(refresh); }
+    if (id) { forceReload = true; forceProjPath = true;
+               rpc("channel_select", id).then(refresh); }
   },
   editChannel() {
     const id = $("channelSel").value;
