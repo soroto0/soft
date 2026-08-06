@@ -2249,9 +2249,38 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
     else:
         cmd += ["-map", "0:v", "-map", "1:a",
                 "-vf", ",".join(filters + post)]
+    # Метаданные файла. Раньше в готовом mp4 не было ничего, кроме
+    # технического encoder=Lavf — ни названия, ни описания, ни следа
+    # происхождения. Это неудобно (в папке лежат десятки output_final.mp4,
+    # различимых только путём) и нечестно: ролик собран машиной, и это
+    # должно быть написано В САМОМ ФАЙЛЕ, а не только в голове у автора.
+    # На флаг «изменённый контент» в YouTube это не влияет — его ставят
+    # руками при загрузке, — но файл перестаёт быть анонимным.
+    meta = []
+    if opts.get("meta_title"):
+        meta += ["-metadata", f"title={opts['meta_title']}"]
+    if opts.get("meta_desc"):
+        meta += ["-metadata", f"description={opts['meta_desc'][:900]}"]
+    if opts.get("meta_channel"):
+        meta += ["-metadata", f"artist={opts['meta_channel']}",
+                 "-metadata", f"album={opts['meta_channel']}"]
+    # Имя софта в файл НЕ пишем: какой инструмент использован — дело автора,
+    # и рекламировать его в каждом ролике незачем. Но и подделывать чужую
+    # метку («смонтировано в CapCut») нельзя: она читается как заявление,
+    # что ролик собран человеком вручную, а YouTube требует помечать
+    # синтетический контент. Ложная метка — не сокрытие инструмента, а
+    # неверное утверждение о происхождении, и наказывают именно за него.
+    meta += ["-metadata",
+             "comment=Синтезированная озвучка и часть кадров созданы ИИ. "
+             "При загрузке на YouTube отметьте «Altered or synthetic content».",
+             "-metadata", f"date={time.strftime('%Y-%m-%d')}",
+             # -fflags +bitexact убирает строку encoder=Lavf..., то есть
+             # версию ffmpeg. Остаётся обычный mp4 без следа сборщика.
+             "-fflags", "+bitexact"]
     cmd += ["-t", f"{total:.3f}",
             *venc_args(CRF_FINAL, PRESET_FINAL, final=True),
-            "-c:a", "aac", "-b:a", "192k", str(Path(dest).resolve())]
+            "-c:a", "aac", "-b:a", "192k", *meta,
+            "-movflags", "+faststart", str(Path(dest).resolve())]
     # cwd = папка проекта: относительные пути секвенций выше разрешаются
     # именно от неё
     try:

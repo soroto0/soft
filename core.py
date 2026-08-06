@@ -5281,7 +5281,14 @@ def agnes_video(prompt: str, dest: Path, api_key: str, log=print,
                       json={"model": AGNES_VIDEO_MODEL,
                             "prompt": f"{prompt}. Cinematic, realistic, "
                                       "high detail, no text or watermarks.",
-                            "width": 1152, "height": 768,
+                            # 16:9, а не зашитые прежде 1152x768. Те давали
+                            # 1.5:1 — на деле сервис отдавал 1088x832, то
+                            # есть 1.31:1. Замерено на настоящем ролике:
+                            # 6 клипов из 40 приходили в этом размере, и в
+                            # монтаже 16:9 их либо режет на четверть, либо
+                            # ставит с полями. Заметно тем сильнее, чем
+                            # больше откатов с Veo: сегодня их было 37.
+                            "width": 1280, "height": 720,
                             "num_frames": frames, "frame_rate": fr},
                       timeout=120)
     if r.status_code != 200:

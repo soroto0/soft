@@ -1388,6 +1388,22 @@ class Api:
             return
         opts = self._render_opts(p)
         opts["out_name"] = p.get("out_name", "")
+        # Метаданные файла: заголовок и описание берём из уже готового SEO,
+        # канал — из профиля. Без этого в папке лежат десятки одинаковых
+        # output_final.mp4, различимых только путём.
+        try:
+            seo = self._read("seo.txt") or ""
+            if seo.strip():
+                lines = [l.strip() for l in seo.splitlines() if l.strip()]
+                if lines:
+                    opts["meta_title"] = lines[0][:200]
+                    opts["meta_desc"] = "\n".join(lines[1:6])[:900]
+            ch_now = self._channel()
+            if ch_now:
+                opts["meta_channel"] = ch_now.get("name") or ch_now.get("id", "")
+        except Exception:
+            # метаданные — украшение файла, ронять из-за них рендер нельзя
+            pass
         self._settings["render_opts"] = opts
         self._save_settings_file()
         if (p.get("overlays") or "").strip():
