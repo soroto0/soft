@@ -127,6 +127,18 @@ export const {component}: React.FC<SceneProps> = (p) => {{ ... }};
    take only the fields you actually need.
    (Measured 2026-08-04: this single mistake caused half of all rejections.)
 3. Multiply your top-level opacity by `p.enter * p.exit`. Both must appear.
+   THIS IS THE MOST COMMON REJECTION AFTER UNUSED VARIABLES. Measured
+   2026-08-06: three attempts in a row rejected on this one rule, and half
+   the planned scenes never reached the video because of it. Write it
+   EXACTLY like this, as the first line of your component body:
+
+       const opacity = p.enter * p.exit;
+
+   and then put `style={{ opacity }}` on your root element. Do not compute
+   it inside JSX, do not name it something else, do not use only one of
+   the two. If your scene has its own fade you still multiply by this —
+   `const opacity = p.enter * p.exit * myOwnFade;`. Without both names
+   present in the file the scene is thrown away, however good it looks.
 4. DO NOT PAINT THE FRAME BACKGROUND. The player already puts a living
    backdrop under your scene (soft moving light, dust motes, grain,
    vignette) — that is what makes a drawn shot sit inside a documentary
