@@ -114,6 +114,19 @@ def _fade(im, alpha: float):
 RE_SEPS = re.compile(r"::|;;|\*")
 
 
+def redact_all_hidden(text: str) -> bool:
+    """У redact зачернены ВСЕ строки — на экране одни чёрные полосы.
+
+    Владелец прислал такую плашку: заголовок «Mortar Specification» и под
+    ним две сплошные чёрные полосы без единого слова. Смысл вымарывания в
+    том, что видно, ЧТО скрыли, — а когда скрыто всё, зритель не получает
+    ничего. Правило дописано и в промпт, но модель его нарушит рано или
+    поздно, поэтому проверяем и на входе.
+    """
+    lines = [x.strip() for x in (text or "").split("::") if x.strip()]
+    return bool(lines) and all(x.startswith("*") for x in lines)
+
+
 def has_payload(text: str) -> bool:
     """Есть ли в content хоть что-то, что можно нарисовать.
 
@@ -162,7 +175,9 @@ def parse_overlays(text: str) -> list[dict]:
                          "kinetic", "highlight", "quote", "stamp", "redact",
                          "marker", "gallery"):
             continue
-        if not has_payload(parts[2]):
+        if not has_payload(parts[2]) or (
+                parts[1].strip() == 'redact'
+                and redact_all_hidden(parts[2])):
             # Оверлей без содержимого не рисуется вовсе — см. has_payload.
             # То же самое проверяет и Remotion (Overlay.hasPayload), но
             # отсев обязан быть ЗДЕСЬ: секвенция такого оверлея всё равно
@@ -2566,7 +2581,8 @@ def _fits_type(otype: str, text: str) -> tuple[bool, str]:
     Проверка ровно та, что делает рендерер: bars ищет пары label:число,
     timeline — пары год:событие, counter — число. Не сойдётся формат —
     рендерер бросит исключение, и оверлей пропадёт из ролика уже на сборке."""
-    if not has_payload(text):
+    if not has_payload(text) or (typ == 'redact'
+                                 and redact_all_hidden(text)):
         return False, text        # рисовать нечего — см. has_payload
     if otype == "compare":
         return ("::" in text), text
@@ -3209,7 +3225,9 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "one is withheld/unknown/classified, formatted "
                   "\"line1::*hidden line::line3\" — prefix with * the lines "
                   "that must be blacked out; only for records, reports, "
-                  "names withheld\n"
+                  "names withheld. AT LEAST ONE LINE MUST STAY READABLE — a "
+                  "plate where every line is blacked out shows the viewer "
+                  "nothing but black bars and wastes the moment\n"
                   "  'marker' — one short sentence (under 9 words) that gets "
                   "HIGHLIGHTED word by word as it is spoken, like a marker "
                   "pen running along the line; use it on the single sentence "
@@ -3304,7 +3322,8 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
         idx = int(p.get("line", 0)) - 1
         text = str(p.get("text", "")).strip()
         otype = str(p.get("type", "banner")).strip().lower()
-        if not has_payload(text):
+        if not has_payload(text) or (typ == 'redact'
+                                     and redact_all_hidden(text)):
             # Пункт без текста дальше не идёт. Проверка стоит ДО дописывания
             # разделителей ниже: у quote и stamp к пустому тексту добавлялось
             # «::», и отсев `if text and ...` в конце цикла такой пункт
