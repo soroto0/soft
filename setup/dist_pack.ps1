@@ -49,6 +49,20 @@ $RootFiles = @(
     'core.py', 'render.py', 'overlays.py', 'webapp.py', 'channels.py',
     'gen_scenes.py', 'night_plan.py', 'autopilot.py', 'veo_client.py',
     'yt_research.py', 'sfx_library.py', 'quality.py', 'gen_remotion_gemini.py',
+    # Модули, которые webapp.py импортирует, а список забывал. Импорты там
+    # обёрнуты в try/except, поэтому пропажа не роняла приложение — она молча
+    # выключала возможность:
+    #   variant_factory — механический рост библиотеки плашек под канал. Без
+    #     него у покупателя не появляется НИ ОДНОЙ своей плашки: накопленная
+    #     библиотека привязана к каналам автора (overlays._library_variants
+    #     сверяет метку канала строго), и новому каналу достаются только
+    #     встроенные виды из Overlay.tsx. В журнале это одна строка warn
+    #     «Планку видов канала выставить не удалось: No module named ...».
+    #   yt_stats — подбор темы по СВОЕЙ статистике канала.
+    #   demo — демо-режим (надпись на кадре и лимит роликов). В платной копии
+    #     он молчит, потому что рядом нет demo.json; но без самого файла
+    #     демо-раздача получалась ПОЛНОЙ версией без единого ограничения.
+    'variant_factory.py', 'yt_stats.py', 'demo.py',
     # вспомогательное и CLI
     'pipeline.py', 'make_video.py', 'is_busy.py', 'add_lottie.py',
     'fill_variants.py', 'register_new_variants.py',
@@ -61,7 +75,12 @@ $RootFiles = @(
 
 # Папка -> маски, которые внутри неё НЕ берём.
 $Dirs = @(
-    @{ Src='setup';       Skip=@() },
+    # setup\Output — готовый .exe установщика. Его туда кладёт компилятор Inno
+    # ПОСЛЕ первой сборки, поэтому раньше маска и не требовалась. Теперь файл
+    # там лежит, и без пропуска каждая новая раздача несла внутри себя
+    # предыдущий установщик: замер — 3.5 МБ превратились в 6.6 МБ, и покупатель
+    # находил в папке программы .exe, который незачем запускать.
+    @{ Src='setup';       Skip=@('Output') },
     @{ Src='ui';          Skip=@('_old_dark') },
     # Remotion: только исходники. node_modules ставится на месте (npm ci),
     # build и public\ovl_* — мусор от прошлых рендеров.
@@ -76,7 +95,11 @@ $ForbiddenNames = @(
     '.env', '.env.bak', 'settings.json', 'used_media.json', 'app.log',
     'app.log.old', 'veononstop_support.txt', 'autopilot_report.txt',
     'variant_failures.json', 'channels.json', 'scenes.json',
-    'scenes_audit.json'
+    'scenes_audit.json',
+    # Метка демо-режима. Сама по себе не секрет, но попади она в платную
+    # раздачу — покупатель получит три ролика с надписью «ДЕМО» поперёк кадра
+    # и упрётся в лимит. Демо-копия заводит этот файл руками, после сборки.
+    'demo.json'
 )
 $ForbiddenDirs = @(
     '.secrets', '.venv', '.git', '.claude', 'abyss', 'home-vault',
@@ -147,23 +170,43 @@ foreach ($d in $Dirs) {
 
 # Пример профиля канала вместо настоящего channels.json: там темы, счётчики
 # серий и заметки про конкурентов — это рабочие данные владельца, не софт.
+#
+# palette здесь появилась не для полноты. Это единственное поле, которого НЕТ
+# в форме канала (проверено поиском по ui\): задать его можно только правкой
+# JSON. А по нему разведены склейки и движение кадра (render.PALETTES), воздух
+# кадра (core.ATMOSPHERE), звук (core.SOUND_PALETTES) и почерк плашек
+# (remotion/src/variants/_look.ts). Без него канал покупателя идёт общим пулом
+# с общими весами — ровно то, на что владелец жаловался словами «монтаж трёх
+# каналов очень похож». Пустой пример этому не учил никак.
 $example = @'
 [
   {
-    "id": "demo",
-    "name": "Демо-канал",
+    "id": "my-channel",
+    "name": "Мой канал",
     "lang": "английский",
     "tone": "документальный",
     "minutes": 10,
+    "palette": "harsh",
+    "accent": "#b83a2b",
     "visual_style": "кинематографичный",
     "ai_ratio": 0.5,
+    "voice": "",
+    "sub_style": "bold_box",
     "topic_formula": "Опиши здесь, о чём канал: язык, тема, формат выпуска.",
+    "script_extra": "Кто ведёт рассказ и каким голосом — это делает каналы разными по содержанию.",
     "avoid": "Что на канале не показываем и не рассказываем.",
     "used_topics": []
   }
 ]
 '@
-Set-Content -Path (Join-Path $Dist 'channels.example.json') -Value $example -Encoding UTF8
+# БЕЗ BOM. Set-Content -Encoding UTF8 в Windows PowerShell 5.1 дописывает в
+# начало файла три байта EF BB BF, и json.loads в channels.py отвечал на них
+# «Unexpected UTF-8 BOM ... (char 0)». Покупатель делал ровно то, что велит
+# README — копировал этот файл в channels.json — и получал ноль каналов в
+# окне и отказ завести канал через интерфейс. Читатель теперь терпит BOM
+# (channels.py, utf-8-sig), но и писать его незачем.
+[IO.File]::WriteAllText((Join-Path $Dist 'channels.example.json'),
+                        $example, (New-Object Text.UTF8Encoding $false))
 Ok 'channels.example.json (шаблон вместо рабочих профилей)'
 
 # ---------------------------------------------------------------------

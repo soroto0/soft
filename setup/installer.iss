@@ -39,6 +39,22 @@ DefaultGroupName={#AppName}
 ; Программа ставится в Program Files, но РАБОТАЕТ с файлами рядом с собой:
 ; проекты, ключи и библиотеки лежат в её папке. Поэтому нужны права
 ; администратора — иначе она не сможет писать в собственную папку.
+;
+; ОДНИХ ПРАВ У УСТАНОВЩИКА НЕ ХВАТАЛО. PrivilegesRequired поднимает только
+; САМ мастер; ярлык на рабочем столе запускает .bat обычным процессом, а у
+; группы «Пользователи» на Program Files стоит ReadAndExecute — замерено на
+; этой машине: Get-Acl 'C:\Program Files' отдаёт ровно ReadAndExecute, а
+; попытка записи без повышения прав отвечает «Access to the path ... is
+; denied». Программа же пишет рядом с собой ВСЁ: .venv, .env, settings.json,
+; app.log, папки каналов с готовыми роликами, music_library, assets\sfx,
+; remotion\public\ovl_*.png. То есть после установки первый же обычный
+; запуск упирался в отказ на записи. Строка ниже выдаёт «Пользователям»
+; право изменять содержимое папки программы — тогда обещание комментария
+; выше становится правдой.
+[Dirs]
+Name: "{app}"; Permissions: users-modify
+
+[Setup]
 PrivilegesRequired=admin
 OutputDir=Output
 OutputBaseFilename=КонтентФабрика-Установка
@@ -57,11 +73,23 @@ Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 ; Источник — папка, собранная dist_pack.ps1: в ней уже НЕТ ключей,
 ; папок каналов и прочего личного. Собирать установщик из рабочей
 ; папки напрямую нельзя — туда уедет .env со всеми ключами.
-Source: "..\dist\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+;
+; Путь — до САМОЙ папки kontent-fabrika, а не до dist\. Инструкция выше велит
+; собирать `dist_pack.ps1 -OutDir dist`, а он всегда кладёт результат в
+; подпапку с именем kontent-fabrika (см. $Dist в dist_pack.ps1). С маской
+; ..\dist\* и recursesubdirs Inno сохраняет эту подпапку, и программа
+; оказывалась в {app}\kontent-fabrika\ — то есть {app}\Запустить.bat, на
+; который смотрят оба ярлыка и постустановочный запуск, просто не
+; существовал. Проверено по дереву: в dist\ лежит ровно один элемент, папка.
+Source: "..\dist\kontent-fabrika\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{group}\{#AppName}";        Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
-Name: "{autodesktop}\{#AppName}";  Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+; Иконка — из ui\icon. В assets\ она тоже есть, но папку assets целиком не
+; раздают (в ней звуки под чужой лицензией — так и написано в README), и
+; путь {app}\assets\icon.ico вёл в пустоту: оба ярлыка получали безликий
+; значок .bat-файла. Это первое, что покупатель видит после установки.
+Name: "{group}\{#AppName}";        Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; IconFilename: "{app}\ui\icon\icon.ico"
+Name: "{autodesktop}\{#AppName}";  Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; IconFilename: "{app}\ui\icon\icon.ico"
 Name: "{group}\Удалить {#AppName}"; Filename: "{uninstallexe}"
 
 [Run]
