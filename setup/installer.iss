@@ -17,7 +17,9 @@
 ;         powershell -ExecutionPolicy Bypass -File setup\dist_pack.ps1 -OutDir dist
 ;       (он же проверит, что ни один ключ не просочился)
 ;    3. скомпилировать:
-;         "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" setup\installer.iss
+;         "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" setup\installer.iss
+;       (winget ставит компилятор именно туда, а не в Program Files —
+;        проверено 2026-08-07, поиск по Program Files ничего не находит)
 ;
 ;  На выходе:  setup\Output\КонтентФабрика-Установка.exe
 ; =====================================================================
