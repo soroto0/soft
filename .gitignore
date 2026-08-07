@@ -128,3 +128,5 @@ analytics/token.json
 /_архив_из_корней/
 analytics/upload_*.json
 /_битые_схемы/
+/setup/Output/
+/dist/
