@@ -1933,6 +1933,21 @@ class Api:
             own = self._own_brief(ch)
             if own:
                 p["topic_formula"] = (p.get("topic_formula") or "") + own
+        # Демо-лимит проверяем ДО сборки, а не после: ролик считается
+        # часами, и сообщить об исчерпании в конце — значит потратить
+        # чужой вечер впустую. У купленной копии demo.json нет, и вся
+        # ветка молчит.
+        try:
+            import demo
+            можно, почему = demo.можно_ещё()
+            if not можно:
+                self.log(f"[Демо] {почему}", "err")
+                return
+            if почему:
+                self.log(f"[Демо] {почему}")
+        except ImportError:
+            pass
+
         opts = self._render_opts(p)
         # Поле «Оверлеи» интерфейс заполняет ИЗ ФАЙЛА проекта, а файл для
         # нового ролика остался от прошлого (папка канала одна на все ролики).
@@ -2167,8 +2182,20 @@ class Api:
             # начинался уже после остановки, да ещё и с неполной раскадровкой.
             self._stop_check()
             self.log("[Цепочка] Шаг 4/4 — рендер…")
+            try:
+                import demo
+                opts = demo.применить(opts, self.log)
+            except ImportError:
+                pass
             render.render_project(self._project, self.log,
                                   self._progress, opts)
+            # Засчитываем ТОЛЬКО собранный ролик: оборвавшийся прогон не
+            # должен съедать демо-лимит.
+            try:
+                import demo
+                demo.засчитать(self.log)
+            except ImportError:
+                pass
             self.log("[YouTube] Перед загрузкой отметь «Да» в поле об "
                      "ИИ-контенте, если в ролике есть реалистичные "
                      "сгенерированные сцены.", "warn")
