@@ -2069,6 +2069,46 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
         system += ("\n\nCHANNEL VOICE — these instructions describe THIS "
                    "channel specifically and take precedence over the general "
                    "guidance above wherever they conflict:\n" + extra.strip())
+    # ПРАВИЛА ПИСЬМА, ВЫВЕДЕННЫЕ ИЗ РАСШИФРОВКИ ЧУЖИХ РОЛИКОВ.
+    #
+    # Всё ниже — замер, а не вкус. Расшифрованы два ролика, каждый из своей
+    # ниши, оба с каналов, выросших с нуля меньше чем за год, и сравнены с
+    # нашими сценариями на равном окне в 1500 слов:
+    #
+    #                        образец / наш      образец / наш
+    #                        (философия)        (быт)
+    #   средняя фраза          25.0 / 28.1        14.5 / 21.7 слов
+    #   короче 8 слов          10.0 / 3.8%        28.4 / 5.7%
+    #   длиннее 25 слов        45.0 / 62.3%       14.7 / 34.3%
+    #   обращений к зрителю    18.7 / 0.0         16.2 / 28.3 на 1000
+    #   имён собственных        0.7 / 57.1         2.7 / 3.3 на 1000
+    #
+    # Отдельно про петли: наш испанский сценарий на 51-й секунде обещает
+    # раскрыть «esa secuencia», и поиск по всему файлу находит это слово
+    # РОВНО ОДИН РАЗ — в самом обещании. Ответа нет нигде. У обоих образцов
+    # незакрытых петель нет ни одной, и петли адресные: не «есть одна
+    # тайна», а «пункт №14» — такую зритель может дождаться.
+    system += (
+        "\n\nHOW THIS IS WRITTEN — measured on two channels in these exact "
+        "niches that grew from zero in under a year, not style advice.\n"
+        "- The first complete sentence is 14 words or fewer and contains a "
+        "date, a number or a place. Both references land it inside 5 "
+        "seconds; our own scripts take until word 35-40.\n"
+        "- Any promise you open, you close, and you close it at a NAMED "
+        "anchor the viewer can wait for — a numbered item, a date, a named "
+        "object. Never 'there is something you don't know' with no address. "
+        "Do not open a loop you will not answer in this script.\n"
+        "- Repeat the key word of the title at least every four minutes.\n"
+        "- Write in punches, not paragraphs. Sentences of five words or "
+        "fewer are a tool, not an accident: use them on the hits.\n"
+        "- Prefer a number the viewer can spend or measure — a price, a "
+        "size, a count of seconds — over a number he can only memorise. "
+        "Dates are not free: our scripts carry 57 proper names per 1000 "
+        "words against the reference's 0.7, and a wall of surnames reads as "
+        "homework.\n"
+        "- End with three things in order: a call back to the fact from the "
+        "opening, one concrete thing to do, and one question answerable in "
+        "a single word in the comments. Never end mid-thought.")
     # ДЛИНА — ПОСЛЕДНИМ СЛОВОМ, и это не перестраховка. Указания канала и
     # формула ниши приходят сюда СВОБОДНЫМ ТЕКСТОМ, и в них живут свои
     # числа: у estoico-es в topic_formula стоит «Target 45 minutes», а в
