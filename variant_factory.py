@@ -165,12 +165,24 @@ def ensure(channel_id: str, floor: int = FLOOR, log=print,
                      rec.get("variant", ""))
         if m and rec.get("channel", "") == channel_id:
             have_max = max(have_max, int(m.group(1)))
-    _write_exports(palette, max(top, have_max), log)
-
-    added = 0
+    # КОМПОНЕНТЫ ПИШУТСЯ ПОСЛЕ ЦИКЛА, А НЕ ДО. Здесь стояло
+    # _write_exports(palette, max(top, have_max)) перед циклом — то есть
+    # файл создавался под ОЦЕНКУ числа видов, а цикл потом свободно уходил
+    # за неё. Уйти он может законно: номер n растёт и когда запись уже
+    # есть в реестре (её завёл другой канал или прошлый прогон), а need
+    # при этом не уменьшается.
+    #
+    # Цена измерена 2026-08-08: реестр ссылался на ChCalm09..ChCalm16, а в
+    # ch_calm.tsx существовали только ChCalm01..08. Восемь битых ссылок —
+    # и `tsc --noEmit` по ВСЕМУ проекту падал. А проверка ИИ-сцен гоняет
+    # именно его: в том же прогоне 49 сгенерированных схем подряд ушли в
+    # брак «не проходит типизацию проекта», 11 сдались совсем. Схемы были
+    # ни при чём — их валила одна чужая строка в реестре.
+    added, used_max = 0, max(top, have_max)
     for kind in OVERLAY_TYPES:
         n = 1
         while need[kind] > 0:
+            used_max = max(used_max, n)
             key = f"{kind}/{_variant_name(palette, n)}"
             if key in meta:
                 n += 1
@@ -192,6 +204,8 @@ def ensure(channel_id: str, floor: int = FLOOR, log=print,
             added += 1
             need[kind] -= 1
             n += 1
+    # Теперь известно, до какого номера реестр реально дотянулся.
+    _write_exports(palette, used_max, log)
     overlays.save_variants_meta(meta)
     if rebuild:
         overlays.rebuild_registry(log, meta)

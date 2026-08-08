@@ -25,3 +25,19 @@ export const ChCalm06: React.FC<VariantProps> = (p) => <Formed p={p} palette="co
 export const ChCalm07: React.FC<VariantProps> = (p) => <Formed p={p} palette="contemplative" n={7} />;
 
 export const ChCalm08: React.FC<VariantProps> = (p) => <Formed p={p} palette="contemplative" n={8} />;
+
+export const ChCalm09: React.FC<VariantProps> = (p) => <Formed p={p} palette="contemplative" n={9} />;
+
+export const ChCalm10: React.FC<VariantProps> = (p) => <Formed p={p} palette="contemplative" n={10} />;
+
+export const ChCalm11: React.FC<VariantProps> = (p) => <Formed p={p} palette="contemplative" n={11} />;
+
+export const ChCalm12: React.FC<VariantProps> = (p) => <Formed p={p} palette="contemplative" n={12} />;
+
+export const ChCalm13: React.FC<VariantProps> = (p) => <Formed p={p} palette="contemplative" n={13} />;
+
+export const ChCalm14: React.FC<VariantProps> = (p) => <Formed p={p} palette="contemplative" n={14} />;
+
+export const ChCalm15: React.FC<VariantProps> = (p) => <Formed p={p} palette="contemplative" n={15} />;
+
+export const ChCalm16: React.FC<VariantProps> = (p) => <Formed p={p} palette="contemplative" n={16} />;
