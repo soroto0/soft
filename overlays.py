@@ -2505,7 +2505,8 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     total = srt_to_seconds(rows[-1][1]) if rows else 0
     if total > 0:
         out_lines = _topup_overlays(out_lines, rows, min_gap,
-                                    density_floor(total), log, palette)
+                                    density_floor(total, palette), log,
+                                    palette)
         out_lines.sort(key=lambda l: (not re.match(r"\s*\d{2}:\d{2}:\d{2}", l),
                                       l[:8]))
     if watermark.strip() and rows:
@@ -2849,7 +2850,27 @@ def _type_budget(n_rows: int, min_gap: float, palette: str = "") -> str:
         "Reply ")
 
 
-def density_floor(total: float) -> int:
+# Секунд на одну плашку — ПО ПОЧЕРКУ КАНАЛА. Раньше здесь стояло одно
+# число 8 на всех, и это была самая заметная причина, по которой каналы
+# «монтируются одинаково»: вид плашек разводили (144 своих на канал), а
+# ритм их появления оставался общим. Замер по готовым роликам 2026-08-08:
+# средний план 9.4 с у estoico-es и 9.6-10.2 с у home-vault — то есть
+# ритм совпадал практически до десятой доли.
+#
+# Числа не выдуманы, а выведены из жанра каждого канала:
+#   harsh — разбор катастрофы. Плашка здесь несёт факт (дата, цифра,
+#     деталь чертежа), фактов много, и частый ритм держит напряжение.
+#   warm — практический совет. Плашка подписывает предмет и шаг; реже,
+#     чем у разбора, но чаще, чем у размышления: зритель должен успевать
+#     смотреть на руки, а не на надписи.
+#   contemplative — размышление. Здесь плашка МЕШАЕТ: мысль требует
+#     тишины в кадре, и надпись каждые восемь секунд обрывает её. Втрое
+#     реже — и это ровно то, чем канал должен отличаться на глаз.
+DENSITY_SECS = {"harsh": 6, "warm": 10, "contemplative": 22}
+DENSITY_SECS_DEFAULT = 8
+
+
+def density_floor(total: float, palette: str = "") -> int:
     """Сколько оверлеев обязано быть в ролике такой длины.
 
     Один на 8 секунд плюс абсолютный пол в 15 штук, чтобы и пятиминутка не
@@ -2867,7 +2888,9 @@ def density_floor(total: float) -> int:
     никакого пола не было, — и в 20-минутном ролике оставалось 9 оверлеев,
     один на две с лишним минуты.
     """
-    return max(15, round(total / 8))
+    secs = DENSITY_SECS.get((palette or "").strip().lower(),
+                            DENSITY_SECS_DEFAULT)
+    return max(15, round(total / secs))
 
 
 def _topup_overlays(lines: list, rows: list, min_gap: float,
