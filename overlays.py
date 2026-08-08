@@ -3225,6 +3225,32 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "  'titlecard' — a big kinetic-type headline for a major "
                   "hook/topic shift, format text as \"HEADLINE::subtitle\" "
                   "(subtitle optional), under 6 words for the headline\n"
+                  # РИТМ РАЗДЕЛОВ, а не «на усмотрение». Тип titlecard был
+                  # в списке и описан, но модель почти не выбирала его:
+                  # «на смену темы» — это про суждение, и в готовых
+                  # роликах карточек не оказывалось вовсе.
+                  #
+                  # У ролика-образца (EN, 26.9 мин, канал вырос с нуля до
+                  # 76 тыс. подписчиков за пять месяцев) полноэкранная
+                  # карточка стоит РЕГУЛЯРНО: замеренные метки — 174, 303,
+                  # 444, 504, 561, 639, 696, 753, 808, 947, 1013, 1136,
+                  # 1190, 1304, 1418, 1490, 1520, 1604 с. Промежуток
+                  # 55-85 с, медиана около 75. Она держит не смыслом, а
+                  # обещанием: за ней всегда начинается новое, и зритель
+                  # знает это к третьему разу.
+                  #
+                  # Правило дано ТОЛЬКО каналам, где оно измерено. У
+                  # испанского образца карточек нет вовсе — там ту же
+                  # работу делает строка субтитра, печатаемая посимвольно.
+                  # Переносить туда чужой ритм было бы догадкой.
+                  + ("  Put a 'titlecard' roughly every 70-80 seconds "
+                     "through the whole video, as a section divider — not "
+                     "only where you feel a topic shift. Each one names "
+                     "what the next stretch is about. This cadence is "
+                     "measured on a channel of this exact kind, not a "
+                     "guess.\n"
+                     if (palette or "").strip().lower() == "warm" else "")
+                  +
                   "  'banner' — a punchy quoted phrase or claim, under 9 words\n"
                   "  'lower3' — a short 2-5 word label (a place, term, or "
                   "short title mentioned right there)\n"
