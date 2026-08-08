@@ -1803,16 +1803,38 @@ class Api:
                 return ""
             cid = ch.get("id") or ""
             rows = yt_stats.overview(log=lambda *a: None, channel=cid)
+            # Ролики до смены ниши отсекаем ДО сравнения. Иначе лучший из
+            # них становится «образцом успеха» и тянет канал обратно —
+            # ровно это и происходило на abyss: страшилка про сетевой
+            # аккаунт с досмотром 32% подсовывалась каналу про техногенные
+            # катастрофы как то, что надо повторить.
+            vids = yt_stats.since_filter(
+                yt_stats.my_videos(limit=50, log=lambda *a: None,
+                                   channel=cid),
+                ch.get("stats_from", ""))
+            names = {v["id"]: v["title"] for v in vids}
+            rows = [r for r in rows if r.get("video") in names]
             if len(rows) < 2:
                 return ""          # на одном ролике сравнивать не с чем
-            names = {v["id"]: v["title"] for v in
-                     yt_stats.my_videos(limit=50, log=lambda *a: None,
-                                        channel=cid)}
         except Exception as e:
             self.log(f"[Своя статистика] Не вышло ({e}) — тема подбирается "
                      "только по чужой нише", "warn")
             return ""
-        rows = [r for r in rows if r.get("views")]
+        # Порог просмотров, а не просто «просмотры есть». Досмотр ролика,
+        # который посмотрели один раз, — это поведение ОДНОГО человека, и
+        # ставить его рядом с роликом на два десятка зрителей как «лучший»
+        # против «худшего» значит учить сценариста случайности. Живой
+        # случай (abyss, 2026-08-08): после отсечения старой ниши остались
+        # три ролика по 1-3 просмотра, и модель получала «лучший досмотр
+        # 8%, худший 3%» как урок. Разница между 8% и 3% при одном зрителе
+        # не значит ничего.
+        MIN_VIEWS = 10
+        rows = [r for r in rows if (r.get("views") or 0) >= MIN_VIEWS]
+        if len(rows) < 2:
+            self.log("[Своя статистика] Роликов, набравших хотя бы "
+                     f"{MIN_VIEWS} просмотров, меньше двух — тема "
+                     "подбирается по нише, свои цифры пока шум")
+            return ""
         rows.sort(key=lambda r: -(r.get("averageViewPercentage") or 0))
         def _line(r):
             return (f"  {names.get(r.get('video',''), '?')[:70]} — "
@@ -1860,7 +1882,8 @@ class Api:
             if not ok:
                 return ""
             prof = yt_stats.drop_profile(log=lambda *a: None,
-                                         channel=ch.get("id") or "")
+                                         channel=ch.get("id") or "",
+                                         since=ch.get("stats_from", ""))
         except Exception as e:
             self.log(f"[Удержание] Не вышло ({e}) — открытие пишется по "
                      "общим правилам жанра", "warn")

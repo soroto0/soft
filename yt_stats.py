@@ -223,7 +223,21 @@ def overview(log=print, channel: str = "") -> list[dict]:
     return [dict(zip(cols, row)) for row in (r.get("rows") or [])]
 
 
-def drop_profile(log=print, channel: str = "", min_views: int = 10) -> dict:
+def since_filter(videos: list[dict], since: str) -> list[dict]:
+    """Оставить ролики, вышедшие НЕ РАНЬШЕ since (ГГГГ-ММ-ДД). Пусто — все.
+
+    Отдельная функция, потому что отсекать надо в двух местах сразу:
+    и в замере удержания, и в подборе темы. Разъедься они — канал получил
+    бы открытие по новой нише, а тему по старой.
+    """
+    s = (since or "").strip()
+    if not s:
+        return videos
+    return [v for v in videos if (v.get("published") or "")[:10] >= s]
+
+
+def drop_profile(log=print, channel: str = "", min_views: int = 10,
+                 since: str = "") -> dict:
     """Где канал ТЕРЯЕТ зрителя — сведённое по всем роликам, в секундах.
 
     ЗАЧЕМ ОТДЕЛЬНАЯ ФУНКЦИЯ, А НЕ ПРОСТО overview. Средний досмотр —
@@ -253,7 +267,13 @@ def drop_profile(log=print, channel: str = "", min_views: int = 10) -> dict:
         return {}
     if not rows:
         return {}
-    meta = {v["id"]: v for v in my_videos(50, lambda *a: None, channel)}
+    meta = {v["id"]: v for v in
+            since_filter(my_videos(50, lambda *a: None, channel), since)}
+    # Отсекаем ДО подсчёта: ролик старой ниши, попавший в замер, задаёт
+    # открытие под аудиторию, которой на канале больше нет.
+    rows = [r for r in rows if r.get("video") in meta]
+    if not rows:
+        return {}
     worst, curves = [], 0
     for r in rows:
         vid = r.get("video", "")
