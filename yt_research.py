@@ -260,6 +260,86 @@ def report(a: dict) -> str:
     return "\n".join(x for x in L if x != "")
 
 
+def find_breakouts(queries: list[str], api_key: str = "", log=print,
+                   lang: str = "en", long_only: bool = True,
+                   min_views: int = 5000, max_subs: int = 300_000,
+                   min_ratio: float = 1.5, since: str = "2025-08-01",
+                   svc=None) -> list[dict]:
+    """Молодые каналы, чей ролик разошёлся ДАЛЕКО за пределы своей базы.
+
+    ЗАЧЕМ ЭТО ОТДЕЛЬНО ОТ research(). research разбирает канал, который ему
+    НАЗВАЛИ, и обычно называют большой образец. Но большому каналу прощают
+    то, чего не простят новому: его ролик показывают подписчикам сразу, и
+    «что у него сработало» может держаться на одной этой форе. Нужен
+    канал, пробившийся БЕЗ неё. Мера — просмотры лучшего ролика, делённые
+    на число подписчиков: всё выше единицы значит, что ролик ушёл к чужим.
+
+    long_only=True — СТРОГО длиннее 20 минут, и это не украшение. Первый
+    прогон без этого условия (2026-08-08) вернул 82 канала, и почти все
+    жили на тридцатисекундных Shorts: Value Crafts — 2 950 подписчиков и
+    18.5 млн просмотров, лучший ролик 6.6 млн. Приёмы оттуда не переносятся
+    на документальный ролик ни производством, ни деньгами с рекламы, а в
+    выдаче по любому запросу они забивают всё остальное.
+
+    svc — готовый клиент googleapiclient (yt_stats). Нужен потому, что
+    поиск требует ключ YOUTUBE_API_KEY, а он есть не у всех установок:
+    доступ, выданный каналу владельца, делает то же самое.
+    """
+    def ask(path: str, params: dict) -> dict:
+        if svc is not None:
+            return getattr(svc, path)().list(**params).execute()
+        return _get(path, params, api_key)
+
+    hits: dict[str, list] = {}
+    for q in queries:
+        p = {"part": "snippet", "q": q, "type": "video",
+             "order": "viewCount", "maxResults": 25,
+             "publishedAfter": f"{since}T00:00:00Z",
+             "relevanceLanguage": lang}
+        if long_only:
+            p["videoDuration"] = "long"
+        try:
+            found = ask("search", p)
+        except Exception as e:
+            _say(log, f"[Разбор] запрос «{q}» не прошёл: {str(e)[:90]}")
+            continue
+        ids = [x["id"]["videoId"] for x in found.get("items", [])]
+        if not ids:
+            continue
+        det = ask("videos", {"part": "snippet,statistics",
+                             "id": ",".join(ids)})
+        for it in det.get("items", []):
+            views = int((it.get("statistics") or {}).get("viewCount") or 0)
+            if views < min_views:
+                continue
+            sn = it["snippet"]
+            hits.setdefault(sn["channelId"], []).append(
+                (views, sn["title"], sn["publishedAt"][:10]))
+    out, ids = [], list(hits)
+    for i in range(0, len(ids), 50):
+        ch = ask("channels", {"part": "snippet,statistics",
+                              "id": ",".join(ids[i:i + 50])})
+        for it in ch.get("items", []):
+            st, sn = it.get("statistics") or {}, it["snippet"]
+            subs = int(st.get("subscriberCount") or 0)
+            best = max(hits[it["id"]])
+            ratio = best[0] / max(subs, 1)
+            if ratio < min_ratio or subs > max_subs:
+                continue
+            out.append({
+                "id": it["id"], "name": sn["title"],
+                "born": sn.get("publishedAt", "")[:10], "subs": subs,
+                "videos": int(st.get("videoCount") or 0),
+                "total_views": int(st.get("viewCount") or 0),
+                "ratio": ratio, "best_views": best[0], "best_title": best[1],
+                "best_date": best[2],
+                "url": f"https://www.youtube.com/channel/{it['id']}",
+            })
+    out.sort(key=lambda x: -x["ratio"])
+    _say(log, f"[Разбор] прорвавшихся каналов найдено: {len(out)}")
+    return out
+
+
 def research(ref: str, api_key: str = "", limit: int = 200, log=print) -> dict:
     """Полный проход: найти канал -> собрать каталог -> разобрать."""
     ch = resolve_channel(ref, api_key)
