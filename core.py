@@ -4148,6 +4148,104 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
     return bad
 
 
+def find_twin_shots(project_dir: Path, api_key: str = "", log=print,
+                    every: int = 1) -> list[dict]:
+    """Соседние планы, которые ЗРИТЕЛЬ ВИДИТ КАК ОДИН И ТОТ ЖЕ КАДР.
+
+    Проверки на это не было вовсе, и существующей она не заменяется.
+    review_storyboard судит каждый план ОТДЕЛЬНО: подходит ли картинка под
+    свою фразу. Два подряд идущих пергамента проходят её оба — каждый по
+    своей фразе уместен. А зритель видит повтор и решает, что ролик встал.
+
+    Живой случай (проба_es, 2026-08-08): план 2 по запросу «hand writing
+    ancient parchment» дал пергамент на столе, план 3 по запросу «symbol
+    carved skin closeup» дал ТОТ ЖЕ пергамент — генератор ушёл от запроса.
+    Проверка зрением отчиталась «0 несоответствий»: пергамент по настроению
+    подходит к античности, а про соседа её никто не спрашивал.
+
+    ПОЧЕМУ ЗРЕНИЕ, А НЕ АРИФМЕТИКА. Я начал с дешёвых мерок и обе
+    провалились на этой самой паре: средняя яркость дала 7.5 (ниже порога,
+    но нашла только вторую пару, а эту пропустила), сетка 8x5 значений
+    яркости дала 60.2 — «совсем разные». Оба пергамента сняты при разном
+    свете и с разным зумом, и по пикселям они действительно далеки. «Тот же
+    предмет с другого ракурса» — суждение о СОДЕРЖАНИИ, и арифметика по
+    яркости его не выносит. Цена вопроса — один вызов зрения на пару
+    соседей, вдвое дешевле полной проверки кадров.
+    """
+    tl = Path(project_dir) / "timeline.json"
+    if not tl.exists():
+        return []
+    beats = json.loads(tl.read_text(encoding="utf-8"))
+    if len(beats) < 2:
+        return []
+    twins = []
+    with tempfile.TemporaryDirectory() as tmp:
+        def _shot(b, name):
+            f = Path(b.get("file", ""))
+            if not f.exists():
+                return None
+            dest = Path(tmp) / f"{name}.jpg"
+            try:
+                _run_child(["ffmpeg", "-y", "-ss", "1.0", "-i", str(f),
+                            "-frames:v", "1", "-vf", "scale=420:-2",
+                            "-q:v", "6", str(dest)], timeout=60, check=True)
+            except Exception:
+                return None
+            return dest if dest.exists() else None
+
+        for i in range(1, len(beats), max(1, every)):
+            if CANCEL.is_set():
+                break
+            a, b = _shot(beats[i - 1], "a"), _shot(beats[i], "b")
+            if not (a and b):
+                continue
+            # Склеиваем в ОДНУ картинку: так модель видит оба кадра рядом и
+            # сравнивает их, а не пересказывает по очереди. Два отдельных
+            # вызова этого не дают — у зрения нет памяти между запросами.
+            pair = Path(tmp) / "pair.jpg"
+            try:
+                _run_child(["ffmpeg", "-y", "-i", str(a), "-i", str(b),
+                            "-filter_complex", "[0][1]hstack=inputs=2",
+                            "-q:v", "6", str(pair)], timeout=60, check=True)
+                out = vision_chat(
+                    "Two shots from the same documentary, side by side: the "
+                    "LEFT one plays, then the RIGHT one immediately after.\n\n"
+                    "Will the viewer notice that the picture CHANGED?\n\n"
+                    "Say NO (same=true) if both show the same subject in the "
+                    "same setting — the same object on the same table, the "
+                    "same room, the same crowd — even at a different zoom or "
+                    "in different light. A viewer reads that as the video "
+                    "having frozen.\n"
+                    "Say YES (same=false) if the subject or the place is "
+                    "different, even when the mood and colour match.\n\n"
+                    'Reply with ONLY JSON: {"same": true|false, '
+                    '"what": "<2-6 words naming what repeats; empty if not>"}',
+                    pair.read_bytes(), api_key,
+                    system="You are a documentary editor checking a cut.",
+                    max_tokens=1500)
+                mm = re.search(r"\{.*\}", out, re.S)
+                if not mm:
+                    continue
+                data = json.loads(mm.group(0))
+                if data.get("same"):
+                    twins.append({"i": i, "prev": i - 1,
+                                  "what": str(data.get("what", ""))[:60],
+                                  "query": beats[i].get("query", "")})
+            except Exception as e:
+                log(f"[Кадры] пара {i}/{i + 1} не сверена: {str(e)[:70]}")
+    if twins:
+        log(f"[Кадры] Соседних планов, которые видны как один и тот же "
+            f"кадр: {len(twins)}")
+        for t in twins:
+            log(f"[Кадры]   план {t['i'] + 1} повторяет план "
+                f"{t['prev'] + 1}: {t['what']} — заказан был "
+                f"«{t['query'][:40]}»")
+    else:
+        log(f"[Кадры] Повторов среди {len(beats)} планов не найдено")
+    return twins
+
+
+
 def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
                      pexels_keys: str = "", pixabay_keys: str = "",
                      visual_style: str = "", prefer_ai: bool = True) -> int:

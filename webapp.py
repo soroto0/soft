@@ -1637,6 +1637,26 @@ class Api:
                     self._settings.get("pexels_keys", ""),
                     self._settings.get("pixabay_keys", ""),
                     visual_style=style, prefer_ai=True)
+        # ПОВТОРЫ МЕЖДУ СОСЕДЯМИ — отдельная проверка, и она не заменяется
+        # той, что выше. Та судит каждый план по СВОЕЙ фразе и оба
+        # одинаковых пергамента пропускает как уместные. Владелец увидел
+        # это в готовом ролике первым же взглядом: «одно изображение
+        # повторяется».
+        #
+        # Стоит она столько же, сколько замена одного плана, поэтому
+        # найденное сразу и переснимаем — иначе отчёт останется отчётом.
+        twins = core.find_twin_shots(self._project, key, self.log)
+        if twins:
+            fixed += core.refix_storyboard(
+                self._project,
+                [{"i": t["i"],
+                  # Подсказка генератору, чего НЕ надо: он ушёл от запроса
+                  # именно сюда, и без запрета уйдёт туда же снова.
+                  "better": (t["query"] or "")[:60]} for t in twins],
+                self.log,
+                self._settings.get("pexels_keys", ""),
+                self._settings.get("pixabay_keys", ""),
+                visual_style=style, prefer_ai=True)
         return fixed
 
     def check_shots(self):
