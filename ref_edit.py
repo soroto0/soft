@@ -31,6 +31,16 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE))
 
+# Ключи живут в .env, и подхватывает их webapp при старте — а этот файл
+# запускают из командной строки, где никакого webapp нет. Без этих трёх
+# строк core._gemini_keys() возвращал пустой список при десяти рабочих
+# ключах в .env, и разбор глазами молча отваливался на каждом кадре.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE / ".env")
+except ImportError:
+    pass
+
 # Порог смены плана. 0.30 по опыту ffmpeg: ниже ловятся вспышки света и
 # движение камеры, выше теряются мягкие склейки через затемнение.
 SCENE_THRESHOLD = 0.30
@@ -227,6 +237,64 @@ def sameness(video: Path, n: int = 40, log=print) -> dict:
     }
 
 
+def style_read(video: Path, api_key: str = "", n: int = 12,
+               log=print) -> dict:
+    """ЧТО В КАДРЕ — глазами, а не измерителем.
+
+    Числа говорят, как часто режут и насколько тёмен кадр. Они не говорят
+    главного: чем именно ролик держит зрителя. Есть ли надпись в первые
+    секунды, возвращается ли повторяющийся приём, показывают ли то, о чём
+    говорят, или картинка живёт отдельно от слов. Это видно только
+    глазами, поэтому кадры уходят в модель зрения.
+
+    Снимается ОПИСАНИЕ приёма, а не сам приём: «тяжёлый гротеск с чёрной
+    обводкой внизу слева, появляется рывком» — из такой строки нельзя
+    восстановить ни шрифт, ни графику, зато можно собрать своё похожее.
+    Сама форма букв никому не принадлежит; принадлежит файл шрифта, а его
+    в готовом видео уже нет — там пиксели.
+    """
+    import core                                   # тяжёлый, тянем лениво
+    total = duration(video)
+    if total <= 0:
+        return {}
+    # Первые секунды — отдельно и подробнее: там решается уход зрителя,
+    # и замер по собственным каналам показал обвал на 6-31 секунде.
+    marks = [2, 6, 12, 20, 35] + [
+        total * (i + 0.5) / (n - 5) for i in range(max(n - 5, 1))]
+    seen = []
+    tmp = video.parent / ".ref_frames"
+    tmp.mkdir(exist_ok=True)
+    try:
+        for t in marks:
+            if t >= total:
+                continue
+            f = tmp / f"f{int(t):05d}.jpg"
+            _run(["ffmpeg", "-hide_banner", "-y", "-ss", f"{t:.2f}", "-i",
+                  str(video), "-frames:v", "1", "-vf", "scale=960:-1",
+                  str(f)], timeout=120)
+            if not f.is_file():
+                continue
+            try:
+                say = core.vision_chat(
+                    "Ты разбираешь чужой ролик, чтобы понять ЕГО РЕМЕСЛО. "
+                    f"Это кадр на {int(t)}-й секунде. Ответь ОДНОЙ строкой "
+                    "по-русски и по делу: что в кадре (общий план, крупный "
+                    "план, схема, архив), есть ли надпись — какая по "
+                    "начертанию, где стоит, — и чем этот кадр удерживает "
+                    "внимание. Не пересказывай содержание, называй ПРИЁМ.",
+                    f.read_bytes(), api_key,
+                    system="Ты монтажёр документального кино.")
+                seen.append({"сек": int(t), "приём": say.strip()[:300]})
+                log(f"[Образец] {int(t):>4} с: {say.strip()[:90]}")
+            except Exception as e:
+                log(f"[Образец] кадр {int(t)} с не разобран: {str(e)[:70]}")
+    finally:
+        for f in tmp.glob("*.jpg"):
+            f.unlink(missing_ok=True)
+        tmp.rmdir()
+    return {"кадры": seen}
+
+
 def analyse(video: Path, log=print) -> dict:
     total = duration(video)
     if total <= 0:
@@ -251,11 +319,20 @@ def main() -> None:
     ap.add_argument("video")
     ap.add_argument("--apply", default="",
                     help="id канала: записать замер в его профиль")
+    ap.add_argument("--eyes", action="store_true",
+                    help="ещё и разобрать приёмы глазами (нужен ключ)")
     a = ap.parse_args()
     v = Path(a.video)
     if not v.is_file():
         sys.exit(f"нет файла: {v}")
     r = analyse(v)
+    if a.eyes:
+        # Ключи живут в .env, а не в settings.json: там только текущий
+        # канал и последний проект. core._gemini_keys() сам разбирает
+        # GEMINI_API_KEY, GEMINI_API_KEY2 и так далее.
+        import core
+        keys = core._gemini_keys()
+        r["приёмы"] = style_read(v, keys[0] if keys else "")
     print()
     print(json.dumps({k: v2 for k, v2 in r.items() if k != "словами"},
                      ensure_ascii=False, indent=2))
