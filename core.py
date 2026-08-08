@@ -3800,15 +3800,20 @@ Reply with ONLY a JSON object, no markdown fences:
 {"ok": true|false, "problem": "<if not ok: one short concrete sentence>"}"""
 
 
-STORYBOARD_REVIEW_PROMPT = """This is one shot from a documentary, taken from
-the clip that will play while the narrator says:
+STORYBOARD_REVIEW_PROMPT = """This is one shot from a documentary about:
+
+"__TOPIC__"
+
+It is taken from the clip that will play while the narrator says:
 
 "__LINE__"
 
 It was found by searching a stock library for: "__QUERY__"
 
-You are the editor checking the shot before the cut is locked. Answer one
-question: does this picture belong under those words?
+You are the editor checking the shot before the cut is locked. Answer two
+questions, and either one failing means NO.
+
+FIRST — does this picture belong under those words?
 
 Say NO if the shot is about something else entirely — the classic failure is a
 stock library matching one word literally (a search for a "rotten egg smell"
@@ -3817,6 +3822,25 @@ returning a carton of eggs under narration about acid).
 Say YES if it is relevant, even loosely: an object, place, action or mood that
 fits what is being said. Documentaries are full of plain establishing shots and
 that is fine. A shot does not have to illustrate every word.
+
+SECOND — does the shot belong to the same PERIOD as the story?
+
+Work out the period from the topic and the narration. If the story is set in a
+named era, the picture must not contradict it. Anachronism is the failure this
+check exists for, and it is invisible to the first question because a modern
+shot can match the mood perfectly.
+
+Measured case, 2026-08-08: a documentary about Georg Cantor, a 19th-century
+German mathematician, carried at minute 15 a stock clip of a man in a modern
+sweater touching the glass of a present-day office tower at sunset. As mood it
+fits contemplation exactly; as history it is a century wrong, and it went to
+air. Say NO to anything like it: modern clothing, modern vehicles, glass
+towers, screens, plastic, contemporary interiors under a story set before them,
+and equally period costume under a story set today.
+
+Judge only what is visible. A neutral close-up — hands, paper, water, sky,
+texture, an unplaceable interior — carries no period and passes. Do not fail a
+shot for being ambiguous; fail it for being visibly of the wrong time.
 
 Reply with ONLY a JSON object, no markdown fences:
 {"ok": true|false, "better": "<if not ok: a 2-5 word stock search naming
@@ -3888,6 +3912,30 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
     if not tl_path.exists():
         raise FileNotFoundError("нет timeline.json — сначала раскадровка")
     beats = json.loads(tl_path.read_text(encoding="utf-8"))
+    # ТЕМА РОЛИКА — чтобы проверка могла судить об эпохе. Одной реплики для
+    # этого мало: «его руки дрожали, когда он открыл конверт» не называет ни
+    # века, ни страны, и проверяющий не может отличить 1873 год от нынешнего.
+    # Тема называет. Без неё в ролик про Кантора уехал кадр с человеком у
+    # стеклянной башни — по настроению точный, по времени на век мимо.
+    _topic = ""
+    try:
+        _meta = json.loads(
+            (Path(project_dir) / "meta.json").read_text(encoding="utf-8"))
+        _topic = str(_meta.get("topic") or "").strip()
+    except Exception:
+        pass
+    if not _topic:
+        # Запасной путь: первая непустая строка сценария. Хуже темы, но
+        # лучше пустоты — эпоха обычно называется в первых же фразах.
+        try:
+            _txt = (Path(project_dir) / "script.txt").read_text(
+                encoding="utf-8", errors="replace")
+            _topic = next((x.strip() for x in _txt.splitlines() if x.strip()),
+                          "")[:200]
+        except Exception:
+            pass
+    if not _topic:
+        _topic = "(тема неизвестна — суди об эпохе только по реплике)"
     if only is not None:
         idx = [i for i in only if 0 <= i < len(beats)]
     else:
@@ -3940,7 +3988,8 @@ def review_storyboard(project_dir: Path, api_key: str = "", log=print,
         try:
             out = vision_chat(
                 STORYBOARD_REVIEW_PROMPT.replace("__LINE__", line)
-                    .replace("__QUERY__", str(b.get("query", ""))),
+                    .replace("__QUERY__", str(b.get("query", "")))
+                    .replace("__TOPIC__", _topic),
                 shot.read_bytes(), api_key,
                 system="You are a documentary editor checking shot choices.",
                 # Бюджет щедрый не по объёму ответа (он короткий, одна
