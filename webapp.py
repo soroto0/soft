@@ -821,7 +821,8 @@ class Api:
         def job():
             text = core.gen_script(topic, int(minutes), key, self.log,
                                    tone=tone, lang=lang,
-                                   extra=(ch or {}).get("script_extra", ""))
+                                   extra=(ch or {}).get("script_extra", ""),
+                                   rate=int((ch or {}).get("rate") or 0))
             self.save_script(text)
             self._write_meta(tone=tone, topic=topic,
                              **({"channel": ch["id"]} if ch else {}))
@@ -2131,7 +2132,11 @@ class Api:
                     # p, а не ch: сюда уже подмешан замер удержания. Через
                     # ch читать нельзя — там только то, что вписал человек.
                     extra=(p.get("script_extra")
-                           or (ch or {}).get("script_extra", "")))
+                           or (ch or {}).get("script_extra", "")),
+                    # Темп речи канала — иначе заказ на 35 минут при
+                    # темпе -15% давал ролик на 46: слова считались для
+                    # начитки на нулевом темпе, а читал голос медленнее.
+                    rate=int((ch or {}).get("rate") or p.get("rate") or 0))
                 self.save_script(text)
                 self._write_meta(topic=topic)
             # Между шагами цепочки бывают минуты без единой строки в
