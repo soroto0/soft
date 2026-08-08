@@ -2588,7 +2588,12 @@ def _fits_type(otype: str, text: str) -> tuple[bool, str]:
     Проверка ровно та, что делает рендерер: bars ищет пары label:число,
     timeline — пары год:событие, counter — число. Не сойдётся формат —
     рендерер бросит исключение, и оверлей пропадёт из ролика уже на сборке."""
-    if not has_payload(text) or (typ == 'redact'
+    # otype, а не typ. Здесь стояло `typ` — переменной с таким именем в
+    # функции нет, и NameError вылетал на КАЖДОМ пункте типа redact,
+    # обрушивая всю расстановку и вместе с ней ночь. Замер по журналу:
+    # восемь падений за 7-8 августа, включая ночной прогон abyss 20:35 и
+    # пробный ролик 18:36 — оба дошли до раскадровки и умерли на плашках.
+    if not has_payload(text) or (otype == 'redact'
                                  and redact_all_hidden(text)):
         return False, text        # рисовать нечего — см. has_payload
     if otype == "compare":
@@ -3377,7 +3382,8 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
         idx = int(p.get("line", 0)) - 1
         text = str(p.get("text", "")).strip()
         otype = str(p.get("type", "banner")).strip().lower()
-        if not has_payload(text) or (typ == 'redact'
+        # otype, а не typ — та же опечатка, что в _fits_type выше.
+        if not has_payload(text) or (otype == 'redact'
                                      and redact_all_hidden(text)):
             # Пункт без текста дальше не идёт. Проверка стоит ДО дописывания
             # разделителей ниже: у quote и stamp к пустому тексту добавлялось
