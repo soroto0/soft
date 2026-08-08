@@ -141,6 +141,52 @@ import { PhScaleCompatibilityScene } from './scenes/ph_scale_compatibility';
 import { HierarchyOfInfinitiesScene } from './scenes/hierarchy_of_infinities';
 import { SetDerivationProcessScene } from './scenes/set_derivation_process';
 import { DimensionMapping1d2dScene } from './scenes/dimension_mapping_1d_2d';
+import { NestedCirclesDiagramScene } from './scenes/nested_circles_diagram';
+import { LineVsDotsDiagramScene } from './scenes/line_vs_dots_diagram';
+import { FracturedLineDiagramScene } from './scenes/fractured_line_diagram';
+import { InfiniteStaircaseScene } from './scenes/infinite_staircase';
+import { SplitDiagramScene } from './scenes/split_diagram';
+import { ExpandingSphereDiagramScene } from './scenes/expanding_sphere_diagram';
+import { OverlappingCirclesBlurScene } from './scenes/overlapping_circles_blur';
+import { CrackedSurfaceDiagramScene } from './scenes/cracked_surface_diagram';
+import { ListHighlightScene } from './scenes/list_highlight';
+import { StructuralCollapseScene } from './scenes/structural_collapse';
+import { GeographyContainmentScene } from './scenes/geography_containment';
+import { PulleyMechanicsScene } from './scenes/pulley_mechanics';
+import { ForceRedistributionScene } from './scenes/force_redistribution';
+import { DecisionTreeScene } from './scenes/decision_tree';
+import { FinancialPressureScene } from './scenes/financial_pressure';
+import { StaticLoadComparisonScene } from './scenes/static_load_comparison';
+import { EccentricForceLeverageScene } from './scenes/eccentric_force_leverage';
+import { LateralWindPressureScene } from './scenes/lateral_wind_pressure';
+import { BridgeLoadDistributionScene } from './scenes/bridge_load_distribution';
+import { StressCorrosionCutawayScene } from './scenes/stress_corrosion_cutaway';
+import { ThermalExpansionDifferentialScene } from './scenes/thermal_expansion_differential';
+import { SafetyFactorBreachScene } from './scenes/safety_factor_breach';
+import { RiverbedSedimentSectionScene } from './scenes/riverbed_sediment_section';
+import { CoreErosionMechanicsScene } from './scenes/core_erosion_mechanics';
+import { GroutCurtainBypassScene } from './scenes/grout_curtain_bypass';
+import { PipingProgressionScene } from './scenes/piping_progression';
+import { GeologicalFissureMapScene } from './scenes/geological_fissure_map';
+import { GroutCurtainContinuityScene } from './scenes/grout_curtain_continuity';
+import { ConcreteLeachingMatrixScene } from './scenes/concrete_leaching_matrix';
+import { ThaumasiteSulfateMatrixDecayScene } from './scenes/thaumasite_sulfate_matrix_decay';
+import { ThermalConductivityBarrierScene } from './scenes/thermal_conductivity_barrier';
+import { CompressorPressureSpikeScene } from './scenes/compressor_pressure_spike';
+import { ElectricalDrawDoublingScene } from './scenes/electrical_draw_doubling';
+import { CausticMetalReactionScene } from './scenes/caustic_metal_reaction';
+import { CondensationFlushCoverageScene } from './scenes/condensation_flush_coverage';
+import { GalvanicCorrosionLeakScene } from './scenes/galvanic_corrosion_leak';
+import { MechanicalGearsDiagramScene } from './scenes/mechanical_gears_diagram';
+import { StructuralCollapseDiagramScene } from './scenes/structural_collapse_diagram';
+import { PopulationLossGraphScene } from './scenes/population_loss_graph';
+import { KnowledgeOverlapDiagramScene } from './scenes/knowledge_overlap_diagram';
+import { SocialTensionFlowScene } from './scenes/social_tension_flow';
+import { SkillTrapDiagramScene } from './scenes/skill_trap_diagram';
+import { ElenchosDeconstructionScene } from './scenes/elenchos_deconstruction';
+import { SequenceOfFailureScene } from './scenes/sequence_of_failure';
+import { IncubationFlowDiagramScene } from './scenes/incubation_flow_diagram';
+import { LegalWallDiagramScene } from './scenes/legal_wall_diagram';
 export type { SceneProps };
 
 // Точка входа для СЦЕН — планов, которые целиком нарисованы, а не сняты.
@@ -456,6 +502,98 @@ const pickScene = (props: SceneProps): React.ReactElement | null => {
       return <SetDerivationProcessScene {...props} />;
     case 'dimension_mapping_1d_2d':
       return <DimensionMapping1d2dScene {...props} />;
+    case 'nested_circles_diagram':
+      return <NestedCirclesDiagramScene {...props} />;
+    case 'line_vs_dots_diagram':
+      return <LineVsDotsDiagramScene {...props} />;
+    case 'fractured_line_diagram':
+      return <FracturedLineDiagramScene {...props} />;
+    case 'infinite_staircase':
+      return <InfiniteStaircaseScene {...props} />;
+    case 'split_diagram':
+      return <SplitDiagramScene {...props} />;
+    case 'expanding_sphere_diagram':
+      return <ExpandingSphereDiagramScene {...props} />;
+    case 'overlapping_circles_blur':
+      return <OverlappingCirclesBlurScene {...props} />;
+    case 'cracked_surface_diagram':
+      return <CrackedSurfaceDiagramScene {...props} />;
+    case 'list_highlight':
+      return <ListHighlightScene {...props} />;
+    case 'structural_collapse':
+      return <StructuralCollapseScene {...props} />;
+    case 'geography_containment':
+      return <GeographyContainmentScene {...props} />;
+    case 'pulley_mechanics':
+      return <PulleyMechanicsScene {...props} />;
+    case 'force_redistribution':
+      return <ForceRedistributionScene {...props} />;
+    case 'decision_tree':
+      return <DecisionTreeScene {...props} />;
+    case 'financial_pressure':
+      return <FinancialPressureScene {...props} />;
+    case 'static_load_comparison':
+      return <StaticLoadComparisonScene {...props} />;
+    case 'eccentric_force_leverage':
+      return <EccentricForceLeverageScene {...props} />;
+    case 'lateral_wind_pressure':
+      return <LateralWindPressureScene {...props} />;
+    case 'bridge_load_distribution':
+      return <BridgeLoadDistributionScene {...props} />;
+    case 'stress_corrosion_cutaway':
+      return <StressCorrosionCutawayScene {...props} />;
+    case 'thermal_expansion_differential':
+      return <ThermalExpansionDifferentialScene {...props} />;
+    case 'safety_factor_breach':
+      return <SafetyFactorBreachScene {...props} />;
+    case 'riverbed_sediment_section':
+      return <RiverbedSedimentSectionScene {...props} />;
+    case 'core_erosion_mechanics':
+      return <CoreErosionMechanicsScene {...props} />;
+    case 'grout_curtain_bypass':
+      return <GroutCurtainBypassScene {...props} />;
+    case 'piping_progression':
+      return <PipingProgressionScene {...props} />;
+    case 'geological_fissure_map':
+      return <GeologicalFissureMapScene {...props} />;
+    case 'grout_curtain_continuity':
+      return <GroutCurtainContinuityScene {...props} />;
+    case 'concrete_leaching_matrix':
+      return <ConcreteLeachingMatrixScene {...props} />;
+    case 'thaumasite_sulfate_matrix_decay':
+      return <ThaumasiteSulfateMatrixDecayScene {...props} />;
+    case 'thermal_conductivity_barrier':
+      return <ThermalConductivityBarrierScene {...props} />;
+    case 'compressor_pressure_spike':
+      return <CompressorPressureSpikeScene {...props} />;
+    case 'electrical_draw_doubling':
+      return <ElectricalDrawDoublingScene {...props} />;
+    case 'caustic_metal_reaction':
+      return <CausticMetalReactionScene {...props} />;
+    case 'condensation_flush_coverage':
+      return <CondensationFlushCoverageScene {...props} />;
+    case 'galvanic_corrosion_leak':
+      return <GalvanicCorrosionLeakScene {...props} />;
+    case 'mechanical_gears_diagram':
+      return <MechanicalGearsDiagramScene {...props} />;
+    case 'structural_collapse_diagram':
+      return <StructuralCollapseDiagramScene {...props} />;
+    case 'population_loss_graph':
+      return <PopulationLossGraphScene {...props} />;
+    case 'knowledge_overlap_diagram':
+      return <KnowledgeOverlapDiagramScene {...props} />;
+    case 'social_tension_flow':
+      return <SocialTensionFlowScene {...props} />;
+    case 'skill_trap_diagram':
+      return <SkillTrapDiagramScene {...props} />;
+    case 'elenchos_deconstruction':
+      return <ElenchosDeconstructionScene {...props} />;
+    case 'sequence_of_failure':
+      return <SequenceOfFailureScene {...props} />;
+    case 'incubation_flow_diagram':
+      return <IncubationFlowDiagramScene {...props} />;
+    case 'legal_wall_diagram':
+      return <LegalWallDiagramScene {...props} />;
     default:
       return null;
   }
@@ -481,7 +619,7 @@ export const Scene: React.FC<SceneProps> = (p) => {
   // от чего мы уходим.
   return (
     <AbsoluteFill>
-      {p.bare ? null : <Backdrop />}
+      {p.bare ? null : <Backdrop look={p.look} accent={p.accent} />}
       {body}
     </AbsoluteFill>
   );

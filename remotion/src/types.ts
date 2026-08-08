@@ -79,4 +79,10 @@ export type SceneProps = {
   exit: number;
   enter: number;
   bare?: boolean;
+  // Почерк канала (harsh | warm | contemplative) и его акцентный цвет.
+  // По ним подложка сцены выбирает тон дна: без них схемы всех каналов
+  // рисовались на одном фоне — ещё одна причина, по которой каналы
+  // «монтировались одинаково».
+  look?: string;
+  accent?: string;
 };

@@ -7753,7 +7753,12 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     gen_scenes.render_scene(
                         sc["kind"], dest_sc, need, title=sc.get("title", ""),
                         items=sc.get("items"), lat=sc.get("lat"),
-                        lon=sc.get("lon"), log=log)
+                        lon=sc.get("lon"), log=log,
+                        # Почерк канала — до самой подложки сцены. Без него
+                        # схемы всех каналов рисуются на одном фоне, и это
+                        # была одна из причин «каналы монтируются одинаково».
+                        look=(channel or {}).get("palette", ""),
+                        accent=(channel or {}).get("accent", ""))
                 clip, src_dur = dest_sc, need
                 log(f"[Раскадровка] План {i} [{mm:02d}:{ss:02d}, {need:.0f} c] "
                     f"СЦЕНА «{sc['kind']}» -> OK")

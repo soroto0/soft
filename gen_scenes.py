@@ -943,7 +943,7 @@ def _no_scene(kind: str, why: str) -> None:
 def render_scene(kind: str, dest: Path, seconds: float, *, title: str = "",
                  items: list | None = None, lat=None, lon=None,
                  width: int = 1920, height: int = 1080, fps: int = 30,
-                 log=print) -> Path:
+                 log=print, look: str = "", accent: str = "") -> Path:
     """Отрисовать сцену в mp4 РОВНО нужной длительности.
 
     Клип встаёт в раскадровку как обычный beat_NNN.mp4 — рендеру ролика
@@ -958,6 +958,12 @@ def render_scene(kind: str, dest: Path, seconds: float, *, title: str = "",
         props["items"] = list(items)
     if lat is not None and lon is not None:
         props["lat"], props["lon"] = float(lat), float(lon)
+    # Почерк и акцент канала: по ним подложка сцены выбирает свой тон дна
+    # (Backdrop.BASES). Пустые не шлём — у Backdrop свои умолчания.
+    if look:
+        props["look"] = look
+    if accent:
+        props["accent"] = accent
 
     npx = ov._npx()
     if not npx:
