@@ -1613,13 +1613,24 @@ def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box",
         # полностью, и это решение владельца, а не упущение.
         style = (common
                  .replace(f"Bold={bold}", "Bold=0")
+                 # 7.6% от низа, а не 14.6%. Первая версия поднимала строку
+                 # почти в середину нижней трети, и владелец сказал прямо:
+                 # «внизу, а не в середине». Ниже 7% уводить нельзя — там
+                 # начинается зона, которую YouTube перекрывает полосой
+                 # проигрывателя при наведении мыши.
                  .replace(f"MarginV={SUB_MARGIN_V}",
-                          f"MarginV={round(SUB_GRID_Y * 0.146)}")
+                          f"MarginV={round(SUB_GRID_Y * 0.076)}")
                  .replace(f"MarginL={SUB_MARGIN_X}", "MarginL=62")
                  .replace(f"MarginR={SUB_MARGIN_X}", "MarginR=62")
                  .replace("Spacing=0.3", "Spacing=0.5")
+                 # Обводка 0.6, а не 1.7. Первую версию владелец забраковал
+                 # словами «без чёрных полос»: на плотном рубленом гротеске
+                 # кайма в 1.7 сливается вокруг букв и читается как тёмная
+                 # лента под строкой. Из трёх отрисованных степеней (0 /
+                 # 0.6 / 1.0) выбрана средняя: каймы не видно, но буква
+                 # отделена от фона и не пропадает на светлой плитке.
                  + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00101010,"
-                 "BorderStyle=1,Outline=1.7,Shadow=1.2")
+                 "BorderStyle=1,Outline=0.6,Shadow=1.2")
     elif style_name == "thin_clean":    # тонкий контур, минимализм
         style = (common + ",PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
                  "BorderStyle=1,Outline=1.2,Shadow=0.5")
