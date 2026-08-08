@@ -2069,6 +2069,28 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
         system += ("\n\nCHANNEL VOICE — these instructions describe THIS "
                    "channel specifically and take precedence over the general "
                    "guidance above wherever they conflict:\n" + extra.strip())
+    # ДЛИНА — ПОСЛЕДНИМ СЛОВОМ, и это не перестраховка. Указания канала и
+    # формула ниши приходят сюда СВОБОДНЫМ ТЕКСТОМ, и в них живут свои
+    # числа: у estoico-es в topic_formula стоит «Target 45 minutes», а в
+    # поле minutes — 35. Модель слушала текст, а не параметр, и ролик вышел
+    # 45:55. Это выглядело сбоем рендера, а было спором двух полей профиля.
+    system += (
+        f"\n\nLENGTH IS FIXED AT {minutes} MINUTES (~{target_words} words). "
+        "If any text above — the channel voice, the niche formula, an "
+        "example — names a different duration or word count, it is stale: "
+        "this number wins. Do not aim past it.")
+    # Сказать вслух, если в свободном тексте профиля живёт ДРУГАЯ длина.
+    # Промпт выше эту длину перебьёт, но молчать нельзя: пока строка сидит
+    # в профиле, она будет спорить с полем при каждом ролике, и однажды
+    # кто-нибудь поправит не то поле.
+    спор = {int(x) for x in re.findall(
+        r"(\d{1,3})\s*(?:minutes|min\b|минут)", extra or "", re.I)}
+    спор = {x for x in спор if 3 <= x <= 180 and abs(x - minutes) > 3}
+    if спор:
+        log(f"[Агент] В указаниях канала названа другая длина "
+            f"({', '.join(str(x) for x in sorted(спор))} мин) — беру "
+            f"{minutes} мин из поля профиля. Убери лишнее число из "
+            "«формулы темы», иначе спор повторится.", "warn")
     log(f"[Агент] Сценарий «{topic}»: ~{minutes} мин (~{target_words} слов), "
         f"{n_sections} глав, жанр «{tone}», язык {lang_name}")
 
