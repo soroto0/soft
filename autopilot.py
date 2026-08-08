@@ -122,8 +122,12 @@ def main() -> int:
                     help="показать план ночи и выйти, ничего не делая")
     args = ap.parse_args()
 
-    chans = channels_mod.load()
+    # active(): выключенные каналы в ночь не берут. Но если канал назвали
+    # явно через --channel, берём его даже выключенным — просьба человека
+    # весомее галочки в профиле.
+    chans = channels_mod.active()
     if args.channel:
+        chans = channels_mod.load()
         q = args.channel.strip().lower()
         chans = [c for c in chans
                  if q in (str(c.get("id", "")).lower(),

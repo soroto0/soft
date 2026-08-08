@@ -1713,29 +1713,104 @@ class Api:
             except Exception as e:
                 self.log(f"[Обложка] Рендер {i} не вышел: {e}", "warn")
                 continue
-            # главная беда самодельных превью — текст, нечитаемый в ленте;
-            # спрашиваем у модели, видно ли его, но вердикт НЕ блокирует
+            # ОЦЕНКА В ЛЕНТЕ, а не просто «читается ли текст».
+            #
+            # Проверка тут стояла и раньше, но делала половину дела. Она
+            # спрашивала только про ЗАГОЛОВОК — а замер на живом канале
+            # показал, что теряется не он. У estoico-es (Кантор, 2026-08-08)
+            # YouTube дал 318 показов, кликнули 1.9% — при том, что
+            # кликнувшие смотрели 10:19 из 45:55. То есть ролик держит, а
+            # обложка не зовёт. На обеих обложках канала герой стоял мелко
+            # и в тени: разглядеть человека в ленте нельзя, а лицо — самый
+            # сильный элемент превью.
+            #
+            # И главное: вердикт НИ НА ЧТО НЕ ВЛИЯЛ. Обложек рисуется три,
+            # на YouTube уходит thumb1.jpg, и если негодной оказывалась
+            # именно она — в журнале появлялась строка «замечание», а
+            # ролик всё равно выходил с ней. Теперь оценка решает порядок.
+            #
+            # Про свет НЕ спрашиваем. Тёмный кадр у harsh и contemplative —
+            # не оплошность, а вывод из разбора каналов-образцов (см.
+            # core.THUMB_STYLES), и переписывать его по одному замеру CTR
+            # значило бы принять шум за правило. Спрашиваем про то, что от
+            # стиля не зависит: РАЗЛИЧИМО ли главное при ширине 210px.
+            score = 0
             try:
                 verdict = core.vision_chat(
-                    "This is a YouTube thumbnail. It will be seen 210px wide "
-                    "in a feed. Reply with ONLY JSON: "
-                    '{"ok":true|false,"problem":"<one short sentence>"}. '
-                    "Set ok=false if the headline is hard to read at that "
-                    "size, is cut off, or clashes with the background.",
+                    "This is a YouTube thumbnail. Judge it as it will "
+                    "actually be seen: 210 pixels wide, in a feed, next to "
+                    "other thumbnails, often on a phone. Reply with ONLY "
+                    'JSON: {"score":0-100,"headline_readable":true|false,'
+                    '"subject_readable":true|false,'
+                    '"problem":"<one short sentence>"}. '
+                    "score is how likely a stranger scrolling past is to "
+                    "stop on it. Set headline_readable=false if the text is "
+                    "hard to read, cut off, or lost in the background. Set "
+                    "subject_readable=false if the main subject — the "
+                    "person, object or place the cover is about — cannot be "
+                    "made out at that size because it is too small, too far "
+                    "away, or swallowed by shadow. Do NOT penalise a dark "
+                    "or moody image as such: judge only whether the thing "
+                    "it is about comes across.",
                     dest.read_bytes(), key,
                     system="You are a YouTube thumbnail reviewer.")
                 m = re.search(r"\{.*\}", verdict, re.S)
                 if m:
                     data = json.loads(m.group(0))
-                    if not data.get("ok"):
-                        self.log(f"[Обложка] {dest.name}: замечание — "
-                                 f"{data.get('problem', '')}", "warn")
+                    score = int(data.get("score") or 0)
+                    flaws = []
+                    if not data.get("headline_readable", True):
+                        flaws.append("не читается заголовок")
+                    if not data.get("subject_readable", True):
+                        flaws.append("не разглядеть героя")
+                    if flaws or score < 50:
+                        self.log(
+                            f"[Обложка] {dest.name}: {score}/100"
+                            + (" — " + ", ".join(flaws) if flaws else "")
+                            + (f"; {data.get('problem', '')}"
+                               if data.get("problem") else ""), "warn")
+                    else:
+                        self.log(f"[Обложка] {dest.name}: {score}/100")
             except Exception:
                 pass   # проверка необязательна, обложка уже готова
-            made.append(str(dest))
+            made.append((score, str(dest)))
         if made:
+            made = self._rank_thumbnails(made, out_dir)
             self.log(f"[Обложка] Готово: {len(made)} шт. в {out_dir.name}\\")
         return made
+
+    def _rank_thumbnails(self, scored: list[tuple[int, str]],
+                         out_dir: Path) -> list[str]:
+        """Переставить обложки так, чтобы лучшая стала thumb1.jpg.
+
+        На YouTube уходит первая, а порядок до сих пор задавала очередь
+        генерации — то есть случайность. Оценка зрением при этом уже
+        считалась и выбрасывалась. Здесь она наконец решает.
+
+        Если оценок нет вовсе (модель зрения недоступна, ключ кончился),
+        порядок остаётся прежним: тасовать вслепую хуже, чем не тасовать.
+        """
+        paths = [p for _, p in scored]
+        if not any(s for s, _ in scored):
+            return paths
+        best = sorted(scored, key=lambda x: -x[0])
+        if [p for _, p in best] == paths:
+            self.log("[Обложка] Лучшая и так первая — порядок не меняю")
+            return paths
+        # Через временные имена: прямое переименование затирает соседа.
+        tmp = []
+        for n, (_, src) in enumerate(best, 1):
+            t = out_dir / f".rank{n}.jpg"
+            Path(src).replace(t)
+            tmp.append(t)
+        out = []
+        for n, t in enumerate(tmp, 1):
+            final = out_dir / f"thumb{n}.jpg"
+            t.replace(final)
+            out.append(str(final))
+        self.log(f"[Обложка] Лучшая ({best[0][0]}/100) поставлена первой — "
+                 "именно она уходит на YouTube")
+        return out
 
     def make_thumbnails(self, count: int = 3):
         self._bg("Обложки", lambda: self._do_thumbnails(int(count)))
@@ -2362,10 +2437,12 @@ class Api:
         if self._reject_if_busy("Автопилот"):
             return
         import night_plan as np
-        chans = channels_mod.load()
+        # Выключенные каналы ночь не берёт; названный явно — берёт даже
+        # выключенным, просьба человека весомее галочки в профиле.
+        chans = channels_mod.active()
         want = str(p.get("channel") or "").strip().lower()
         if want:
-            chans = [c for c in chans
+            chans = [c for c in channels_mod.load()
                      if want in (str(c.get("id", "")).lower(),
                                  str(c.get("name", "")).lower())]
         if not chans:
