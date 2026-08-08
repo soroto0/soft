@@ -1837,6 +1837,70 @@ class Api:
                 "did not, and carry that difference into the new topic. Never "
                 "repeat a subject already listed above.")
 
+    def _retention_brief(self, ch: dict) -> str:
+        """Указание сценаристу, построенное на ИЗМЕРЕННОМ обвале удержания.
+
+        ЧЕМ ЭТО ОТЛИЧАЕТСЯ ОТ _own_brief. Тот берёт средний досмотр и
+        правит ВЫБОР ТЕМЫ. Но средний досмотр — одно число, и оно не
+        различает «ушли на шестой секунде» и «досмотрели треть и устали».
+        Замер 2026-08-07 показал первое: на всех трёх роликах, у которых
+        хватило просмотров на кривую, обвал пришёлся на первые 6-31
+        секунду и уносил 25-31% зрителей разом; к 37-й секунде оставалась
+        половина. Значит тема выбрана не так уж плохо — её просто не
+        успевают услышать. Менять надо ПЕРВЫЕ ФРАЗЫ, а темой тут не
+        поможешь, и _own_brief в это место не бьёт.
+
+        Пустая строка, когда мерить не на чем. Указание, выведенное из
+        трёх зрителей, вреднее отсутствия указания: сценарист примет шум
+        за правило и будет переписывать открытие под случайность.
+        """
+        try:
+            import yt_stats
+            ok, _ = yt_stats.ready()
+            if not ok:
+                return ""
+            prof = yt_stats.drop_profile(log=lambda *a: None,
+                                         channel=ch.get("id") or "")
+        except Exception as e:
+            self.log(f"[Удержание] Не вышло ({e}) — открытие пишется по "
+                     "общим правилам жанра", "warn")
+            return ""
+        if not prof or not prof.get("drop_sec"):
+            return ""
+        sec, size = prof["drop_sec"], prof["drop_size"]
+        half = prof.get("half_sec")
+        self.log(f"[Удержание] Замер по {prof['videos']} ролик(ам): обвал на "
+                 f"{sec}-й секунде, минус {size}% зрителей"
+                 + (f"; половина уходит к {half}-й" if half else "")
+                 + " — открытие пишется под это")
+        return (
+            "\n\nMEASURED RETENTION ON THIS CHANNEL — not a guideline, a "
+            f"measurement from {prof['videos']} of your own published "
+            f"video(s).\n"
+            f"Viewers leave in a cliff at second {sec}: {size}% of the "
+            "audience is gone in that single moment."
+            + (f" Half the audience is gone by second {half}." if half else "")
+            + "\nThey are not leaving because the topic is wrong — they leave "
+            "before the topic is even established. They leave because of what "
+            f"the first {max(sec + 5, 20)} seconds sound like.\n"
+            "Therefore:\n"
+            # Потолок 8 секунд, а не «за пару секунд до обвала». При обвале
+            # на 26-й секунде формула давала «успей до 24-й» — то есть
+            # разрешала двадцать секунд раскачки, ровно ту раскачку, из-за
+            # которой обвал и случается. Момент обвала говорит, ГДЕ рвётся,
+            # но не даёт права тянуть до него.
+            f"- The opening line must land BEFORE second "
+            f"{min(max(sec - 2, 3), 8)}. No channel intro, no 'in this "
+            "video', no throat-clearing, no restating the title.\n"
+            "- Open on the most concrete, most specific thing in the whole "
+            "story: a date, a number, a name, a physical detail. Not context, "
+            "not a question to the viewer.\n"
+            f"- At second {sec} something must CHANGE — a turn, a "
+            "contradiction, a second voice, a jump in time. That is exactly "
+            "where they are deciding to leave.\n"
+            "- Do not summarise what is coming. A promise is a reason to "
+            "leave and come back never.")
+
     def _niche_brief(self, ch: dict) -> str:
         """Свежий разбор ниши под ЭТОТ ролик — не текст, вписанный однажды.
 
@@ -1933,6 +1997,14 @@ class Api:
             own = self._own_brief(ch)
             if own:
                 p["topic_formula"] = (p.get("topic_formula") or "") + own
+            # Удержание правит НЕ тему, а первые фразы, поэтому кладётся в
+            # script_extra, а не в topic_formula. И кладётся в p, а не в
+            # ch: ch уходит в upsert после выбора темы, и указание,
+            # дописанное в профиль, осело бы в channels.json навсегда и
+            # росло бы с каждым роликом.
+            hold = self._retention_brief(ch)
+            if hold:
+                p["script_extra"] = ((ch.get("script_extra") or "") + hold)
         # Демо-лимит проверяем ДО сборки, а не после: ролик считается
         # часами, и сообщить об исчерпании в конце — значит потратить
         # чужой вечер впустую. У купленной копии demo.json нет, и вся
@@ -2033,7 +2105,10 @@ class Api:
                     topic, mins, key, self.log,
                     tone=p.get("tone", "документальный"),
                     lang=p.get("lang", "английский"),
-                    extra=(ch or {}).get("script_extra", ""))
+                    # p, а не ch: сюда уже подмешан замер удержания. Через
+                    # ch читать нельзя — там только то, что вписал человек.
+                    extra=(p.get("script_extra")
+                           or (ch or {}).get("script_extra", "")))
                 self.save_script(text)
                 self._write_meta(topic=topic)
             # Между шагами цепочки бывают минуты без единой строки в

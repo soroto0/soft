@@ -17,6 +17,7 @@ analytics/КАК_ПОДКЛЮЧИТЬ_API.md), а вход выполняетс�
 analytics/ и закрыты .gitignore — репозиторий публичный.
 """
 import json
+import re
 import time
 from pathlib import Path
 
@@ -117,8 +118,31 @@ def _svc(creds, name: str, ver: str):
     return build(name, ver, credentials=creds, cache_discovery=False)
 
 
+def _iso_secs(txt: str) -> int:
+    """«PT13M45S» -> 825. Ноль, если формат незнакомый.
+
+    YouTube отдаёт длительность только строкой ISO 8601 и только через
+    videos().list — в playlistItems её нет. Без неё вся статистика
+    удержания остаётся в долях ролика, а доля неприменима: «уходят на 2%»
+    не говорит ничего, «уходят на 15-й секунде» говорит всё.
+    """
+    m = re.fullmatch(r"P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?",
+                     (txt or "").strip())
+    if not m:
+        return 0
+    d, h, mi, s = (int(x or 0) for x in m.groups())
+    return ((d * 24 + h) * 60 + mi) * 60 + s
+
+
 def my_videos(limit: int = 50, log=print, channel: str = "") -> list[dict]:
-    """Свои ролики: id, название, дата, длительность."""
+    """Свои ролики: id, название, дата, длительность в секундах.
+
+    Длительность заявлялась в этом описании с самого начала, но не
+    возвращалась НИ РАЗУ: playlistItems её не отдаёт, а второго запроса
+    здесь не было. Из-за этого weak_spots честно писал «длительность знает
+    вызывающий» — а вызывающий её тоже не знал, и разбор удержания
+    застревал в долях. Второй запрос стоит один вызов на 50 роликов.
+    """
     creds = _creds(log, channel)
     yt = _svc(creds, "youtube", "v3")
     me = yt.channels().list(part="contentDetails,snippet",
@@ -145,6 +169,22 @@ def my_videos(limit: int = 50, log=print, channel: str = "") -> list[dict]:
         token = r.get("nextPageToken")
         if not token:
             break
+    # Длительность — вторым запросом, пачками по 50 (столько принимает
+    # videos().list за раз). Неудача здесь не должна ронять весь разбор:
+    # без длительности останутся доли, что хуже, но не смертельно.
+    for i in range(0, len(out), 50):
+        chunk = out[i:i + 50]
+        try:
+            det = yt.videos().list(part="contentDetails",
+                                   id=",".join(v["id"] for v in chunk)).execute()
+            secs = {it["id"]: _iso_secs(it["contentDetails"].get("duration", ""))
+                    for it in det.get("items") or []}
+        except Exception as e:
+            log(f"[Статистика] Длительности не пришли ({e}) — разбор "
+                "удержания останется в долях ролика, а не в секундах")
+            secs = {}
+        for v in chunk:
+            v["duration"] = secs.get(v["id"], 0)
     return out
 
 
@@ -181,6 +221,76 @@ def overview(log=print, channel: str = "") -> list[dict]:
     ).execute()
     cols = [h["name"] for h in r.get("columnHeaders") or []]
     return [dict(zip(cols, row)) for row in (r.get("rows") or [])]
+
+
+def drop_profile(log=print, channel: str = "", min_views: int = 10) -> dict:
+    """Где канал ТЕРЯЕТ зрителя — сведённое по всем роликам, в секундах.
+
+    ЗАЧЕМ ОТДЕЛЬНАЯ ФУНКЦИЯ, А НЕ ПРОСТО overview. Средний досмотр —
+    одно число на ролик, и по нему нельзя понять, что чинить: 10% могут
+    означать «ушли на пятнадцатой секунде» и «досмотрели треть и устали»,
+    а это противоположные починки. Кривая различает их однозначно.
+
+    Замер на этих каналах 2026-08-07 (три ролика, у которых хватило
+    просмотров на кривую): обвал у ВСЕХ трёх пришёлся на 1-2% ролика —
+    минус 28.3%, минус 31.2% и минус 25% зрителей разом. При 13 минутах
+    это секунды 8-16. К 5% ролика оставалась половина. Середина и конец
+    теряли вяло. То есть чинить надо холодное открытие, а не темп,
+    плотность плашек или длину — на них уходит меньшая часть аудитории.
+
+    Ролики с единичными просмотрами YouTube кривой не даёт вовсе, поэтому
+    min_views: включать их — значит считать шум.
+
+    Отдаёт {} , если данных не хватило. Пустой ответ здесь ЛУЧШЕ
+    выдуманного: сценарист получит указание, построенное на трёх
+    зрителях, и оно будет вреднее его отсутствия.
+    """
+    try:
+        rows = [r for r in overview(log, channel)
+                if (r.get("views") or 0) >= min_views]
+    except Exception as e:
+        log(f"[Статистика] Разбор удержания не вышел: {e}")
+        return {}
+    if not rows:
+        return {}
+    meta = {v["id"]: v for v in my_videos(50, lambda *a: None, channel)}
+    worst, curves = [], 0
+    for r in rows:
+        vid = r.get("video", "")
+        try:
+            curve = sorted(retention(vid, lambda *a: None, channel))
+        except Exception:
+            continue
+        if len(curve) < 4:
+            continue
+        curves += 1
+        dur = (meta.get(vid) or {}).get("duration") or 0
+        # Самый крутой обвал и момент, когда осталась половина.
+        big = max(((curve[i][1] - curve[i + 1][1], curve[i][0])
+                   for i in range(len(curve) - 1)), default=(0.0, 0.0))
+        half = next((p for p, v in curve if v <= 0.5), None)
+        worst.append({
+            "video": vid,
+            "title": (meta.get(vid) or {}).get("title", "?"),
+            "views": r.get("views", 0),
+            "watched_pct": r.get("averageViewPercentage", 0),
+            "duration": dur,
+            "drop_frac": big[1],
+            "drop_size": big[0],
+            "drop_sec": round(big[1] * dur) if dur else None,
+            "half_sec": round(half * dur) if (half is not None and dur) else None,
+        })
+    if not worst:
+        return {}
+    with_sec = [w["drop_sec"] for w in worst if w["drop_sec"] is not None]
+    halves = [w["half_sec"] for w in worst if w["half_sec"] is not None]
+    return {
+        "videos": curves,
+        "drop_sec": round(sum(with_sec) / len(with_sec)) if with_sec else None,
+        "drop_size": round(sum(w["drop_size"] for w in worst) / len(worst) * 100),
+        "half_sec": round(sum(halves) / len(halves)) if halves else None,
+        "per_video": sorted(worst, key=lambda w: -w["views"]),
+    }
 
 
 def weak_spots(video_id: str, log=print, channel: str = "") -> list[dict]:
