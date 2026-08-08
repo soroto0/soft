@@ -889,11 +889,21 @@ class Api:
         # Признак «та же самая озвучка» — отпечаток текста ВМЕСТЕ с голосом,
         # темпом и обработкой: поменял голос в профиле — озвучка обязана
         # перезаписаться, иначе ролик выйдет прежним голосом молча.
+        # Целевая громкость — из палитры канала (core.LOUDNESS_LUFS): у
+        # образца тёплого канала звук сведён на -13.9 LUFS, у образца
+        # созерцательного на -16.8, и одно число на всех делает один из двух
+        # каналов заведомо неправильным.
+        palette = (ch or {}).get("palette", "")
         mp3 = self._project / "audio" / "voiceover.mp3"
         stamp_file = self._project / "audio" / ".voice_stamp"
+        # palette В ОТПЕЧАТКЕ. Иначе смена палитры канала (а с ней и целевой
+        # громкости) не переозвучила бы ролик: готовый файл считался бы «тем
+        # же самым», и канал так и остался бы на прежних -16 LUFS молча —
+        # ровно та же беда, из-за которой в отпечаток когда-то добавили голос.
         stamp = hashlib.sha1(
             f"{text}|{voice}|{rate}|{pitch}|{enh}|{p.get('pauses', True)}|"
-            f"{p.get('engine', '')}|{p.get('polly_engine', '')}"
+            f"{p.get('engine', '')}|{p.get('polly_engine', '')}|"
+            f"{core.loudness_of(palette):g}"
             .encode("utf-8")).hexdigest()
         if mp3.exists() and mp3.stat().st_size > 10_000:
             try:
@@ -908,9 +918,14 @@ class Api:
         # Регистр не важен: «edge» строчными раньше означало Polly, и вызов
         # без ключей AWS валил весь ролик уже после готового сценария.
         # Пустое значение — тоже Edge: это бесплатный путь, к нему и падаем.
+        if core.loudness_of(palette) != core.LOUDNESS_LUFS_DEFAULT:
+            self.log(f"[Озвучка] Громкость канала «{palette}»: "
+                     f"{core.loudness_of(palette):g} LUFS вместо общих "
+                     f"{core.LOUDNESS_LUFS_DEFAULT:g} — из замера образца "
+                     "этой ниши")
         if "edge" in str(p.get("engine") or "Edge").lower():
             core.tts_edge(text, voice, self._project, self.log, rate, enh,
-                          bool(p.get("pauses", True)), pitch)
+                          bool(p.get("pauses", True)), pitch, palette)
         else:
             # Движок Polly выбирает ПОЛЬЗОВАТЕЛЬ: цены различаются в 25 раз
             # ($4/млн у standard против $100/млн у long-form — на ролике в
@@ -918,7 +933,8 @@ class Api:
             # выбор в код нельзя, это чужие деньги. По умолчанию neural.
             eng = str(p.get("polly_engine", "neural")).strip() or "neural"
             core.tts_polly(text, voice, eng, self._project,
-                           self.log, rate, bool(p.get("pauses", True)), enh)
+                           self.log, rate, bool(p.get("pauses", True)), enh,
+                           palette)
         try:
             stamp_file.write_text(stamp, encoding="utf-8")
         except OSError:
@@ -1863,7 +1879,8 @@ class Api:
         return out
 
     # ---------- одна кнопка ----------
-    def _sync_beat_to_intensity(self, beat: float, intensity: str) -> float:
+    def _sync_beat_to_intensity(self, beat: float, intensity: str,
+                                palette: str = "") -> float:
         """Раскадровка качает по одному материалу на `beat` секунд, а рендер
         режет кадры по своей интенсивности (напр. «документальная 5с» —
         смена каждые ~5с) — если интенсивность режет чаще, чем раскадровка
@@ -1871,8 +1888,21 @@ class Api:
         неизбежно повторяется по всему ролику (в 5-минутном тесте: 127 смен
         кадра на 51 уникальный кадр из-за такого рассинхрона). Подгоняем
         beat под среднюю длительность плана интенсивности, если он крупнее —
-        собственный (меньший) выбор пользователя не трогаем."""
-        cfg = render.INTENSITY.get(intensity)
+        собственный (меньший) выбор пользователя не трогаем.
+
+        ПАЛИТРА КАНАЛА ВАЖНЕЕ И ЧИСЛА ИЗ ОКНА, И ВЫПАДАЮЩЕГО СПИСКА. Длина
+        плана — такой же постоянный признак канала, как палитра переходов,
+        звук и плотность плашек, и заводится она там же (core.BEAT_SECS).
+        Здесь НЕ берётся min() с пользовательским числом, и это осознанно:
+        у созерцательного канала план ДЛИННЕЕ умолчательных шести секунд
+        (9 c из замера), и min() тихо вернул бы шесть — то есть настройка
+        канала не доехала бы ни разу, ровно как это уже было с шириной
+        строки субтитров.
+        """
+        pal_beat, _ = core.beat_of(palette)
+        if (palette or "").strip().lower() in core.BEAT_SECS:
+            return pal_beat
+        cfg = render.cuts_of(palette, intensity)
         if not cfg:
             return beat
         avg = (cfg["short_prob"] * sum(cfg["short"]) / 2
@@ -2182,7 +2212,13 @@ class Api:
         if manual_ov:
             self.save_overlays(ov_in)
         beat = self._sync_beat_to_intensity(float(p.get("beat", 6)),
-                                            opts.get("intensity", "средняя"))
+                                            opts.get("intensity", "средняя"),
+                                            opts.get("palette", ""))
+        if (opts.get("palette", "") or "").strip().lower() in core.BEAT_SECS:
+            self.log(f"[Раскадровка] Длина плана {beat:g} c — из почерка "
+                     f"канала «{opts.get('palette')}» (core.BEAT_SECS), а не "
+                     f"из поля «{float(p.get('beat', 6)):g} c»: как часто "
+                     "канал меняет картинку — его постоянный признак")
 
         def _chain():
             veo_key = os.getenv("VEO_API_KEY", "").strip()
@@ -2282,7 +2318,12 @@ class Api:
                                     p.get("whisper", "tiny.en"),
                                     self._project, self.log,
                                     int(p.get("sub_width") or 42),
-                                    p.get("lang", "английский"))
+                                    p.get("lang", "английский"),
+                                    # Пунктуация: у документального канала с
+                                    # длинными фразами без неё строка не
+                                    # читается — предложения слипаются.
+                                    keep_punct=bool(
+                                        (ch or {}).get("sub_punct", True)))
             self._stop_check()
             self.log("[Цепочка] Шаг 3/4 — стоки по таймлайну…")
             core.auto_storyboard(

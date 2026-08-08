@@ -398,6 +398,32 @@ def audio_duration(path: Path) -> float | None:
 # Слышно это сразу, потому что музыка подмешивается по фиксированному -14 dB
 # относительно голоса, а не относительно измеренной громкости.
 VOICE_LOUDNORM = "loudnorm=I=-16:TP=-1.5:LRA=11"     # стандарт громкости YouTube
+
+# ГРОМКОСТЬ ТОЖЕ ПРИЗНАК КАНАЛА, и одно число на всех здесь ПРЯМО НЕВЕРНО.
+# Замер образцов 2026-08-08 (ref_edit.py, поле «громкость LUFS»):
+#   warm (home-vault)      образец -13.9, у нас -16.1 — образец ГРОМЧЕ на 2.2 LU;
+#   contemplative (estoico) образец -16.8, у нас -16.1 — образец ТИШЕ нас.
+# То есть подтянуть всех к одной цифре значило бы испортить испанский канал
+# ровно настолько же, насколько починить английский.
+#
+# Целимся по голосу, а не по готовому файлу: музыка подмешивается поверх
+# (add_music, gain -14 dB плюс music_gain палитры) и сидит под sidechain'ом,
+# поэтому итоговая громкость ролика получается почти равной этой — наш
+# замер -16.1 при цели -16.0 это и показывает.
+#
+# contemplative стоит РОВНО НА МЕСТЕ: цель у него та же, что была. Строка
+# здесь не для того, чтобы что-то сдвинуть, а чтобы следующий, кто решит
+# «поднимем громкость до -14, как у YouTube», увидел, что для этого канала
+# это уже проверено и отвергнуто замером.
+# harsh не измеряли — он остаётся на общем значении.
+LOUDNESS_LUFS = {"warm": -14.0, "contemplative": -16.0}
+LOUDNESS_LUFS_DEFAULT = -16.0
+
+
+def loudness_of(palette: str = "") -> float:
+    """Целевая громкость (LUFS) по палитре канала."""
+    return LOUDNESS_LUFS.get((palette or "").strip().lower(),
+                             LOUDNESS_LUFS_DEFAULT)
 VOICE_TONE = (
     "highpass=f=80,"                                  # убрать гул
     "equalizer=f=110:t=q:w=1:g=2.5,"                  # тепло/глубина низов
@@ -406,8 +432,12 @@ VOICE_TONE = (
     "equalizer=f=3000:t=q:w=2:g=2")                   # presence — разборчивость
 
 
-def voice_chain(enhance: bool = True, sample_rate: int = 0) -> str:
+def voice_chain(enhance: bool = True, sample_rate: int = 0,
+                palette: str = "") -> str:
     """Фильтры обработки голоса одной строкой для -af.
+
+    palette — почерк канала: от него зависит ЦЕЛЕВАЯ ГРОМКОСТЬ (LOUDNESS_LUFS).
+    Пусто = прежние -16 LUFS.
 
     sample_rate != 0 дописывает пересэмплирование в конец. Оно нужно из-за
     свойства loudnorm: внутри он работает на 192 кГц и отдаёт результат тоже
@@ -415,22 +445,25 @@ def voice_chain(enhance: bool = True, sample_rate: int = 0) -> str:
     24 кГц (замер 2026-08-06: voiceover.mp3 всех трёх каналов — 48000 Гц,
     96 кбит/с). Выше 12 кГц там пусто по построению, и лишние килогерцы —
     это только размер файла."""
-    parts = ([VOICE_TONE] if enhance else []) + [VOICE_LOUDNORM]
+    lufs = loudness_of(palette)
+    norm = (VOICE_LOUDNORM if lufs == LOUDNESS_LUFS_DEFAULT
+            else f"loudnorm=I={lufs:g}:TP=-1.5:LRA=11")
+    parts = ([VOICE_TONE] if enhance else []) + [norm]
     if sample_rate:
         parts.append(f"aresample={sample_rate}")
     return ",".join(parts)
 
 
-def enhance_voice(mp3: Path, log=print) -> Path:
+def enhance_voice(mp3: Path, log=print, palette: str = "") -> Path:
     """Делает голос глубоким и «дикторским», как в документалках: сильная
     компрессия (плотность), лёгкий подъём низов (глубина), де-эссер (убрать
-    свист «с»), нормализация громкости под стандарт YouTube. Перезаписывает
-    файл. При сбое ffmpeg — оставляет оригинал."""
+    свист «с»), нормализация громкости под ЦЕЛЬ КАНАЛА (см. LOUDNESS_LUFS).
+    Перезаписывает файл. При сбое ffmpeg — оставляет оригинал."""
     mp3 = Path(mp3)
     if not mp3.exists():
         return mp3
     tmp = mp3.with_name(mp3.stem + "_enh.mp3")
-    chain = voice_chain(True)
+    chain = voice_chain(True, palette=palette)
     try:
         _run_child(["ffmpeg", "-y", "-i", str(mp3), "-af", chain,
                     "-c:a", "libmp3lame", "-q:a", "2", str(tmp)],
@@ -678,8 +711,9 @@ _TTS_TRIM = ("silenceremove=start_periods=1:start_duration=0:"
 
 def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
              enhance: bool = False, pauses: bool = True,
-             pitch: int = 0) -> Path:
+             pitch: int = 0, palette: str = "") -> Path:
     """Бесплатная озвучка через Edge TTS (голоса Microsoft, ключи не нужны).
+    palette — почерк канала, от него зависит целевая громкость (LOUDNESS_LUFS);
     rate — отклонение темпа в процентах; enhance — «дикторская» обработка;
     pauses — размеченные паузы между мыслями; pitch — сдвиг высоты голоса в
     герцах.
@@ -807,7 +841,7 @@ def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
     # вышел на 24 кГц, и музыка (44.1 кГц) потеряла всё выше 12 кГц.
     try:
         _run_child(["ffmpeg", "-y", "-v", "error", "-i", str(raw),
-                    "-af", voice_chain(enhance, 48000),
+                    "-af", voice_chain(enhance, 48000, palette),
                     "-c:a", "libmp3lame", "-q:a", "2", str(final)],
                    timeout=3600, check=True)
     except Cancelled:
@@ -832,7 +866,8 @@ def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
 
 
 def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
-              rate: int = 0, pauses: bool = True, enhance: bool = False) -> Path:
+              rate: int = 0, pauses: bool = True, enhance: bool = False,
+              palette: str = "") -> Path:
     """Озвучка через Amazon Polly: куски по предложениям + склейка ffmpeg.
     rate — отклонение темпа; pauses — паузы между абзацами (SSML);
     enhance — «дикторская» обработка голоса. Если движок не принимает SSML,
@@ -909,7 +944,7 @@ def tts_polly(text: str, voice: str, engine: str, out_dir: Path, log,
                 "-i", str(concat), "-c", "copy", str(final)],
                timeout=1800, check=True, cwd=audio_dir)
     if enhance:
-        enhance_voice(final, log)
+        enhance_voice(final, log, palette)
     log(f"[Озвучка] Готово: {final}")
     return final
 
@@ -5914,7 +5949,8 @@ WHISPER_LANGS = {"английский": "en", "русский": "ru", "испа
 
 
 def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
-                       max_line_width: int = 42, lang: str = "en") -> Path:
+                       max_line_width: int = 42, lang: str = "en",
+                       keep_punct: bool = True) -> Path:
     subs_dir = out_dir / "subs"
     subs_dir.mkdir(parents=True, exist_ok=True)
     wl = WHISPER_LANGS.get(lang, lang or "en")
@@ -6021,7 +6057,24 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
             src.rename(target)
     srt = subs_dir / "voiceover.srt"
     _srt_text_from_script(srt, out_dir / "script.txt", log, max_line_width)
-    strip_srt_punctuation(srt)
+    # ПУНКТУАЦИЯ — ТЕПЕРЬ ВЫБОР КАНАЛА, А НЕ ЗАКОН.
+    #
+    # strip_srt_punctuation стояла здесь безусловно — так просили когда-то:
+    # «чистые строки без пунктуации, только слова». Но замер готового
+    # ролика (проба_es, 2026-08-08) показал, во что это превращается на
+    # длинной документальной фразе: «En el invierno de 171 Marco Aurelio
+    # contó quinientas piras en Carnuntum el humo de» — конец одного
+    # предложения склеен с началом следующего без единого знака, и строку
+    # нельзя прочесть, не догадываясь, где она кончилась.
+    #
+    # На коротких рубленых субтитрах (караоке, вирусный стиль) чистые
+    # слова читаются лучше — там фраза и так одна. На документальном
+    # канале с фразами по 25 слов они читаются хуже. Поэтому не общий
+    # закон, а поле профиля; умолчание — ОСТАВЛЯТЬ пунктуацию, потому что
+    # так текст совпадает со сценарием, который диктор читает.
+    if not keep_punct:
+        strip_srt_punctuation(srt)
+        log("[Субтитры] Пунктуация убрана (так задано в профиле канала)")
     log(f"[Субтитры] Готово: {srt}")
     return srt
 
@@ -6991,9 +7044,53 @@ def _whole_sentences(sents: list[str], s_sent: list[int],
     return " ".join(sents[s_sent[a]:s_sent[b] + 1]).strip()
 
 
+# ДЛИНА ПЛАНА РАСКАДРОВКИ — ПРИЗНАК КАНАЛА, как плотность плашек
+# (overlays.DENSITY_SECS), тон подложки (remotion backdrop.tsx BASES) и звук
+# (SOUND_PALETTES выше). Тот же приём: словарь по profile.palette, незнакомое
+# имя или пусто = прежние 6 секунд и прежнее поведение.
+#
+# Это НЕ то же самое, что render.PALETTE_CUTS. Там — как часто МЕНЯЕТСЯ КАДР,
+# здесь — как часто меняется МАТЕРИАЛ: один план раскадровки = один поиск в
+# стоке или одна генерация Veo. Числа обязаны идти рядом, иначе несколько
+# сцен подряд достаются одному файлу и он повторяется по всему ролику (ровно
+# та беда, ради которой написан webapp._sync_beat_to_intensity).
+#
+# Второе число — РАЗБРОС (см. build_beats). У warm он нулевой намеренно:
+# образец там режет ровно и часто, неровность ему не нужна. У contemplative
+# он и есть вся суть правки — у образца средний план совпадает с нашим, а
+# характер нет.
+#
+# harsh в таблице НЕТ: образца по abyss не замеряли, и придумывать ему число
+# значило бы выдать догадку за замер. Он остаётся на прежних 6 секундах.
+# ЭТО ПОРОГ, А НЕ ДЛИНА. build_beats копит фразы субтитров, пока не наберёт
+# порог, и режет только по их границам — поэтому получившийся план ВСЕГДА
+# длиннее порога. Замер на настоящих субтитрах 2026-08-07:
+#   warm 4.0 -> 294 плана по 5.8 c (фраза там длится 5.7 c, это пол: один
+#     план на фразу, короче уже нечем);
+#   contemplative 6.0 при разбросе 0.55 -> 293 плана по 9.4 c, разброс
+#     готовых планов 0.38 против 0.29 у прежней ровной нарезки, самый долгий
+#     20.6 c против 15.8. Число планов и среднее СОХРАНЕНЫ намеренно: у этого
+#     канала среднее у образца и у нас и так совпадает, чинить надо характер.
+# Ставить сюда «9», потому что хочется планов по девять секунд, — ошибка:
+# порог 9 даёт планы по 12.4 c и на четверть меньше материала.
+BEAT_SECS = {"warm": (4.0, 0.0), "contemplative": (6.0, 0.55)}
+BEAT_SECS_DEFAULT = (6.0, 0.0)
+
+
+def beat_of(palette: str = "") -> tuple[float, float]:
+    """(длина плана, разброс) по палитре канала.
+
+    Отдельной функцией — чтобы её можно было замерить, не запуская
+    раскадровку: это ровно тот же приём, что sound_palette_of и
+    overlays.density_floor.
+    """
+    return BEAT_SECS.get((palette or "").strip().lower(), BEAT_SECS_DEFAULT)
+
+
 def build_beats(rows: list[tuple[str, str, str]], min_beat: float = 6.0,
                 total: float | None = None,
-                script_text: str = "") -> list[dict]:
+                script_text: str = "", spread: float = 0.0,
+                seed: int = 0) -> list[dict]:
     """Группирует srt-сегменты в визуальные планы длиной >= min_beat секунд.
     Планы идут встык: конец плана = начало следующего, без дыр.
 
@@ -7003,7 +7100,34 @@ def build_beats(rows: list[tuple[str, str, str]], min_beat: float = 6.0,
     что так 99% планов не кончаются точкой и 92% не начинаются с заглавной,
     а фраза «why leave your food supplies untouched?» разрезана надвое между
     соседними планами. Генератор запроса видел «why leave your» — ни
-    подлежащего, ни отрицания."""
+    подлежащего, ни отрицания.
+
+    spread — РАЗБРОС длины плана, 0 = ровно по min_beat (прежнее поведение).
+    Нужен потому, что среднее не описывает монтаж: у образца созерцательного
+    канала средний план почти совпадает с нашим, но 27% планов у него короче
+    трёх секунд при самом долгом в 191 c, а у нас всё ровно. Совпадает
+    среднее, различается характер — и лечится это разбросом, а не другим
+    средним. Порог берётся на каждый план свой: короткий, обычный, долгий —
+    в среднем по-прежнему min_beat.
+
+    seed — чтобы разброс был ВОСПРОИЗВОДИМЫМ. Раскадровка запускается по
+    одному проекту не раз (возобновление после лимита Veo), и из длины плана
+    складывается имя файла кадра: поплывут пороги — перестанут узнаваться
+    готовые кадры, а это часы генерации заново (замер 2026-08-04: при
+    возобновлении подхватилось 2 кадра из 76 ровно по такой причине)."""
+    rng = random.Random(seed)
+
+    def _target() -> float:
+        """Порог для очередного плана."""
+        if spread <= 0:
+            return min_beat
+        r = rng.random()
+        if r < 0.35:
+            return min_beat * (1.0 - spread)          # короткий
+        if r < 0.75:
+            return min_beat                            # обычный
+        return min_beat * (1.0 + spread * 1.6)         # долгий
+
     sents = _script_sentences(script_text)
     # слова сценария и номер предложения для каждого
     s_words, s_sent = [], []
@@ -7021,6 +7145,7 @@ def build_beats(rows: list[tuple[str, str, str]], min_beat: float = 6.0,
         return min(len(s_words) - 1, int(round(wi * ratio))) if ratio else -1
 
     beats, cur = [], None
+    want = _target()        # порог ЭТОГО плана (при spread=0 это min_beat)
     seen_words = 0          # слов расшифровки пройдено до текущей строки
     for start_s, end_s, text in rows:
         start, end = srt_to_seconds(start_s), srt_to_seconds(end_s)
@@ -7037,13 +7162,14 @@ def build_beats(rows: list[tuple[str, str, str]], min_beat: float = 6.0,
         # разогнало среднюю длину с 9.5 до 16.8 с, а семнадцать секунд на
         # одном кадре хуже любого обрывка текста. Пунктуацию возвращаем
         # иначе: тексту плана отдаём ЦЕЛЫЕ предложения, попавшие в него.
-        if cur["end"] - cur["start"] >= min_beat:
+        if cur["end"] - cur["start"] >= want:
             if ratio:
                 cur["text"] = _whole_sentences(
                     sents, s_sent, s_at(cur["_w0"]), s_at(seen_words - 1))
             cur.pop("_w0", None)
             beats.append(cur)
             cur = None
+            want = _target()
     if cur is not None:
         if ratio:
             cur["text"] = _whole_sentences(
@@ -7485,9 +7611,21 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         script_text = (out_dir / "script.txt").read_text(encoding="cp1251",
                                                          errors="replace")
         log("[Раскадровка] script.txt не в UTF-8 — прочитал как cp1251")
-    beats = build_beats(rows, min_beat, total, script_text)
+    # Разброс длины плана — из палитры канала. Саму длину сюда передаёт
+    # вызывающий (webapp берёт её из той же таблицы BEAT_SECS), а разброс
+    # брать оттуда же незачем: он ни на что, кроме этого вызова, не влияет.
+    # seed от пути проекта — чтобы повторный прогон дал ТЕ ЖЕ планы и узнал
+    # уже сгенерированные кадры по именам файлов.
+    import zlib
+    _pal = ((channel or {}).get("palette") or "")
+    _spread = beat_of(_pal)[1]
+    beats = build_beats(rows, min_beat, total, script_text, _spread,
+                        zlib.crc32(str(Path(out_dir).resolve()).encode()))
     log(f"[Раскадровка] {len(rows)} фраз -> {len(beats)} планов по ~{min_beat:.0f} с, "
-        f"звук: {voice.name}")
+        f"звук: {voice.name}"
+        + (f"; разброс длины плана {_spread:.0%} (почерк канала «{_pal}»): "
+           "часть планов заметно короче, часть заметно длиннее — ровного "
+           "метронома у этого канала быть не должно" if _spread else ""))
     if not beats:
         # Пустые субтитры -> ноль планов -> пустой timeline.json, который
         # затёр бы прошлый рабочий, и рендер молча собрал бы ролик из ничего.
