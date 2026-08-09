@@ -123,6 +123,13 @@ analytics/*.xlsx
 analytics/*.zip
 analytics/client_secret*.json
 analytics/token.json
+# Накопленная история каналов (yt_history): названия роликов, просмотры,
+# досмотры, поисковые запросы зрителей. Ключей внутри нет — тексты ошибок
+# чистятся при записи, — но это цифры конкретных каналов владельца, и в
+# публичном репозитории им делать нечего.
+analytics/history.json
+analytics/history.json.tmp
+analytics/history.broken-*.json
 
 # Архив старых файлов из корней каналов — рабочий мусор, не код
 /_архив_из_корней/
