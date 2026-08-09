@@ -7040,6 +7040,26 @@ def srt_to_seconds(t: str) -> float:
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
+def seconds_to_srt(sec: float) -> str:
+    """92.5 -> '00:01:32,500'. Обратная к srt_to_seconds.
+
+    Нужна там, где фразы РЕЖУТСЯ по времени (см. _split_rows_for_open):
+    дальше по конвейеру строка снова разбирается srt_to_seconds, поэтому
+    формат должен совпадать ровно, вместе с запятой перед миллисекундами.
+    """
+    sec = max(float(sec), 0.0)
+    h, rem = divmod(int(sec), 3600)
+    m, s = divmod(rem, 60)
+    ms = int(round((sec - int(sec)) * 1000))
+    if ms == 1000:                      # округление вверх не должно давать ,1000
+        s, ms = s + 1, 0
+        if s == 60:
+            m, s = m + 1, 0
+            if m == 60:
+                h, m = h + 1, 0
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
 def extract_keywords(text: str, n: int = 3) -> str:
     """Ключевые слова для поиска стока: частые не-стоп-слова из текста плана."""
     words = re.findall(r"[a-zA-Z][a-zA-Z'-]{2,}", text.lower())
@@ -7207,7 +7227,7 @@ BEAT_SECS_DEFAULT = (6.0, 0.0)
 # Только "warm": у созерцательного канала образец ведёт себя ПРЯМО НАОБОРОТ
 # (первая склейка на 134-й секунде), и частить в начале там значило бы сломать
 # ровно то, чем этот канал держит. harsh не трогаем — образца по нему нет.
-COLD_OPEN = {"warm": (30.0, 2.0)}
+COLD_OPEN = {"warm": (30.0, 1.9)}
 
 
 def cold_open_of(palette: str = "") -> tuple[float, float]:
@@ -7225,10 +7245,50 @@ def beat_of(palette: str = "") -> tuple[float, float]:
     return BEAT_SECS.get((palette or "").strip().lower(), BEAT_SECS_DEFAULT)
 
 
+def _split_rows_for_open(rows: list[tuple[str, str, str]],
+                         open_secs: float,
+                         open_beat: float) -> list[tuple[str, str, str]]:
+    """Разрезать фразы, попавшие в окно холодного начала, на куски покороче.
+
+    Порог длины плана в начале ничего не даст сам по себе: build_beats режет
+    ТОЛЬКО по границам фраз, а фраза длится 4.9 c по медиане — значит и план
+    короче не станет. Чтобы в первые полминуты уместилось шестнадцать планов,
+    как у образца, фразу надо поделить по времени.
+
+    Слова делятся вместе со временем, а не дублируются: из текста плана потом
+    строится поисковый запрос картинки, и если отдать всем кускам целую фразу,
+    подберётся один и тот же кадр — то есть частой нарезки не выйдет, выйдет
+    та же картинка, нарезанная встык. Общее число слов при этом сохраняется —
+    на нём в build_beats держится соответствие расшифровки и сценария.
+    """
+    if open_secs <= 0 or open_beat <= 0:
+        return rows
+    out = []
+    for start_s, end_s, text in rows:
+        a, b = srt_to_seconds(start_s), srt_to_seconds(end_s)
+        words = text.split()
+        # делим только то, что начинается внутри окна и заметно длиннее цели
+        if a >= open_secs or (b - a) < open_beat * 1.4 or len(words) < 2:
+            out.append((start_s, end_s, text))
+            continue
+        k = min(int(round((b - a) / open_beat)), len(words))
+        if k < 2:
+            out.append((start_s, end_s, text))
+            continue
+        for i in range(k):
+            t0 = a + (b - a) * i / k
+            t1 = a + (b - a) * (i + 1) / k
+            chunk = words[len(words) * i // k: len(words) * (i + 1) // k]
+            out.append((seconds_to_srt(t0), seconds_to_srt(t1),
+                        " ".join(chunk) or text))
+    return out
+
+
 def build_beats(rows: list[tuple[str, str, str]], min_beat: float = 6.0,
                 total: float | None = None,
                 script_text: str = "", spread: float = 0.0,
-                seed: int = 0) -> list[dict]:
+                seed: int = 0, open_secs: float = 0.0,
+                open_beat: float = 0.0) -> list[dict]:
     """Группирует srt-сегменты в визуальные планы длиной >= min_beat секунд.
     Планы идут встык: конец плана = начало следующего, без дыр.
 
@@ -7252,8 +7312,14 @@ def build_beats(rows: list[tuple[str, str, str]], min_beat: float = 6.0,
     одному проекту не раз (возобновление после лимита Veo), и из длины плана
     складывается имя файла кадра: поплывут пороги — перестанут узнаваться
     готовые кадры, а это часы генерации заново (замер 2026-08-04: при
-    возобновлении подхватилось 2 кадра из 76 ровно по такой причине)."""
+    возобновлении подхватилось 2 кадра из 76 ровно по такой причине).
+
+    open_secs/open_beat — ХОЛОДНОЕ НАЧАЛО: первые open_secs секунд режутся
+    планами по open_beat, а не по min_beat (см. COLD_OPEN — там же замеры
+    удержания и образца). Ноль/ноль — прежнее поведение ровно, без единой
+    лишней склейки, поэтому каналы без этой настройки не меняются вовсе."""
     rng = random.Random(seed)
+    rows = _split_rows_for_open(rows, open_secs, open_beat)
 
     def _target() -> float:
         """Порог для очередного плана."""
@@ -7300,7 +7366,18 @@ def build_beats(rows: list[tuple[str, str, str]], min_beat: float = 6.0,
         # разогнало среднюю длину с 9.5 до 16.8 с, а семнадцать секунд на
         # одном кадре хуже любого обрывка текста. Пунктуацию возвращаем
         # иначе: тексту плана отдаём ЦЕЛЫЕ предложения, попавшие в него.
-        if cur["end"] - cur["start"] >= want:
+        # В окне холодного начала порог свой и короткий. Сравниваем по НАЧАЛУ
+        # плана, а не по текущему концу: иначе план, начавшийся на 28-й
+        # секунде, на 31-й переключился бы на общий порог и растянулся —
+        # ровно на границе окна и получался бы самый длинный план ролика.
+        # 0.75, а не сам open_beat: фраза делится на куски, ДЛИНА КОТОРЫХ
+        # округляется к цели, и кусок сплошь и рядом выходит чуть короче её
+        # (5.1 c на три части — это 1.7 c при цели 2.0). Порог ровно в
+        # open_beat такой кусок не закрывал, план забирал сразу два, и вместо
+        # замеренных у образца 16 планов за полминуты выходило 9.
+        _want = (open_beat * 0.75 if (open_secs > 0 and cur["start"] < open_secs)
+                 else want)
+        if cur["end"] - cur["start"] >= _want:
             if ratio:
                 cur["text"] = _whole_sentences(
                     sents, s_sent, s_at(cur["_w0"]), s_at(seen_words - 1))
@@ -7757,13 +7834,19 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     import zlib
     _pal = ((channel or {}).get("palette") or "")
     _spread = beat_of(_pal)[1]
+    _open_secs, _open_beat = cold_open_of(_pal)
     beats = build_beats(rows, min_beat, total, script_text, _spread,
-                        zlib.crc32(str(Path(out_dir).resolve()).encode()))
+                        zlib.crc32(str(Path(out_dir).resolve()).encode()),
+                        _open_secs, _open_beat)
+    _n_open = sum(1 for b in beats if b["start"] < _open_secs) if _open_secs else 0
     log(f"[Раскадровка] {len(rows)} фраз -> {len(beats)} планов по ~{min_beat:.0f} с, "
         f"звук: {voice.name}"
         + (f"; разброс длины плана {_spread:.0%} (почерк канала «{_pal}»): "
            "часть планов заметно короче, часть заметно длиннее — ровного "
-           "метронома у этого канала быть не должно" if _spread else ""))
+           "метронома у этого канала быть не должно" if _spread else "")
+        + (f"; холодное начало: {_n_open} планов по ~{_open_beat:.0f} с в "
+           f"первые {_open_secs:.0f} с — там зритель уходит, и у образца ниши "
+           "начало нарублено вдвое чаще остального ролика" if _open_secs else ""))
     if not beats:
         # Пустые субтитры -> ноль планов -> пустой timeline.json, который
         # затёр бы прошлый рабочий, и рендер молча собрал бы ролик из ничего.
