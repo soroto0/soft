@@ -2715,6 +2715,12 @@ class Api:
                               force_new=force_new,
                               images_left=(None if quota.get("unlimited")
                                            else quota.get("remaining")))
+            # Запрет сна ставим ДО первого канала и снимаем в finally ниже.
+            # Ночь 2026-08-09 умерла не от ошибки: журнал оборвался на 68-м
+            # кадре из 134, а через три секунды Windows усыпил машину. Сторож
+            # тишины спасти не мог — он живёт в этом же процессе и уснул
+            # вместе с ним.
+            np.keep_awake(self.log)
             self.log(f"[Автопилот] Ночь началась: {len(chans)} канал(ов) x "
                      f"{per}, в ночи {night_h:.0f} ч. План:")
             for line in np.format_plan(plan).splitlines():
@@ -2951,6 +2957,11 @@ class Api:
         разом: по ней нельзя было понять, канал упал, не начинался или уже был
         готов.
         """
+        # Снимаем запрет сна ОБЯЗАТЕЛЬНО и здесь, в единственном месте, куда
+        # ночь приходит в любом исходе. Флаг ES_CONTINUOUS живёт до явной
+        # отмены: не снять его — и ноутбук перестанет засыпать вообще, до
+        # перезагрузки. Владелец бы не понял, почему машина не спит.
+        np.allow_sleep(self._log_raw)
         report = np.format_report(results, started)
         try:
             (BASE / "autopilot_report.txt").write_text(
