@@ -20,12 +20,28 @@
 доля подписчиков, сводка кривой удержания и медиана эталонного канала
 из ниши. Снимки копятся, поэтому рост считается вычитанием, а не верой.
 
-ЧЕГО ЗДЕСЬ НЕТ И НЕ БУДЕТ. CTR обложки и показов. Это не недосмотр:
-YouTube Analytics API v2 метрик impressions и impressionClickThroughRate
-НЕ ЗНАЕТ ВООБЩЕ — проверено живым запросом 2026-08-09, ответ «Unknown
-identifier (impressions) given in field parameters.metrics». Права
-доступа тут ни при чём, добавить их нельзя. CTR живёт только в Studio,
-руками. См. ОГРАНИЧЕНИЯ ниже.
+ЧЕГО ЗДЕСЬ НЕТ И НЕ БУДЕТ АВТОМАТИЧЕСКИ. CTR обложки и показов. Это не
+недосмотр: YouTube Analytics API v2 метрик impressions и
+impressionClickThroughRate НЕ ЗНАЕТ ВООБЩЕ — проверено живым запросом
+2026-08-09, ответ «Unknown identifier (impressions) given in field
+parameters.metrics». Права доступа тут ни при чём, добавить их нельзя.
+CTR живёт только в Studio, глазами. См. ОГРАНИЧЕНИЯ ниже.
+
+ПОЭТОМУ ДЛЯ CTR ЕСТЬ ВТОРОЙ ВХОД — РУЧНОЙ. Владелец переписывает два
+числа из Studio (`python yt_history.py ctr`), и они ложатся в этот же
+файл, но в отдельную ветку `ctr` и с пометкой by=hand. Ветка отдельная
+не для порядка: снимок сервиса и число, перепечатанное человеком с
+экрана, имеют разную достоверность и разную судьбу. Снимки прореживаются
+(_prune), потому что их всегда можно снять заново; ручную запись снять
+заново НЕЛЬЗЯ — вчерашнее окно Studio уже не вернуть, — поэтому она не
+прореживается никогда.
+
+ЗАЧЕМ ЭТО ВООБЩЕ. Замер по испанскому ролику (Studio, 2026-08-10): 1 100
+показов, CTR 1,4%, 15 просмотров, средний просмотр 6:50 из 22:39.
+Умножение сходится ровно (1100 × 1,4% = 15,4), и это значит, что узкое
+место не в удержании и не в алгоритме: до ролика просто не доходят,
+потому что на обложку не нажимают. Ни один автоматический разрез этого
+не покажет — в API таких чисел нет.
 
 ПОЧЕМУ СЫРЬЁ ХРАНИТСЯ ЦЕЛИКОМ, А ОТСЕКАЕТСЯ ПРИ ЧТЕНИИ. stats_from
 (дата, с которой статистика канала считается своей) — величина, которую
@@ -54,8 +70,10 @@ identifier (impressions) given in field parameters.metrics». Права
   цифры идут только через OAuth. Это не поломка, а следствие
   приватности.
 """
+import io
 import json
 import os
+import re
 import statistics
 import sys
 import time
@@ -65,6 +83,10 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 ANALYTICS = BASE / "analytics"
 STORE = ANALYTICS / "history.json"
+
+# Копии обложек, за которые получен CTR. Лежат рядом с историей и по той
+# же причине не идут в git: это картинки конкретных каналов владельца.
+THUMB_COPIES = ANALYTICS / "thumbs"
 
 # Сколько просмотров должно быть у ролика, чтобы его цифры вообще что-то
 # значили. Досмотр ролика с одним зрителем — это поведение ОДНОГО
@@ -97,6 +119,36 @@ MAX_CURVES = 25
 # поведением полутора десятков человек, и закреплять её как правило
 # канала рано. В отчёт — да, в формулу — нет.
 MIN_FORMULA_VIDEOS = 4
+
+# «Та же самая картинка» — порог расхождения отпечатков обложек
+# (расстояние Хэмминга по 64 битам dHash, см. _fingerprint).
+#
+# Замер 2026-08-10 на настоящих обложках трёх каналов (9 файлов): одна и
+# та же картинка после пережатия — 1280→168 px, качество 80→45, то есть
+# грубее, чем это делает YouTube, — расходится на 0-1 бит. РАЗНЫЕ
+# обложки расходятся минимум на 17 (медиана 28). Восемь стоит посреди
+# этого разрыва: с восьмикратным запасом на пережатие и вдвое ниже самой
+# похожей чужой пары. Ошибиться в любую сторону тут дорого: перепутанная
+# обложка — это CTR, приписанный не той картинке, а такой вывод хуже
+# отсутствия вывода.
+SAME_THUMB = 8
+
+# Сколько РОЛИКОВ с замеренным CTR нужно, чтобы отчёт заговорил о том,
+# «что общего у лучших обложек». Порог выше всех остальных в этом файле,
+# и вот арифметика, почему.
+#
+# CTR — доля, и на малых показах её разброс огромен. Доверительный
+# интервал 95% при 318 показах и CTR 1,9% — это ±1,5 процентных пункта;
+# при 1 100 показах и 1,4% — ±0,7. То есть два настоящих замера канала
+# (1,9% и 1,4%) НЕ РАЗЛИЧАЮТСЯ вовсе: их интервалы перекрываются почти
+# целиком. Правило «делай обложки как та, где 1,9%» было бы правилом,
+# выведенным из подбрасывания монеты, и стоило бы оно дороже молчания —
+# по нему рисовались бы ВСЕ следующие обложки.
+#
+# Шесть роликов — не гарантия, а нижняя граница приличия: меньше шести
+# точек не позволяет даже увидеть, есть ли вообще разделение. Пока их
+# меньше, отчёт печатает сами цифры и говорит «сказать нечего».
+MIN_CTR_VIDEOS = 6
 
 
 def _today() -> str:
@@ -709,6 +761,525 @@ def retention(channel: dict, data: dict | None = None) -> dict:
     }
 
 
+# ----------------------------------------- показы и CTR: только руками
+#
+# Всё в этом разделе стоит на одном факте: чисел, которые здесь
+# записываются, в API НЕТ. Не «пока нет» и не «нужны права» — их не
+# существует в Analytics API v2 (проверено запросом, ответ приведён в
+# шапке файла). Единственный источник — глаза владельца и окно Studio.
+#
+# Отсюда три требования, которые задают всю форму раздела:
+#   1. Ручное происхождение видно в КАЖДОЙ записи (by=hand, entry, source).
+#      Через месяц никто не вспомнит, откуда взялась цифра, а лечится
+#      расхождение снимка и ручной записи по-разному.
+#   2. Хранится ИСТОРИЯ, а не последнее значение. CTR первых суток и CTR
+#      через две недели — это разные вещи: сперва ролик показывают своим,
+#      потом чужим. Без даты снимка сравнить их нечем.
+#   3. К каждой цифре привязана КАРТИНКА. Иначе через месяц есть «1,4%», и
+#      совершенно неизвестно, за какую обложку.
+
+
+def _number(txt: str) -> float | None:
+    """Число, перепечатанное из Studio, — в float.
+
+    Обычный float() тут не годится, и не из-за придирчивости. Studio
+    печатает разделители по языку интерфейса: русский «1 100» и «1,4»,
+    английский «1,100» и «1.4», испанский «1.100» и «1,4». Пробел разрядов
+    при копировании приезжает неразрывным (U+00A0) или узким (U+202F), а
+    к CTR прилипает знак процента. Каждое из этого роняет float() —
+    причём уже после того, как человек всё набрал.
+
+    Правило разбора: последний из встреченных разделителей считается
+    дробным, остальные разрядными. Одиночный разделитель, после которого
+    ровно три цифры, — разрядный: у показов дробной части не бывает
+    вовсе, а CTR Studio печатает с одним-двумя знаками, не с тремя.
+    """
+    s = (txt or "").strip()
+    # Пробелы разрядов записаны кодами намеренно: неразрывный и узкий
+    # пробел в исходнике неотличимы от обычного глазом, и любая
+    # «уборка лишних пробелов» молча выкинула бы их из списка — а
+    # вместе с ними и починку, ради которой они здесь.
+    for junk in ("%", " ", " ", " ", " ",
+                 " ", "'", "`"):
+        s = s.replace(junk, "")
+    s = s.replace("−", "-")
+    if not s or not any(c.isdigit() for c in s):
+        return None
+    seps = [i for i, c in enumerate(s) if c in ",."]
+    if seps:
+        last = seps[-1]
+        head = "".join(c for c in s[:last] if c not in ",.")
+        tail = s[last + 1:]
+        s = head + tail if (len(seps) == 1 and len(tail) == 3) else head + "." + tail
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _fingerprint(raw: bytes) -> tuple[str, str]:
+    """Отпечаток картинки: (значение, каким способом посчитан).
+
+    ПОЧЕМУ НЕ ОБЫЧНЫЙ ХЕШ ФАЙЛА. Обложку, скачанную с YouTube, и файл
+    thumbs/thumb2.jpg, из которого она сделана, побайтно сравнивать
+    бессмысленно: YouTube пережимает загруженное по-своему, и sha1 у них
+    заведомо разные. Сравнивать надо КАРТИНКУ, а не байты.
+
+    dHash: картинка сводится к 9×8 серым точкам, и каждый бит — ответ на
+    вопрос «сосед справа темнее?». Пережатие, изменение размера и смена
+    качества на это почти не влияют (замер: 0-1 бит расхождения), а
+    другая картинка отличается на два-три десятка бит.
+
+    Без Pillow отступаем к sha1 — он опознает хотя бы повторную загрузку
+    той же самой картинки в разные дни. Молчаливо подменять один способ
+    другим нельзя, поэтому способ возвращается вместе со значением.
+    """
+    try:
+        from PIL import Image
+        im = Image.open(io.BytesIO(raw)).convert("L").resize((9, 8),
+                                                             Image.LANCZOS)
+        px = im.tobytes()          # 72 байта, построчно
+        bits = 0
+        for row in range(8):
+            base = row * 9
+            for col in range(8):
+                bits = (bits << 1) | (1 if px[base + col] < px[base + col + 1]
+                                      else 0)
+        return f"{bits:016x}", "dhash"
+    except Exception:
+        import hashlib
+        return hashlib.sha1(raw).hexdigest()[:16], "sha1"
+
+
+def _fp_dist(a: str, b: str) -> int:
+    """Расхождение двух отпечатков в битах. 999 — сравнивать нечего."""
+    try:
+        return bin(int(a, 16) ^ int(b, 16)).count("1")
+    except Exception:
+        return 999
+
+
+def _live_thumb(video_id: str) -> tuple[bytes, str]:
+    """Обложка, которая СЕЙЧАС стоит у ролика на YouTube.
+
+    Это не обход запрета на автоматический CTR: картинка превью лежит на
+    открытом CDN (i.ytimg.com), доступа и ключа не требует и никакой
+    статистики не содержит. Берём её только затем, чтобы знать, ЗА КАКУЮ
+    обложку получено число, которое владелец переписал руками.
+
+    Почему это надёжнее локального файла. Замер 2026-08-10 по трём
+    каналам: живые обложки ЧЕТЫРЁХ выложенных роликов не совпали ни с
+    одним из двенадцати файлов, ещё лежащих в папках (ближайшее
+    расхождение 21 бит при пороге 8). Папка thumbs/ переиспользуется
+    следующим роликом, и старые картинки просто затёрты. Возьми мы
+    thumb1.jpg «по умолчанию», CTR был бы приписан обложке ЧУЖОГО ролика —
+    и вывод из него оказался бы хуже, чем отсутствие вывода.
+
+    У скрытого ролика превью нет вовсе: 404 на все размеры (проверено на
+    приватном ролике abyss). Это законный ответ, а не поломка.
+    """
+    try:
+        import requests
+    except Exception:
+        return b"", ""
+    for name in ("maxresdefault", "hqdefault", "mqdefault"):
+        try:
+            r = requests.get(f"https://i.ytimg.com/vi/{video_id}/{name}.jpg",
+                             timeout=20)
+        except Exception:
+            return b"", ""
+        if r.status_code == 200 and len(r.content) > 2000:
+            return r.content, name
+    return b"", ""
+
+
+_THUMB_CACHE: dict[str, dict[str, str]] = {}
+
+
+def _local_thumbs(channel: dict) -> dict[str, str]:
+    """Отпечатки обложек, ещё лежащих в папках канала: путь -> отпечаток.
+
+    Нужно ровно для одного вопроса: какая из трёх нарисованных обложек
+    ушла на YouTube. Ответ «thumb2.jpg» дороже самой картинки — он
+    говорит, что выбор порядка (webapp._rank_thumbnails ставит первой ту,
+    которой модель зрения дала больше баллов) сработал или не сработал.
+
+    Кэш на время запуска. Разбор выгрузки Studio зовёт это на КАЖДУЮ
+    строку, а каждый вызов раскодирует все обложки канала заново: на
+    полусотне роликов это тысячи распакованных JPEG ради одного и того же
+    ответа. Кэш живёт только внутри процесса — команда отрабатывает за
+    секунды, и обложки за это время не меняются.
+    """
+    import channels as ch_mod
+    root = str(ch_mod.projects_dir(channel))
+    if root in _THUMB_CACHE:
+        return _THUMB_CACHE[root]
+    out: dict[str, str] = {}
+    try:
+        paths = sorted(Path(root).rglob("thumbs/thumb*.jpg"))
+    except OSError:
+        return out
+    for p in paths[:300]:
+        try:
+            out[str(p)] = _fingerprint(p.read_bytes())[0]
+        except Exception:
+            continue
+    _THUMB_CACHE[root] = out
+    return out
+
+
+def thumb_fact(channel: dict, video_id: str) -> dict:
+    """Чем ДОКАЗАНО, какая обложка стояла в момент этого замера CTR.
+
+    Возвращает то, что удалось установить, и честно говорит, чего не
+    удалось. Пустого «наверное thumb1» здесь нет: догадка, записанная как
+    факт, — это и есть тот случай, когда цифра есть, а вывода из неё
+    сделать нельзя.
+    """
+    raw, size = _live_thumb(video_id)
+    if not raw:
+        return {"got": "none",
+                "why": "YouTube не отдал превью — так бывает у скрытых и "
+                       "неопубликованных роликов; какая обложка стояла, "
+                       "запись не знает"}
+    fp, kind = _fingerprint(raw)
+    fact = {"got": "youtube", "size": size, "fp": fp, "fp_kind": kind}
+    # КОПИЯ ОБЯЗАТЕЛЬНА. Обложку на YouTube меняют, папку проекта
+    # переиспользуют — и через месяц от картинки, за которую получен этот
+    # CTR, не остаётся ничего. Имя из id и отпечатка: одна и та же
+    # обложка, замеренная трижды, кладётся один раз, а сменённая — рядом,
+    # не затирая прежнюю.
+    try:
+        THUMB_COPIES.mkdir(parents=True, exist_ok=True)
+        copy = THUMB_COPIES / f"{video_id}_{fp}.jpg"
+        if not copy.exists():
+            copy.write_bytes(raw)
+        fact["copy"] = copy.name
+    except OSError as e:
+        fact["copy_error"] = str(e)[:120]
+    if kind != "dhash":
+        # Без Pillow сравнивать с локальными файлами нечем, и делать вид,
+        # что сравнили, нельзя.
+        fact["match"] = "нет Pillow — с файлами канала не сверяли"
+        return fact
+    near = sorted((_fp_dist(fp, v), k) for k, v in _local_thumbs(channel).items())
+    if not near:
+        fact["match"] = "в папках канала обложек не осталось"
+    elif near[0][0] <= SAME_THUMB:
+        p = Path(near[0][1])
+        try:
+            fact["file"] = str(p.relative_to(BASE)).replace("\\", "/")
+        except ValueError:
+            fact["file"] = str(p)
+        m = re.search(r"thumb(\d+)", p.name)
+        if m:
+            fact["slot"] = int(m.group(1))
+        fact["dist"] = near[0][0]
+    else:
+        fact["match"] = (f"оригинала в папках канала нет (ближайший файл "
+                         f"расходится на {near[0][0]} бит при пороге "
+                         f"{SAME_THUMB}) — папку занял следующий ролик")
+    return fact
+
+
+def _sanity(impressions: float, ctr: float, views) -> str:
+    """Сходится ли умножение: показы × CTR должны дать число кликов.
+
+    Проверка стоит здесь потому, что это ЕДИНСТВЕННЫЙ способ поймать
+    опечатку в цифре, которой больше нигде нет. Перепутанные местами
+    показы и CTR, лишний ноль, числа из разных периодов — всё это
+    выглядит как обычная запись и молча портит будущие выводы.
+
+    Расхождение НЕ отменяет запись. Просмотры законно бывают больше
+    кликов: часть зрителей приходит по ссылке и из плейлиста, где показов
+    не считают. А вот кликов больше, чем просмотров, не бывает — это уже
+    ошибка ввода.
+    """
+    if not impressions or not ctr or not views:
+        return ""
+    clicks = impressions * ctr / 100
+    if clicks > views * 1.5 + 1:
+        return (f"расходится: {impressions:.0f} × {ctr}% = {clicks:.0f} "
+                f"кликов, а просмотров {views:.0f} — кликов больше, чем "
+                "просмотров, так не бывает: проверь период у обоих чисел")
+    if clicks < views * 0.6:
+        return (f"{impressions:.0f} × {ctr}% = {clicks:.0f} кликов при "
+                f"{views:.0f} просмотрах — часть зрителей пришла не из "
+                "ленты YouTube (ссылки, плейлисты), там показов не считают")
+    return f"сходится: {impressions:.0f} × {ctr}% = {clicks:.1f} ≈ {views:.0f}"
+
+
+def ctr_error(impressions, ctr) -> float:
+    """Половина доверительного интервала 95% для доли, в пунктах.
+
+    Печатается рядом с каждым CTR не для учёности. Именно это число
+    отвечает на вопрос «1,9% лучше, чем 1,4%?»: при 318 показах разброс
+    ±1,5 пункта, и ответ — «не различить». Без него две цифры рядом сами
+    напрашиваются на вывод, которого в них нет.
+    """
+    try:
+        n, p = float(impressions), float(ctr) / 100
+    except (TypeError, ValueError):
+        return 0.0
+    if n <= 0 or not 0 < p < 1:
+        return 0.0
+    return round(1.96 * (p * (1 - p) / n) ** 0.5 * 100, 2)
+
+
+def ctr_records(channel_id: str, data: dict | None = None) -> list[dict]:
+    """Все ручные замеры канала, старые первыми."""
+    d = data if data is not None else load()
+    box = d.get("channels", {}).get(channel_id, {}) or {}
+    return box.get("ctr") or []
+
+
+def video_index(data: dict | None = None) -> dict:
+    """id ролика -> (канал, что о нём известно из последнего снимка).
+
+    Нужен, чтобы ручной ввод не спрашивал канал: id ролика уникален, и
+    лишний вопрос в диалоге — лишний повод бросить его на середине.
+    """
+    d = data if data is not None else load()
+    out = {}
+    for cid in d.get("channels", {}):
+        for v in (latest_ok(cid, d).get("videos") or []):
+            out[v.get("id", "")] = (cid, v)
+    out.pop("", None)
+    return out
+
+
+def find_video(needle: str, data: dict | None = None) -> tuple[str, dict]:
+    """Ролик по id или по куску названия. ('', {}) — не нашли или неясно."""
+    idx = video_index(data)
+    if needle in idx:
+        return idx[needle]
+    low = needle.strip().lower()
+    if not low:
+        return "", {}
+    hits = [(cid, v) for cid, v in idx.values()
+            if low in (v.get("title") or "").lower()]
+    return hits[0] if len(hits) == 1 else ("", {})
+
+
+def record_ctr(video_id: str, impressions, ctr, views=None, date: str = "",
+               period: str = "за всё время", note: str = "",
+               entry: str = "typed", channel_id: str = "",
+               log=print) -> dict:
+    """Записать ручной замер показов и CTR по ролику.
+
+    ЧТО ЗДЕСЬ ВАЖНО, кроме самих чисел:
+
+    by=hand стоит в каждой записи. Ручное число и снимок сервиса живут в
+    одном файле, и различать их обязан не человек по памяти, а сама
+    запись: у них разная достоверность (одно перепечатано с экрана) и
+    разные способы починки.
+
+    Замена только по паре «ролик + дата». Повторный ввод в тот же день —
+    это исправление опечатки, а тот же ролик назавтра — НОВАЯ точка
+    истории, а не обновление старой. Затирать её значило бы потерять
+    ровно то, ради чего всё это делается: как CTR менялся со временем.
+
+    Ручные записи не прореживаются НИКОГДА (в отличие от снимков, см.
+    _prune): снимок всегда можно снять заново, а окно Studio за прошлую
+    неделю не вернуть.
+    """
+    def как_число(x):
+        # Числа приходят и из диалога (строкой, как на экране Studio), и
+        # из кода (уже числом) — разбирать надо и то и другое.
+        return float(x) if isinstance(x, (int, float)) else _number(str(x))
+
+    imp, val = как_число(impressions), как_число(ctr)
+    if imp is None or val is None:
+        raise ValueError(f"не разобрал числа: показы «{impressions}», "
+                         f"CTR «{ctr}»")
+    if val > 100:
+        raise ValueError(f"CTR {val}% — это не проценты; в Studio CTR "
+                         "обычно между 0,5 и 10")
+    cid, vid_meta = ("", {})
+    if channel_id:
+        cid = channel_id
+        vid_meta = video_index().get(video_id, ("", {}))[1]
+    else:
+        cid, vid_meta = find_video(video_id)
+    if not cid:
+        raise ValueError(
+            f"ролик «{video_id}» не найден ни в одном снимке. Сначала "
+            "нужен сбор: python yt_history.py collect")
+
+    seen = _number(str(views)) if views not in (None, "") else None
+    if seen is None:
+        # Просмотры берём из снимка, а не выдумываем: без них проверить
+        # сходимость нечем, а именно она ловит опечатку.
+        seen = float(vid_meta.get("views") or 0) or None
+    rec = {
+        "video": video_id,
+        "date": (date or _today())[:10],
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        # Три поля вместо одного: «руками» — как получено, «typed/csv» —
+        # чем именно, «youtube-studio» — откуда. Первое важно всегда,
+        # третье пригодится, если когда-нибудь появится второй источник.
+        "by": "hand",
+        "entry": entry,
+        "source": "youtube-studio",
+        "period": period,
+        "impressions": int(imp),
+        "ctr": round(val, 2),
+        "ctr_err": ctr_error(imp, val),
+        "views": int(seen) if seen else None,
+        "note": (note or "").strip()[:200],
+    }
+    check = _sanity(imp, val, seen)
+    if check:
+        rec["check"] = check
+    import channels as ch_mod
+    rec["thumb"] = thumb_fact(ch_mod.get(cid) or {"id": cid}, video_id)
+
+    data = load()
+    box = data.setdefault("channels", {}).setdefault(cid, {})
+    recs = box.setdefault("ctr", [])
+    recs[:] = [r for r in recs
+               if not (r.get("video") == video_id
+                       and r.get("date") == rec["date"])]
+    recs.append(rec)
+    recs.sort(key=lambda r: (r.get("video", ""), r.get("date", "")))
+    save(data)
+    _say(log, f"[История] {cid}: записан CTR {rec['ctr']}% "
+              f"({rec['impressions']} показов) по ролику {video_id} "
+              f"за {rec['date']} — РУКАМИ из Studio")
+    return rec
+
+
+def ctr_summary(channel: dict, data: dict | None = None) -> dict:
+    """Что известно об обложках канала. Всегда с числом роликов.
+
+    Строки — по одной на ролик, свежий замер; прошлый замер того же
+    ролика идёт рядом как «было». Сортировка по CTR, потому что вопрос
+    здесь один: какая обложка зовёт, а какая нет.
+    """
+    d = data if data is not None else load()
+    cid = channel.get("id", "")
+    recs = ctr_records(cid, d)
+    if not recs:
+        return {"records": 0, "videos": 0, "rows": []}
+    titles = {v.get("id"): v.get("title", "")
+              for v in (latest_ok(cid, d).get("videos") or [])}
+    by_video: dict[str, list[dict]] = {}
+    for r in recs:
+        by_video.setdefault(r.get("video", ""), []).append(r)
+    rows = []
+    for vid, got in by_video.items():
+        got = sorted(got, key=lambda r: r.get("date", ""))
+        cur, prev = got[-1], (got[-2] if len(got) > 1 else {})
+        rows.append({
+            "video": vid,
+            "title": titles.get(vid, "") or vid,
+            "ctr": cur.get("ctr", 0.0),
+            "err": cur.get("ctr_err", 0.0),
+            "impressions": cur.get("impressions", 0),
+            "views": cur.get("views"),
+            "date": cur.get("date", ""),
+            "note": cur.get("note", ""),
+            "thumb": cur.get("thumb") or {},
+            "prev_ctr": prev.get("ctr"),
+            "prev_date": prev.get("date", ""),
+            "times": len(got),
+        })
+    rows.sort(key=lambda r: -r["ctr"])
+    return {
+        "records": len(recs),
+        "videos": len(rows),
+        "last": max(r.get("date", "") for r in recs),
+        "median": _num([r["ctr"] for r in rows]),
+        "rows": rows,
+        "enough": len(rows) >= MIN_CTR_VIDEOS,
+    }
+
+
+def _thumb_look(name: str) -> dict:
+    """Два объективных числа о сохранённой обложке: яркость и цветность.
+
+    Только то, что можно ИЗМЕРИТЬ, а не то, что хочется увидеть.
+    Композиция, лицо, размер шрифта — всё это решается глазами по
+    сохранённым копиям, и отчёт для того и печатает к ним путь.
+    """
+    try:
+        from PIL import Image, ImageStat
+        im = Image.open(THUMB_COPIES / name).convert("RGB")
+        im.thumbnail((160, 160))
+        st = ImageStat.Stat(im.convert("L"))
+        sat = ImageStat.Stat(im.convert("HSV").getchannel("S"))
+        return {"bright": round(st.mean[0] / 2.55),
+                "colour": round(sat.mean[0] / 2.55)}
+    except Exception:
+        return {}
+
+
+def import_studio_csv(path: Path, date: str = "", period: str = "за всё время",
+                      log=print) -> tuple[int, int]:
+    """Выгрузка Studio (CSV) -> ручные записи. Возвращает (записано, строк).
+
+    ЗАЧЕМ, если есть диалог. Диалог — два числа на ролик; на канале с
+    двумя десятками роликов это уже повинность, а брошенная повинность
+    даёт пустую историю. Studio умеет отдать те же столбцы файлом, и это
+    ТОТ ЖЕ ручной ввод — просто без опечаток: файл выгружает человек,
+    период выбирает человек, поэтому записи те же самые, by=hand.
+
+    Столбец с id ролика ищется ПО ЗНАЧЕНИЯМ, а не по названию: заголовки
+    Studio переводит на язык интерфейса («Контент», «Content»,
+    «Contenido»), а id ролика везде один и тот же — 11 знаков латиницы,
+    цифр, дефиса и подчёркивания.
+    """
+    import csv
+    text = Path(path).read_text(encoding="utf-8-sig", errors="replace")
+    rows = list(csv.DictReader(io.StringIO(text)))
+    if not rows:
+        raise ValueError(f"{path}: строк нет")
+    cols = [c for c in (rows[0].keys() or []) if c]
+    ident = re.compile(r"^[A-Za-z0-9_-]{11}$")
+    id_col, hits = "", 0
+    for c in cols:
+        n = sum(1 for r in rows if ident.match((r.get(c) or "").strip()))
+        if n > hits:
+            id_col, hits = c, n
+    if not id_col:
+        raise ValueError(
+            f"{path}: не нашёл столбца с id ролика. Столбцы: "
+            + ", ".join(cols[:12]))
+
+    def pick(words, skip=()):
+        for c in cols:
+            low = c.lower()
+            if c in skip:
+                continue
+            if any(w in low for w in words):
+                return c
+        return ""
+
+    ctr_col = pick(("click-through", "ctr", "clics", "кликаб", "cliques"))
+    imp_col = pick(("impress", "показ", "impresion", "impresión", "einblend"),
+                   skip=(ctr_col,))
+    views_col = pick(("views", "просмотр", "visualizac", "vues", "aufrufe"))
+    if not ctr_col or not imp_col:
+        raise ValueError(
+            f"{path}: не нашёл столбцов показов и CTR. Есть: "
+            + ", ".join(cols[:12])
+            + ". Выгружай из Studio вкладку с колонками «Показы» и «CTR "
+              "для значков видео».")
+    done = 0
+    for r in rows:
+        vid = (r.get(id_col) or "").strip()
+        if not ident.match(vid):
+            continue        # строка «Итого» и прочие сводные — не ролики
+        try:
+            record_ctr(vid, r.get(imp_col), r.get(ctr_col),
+                       views=r.get(views_col) if views_col else None,
+                       date=date, period=period, entry="csv", log=log)
+            done += 1
+        except Exception as e:
+            _say(log, f"[История] {vid}: пропущен — {str(e)[:120]}")
+    return done, len(rows)
+
+
 # ------------------------------------------------------------------- отчёт
 
 _TRAFFIC_RU = {
@@ -722,6 +1293,106 @@ _TRAFFIC_RU = {
     "HASHTAGS": "хэштеги", "SOUND_PAGE": "страница звука",
     "VIDEO_REMIXES": "ремиксы",
 }
+
+
+def _pct(x: float) -> str:
+    """Проценты по-русски: запятая, один знак. Владелец сверяет их с
+    экраном Studio, а Studio печатает «1,4 %» — «1.4%» рядом читается как
+    другое число."""
+    return f"{x:.1f}".replace(".", ",")
+
+
+def _ctr_lines(channel: dict, data: dict | None = None) -> list[str]:
+    """Раздел отчёта про обложки.
+
+    Единственный раздел, стоящий на переписанных руками цифрах, — и это
+    сказано первой же строкой. Дальше жёстко: сначала сами замеры, потом
+    вывод, и вывод только если роликов хватает. Иначе «сказать нечего» —
+    ровно так же, как отчёт уже говорит про темы.
+    """
+    s = ctr_summary(channel, data)
+    if not s.get("records"):
+        return ["   Обложки (CTR): ни одного замера. Показов и CTR в API нет "
+                "вовсе — их переписывают из Studio руками, как именно и как "
+                "часто, написано внизу сводки."]
+    L = [f"   Обложки (CTR) — {s['records']} замер(ов) РУКАМИ из Studio на "
+         f"{s['videos']} ролике(ах), свежий {s['last']}; медиана "
+         f"{_pct(s['median'])}%:"]
+    # Про обложку в строке ролика — только пометка. Полный путь нужен там,
+    # где по нему пойдут смотреть (в выводе ниже), а восемь одинаковых
+    # строк «оригинала в папках нет» превращают отчёт в простыню, которую
+    # перестают читать целиком — вместе с тем, что под ней.
+    lost, blind = 0, 0
+    for r in s["rows"][:6]:
+        t = r.get("thumb") or {}
+        if t.get("file"):
+            mark = "обложка " + Path(t["file"]).name
+        elif t.get("copy"):
+            mark = "обложка сохранена"
+            lost += 1
+        else:
+            mark = "ОБЛОЖКА НЕИЗВЕСТНА"
+            blind += 1
+        was = (f"; было {_pct(r['prev_ctr'])}% {r['prev_date']}"
+               if r.get("prev_ctr") is not None else "")
+        L.append(f"     {_pct(r['ctr'])}% ±{_pct(r['err'])} — "
+                 f"{r['impressions']} показов"
+                 + (f" → {r['views']} просм." if r.get("views") else "")
+                 + f" — {r['title'][:42]} ({r['date']}{was}; {mark})")
+    if len(s["rows"]) > 6:
+        L.append(f"     (показаны 6 роликов из {len(s['rows'])})")
+    # «±» выше не украшение: пока интервалы перекрываются, разница между
+    # строками — это разброс, а не разница обложек. Говорим сразу под
+    # строками, иначе две цифры рядом сами напросятся на вывод, которого
+    # в них нет.
+    if len(s["rows"]) >= 2:
+        a, b = s["rows"][0], s["rows"][-1]
+        if a["ctr"] - a["err"] <= b["ctr"] + b["err"]:
+            L.append(f"     ↑ верхняя и нижняя строки НЕ РАЗЛИЧАЮТСЯ: их "
+                     f"разброс перекрывается ({_pct(a['ctr'])}±"
+                     f"{_pct(a['err'])} против {_pct(b['ctr'])}±"
+                     f"{_pct(b['err'])}). Показов слишком мало, чтобы это "
+                     "была разница обложек.")
+    if lost:
+        L.append(f"     Картинки лежат в analytics/thumbs/ — у {lost} из "
+                 "них оригинал в папке проекта уже затёрт следующим "
+                 "роликом, копия здесь единственная")
+    if blind:
+        L.append(f"     У {blind} замер(ов) обложка не установлена: YouTube "
+                 "не отдаёт превью скрытых роликов")
+    if not s.get("enough"):
+        L.append(f"     Вывод: сказать нечего — CTR замерен на "
+                 f"{s['videos']} ролике(ах), для вывода нужно "
+                 f"{MIN_CTR_VIDEOS}. Правило, выведенное из двух обложек, "
+                 "хуже отсутствия правила: по нему рисуются все следующие.")
+        return L
+    # Роликов хватает — можно сравнивать половины. Даже здесь отчёт не
+    # объявляет причину: он показывает, ЧТО общего у лучших и у худших, и
+    # даёт пути к сохранённым картинкам. Причину видно глазами.
+    half = max(1, len(s["rows"]) // 3)
+    best, worst = s["rows"][:half], s["rows"][-half:]
+    L.append(f"     Вывод на {s['videos']} роликах (по {half} с каждого "
+             "края):")
+    for tag, group in (("+", best), ("-", worst)):
+        looks = [_thumb_look((r.get("thumb") or {}).get("copy", ""))
+                 for r in group]
+        looks = [x for x in looks if x]
+        line = (f"       {tag} CTR "
+                + "/".join(_pct(r["ctr"]) for r in group) + "%")
+        if looks:
+            line += (f", яркость {round(sum(x['bright'] for x in looks) / len(looks))}"
+                     f", цветность {round(sum(x['colour'] for x in looks) / len(looks))}")
+        L.append(line)
+        for r in group:
+            t = r.get("thumb") or {}
+            where = t.get("file") or (f"analytics/thumbs/{t['copy']}"
+                                      if t.get("copy") else "картинки нет")
+            L.append(f"           {where}"
+                     + (f" — {r['note']}" if r.get("note") else ""))
+    L.append("       Яркость и цветность — единственное, что тут можно "
+             "измерить машиной; остальное видно только глазами, поэтому "
+             "выше пути к сохранённым обложкам.")
+    return L
 
 
 def report(channel: dict, data: dict | None = None) -> str:
@@ -809,7 +1480,14 @@ def report(channel: dict, data: dict | None = None) -> str:
         L.append(f"     ({len(t['thin'])} ролик(ов) почти без просмотров — в "
                  "выводы не берутся)")
 
-    # 4. Удержание.
+    # 4. Обложки: доходит ли дело до клика. Стоит ПЕРЕД удержанием
+    #    намеренно — таков порядок воронки: показ, клик, досмотр. Чинить
+    #    удержание, когда на обложку не нажимают, значит чинить то, до
+    #    чего зритель не доходит: 1 100 показов при CTR 1,4% дают 15
+    #    просмотров, и никакой досмотр этого не исправит.
+    L += _ctr_lines(channel, d)
+
+    # 5. Удержание.
     r = retention(channel, d)
     if r:
         L.append(f"   Удержание (на {r['videos']} ролике(ах)): обвал на "
@@ -820,7 +1498,7 @@ def report(channel: dict, data: dict | None = None) -> str:
         L.append("   Удержание: кривых нет — YouTube не строит их на "
                  "единичных просмотрах")
 
-    # 5. Откуда приходят. None и {} различаются: «не спросили» против
+    # 6. Откуда приходят. None и {} различаются: «не спросили» против
     #    «спросили, пусто». Молчать про первое нельзя — иначе разрез
     #    тихо исчезает из отчёта и никто не замечает, что он отвалился.
     traffic = snap.get("traffic")
@@ -859,7 +1537,7 @@ def report(channel: dict, data: dict | None = None) -> str:
         L.append(f"   (в снимке не хватает {len(snap['partial'])} разрез(ов) — "
                  "остальное собрано полностью)")
 
-    # 6. Ниша: с чем сравниваемся.
+    # 7. Ниша: с чем сравниваемся.
     n = snap.get("niche") or {}
     if n.get("median_views"):
         mine = t.get("median_views") or 0
@@ -886,10 +1564,45 @@ def report_all(data: dict | None = None, only_active: bool = False) -> str:
     body = [report(c, d) for c in chans]
     tail = ["",
             "Чего здесь нет и почему:",
-            "  CTR обложки и показы — YouTube Analytics API таких метрик не "
-            "отдаёт вовсе (не вопрос доступа). Только Studio, глазами.",
             "  Тексты комментариев — нужен доступ шире нынешнего, "
-            "см. ОГРАНИЧЕНИЯ в yt_history.py"]
+            "см. ОГРАНИЧЕНИЯ в yt_history.py",
+            "",
+            "ПОКАЗЫ И CTR ПЕРЕПИСЫВАЮТСЯ РУКАМИ — их нет в API вовсе "
+            "(не вопрос доступа: таких метрик в Analytics API не "
+            "существует). Всё, что для этого нужно:",
+            "",
+            "  ЧТО ПЕРЕПИСАТЬ. Studio → Аналитика → вкладка «Охват» по "
+            "нужному ролику. Два числа: «Показы» и «CTR для значков "
+            "видео». Период — «За всё время». Полминуты на ролик.",
+            "  Список роликов с колонками теми же — Studio → Контент, "
+            "если удобнее одним экраном.",
+            "",
+            "  КАК ЧАСТО. ДВА РАЗА НА РОЛИК, не каждый день.",
+            "    первый раз — через двое суток после выхода: это CTR у "
+            "своих, кому ролик показали в ленте подписок;",
+            "    второй — через две недели: это CTR у чужих, из поиска и "
+            "рекомендаций, он и решает, растёт канал или нет.",
+            "  Чаще смысла нет: за сутки CTR шевелится в пределах "
+            "разброса (при 300 показах разброс ±1,5 пункта — больше, чем "
+            "любая настоящая разница), а ежедневную повинность бросают "
+            "через неделю, и история остаётся пустой.",
+            "",
+            "  КОМАНДЫ.",
+            "    python yt_history.py ctr            — диалог, спросит всё "
+            "сам",
+            "    python yt_history.py ctr <id ролика> <показы> <CTR>",
+            "    python yt_history.py ctr --csv «выгрузка.csv»  — если "
+            "Studio дала файл",
+            "    python yt_history.py ctr --list     — что уже записано",
+            "  Числа можно вставлять прямо как в Studio: «1 100» и "
+            "«1,4 %» разбираются.",
+            "",
+            "  Записанное помечается by=hand и лежит отдельно от снимков "
+            "сервиса: перепечатанное с экрана и замеренное API — разной "
+            "достоверности, и путать их нельзя. Обложка, за которую "
+            "получен CTR, сохраняется в analytics/thumbs/ — папки "
+            "проектов переиспользуются, и через месяц картинки взять "
+            "будет неоткуда."]
     return "\n".join(head + body + tail)
 
 
@@ -997,12 +1710,191 @@ def refresh_formula(channel: dict, log=print, data: dict | None = None) -> bool:
 
 # --------------------------------------------------------------------- CLI
 
+def _ask(prompt: str, default: str = "") -> str:
+    """Вопрос владельцу. Ctrl+C и конец ввода — это ОТКАЗ, а не пустой
+    ответ: записать половину замера хуже, чем не записать ничего."""
+    try:
+        got = input(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        raise SystemExit("\nОтменено — ничего не записано")
+    return got or default
+
+
+def _ctr_dialog(argv: list[str]) -> int:
+    """Диалог ввода показов и CTR.
+
+    Порядок вопросов выбран так, чтобы владелец шёл по экрану Studio
+    сверху вниз и ни разу не возвращался. Ролики печатаются списком с
+    отметкой, что по ним уже записано: без неё второй замер того же
+    ролика через неделю не отличить от повторного ввода первого.
+    """
+    d = load()
+    import channels as ch_mod
+    chans = [c for c in ch_mod.load() if snapshots(c.get("id", ""), d)]
+    if not chans:
+        print("Снимков ещё нет — сперва: python yt_history.py collect")
+        return 2
+    print("Показы и CTR в API не отдаются вовсе — только глазами из Studio.")
+    print("Где смотреть: Studio → Аналитика → «Охват» → «Показы» и "
+          "«CTR для значков видео», период «За всё время».\n")
+
+    if len(chans) == 1:
+        ch = chans[0]
+    else:
+        for i, c in enumerate(chans, 1):
+            print(f"  {i}) {c.get('name') or c['id']}")
+        pick = _ask(f"Канал [1-{len(chans)}]: ")
+        if not pick.isdigit() or not 1 <= int(pick) <= len(chans):
+            print("Не понял номер канала — ничего не записано")
+            return 2
+        ch = chans[int(pick) - 1]
+
+    vids = [v for v in (latest_ok(ch["id"], d).get("videos") or [])
+            if v.get("id")]
+    if not vids:
+        print(f"У канала {ch['id']} в снимке нет роликов")
+        return 2
+    was = {}
+    for r in ctr_records(ch["id"], d):
+        was[r.get("video")] = r
+    print(f"\nРолики канала {ch.get('name') or ch['id']} "
+          f"(снимок {latest_ok(ch['id'], d).get('date', '')}):")
+    for i, v in enumerate(vids, 1):
+        mark = ("уже записано: " + _pct(was[v["id"]].get("ctr", 0)) + "% от "
+                + was[v["id"]].get("date", "")) if v["id"] in was \
+            else "CTR не записан"
+        _say(print, f"  {i:>2}) {v.get('title', '')[:52]:<52} "
+                    f"{v.get('views', 0):>4} просм.  {v['id']}  — {mark}")
+    pick = _ask(f"\nРолик [номер 1-{len(vids)} или id]: ")
+    if pick.isdigit() and 1 <= int(pick) <= len(vids):
+        video = vids[int(pick) - 1]
+    else:
+        video = next((v for v in vids if v["id"] == pick), None)
+        if not video:
+            print("Такого ролика в списке нет — ничего не записано")
+            return 2
+
+    imp = _number(_ask("Показы (можно как в Studio, «1 100»): "))
+    if imp is None:
+        print("Показы не разобрал — ничего не записано")
+        return 2
+    ctr = _number(_ask("CTR, % (можно «1,4 %»): "))
+    if ctr is None:
+        print("CTR не разобрал — ничего не записано")
+        return 2
+    seen = _ask(f"Просмотров на тот же момент [Enter — взять "
+                f"{video.get('views', 0)} из снимка]: ",
+                str(video.get("views", 0)))
+    period = _ask("Период в Studio [Enter — за всё время]: ", "за всё время")
+    date = _ask(f"Дата замера [Enter — сегодня, {_today()}]: ", _today())
+    note = _ask("Заметка про обложку, необязательно: ")
+
+    print()
+    rec = record_ctr(video["id"], imp, ctr, views=seen, date=date,
+                     period=period, note=note, entry="typed",
+                     channel_id=ch["id"])
+    if rec.get("check"):
+        print(f"  Проверка: {rec['check']}")
+    t = rec.get("thumb") or {}
+    if t.get("file"):
+        print(f"  Обложка опознана: {t['file']} — это она стояла на YouTube")
+    elif t.get("copy"):
+        print(f"  Обложка сохранена: analytics/thumbs/{t['copy']}")
+        if t.get("match"):
+            print(f"  {t['match']}")
+    else:
+        print(f"  Обложку установить не вышло: {t.get('why', '?')}")
+    print(f"  Разброс при {rec['impressions']} показах: "
+          f"±{_pct(rec['ctr_err'])} пункта — всё, что меньше, это не "
+          "разница обложек, а шум.")
+    print("\nЗаписано как ВВЕДЁННОЕ РУКАМИ (by=hand). Свод: "
+          "python yt_history.py report")
+    return 0
+
+
+def _ctr_cli(argv: list[str]) -> int:
+    """Разбор `ctr` во всех видах: список, выгрузка, строка, диалог."""
+    def flag(name: str, default: str = "") -> str:
+        if name in argv:
+            i = argv.index(name)
+            if i + 1 < len(argv):
+                return argv[i + 1]
+        return default
+
+    date = flag("--date")
+    period = flag("--period", "за всё время")
+    note = flag("--note")
+    views = flag("--views")
+
+    if "--list" in argv:
+        d = load()
+        got = 0
+        for cid in d.get("channels", {}):
+            titles = {v.get("id"): v.get("title", "")
+                      for v in (latest_ok(cid, d).get("videos") or [])}
+            for r in ctr_records(cid, d):
+                got += 1
+                t = r.get("thumb") or {}
+                _say(print, f"{r.get('date')}  {cid:<12} "
+                            f"{_pct(r.get('ctr', 0)):>5}%  "
+                            f"{r.get('impressions', 0):>6} показов  "
+                            f"{r.get('by')}/{r.get('entry')}  "
+                            f"{titles.get(r.get('video'), r.get('video'))[:40]}"
+                            + (f"  [{t.get('file') or t.get('copy') or '—'}]"))
+        if not got:
+            print("Ручных замеров пока нет. Как записать: "
+                  "python yt_history.py ctr")
+        return 0
+
+    csv_path = flag("--csv")
+    if csv_path:
+        done, seen_rows = import_studio_csv(Path(csv_path), date=date,
+                                            period=period)
+        print(f"Записано {done} из {seen_rows} строк — все как ВВЕДЁННЫЕ "
+              "РУКАМИ (by=hand, entry=csv)")
+        return 0 if done else 2
+
+    # Готовая строка: ctr <ролик> <показы> <CTR>. Флаги из позиционных
+    # выкидываем вместе со значениями, иначе «--note текст» уехал бы в
+    # показы.
+    pos, skip = [], False
+    for a in argv[2:]:
+        if skip:
+            skip = False
+            continue
+        if a.startswith("--"):
+            skip = a in ("--date", "--period", "--note", "--views", "--csv")
+            continue
+        pos.append(a)
+    if len(pos) >= 3:
+        rec = record_ctr(pos[0], pos[1], pos[2], views=views, date=date,
+                         period=period, note=note, entry="typed")
+        if rec.get("check"):
+            print(f"  Проверка: {rec['check']}")
+        t = rec.get("thumb") or {}
+        print("  Обложка: " + (t.get("file")
+                               or (f"analytics/thumbs/{t['copy']}"
+                                   if t.get("copy") else "")
+                               or t.get("why", "не установлена")))
+        return 0
+    if pos:
+        print("Нужны три значения: <ролик> <показы> <CTR>. Без них — "
+              "просто `ctr` для диалога.")
+        return 2
+    return _ctr_dialog(argv)
+
+
 def _cli(argv: list[str]) -> int:
     """Запуск руками или по расписанию:
 
         python yt_history.py collect      — снять срез всех каналов
         python yt_history.py report       — сводка владельцу
         python yt_history.py formula      — вписать замеры в topic_formula
+        python yt_history.py ctr          — записать показы и CTR из Studio
+                                            (в API их нет, только руками)
+        python yt_history.py ctr <ролик> <показы> <CTR>   — то же строкой
+        python yt_history.py ctr --csv <файл>  — выгрузка Studio целиком
+        python yt_history.py ctr --list   — что уже записано
     """
     try:
         from dotenv import load_dotenv
@@ -1029,6 +1921,8 @@ def _cli(argv: list[str]) -> int:
         # отвечают на вопрос, стоит ли включать его обратно. Прежний флаг
         # выкидывал его из сводки молча.
         print(report_all())
+    elif cmd == "ctr":
+        return _ctr_cli(argv)
     elif cmd == "formula":
         for c in ch_mod.active():
             if not refresh_formula(c):
