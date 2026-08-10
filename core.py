@@ -2048,7 +2048,8 @@ LANGS = {"английский": "English", "русский": "Russian", "исп
 
 def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                tone: str = "документальный", lang: str = "английский",
-               extra: str = "", shape: str = "", rate: int = 0) -> str:
+               extra: str = "", shape: str = "", rate: int = 0,
+               marks_out: list | None = None) -> str:
     """Длинный сценарий без воды на ЛЮБУЮ тему: план из глав, потом главы по
     очереди. tone — жанр/подача, lang — язык. ~150 слов на минуту.
 
@@ -2270,7 +2271,7 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
              {"role": "user", "content": ask}],
             api_key, 0.75, min(max(sec_words * 10, 6000), 12000))
 
-    parts, prev_tail = [], ""
+    parts, kept_titles, prev_tail = [], [], ""
     for i, ch in enumerate(chapters, 1):
         # Каждая глава — отдельный запрос на минуты, а весь сценарий отдаётся
         # вызывающему одним куском: недописанный текст возвращать НЕЛЬЗЯ, его
@@ -2348,6 +2349,7 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                     level="критично")
                 continue
         parts.append(part)
+        kept_titles.append(ch)
         prev_tail = " ".join(part.split()[-25:])
 
     text = "\n\n".join(parts)
@@ -2399,6 +2401,23 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                 f"(~{words // WORDS_PER_MINUTE} мин вместо {minutes})",
             hint="перегенерируй сценарий или закажи меньшую длительность",
             level="заметно")
+    if marks_out is not None:
+        # Границы глав В СЛОВАХ, а не в секундах: сколько слов идёт до начала
+        # каждой главы. Перевести это в секунды можно только после озвучки и
+        # субтитров (chapter_times), зато перевод будет ИЗМЕРЕННЫЙ. До этой
+        # правки времена глав придумывала модель: ей сообщали лишь общую длину
+        # ролика и просили «раскинуть 5-8 глав по этому отрезку». Она и
+        # раскидывала ровно — 02:45, 06:15, 09:30. Замер на einsturzpunkt
+        # 10.08: из семи тайм-кодов в описании с настоящим содержанием
+        # совпадал один, нулевой.
+        seen = 0
+        for title, part in zip(kept_titles, parts):
+            # обрезка по лимиту выше могла срубить хвост сценария целиком —
+            # главы, которые в текст не попали, в оглавление не пускаем
+            if seen >= words:
+                break
+            marks_out.append({"title": title, "word": seen})
+            seen += len(part.split())
     log(f"[Агент] Сценарий готов: {words} слов (~{words // WORDS_PER_MINUTE} мин). "
         "Обязательно вычитай и переработай его перед озвучкой — сырой текст "
         "нейросети это «inauthentic content».")
@@ -7706,6 +7725,150 @@ def srt_to_seconds(t: str) -> float:
     """'00:01:32,500' -> 92.5"""
     h, m, s = t.replace(",", ".").split(":")
     return int(h) * 3600 + int(m) * 60 + float(s)
+
+
+def chapter_times(marks: list[dict], srt_path) -> list[tuple[float, str]]:
+    """Границы глав В СЕКУНДАХ — по субтитрам, а не по фантазии модели.
+
+    marks приходит из gen_script: «глава такая-то начинается на N-м слове
+    сценария». Здесь это переводится в секунды прогулкой по субтитрам с
+    накоплением слов.
+
+    Прямое сравнение номеров слов было бы неверным: субтитры пишет Whisper с
+    голоса, и его разбиение на слова не совпадает со сценарным. Числа он
+    ставит цифрами («1958» — одно слово там, где в тексте три), сокращения
+    склеивает, оговорки TTS теряет. Поэтому номер слова сначала МАСШТАБИРУЕТСЯ
+    отношением длин: сколько слов насчитал Whisper на весь ролик против того,
+    сколько их в сценарии. Систематический перекос так снимается целиком, а
+    остаётся только местная погрешность в пару слов — то есть доли секунды.
+    """
+    rows = parse_srt(Path(srt_path))
+    if not rows or not marks:
+        return []
+    # слов в субтитрах нарастающим итогом + время начала каждой реплики
+    starts, total = [], 0
+    for beg, _end, txt in rows:
+        starts.append((total, srt_to_seconds(beg)))
+        total += len(txt.split())
+    script_words = max(marks[-1]["word"] + 1, 1)
+    scale = total / script_words if script_words else 1.0
+    out: list[tuple[float, str]] = []
+    for m in marks:
+        want = m["word"] * scale
+        sec = starts[0][1]
+        for w, t in starts:
+            if w > want:
+                break
+            sec = t
+        out.append((sec, str(m.get("title") or "").strip()))
+    # первая глава всегда с нуля: ролик начинается с неё по определению, а
+    # первая реплика может начаться и на 0.4 с — тайм-код «00:00» YouTube
+    # требует буквально, иначе оглавление не включается вовсе
+    if out:
+        out[0] = (0.0, out[0][1])
+    # строго по возрастанию и без слипшихся: YouTube отвергает оглавление
+    # целиком, если тайм-коды идут не по порядку или ближе 10 с друг к другу.
+    # Хвост ролика тоже отрезаем: глава, начавшаяся за полминуты до конца, ни
+    # на что не делится, а карточка на 4 с попросту выехала бы за край.
+    end = srt_to_seconds(rows[-1][1])
+    clean: list[tuple[float, str]] = []
+    for sec, title in out:
+        if not title or sec > end - 30:
+            continue
+        if clean and sec < clean[-1][0] + 10:
+            continue
+        clean.append((sec, title))
+    return clean if len(clean) >= 3 else []
+
+
+def _tc(sec: float) -> str:
+    """92.5 -> '01:32'. Тайм-код для описания YouTube (часы — только если есть)."""
+    sec = int(max(sec, 0))
+    h, rem = divmod(sec, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def apply_chapters(out_dir, log=print) -> list[tuple[float, str]]:
+    """Сшивает оглавление с тем, что происходит на экране.
+
+    Делает две вещи по одним и тем же ИЗМЕРЕННЫМ границам глав:
+      1) ставит в overlays.txt титульную карточку на начало каждой главы;
+      2) переписывает секцию CHAPTERS в seo.txt на измеренные времена.
+
+    До этого две системы жили порознь и не сходились. Замер einsturzpunkt
+    10.08 (ролик 19:31, семь глав): в описании 00:00 / 02:45 / 06:15 / 09:30 /
+    12:10 / 15:00 / 17:20, а карточки в кадре — 00:00 / 08:01 / 10:47 / 13:35 /
+    16:24. Совпадала одна, нулевая. Причём подписи расходились по смыслу:
+    глава «Rissbildung an Knotenpunkt 11» на 09:30, а ближайшая карточка на
+    10:47 говорила «TÖDLICHE FALLE». Зритель жал тайм-код, попадал в середину
+    чужой мысли без единого подтверждения, что он там, куда целился.
+    """
+    d = Path(out_dir)
+    marks_f, srt = d / "chapters.json", d / "subs" / "voiceover.srt"
+    if not marks_f.exists() or not srt.exists():
+        return []
+    try:
+        marks = json.loads(marks_f.read_text("utf-8"))
+    except Exception:
+        return []
+    times = chapter_times(marks, srt)
+    if not times:
+        log("[Главы] Границы глав посчитать не удалось — оглавление "
+            "оставляю как есть.", "warn")
+        return []
+
+    over = d / "overlays.txt"
+    if over.exists():
+        keep, dropped = [], 0
+        for line in over.read_text("utf-8").splitlines():
+            parts = [p.strip() for p in line.split("|")]
+            # Старые титульные карточки рядом с границей главы убираем: две
+            # карточки подряд читаются как сбой, а не как структура.
+            if len(parts) > 2 and parts[1].lower() == "titlecard":
+                try:
+                    tc = parts[0] if parts[0].count(":") == 2 else "00:" + parts[0]
+                    t = srt_to_seconds(tc.replace(".", ","))
+                except Exception:
+                    keep.append(line)
+                    continue
+                if any(abs(t - sec) < 20 for sec, _ in times):
+                    dropped += 1
+                    continue
+            keep.append(line)
+        for i, (sec, title) in enumerate(times, 1):
+            # Вторая часть после «::» — номер главы. Он не переводится, не
+            # врёт и работает на любом языке канала.
+            keep.append(f"{seconds_to_srt(sec).replace(',', '.')[:8]} | titlecard | "
+                        f"{title.upper()}::{i:02d} | center | 4s")
+        # Сортируем ПО РАЗОБРАННОМУ ВРЕМЕНИ, а не по строке: в файле уживаются
+        # «00:01:32» и «1:32», и по алфавиту второе улетело бы в конец ролика.
+        # Строки без тайм-кода (шапка, комментарии) остаются сверху и в
+        # прежнем порядке.
+        def _key(ln: str):
+            p = ln.split("|")[0].strip()
+            if not re.match(r"^\d{1,2}:\d{2}(:\d{2})?([.,]\d+)?$", p):
+                return (0, -1.0)
+            return (1, srt_to_seconds(
+                (p if p.count(":") == 2 else "00:" + p).replace(".", ",")))
+        keep.sort(key=_key)
+        over.write_text("\n".join(keep) + "\n", encoding="utf-8")
+        log(f"[Главы] Карточки глав в кадре: {len(times)} шт."
+            + (f" (убрано чужих рядом: {dropped})" if dropped else ""))
+
+    seo = d / "seo.txt"
+    if seo.exists():
+        txt = seo.read_text("utf-8")
+        block = "\n".join(f"{_tc(sec)} {title}" for sec, title in times)
+        new, n = re.subn(r"(?im)^\s*\**\s*CHAPTERS\s*:?\s*\**\s*$.*?"
+                         r"(?=^\s*\**\s*[A-Z]{3,}\s*:|\Z)",
+                         "CHAPTERS:\n" + block + "\n", txt, count=1, flags=re.S | re.M)
+        if not n:
+            new = txt.rstrip() + "\n\nCHAPTERS:\n" + block + "\n"
+        seo.write_text(new, encoding="utf-8")
+        log("[Главы] Тайм-коды в описании заменены на измеренные: "
+            + ", ".join(_tc(s) for s, _ in times))
+    return times
 
 
 def seconds_to_srt(sec: float) -> str:

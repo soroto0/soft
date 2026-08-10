@@ -2410,8 +2410,9 @@ class Api:
                         "«Сценарий» или сгенерируй черновик.")
                 mins = int((ch or {}).get("minutes") or p.get("minutes") or 12)
                 self.log(f"[Цепочка] Шаг 0 — сценарий «{topic}», {mins} мин…")
+                marks: list = []
                 text = core.gen_script(
-                    topic, mins, key, self.log,
+                    topic, mins, key, self.log, marks_out=marks,
                     tone=p.get("tone", "документальный"),
                     lang=p.get("lang", "английский"),
                     # p, а не ch: сюда уже подмешан замер удержания. Через
@@ -2423,6 +2424,13 @@ class Api:
                     # начитки на нулевом темпе, а читал голос медленнее.
                     rate=int((ch or {}).get("rate") or p.get("rate") or 0))
                 self.save_script(text)
+                # Границы глав в словах — единственный момент, когда они
+                # вообще известны. В секунды их переведёт apply_chapters
+                # после субтитров, по замеру.
+                if marks:
+                    (self._project / "chapters.json").write_text(
+                        json.dumps(marks, ensure_ascii=False, indent=1),
+                        encoding="utf-8")
                 self._write_meta(topic=topic)
             # Между шагами цепочки бывают минуты без единой строки в
             # журнале (whisper, ожидание Veo), поэтому спрашиваем про «Стоп»
@@ -2533,6 +2541,11 @@ class Api:
                 self.log("[Цепочка] Заголовок, описание, теги, главы…")
                 try:
                     self.seo()
+                    # ПОСЛЕ seo и ДО рендера: правит и тайм-коды в описании,
+                    # и плашки в overlays.txt, а плашки должен успеть увидеть
+                    # рендер. Времена, которые придумала модель, здесь
+                    # заменяются на посчитанные по субтитрам.
+                    core.apply_chapters(self._project, self.log)
                 except Exception as e:
                     self.log(f"[Цепочка] SEO пропущено: {e}", "warn")
                     # Заголовок, описание и главы — первое, что видит зритель

@@ -814,10 +814,18 @@ def format_plan(plan: list[dict]) -> str:
 
 if __name__ == "__main__":       # сухой прогон: python night_plan.py
     import sys
-    chans = channels_mod.load()
+    # active(), а не load(): ночь берёт только включённые каналы (webapp,
+    # autopilot). Здесь стоял load(), и предпросмотр расписывал ночь по ВСЕМ
+    # каналам — на 11.08 это шесть строк против трёх настоящих, вместе с
+    # выключенным abyss и двумя минутными «ПРОБАМИ». План обещал одно, ночь
+    # делала другое; ровно тот разъезд, ради которого active() и заведена.
+    chans = channels_mod.active()
+    off = len(channels_mod.load()) - len(chans)
     night = float(sys.argv[1]) if len(sys.argv) > 1 else NIGHT_H
     p = dry_run(chans, night_h=night)
-    print(f"Каналов: {len(chans)}, ночь {night:.0f} ч, "
+    print(f"Каналов: {len(chans)}"
+          + (f" (выключено и пропущено: {off})" if off else "")
+          + f", ночь {night:.0f} ч, "
           f"оценка {SEC_PER_VIDEO_MINUTE:.0f} c на минуту видео\n")
     print(format_plan(p))
     print(f"\nИтого потолков: "
