@@ -4965,7 +4965,18 @@ THUMB_MAX_LINES = 4
 # объекта box в Thumbnail.tsx, в том же порядке (порядок важен: схему
 # выбирает хеш заголовка по индексу).
 THUMB_LAYOUT = {
-    "harsh": {"advance": 0.5, "max": 96, "loud": -1, "max_words": 7,
+    # 4 слова, не 7. Замер на живом ролике einsturzpunkt/2026-08-10: при
+    # семи разрешённых словах модель прислала «DIE SPANNUNG ZERBRACH DIE
+    # BETONSTRUKTUR» — три плотные строки, самое крупное слово 15 px в ленте
+    # при пороге 12, и собственная приёмка поставила 45/100 с диагнозом
+    # «блёклая палитра и плотный текст, нет визуального крючка». Живой CTR
+    # вышел 1,6% при 609 показах.
+    # Немецкий усугубляет: слова длинные, семь слов набивают три строки
+    # мгновенно. У победителей ниши на обложке два-три слова и крупный
+    # объект. Ограничение по строкам тут важнее, чем по словам: именно
+    # третья строка съедает кегль у первой.
+    "harsh": {"advance": 0.5, "max": 96, "loud": -1, "max_words": 4,
+              "max_lines": 2,
               "schemes": (("column", 560), ("band", 1160))},
     "warm": {"advance": 0.47, "max": 128, "loud": 1, "max_words": 8,
              "schemes": (("sheet", 660), ("panel", 520))},
@@ -5043,8 +5054,12 @@ def thumb_feed_report(headline: str, style: str = "",
             problems.append(f"строка «{line}» не влезает в колонку {col} px")
     if not lines:
         problems.append("пустой заголовок")
-    if len(lines) > THUMB_MAX_LINES:
-        problems.append(f"{len(lines)} строк, больше {THUMB_MAX_LINES}")
+    # Предел строк берём У ПАЛИТРЫ, а не общий: иначе бюджет в промпте
+    # говорит модели «две строки», а отбраковка молча пропускает четыре —
+    # и канал снова получает три плотные строки, как einsturzpunkt 10.08.
+    max_lines = int(lay.get("max_lines") or THUMB_MAX_LINES)
+    if len(lines) > max_lines:
+        problems.append(f"{len(lines)} строк, больше {max_lines}")
     if words > lay["max_words"]:
         problems.append(f"{words} слов, больше {lay['max_words']}")
     return {"ok": not problems, "scheme": scheme, "column": col,
@@ -5063,7 +5078,12 @@ def thumb_char_budget(style: str = "") -> tuple[int, int, int]:
     lay = thumb_layout(style)
     col = min(w for _, w in lay["schemes"])     # худшая из схем канала
     chars = int(col / (lay["advance"] * (FEED_MIN_FONT / FEED_SCALE)))
-    return max(chars, 6), THUMB_MAX_LINES, lay["max_words"]
+    # Предел строк теперь СВОЙ у палитры, а общий THUMB_MAX_LINES остаётся
+    # только запасным: четыре строки уместны там, где слова короткие, и
+    # губительны на немецком — каждая лишняя строка отнимает кегль у первой,
+    # а в ленте читается почти только она.
+    lines = int(lay.get("max_lines") or THUMB_MAX_LINES)
+    return max(chars, 6), lines, lay["max_words"]
 
 
 def fit_headline(headline: str, style: str = "", layout: str = "") -> str:

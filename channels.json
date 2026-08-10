@@ -161,7 +161,10 @@
       "El filósofo que fue condenado a muerte por cuestionar la existencia de los dioses",
       "El filósofo que sacrificó su propia felicidad para descender a las profundidades de la angustia humana",
       "El pensador que fue quemado vivo por desafiar la verdad impuesta sobre el cosmos",
-      "El filósofo que fue exiliado por denunciar la insaciable crueldad de la naturaleza humana"
+      "El filósofo que fue exiliado por denunciar la insaciable crueldad de la naturaleza humana",
+      "El genio que fue encarcelado por revelar la fragilidad de la razón humana",
+      "El genio que salvó a la civilización de la tiranía para luego ser destruido por la sociedad que rescató",
+      "El genio que abandonó la ciencia tras ser aterrorizado por el silencio eterno del universo"
     ],
     "series": "",
     "series_next": 1,
@@ -282,5 +285,43 @@
     "flicker": null,
     "vignette": true,
     "dust": null
+  },
+  {
+    "name": "Einsturzpunkt",
+    "active": true,
+    "folder": "",
+    "lang": "немецкий",
+    "tone": "документальный",
+    "minutes": 14,
+    "voice": "de-DE-ConradNeural",
+    "rate": -5,
+    "pitch": -4,
+    "visual_style": "документальный архив",
+    "palette": "harsh",
+    "ai_ratio": 0.85,
+    "sub_style": "pill",
+    "sub_size": "средние",
+    "sub_width": 36,
+    "sub_font": "",
+    "sub_punct": true,
+    "subs_on": true,
+    "watermark": "",
+    "accent": "#e2622a",
+    "thumb_layout": "",
+    "thumb_ref": "",
+    "avoid": "Никакой выдумки, поданной как факт. Не смаковать жестокость ради шока. Не выдавать версии за доказанное. ИИ-кадр НИКОГДА не изображает само реальное происшествие и его жертв — только конструкции, материалы, погоду, пустые помещения; механизм отказа показывается СХЕМОЙ, а не поддельной «хроникой». Не использовать число погибших как крючок в заголовке.",
+    "script_extra": "German-language documentary reconstruction of ONE engineering or structural failure. Standard High German.\n\nWork from what an official inquiry established. Name the structure, the year, the operator, the engineers, the report. If a fact is disputed, say it is disputed.\n\nOpen on the ordinary day, named and specific. Build the chain of small decisions that made the outcome inevitable — each reasonable on its own at the time. Then the failure itself, minute by minute, in plain language a non-engineer follows. Then the aftermath: what the inquiry found, what changed in the building codes, and what did not.\n\nThe MECHANISM is the spine of this channel, not the body count. Spend real time on why the material or the structure gave way — the load path, the corrosion, the pressure, the missing bolt. This is what the diagram inserts illustrate and what distinguishes the channel.\n\nNEVER speculate about what victims experienced. Never invent dialogue. Never linger on suffering for effect. The restraint is the tone.\n\nSTYLE: sober, precise, unhurried German. No greetings, no direct address to the viewer.\n\nVISUAL CUES: directing notes in SQUARE BRACKETS — the structure, the era, where diagrams and archive belong. Stripped before the voice-over.",
+    "topic_formula": "German-language reconstructions of ENGINEERING AND STRUCTURAL FAILURES: buildings, dams, bridges, tunnels, industrial plants, ships, leisure structures, pipelines.\n\nMEASURED 2026-08-09 on the German niche, not assumed:\n  Dark Records Deutsch   9 930 subs, 21 videos, MEDIAN 66 665, 14 min — dormant since 2026-03-06\n  Schattenlicht Aviation 2 280 subs, median 4 853, one video 628 354\n  Katastrophen Doku      2 640 subs, median 1 066, one video 359 860\n  Faszinierender Horror    221 subs, 93 videos, MEDIAN 105 — a literal German clone of Fascinating Horror\n\nTHE TITLE FORMULA THAT WINS, measured across two languages:\n  x16.41  1 094 223  'Warum explodierte dieser brandneue Wasserpark?'\n           138 677  'Warum ist dieser brandneue Wolkenkratzer eingestürzt?'\n  (the SAME two titles are the top two on the operator's French channel)\n\nFour elements, aim for all four:\n  1. A QUESTION, usually 'Warum'. Not a statement of what happened.\n  2. The demonstrative 'dieser/diese' — THIS one, a specific object.\n  3. The paradox of newness where it applies: 'brandneu', 'nagelneu', 'gerade eröffnet', 'nach nur drei Jahren'.\n  4. A LARGE MAN-MADE OBJECT the viewer can instantly picture.\n\nWHAT LOSES, measured on the same channels:\n  x0.15  10 097  superlative with no object\n  x0.31  20 509  a period, not an object\n  median 105     named obscure foreign-local incidents\n\nHARD RULE: never build a title on the NAME of an incident the German audience does not already recognise. Build it on the OBJECT and the paradox. National relevance is NOT the winning variable — the Love Parade disaster, famous in Germany, scored only x0.36.\n\nHARD RULE ON TONE: real people died. Never speculate about what victims felt, never invent dialogue, never use a death toll as a hook.",
+    "stats_from": "",
+    "used_topics": [
+      "Warum stürzte diese brandneue Brücke ein?",
+      "brandnew dam failing immediately): * Object: Staudamm (dam) * Formula: \"Warum brach dieser brandneue"
+    ],
+    "series": "",
+    "series_next": 1,
+    "youtube_url": "",
+    "notes": "Немецкие реконструкции разрушения инженерных объектов. Образец: Dark Records Deutsch 9.9k подписчиков, 21 ролик, медиана 66 665, 14 мин (замер 2026-08-09), молчит с марта. Решает форма заголовка: вопрос + «dieser» + «brandneu» + крупный узнаваемый объект. Дословный перевод формулы Fascinating Horror на немецкий ПРОВАЛИЛСЯ: Faszinierender Horror, 93 ролика, медиана 105. Язык выбран замером: та же сеть на французском даёт медиану 416 против 66 665 на немецком. Имя проверено поиском YouTube 2026-08-09 — каналов «Einsturzpunkt» не нашлось ни одного.",
+    "id": "einsturzpunkt",
+    "script_shape": "disaster"
   }
 ]
