@@ -2935,6 +2935,272 @@ SEO_SHAPE_DEFAULT = {
 }
 
 
+# ЗАКОН КЛИКА — ОБЩИЙ ДЛЯ ВСЕХ КАНАЛОВ, а не только для немецкого.
+#
+# Повод — замер владельца в YouTube Studio по испанскому ролику «Diderot
+# arrestado por una idea peligrosa»: 1 100 показов, CTR 1.4 %, 15 просмотров,
+# трафик на 100 % «рекомендуемые видео». То есть раздачу YouTube СДЕЛАЛ, и
+# удержание рабочее (6:50 из 22:39 — 30 %), а до просмотра дело не дошло:
+# тысяча человек увидела карточку и не нажала. Терялся ровно клик, и терял
+# его заголовок, построенный на ИМЕНИ, которого зритель не знает.
+#
+# То же самое замерено независимо на немецкой нише (см. topic_formula канала
+# einsturzpunkt): канал-клон Fascinating Horror выпустил 93 ролика с медианой
+# 105 просмотров, потому что брал НАЗВАННЫЕ малоизвестные происшествия. А
+# выигрывала на двух языках сразу одна и та же конструкция — вопрос,
+# указательное «вот этот», парадокс новизны и КРУПНЫЙ УЗНАВАЕМЫЙ ОБЪЕКТ.
+#
+# Раньше этот разбор лежал в topic_formula ОДНОГО канала и до остальных не
+# доезжал. Это и была ошибка: формула ниши описывает, ЧЕМ канал отличается,
+# а закон клика описывает, как вообще устроен клик, — он не про нишу. Здесь
+# он вынесен в общее место и уходит в промпт каждому каналу.
+#
+# Разведение обязанностей явное, иначе закон подерётся с замерами каналов:
+# пункты 1 и 3 (вопрос и новизна) не лезут в бытовой канал, где выигрывает
+# «$4 Amish Fix», — там формула канала главнее. Пункты 2 и 4 (указательное и
+# крупный узнаваемый объект) общие без исключений: это и есть разница между
+# x16.41 и x0.15.
+TITLE_CLICK_LAW = (
+    "HOW A TITLE EARNS THE CLICK — measured on live channels in three "
+    "languages, and it outranks taste:\n"
+    "  x16.41  1,094,223 views  'Warum explodierte dieser brandneue "
+    "Wasserpark?'\n"
+    "            138,677 views  'Warum ist dieser brandneue Wolkenkratzer "
+    "eingestürzt?'\n"
+    "  x0.31      20,509 views  a PERIOD OF TIME where the object should be\n"
+    "  x0.15      10,097 views  a SUPERLATIVE with no object at all\n"
+    "  median        105 views  93 videos built on the NAMES of incidents the "
+    "audience had never heard of\n"
+    "  1.4% CTR   on 1,100 impressions  'Diderot arrestado por una idea "
+    "peligrosa' — this pipeline's own last video. YouTube served it to a "
+    "thousand people and they did not press it.\n\n"
+    "Four elements. Write them in THIS CHANNEL'S OWN LANGUAGE — carry the "
+    "STRUCTURE across, never the German words:\n"
+    "  1. A QUESTION ('Why did…', '¿Por qué…', 'Warum…'), not a statement of "
+    "what happened.\n"
+    "  2. A DEMONSTRATIVE — this one, THIS specific thing ('dieser', 'este', "
+    "'ce', 'this').\n"
+    "  3. A PARADOX, usually newness or speed: brand-new, just opened, after "
+    "only three years, still under warranty.\n"
+    "  4. A LARGE OBJECT THE STRANGER CAN PICTURE FROM THE WORDS ALONE — a "
+    "water park, a skyscraper, a bridge, a printing press, a prison gate, a "
+    "banned book. Not an abstraction, not an era, not a feeling.\n\n"
+    "Elements 2 and 4 are absolute and apply to every channel and every "
+    "niche: the demonstrative and the picturable object are the whole "
+    "difference between x16.41 and x0.15. Elements 1 and 3 bend where the "
+    "channel's own measured formula says otherwise — that formula was "
+    "measured on this exact audience and wins any clash.\n\n"
+    "THE MEASURED WAY TO FAIL is to build the title on a PROPER NAME the "
+    "viewer does not already recognise — a person, a town, an incident. A "
+    "name he cannot picture is not a hook. If the video is about a person, "
+    "the title still leads with THE THING — the book, the machine, the cell, "
+    "the press, the letter — and the person comes second or not at all. "
+    "National fame is NOT the fix either: a disaster famous in its own "
+    "country still scored x0.36.\n"
+)
+
+# Указательные и слова новизны по языкам — для МЕХАНИЧЕСКОЙ проверки того,
+# что закон выше вообще доехал до ответа. Проверка нужна отдельно от
+# просьбы: замерено на этом же проекте — модель охотно соглашается с
+# инструкцией и пишет ровно то же, что писала раньше. Списки короткие
+# намеренно: это не разбор языка, а признак наличия конструкции.
+_TITLE_DEMONSTRATIVES = {
+    "английский": ("this", "these"),
+    "русский": ("этот", "эта", "это", "эти", "этого", "этой", "этом"),
+    "испанский": ("este", "esta", "estos", "estas"),
+    "немецкий": ("dieser", "diese", "dieses", "diesen", "diesem"),
+    "французский": ("ce", "cet", "cette", "ces"),
+    "португальский": ("este", "esta", "estes", "estas", "esse", "essa"),
+}
+# Слова новизны хранятся ОСНОВАМИ и сравниваются по началу слова: замер на
+# настоящем победителе показал, чего стоит точное совпадение — «brandneue
+# Wasserpark» не совпал с «brandneu», и заголовок на 1 094 223 просмотра
+# получил оценку 3 из 4 вместо 4 из 4. Формы одного слова здесь бесконечны
+# (склонение и род в четырёх языках), а признак нужен грубый.
+_TITLE_NEWNESS = {
+    "английский": ("brand-new", "brand new", "just opened", "new", "only",
+                   "days after", "first"),
+    "русский": ("только что", "спустя", "нов", "перв"),
+    "испанский": ("nuev", "recién", "recien", "estren", "apenas", "solo",
+                  "sólo", "primer"),
+    "немецкий": ("nach nur", "brandneu", "nagelneu", "neu", "gerade", "erst"),
+    "французский": ("à peine", "neuf", "neuve", "nouve", "seulement",
+                    "vient"),
+    "португальский": ("nov", "recém", "recem", "apenas", "primeir"),
+}
+_TITLE_QUESTION_HEADS = {
+    "английский": ("why", "how", "what", "who"),
+    "русский": ("почему", "зачем", "как", "что"),
+    "испанский": ("por qué", "porqué", "cómo", "qué", "quién", "¿"),
+    "немецкий": ("warum", "wieso", "weshalb", "wie", "was"),
+    "французский": ("pourquoi", "comment", "que"),
+    "португальский": ("por que", "porquê", "como", "o que"),
+}
+# Обычные зачины заголовка: артикли, предлоги, указательные, вопросительные.
+# Всё, чего здесь нет и что стоит первым с заглавной, считаем именем
+# собственным — грубо, но именно этот случай и замерен как провальный.
+_TITLE_OPENERS = {
+    "английский": {"the", "a", "an", "this", "these", "that", "why", "how",
+                   "what", "who", "when", "where", "inside", "they", "he",
+                   "she", "it", "one", "his", "her", "their", "no", "not",
+                   "before", "after", "from", "in", "on", "of"},
+    "русский": {"почему", "зачем", "как", "что", "этот", "эта", "это", "эти",
+                "в", "на", "за", "из", "под", "над", "перед", "после",
+                "тот", "та", "то", "те", "он", "она", "они", "история",
+                "первый", "первая", "новый", "новая", "когда", "где"},
+    "испанский": {"el", "la", "los", "las", "un", "una", "unos", "unas",
+                  "este", "esta", "estos", "estas", "ese", "esa", "por",
+                  "qué", "cómo", "cuándo", "cuando", "dónde", "quién",
+                  "en", "de", "del", "al", "lo", "su", "sus", "y", "cuál",
+                  "así", "nadie", "nunca", "antes", "después"},
+    "немецкий": {"der", "die", "das", "den", "dem", "des", "ein", "eine",
+                 "einen", "einem", "eines", "dieser", "diese", "dieses",
+                 "diesen", "diesem", "warum", "wieso", "weshalb", "wie",
+                 "was", "wer", "wann", "wo", "als", "im", "in", "am", "an",
+                 "auf", "nach", "vor", "sie", "er", "es", "kein", "keine"},
+    "французский": {"le", "la", "les", "un", "une", "des", "ce", "cet",
+                    "cette", "ces", "pourquoi", "comment", "quand", "qui",
+                    "que", "quoi", "dans", "sur", "en", "au", "aux", "du",
+                    "de", "il", "elle", "ils", "son", "sa", "ses"},
+    "португальский": {"o", "a", "os", "as", "um", "uma", "este", "esta",
+                      "esse", "essa", "por", "que", "como", "quando", "quem",
+                      "em", "no", "na", "do", "da", "ao", "seu", "sua"},
+}
+
+
+def title_click_score(title: str, lang: str = "английский") -> tuple[int, list[str]]:
+    """Сколько из четырёх элементов ЗАКОНА КЛИКА есть в заголовке.
+
+    Считает механически и заведомо грубо: наличие вопроса, указательного,
+    слова новизны и «не начинается с незнакомого имени собственного».
+    Точность здесь не нужна и недостижима — нужен признак того, что закон
+    вообще доехал до ответа модели. Без такой проверки единственным
+    доказательством было бы «мы попросили», а замер на этом проекте уже
+    показал, чего стоит просьба: формула ниши лежала в промпте, и заголовок
+    всё равно вышел «Diderot arrestado por…».
+
+    Возвращает (0-4, чего не хватает) — второе идёт в журнал человеку."""
+    t = " ".join((title or "").split())
+    low = t.lower()
+    miss = []
+    n = 0
+    heads = _TITLE_QUESTION_HEADS.get(lang, _TITLE_QUESTION_HEADS["английский"])
+    if "?" in t or any(low.startswith(h) for h in heads):
+        n += 1
+    else:
+        miss.append("не вопрос")
+    words = re.findall(r"[^\W\d_]+", low, re.UNICODE)
+    dem = _TITLE_DEMONSTRATIVES.get(lang, _TITLE_DEMONSTRATIVES["английский"])
+    if any(w in dem for w in words):
+        n += 1
+    else:
+        miss.append("нет указательного «вот этот»")
+    new = _TITLE_NEWNESS.get(lang, _TITLE_NEWNESS["английский"])
+    if (any(p in low for p in new if " " in p)
+            or any(w.startswith(p) for w in words
+                   for p in new if " " not in p)):
+        n += 1
+    else:
+        miss.append("нет парадокса новизны")
+    # Имя собственное ПЕРВЫМ СЛОВОМ — ровно тот способ провалиться, который
+    # замерен: испанский ролик начинался с «Diderot», немецкий клон брал
+    # названия происшествий и держал медиану 105.
+    #
+    # Ищем только по ПЕРВОМУ слову, и это осознанно: в английском заголовки
+    # набирают с заглавной каждое слово («The Dam That Failed Twice»), и
+    # заглавная в середине не значит ничего. А вот первое слово, которого
+    # нет в коротком списке обычных зачинов языка, — почти всегда имя.
+    head = (re.findall(r"[^\W\d_]+", t, re.UNICODE) or [""])[0]
+    openers = _TITLE_OPENERS.get(lang, _TITLE_OPENERS["английский"])
+    if head and head[:1].isupper() and head.lower() not in openers:
+        miss.append(f"ведёт имя собственное ({head})")
+    else:
+        n += 1
+    return n, miss
+
+
+_SEO_SECTIONS = ("TITLES", "DESCRIPTION", "TAGS", "CHAPTERS")
+
+
+def seo_clean(seo_text: str) -> str:
+    """Снять markdown с заголовков разделов и с пунктов списка.
+
+    Не косметика. yt_upload.parse_seo ищет строку, которая после снятия
+    двоеточия равна TITLES/DESCRIPTION/TAGS/CHAPTERS, — и промпт просит
+    писать заголовки именно так. Но модель периодически оформляет их
+    жирным: «**TITLES:**». Тогда ни один раздел не опознаётся, parse_seo
+    возвращает пустой заголовок и пустое описание, и ролик уезжает на
+    YouTube безымянным. Поймано вживую на канале abyss в этом же прогоне.
+
+    Правим на выходе генерации, а не в parse_seo, чтобы файл на диске был
+    чистым: его читают и глазами тоже."""
+    out = []
+    for line in (seo_text or "").splitlines():
+        bare = line.strip().strip("*_# ").strip()
+        if bare.rstrip(":").upper() in _SEO_SECTIONS:
+            out.append(bare.rstrip(":").upper() + ":")
+            continue
+        if not line.strip().strip("*_-—• "):
+            # строка из одних звёздочек/дефисов — остаток разметки, не текст
+            if line.strip():
+                continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def rank_titles(seo_text: str, lang: str = "английский", log=print) -> str:
+    """Поставить первым тот заголовок, который лучше отвечает закону клика.
+
+    Первым уходит НЕ «первый попавшийся»: yt_upload.parse_seo берёт из
+    seo.txt именно верхнюю строку блока TITLES и публикует её. До сих пор
+    порядок задавала модель, то есть случайность внутри одного ответа — а
+    разброс между заголовками из ОДНОГО ответа на замеренных каналах
+    доходил до x16.
+
+    Порядок устойчивый: при равных оценках сохраняется исходный, иначе
+    перезапуск без изменений давал бы другой заголовок.
+
+    Ничего не роняет: не нашли блок TITLES — возвращаем текст как был."""
+    lines = (seo_text or "").splitlines()
+    start = end = -1
+    for i, line in enumerate(lines):
+        s = line.strip().rstrip(":").upper()
+        if s == "TITLES":
+            start = i + 1
+        elif start >= 0 and s in ("DESCRIPTION", "TAGS", "CHAPTERS"):
+            end = i
+            break
+    if start < 0:
+        return seo_text
+    if end < 0:
+        end = len(lines)
+    block = lines[start:end]
+    items = [(i, ln) for i, ln in enumerate(block) if ln.strip()]
+    if len(items) < 2:
+        return seo_text
+    scored = []
+    for i, ln in items:
+        bare = re.sub(r"^\s*(?:\d+[.)]|[-*•])\s*", "", ln).strip().strip("*_")
+        n, miss = title_click_score(bare, lang)
+        scored.append((n, i, bare, miss))
+    best = sorted(scored, key=lambda x: (-x[0], x[1]))
+    top = best[0]
+    if top[0] <= 1:
+        # Ноль или один элемент из четырёх у ЛУЧШЕГО из пяти — это не
+        # «слабый вариант», это тот самый заголовок на 1.4 % CTR. Говорим
+        # вслух: перегенерация дешевле тысячи потраченных показов.
+        log(f"[SEO] ⚠ Ни один из {len(scored)} заголовков не построен по "
+            f"закону клика (лучший — {top[0]}/4: "
+            + ", ".join(top[3]) + "). Такой заголовок уже дал 1.4 % CTR на "
+            "1 100 показов — перегенерируй SEO перед публикацией.", "warn")
+    else:
+        log(f"[SEO] Заголовок по закону клика ({top[0]}/4) поставлен первым: "
+            f"«{top[2]}»"
+            + ("; не хватает: " + ", ".join(top[3]) if top[3] else ""))
+    ordered = [f"{n + 1}. {bare}" for n, (_, _, bare, _) in enumerate(best)]
+    return "\n".join(lines[:start] + ordered + lines[end:])
+
+
 def gen_seo(script_text: str, api_key: str = "", log=print,
             lang: str = "английский", srt: Path | None = None,
             formula: str = "", channel: dict | None = None) -> str:
@@ -2997,11 +3263,20 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
           f"Write EVERY section below in {lang_name} — the titles, the "
           f"description, the tags AND the chapter labels. Tags in {lang_name} "
           "too: this channel's viewers search in their own language.\n\n"
+          # Закон клика ПЕРЕД формулой ниши, а не вместо неё: формула
+          # говорит, о чём канал, закон — почему на карточку вообще
+          # нажимают. Раньше закон лежал в topic_formula одного немецкого
+          # канала и до испанского не доезжал — тот и собрал 1.4 % CTR.
+          + TITLE_CLICK_LAW + "\n"
           + (("WHAT WORKS ON THIS CHANNEL'S NICHE — measured on competing "
               "channels, follow this pattern for the titles, it matters more "
               f"than anything else here:\n{formula}\n\n") if formula.strip() else "")
           + "TITLES: 5 options, each under 60 characters so nothing is cut off "
-          "on mobile.\n"
+          "on mobile. Every one of the five must name a LARGE OBJECT the "
+          "viewer can picture from the words alone, and at least three of the "
+          "five must also carry the demonstrative ('this ...'). Do not open a "
+          "title with a proper name unless a stranger scrolling past would "
+          "recognise it instantly.\n"
           + ("The SHAPE of the title must copy the winning pattern above — "
              "that pattern was measured, it beat its own channel many times "
              "over, and it outranks every other instruction here. If the "
@@ -3041,6 +3316,19 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
         log(f"[SEO] ⚠ Ролик на языке «{lang}», а {bad}. "
             "Проверь seo.txt перед публикацией — по чужому языку ролик "
             "не найдут.", "warn")
+    # Порядок заголовков решает, что уйдёт на YouTube: parse_seo берёт
+    # ВЕРХНЮЮ строку блока. До сих пор её выбирала модель — то есть
+    # случайность внутри одного ответа, при разбросе до x16 между вариантами.
+    try:
+        # Сначала чистка разметки, потом перестановка: markdown вокруг
+        # «TITLES:» прячет раздел от обеих — и от перестановки, и от
+        # разбора при загрузке.
+        out = rank_titles(seo_clean(out), lang, log)
+    except Exception as e:
+        # Перестановка — улучшение, а не обязанность: сломаться на ней и
+        # потерять готовое SEO было бы хуже, чем оставить порядок модели.
+        log(f"[SEO] Заголовки не переставил ({_redact(e)}) — "
+            "порядок остался от модели")
     return out
 
 
@@ -4597,22 +4885,36 @@ THUMB_STYLES = {
     "contemplative": {
         "words":
             "The headline is TWO lines separated by \\n. Line 1 is the "
-            "THINKER'S SURNAME alone, nothing else — on the reference "
-            "channel the name is the largest word in every winning cover, "
-            "while every flop put an abstract -ism or a quotation there "
-            "instead. Line 2 is 2-4 words saying what happened TO HIM or to "
-            "his world: third person, past tense. NEVER address the viewer, "
-            "never 'tú', 'usted', 'tus', never an imperative — the same "
-            "author scored 199,346 views on 'the book that drove HIM to the "
-            "abyss' and 538 on 'the book that reveals YOUR demons'.",
+            "single largest word in the frame. It is the THINKER'S SURNAME "
+            "ONLY IF a stranger scrolling past would recognise that surname "
+            "instantly — Nietzsche, Freud, Marx. On the reference channel "
+            "the name is the largest word in every winning cover, but every "
+            "one of those names was already famous. When the thinker is NOT "
+            "a household name, line 1 is instead the OBJECT the video turns "
+            "on — the book, the letter, the press, the cell, the verdict — "
+            "in one or two words. That distinction is measured on this "
+            "channel: a cover built on the surname 'Diderot' took 1,100 "
+            "impressions to 15 views, a 1.4% click-through. An abstract "
+            "-ism or a quotation on line 1 is forbidden either way — that is "
+            "what every flop of the niche put there. Line 2 is 2-4 words "
+            "saying what happened TO HIM or to his world: third person, past "
+            "tense. NEVER address the viewer, never 'tú', 'usted', 'tus', "
+            "never an imperative — the same author scored 199,346 views on "
+            "'the book that drove HIM to the abyss' and 538 on 'the book "
+            "that reveals YOUR demons'.",
         "bg":
             "The background is a real SCENE with depth and props from the "
             "life — a study with a lamp and manuscripts, a cathedral "
-            "interior, a period street, a cell — with the thinker inside it, "
-            "absorbed in his work rather than looking at the camera. NEVER a "
-            "cut-out bust floating on a black void and never several men "
-            "side by side: that is exactly what the flops of this niche did. "
-            "Low slanted light, painterly, deep shadow.",
+            "interior, a period street, a cell. ONE object in it is close, "
+            "large and unmistakable at 210 px: the press, the confiscated "
+            "manuscript, the barred door, the burning stack of books. The "
+            "thinker may be present, but SMALL and turned to his work, never "
+            "a portrait filling the frame: the viewer does not know his "
+            "face, and a stranger's face is not a hook — measured, 1.4% "
+            "click-through on a man at a candlelit desk. NEVER a cut-out "
+            "bust floating on a black void and never several men side by "
+            "side: that is exactly what the flops of this niche did. Low "
+            "slanted light, painterly, deep shadow.",
         "case": "upper",
         "layouts": ("left", "bottom"),
         "parts": (),
@@ -4624,10 +4926,266 @@ THUMB_STYLE_DEFAULT = {
     "words":
         "The headline is the hook of the video in the fewest possible words.",
     "bg":
-        "The background is a place, an object or a scene from the narration.",
+        "The background is ONE large object, structure or place from the "
+        "narration, filling most of the frame and recognisable at a glance.",
     "case": "upper",
     "layouts": ("left", "bottom", "split"),
 }
+
+
+# ---------- ЧТЕНИЕ ОБЛОЖКИ В ТОМ РАЗМЕРЕ, В КАКОМ ЕЁ ВИДЯТ ----------
+#
+# Обложка рисуется 1280x720, а зритель видит карточку шириной ~210 px —
+# уменьшение в 6.1 раза. Клик решается ИМЕННО в этом размере, а софт судил
+# обложку в полный рост и по полноразмерному файлу ставил оценку. Замер
+# владельца: 82/100 внутренней оценки при живом CTR 1.4 % на 1 100 показах.
+# Оценка, расходящаяся с замером на порядок, — не оценка, а украшение лога.
+#
+# Числа ниже — ЗЕРКАЛО remotion/src/Thumbnail.tsx (константы LOOKS, MIN_SIZE,
+# функции fit и pick). Дублирование сознательное и неприятное: посчитать
+# кегль можно только там, где он считается, а Remotion ничего не возвращает
+# наружу — он рисует PNG. Поэтому здесь повторена ровно та же арифметика, и
+# при правке Thumbnail.tsx правится и это место. Проверяется автоматически:
+# thumb_metrics_drift() читает Thumbnail.tsx и сравнивает числа, вызов стоит
+# в начале проверки обложек — молчаливое расхождение хуже, чем шумное.
+FEED_W = 210
+THUMB_RENDER_W = 1280
+FEED_SCALE = FEED_W / THUMB_RENDER_W            # 0.164
+
+# Порог читаемости В ЛЕНТЕ, а не в макете. 12 px — размер, которым YouTube
+# сам набирает подпись под карточкой; ниже него надпись на обложке
+# перестаёт быть словом и становится фактурой. В макете это 73 px:
+# 12 / 0.164. Прежний порог MIN_SIZE=64 соответствует 10.5 px в ленте — он
+# защищал от «невидимого», а не от «нечитаемого».
+FEED_MIN_FONT = 12.0
+THUMB_MIN_SIZE = 64                             # зеркало MIN_SIZE
+THUMB_MAX_LINES = 4
+
+# advance/max/loud — из LOOKS; schemes — имя схемы и ШИРИНА КОЛОНКИ из
+# объекта box в Thumbnail.tsx, в том же порядке (порядок важен: схему
+# выбирает хеш заголовка по индексу).
+THUMB_LAYOUT = {
+    "harsh": {"advance": 0.5, "max": 96, "loud": -1, "max_words": 7,
+              "schemes": (("column", 560), ("band", 1160))},
+    "warm": {"advance": 0.47, "max": 128, "loud": 1, "max_words": 8,
+             "schemes": (("sheet", 660), ("panel", 520))},
+    "contemplative": {"advance": 0.47, "max": 120, "loud": 0, "max_words": 5,
+                      "schemes": (("tl", 620), ("bl", 660), ("br", 620))},
+}
+THUMB_LAYOUT_DEFAULT = {"advance": 0.62, "max": 140, "loud": -1,
+                        "max_words": 6, "schemes": (("bl", 660),)}
+
+
+def thumb_layout(style: str) -> dict:
+    return THUMB_LAYOUT.get((style or "").strip().lower(),
+                            THUMB_LAYOUT_DEFAULT)
+
+
+def _thumb_pick(seed: str, n: int) -> int:
+    """Зеркало pick() из Thumbnail.tsx: та же хеш-функция, тот же остаток.
+
+    Схема (а с ней и ширина колонки) выбирается по хешу заголовка, поэтому
+    предсказать кегль, не повторив хеш, нельзя — а без кегля нельзя сказать,
+    читается ли строка в ленте."""
+    h = 0
+    for c in seed:
+        h = (h * 31 + ord(c)) & 0xFFFFFFFF
+    return h % max(n, 1)
+
+
+def thumb_column(headline: str, style: str = "", layout: str = "") -> tuple[str, int]:
+    """Схема вёрстки и ширина текстовой колонки для этого заголовка."""
+    lay = thumb_layout(style)
+    schemes = lay["schemes"]
+    return schemes[_thumb_pick((headline or "") + (layout or ""), len(schemes))]
+
+
+def thumb_feed_report(headline: str, style: str = "",
+                      layout: str = "") -> dict:
+    """Как этот заголовок будет выглядеть В ЛЕНТЕ: кегль каждой строки в
+    пикселях карточки 210 px, число слов, и годится ли это вообще.
+
+    Считается ДО рендера и до траты картинки на фон: заголовок из шести
+    длинных слов не спасёт никакой фон, а стоит он одну картинку из суточных
+    и одну проверку зрением.
+
+    Возвращает словарь; ok=False означает «в ленте это не прочтут»."""
+    lay = thumb_layout(style)
+    scheme, col = thumb_column(headline, style, layout)
+    lines = [s.strip() for s in (headline or "").split("\n") if s.strip()]
+    words = sum(len(s.split()) for s in lines)
+    out, problems = [], []
+    for i, line in enumerate(lines):
+        big = (False if lay["loud"] < 0
+               else (i == min(lay["loud"], len(lines) - 1)
+                     if len(lines) > 1 else True))
+        # loud<0 значит «все ступени равны», и равны они ПОЛНОМУ кеглю, а не
+        # 0.66 от него: см. правку в Thumbnail.tsx — прежняя формула давала
+        # у harsh 96*0.66=63.4, что ниже MIN_SIZE, и КАЖДАЯ строка канала
+        # рисовалась ровно 64 px, то есть 10.5 px в ленте, независимо от
+        # длины. Канал с «полной фразой из 4-7 слов» физически не мог
+        # получить читаемую обложку.
+        mul = 1.0 if lay["loud"] < 0 else (1.0 if big else 0.66)
+        natural = col / max(len(line), 1) / lay["advance"]
+        size = max(THUMB_MIN_SIZE, min(lay["max"] * mul, natural))
+        feed = size * FEED_SCALE
+        out.append({"text": line, "size": round(size, 1),
+                    "feed_font": round(feed, 1),
+                    "chars": len(line),
+                    # строка не влезла в колонку и рисуется с nowrap —
+                    # значит вылезает за макет и наезжает на кадр
+                    "overflows": natural < THUMB_MIN_SIZE})
+        if feed < FEED_MIN_FONT - 0.05:
+            problems.append(
+                f"строка «{line}» в ленте {feed:.1f} px "
+                f"(порог {FEED_MIN_FONT:.0f})")
+        if natural < THUMB_MIN_SIZE:
+            problems.append(f"строка «{line}» не влезает в колонку {col} px")
+    if not lines:
+        problems.append("пустой заголовок")
+    if len(lines) > THUMB_MAX_LINES:
+        problems.append(f"{len(lines)} строк, больше {THUMB_MAX_LINES}")
+    if words > lay["max_words"]:
+        problems.append(f"{words} слов, больше {lay['max_words']}")
+    return {"ok": not problems, "scheme": scheme, "column": col,
+            "lines": out, "words": words, "problems": problems,
+            "biggest": max((l["feed_font"] for l in out), default=0.0)}
+
+
+def thumb_char_budget(style: str = "") -> tuple[int, int, int]:
+    """Сколько знаков в строке, строк и слов помещается в ленту.
+
+    Уходит в промпт цифрами. Просить «покороче» бесполезно — замерено:
+    в промпте уже стояло «it is read at 210px wide, so every line stays
+    short», и модель прислала «SALVÓ LA CIVILIZACIÓN» (21 знак, 11 px в
+    ленте). Точное число знаков модель соблюдает, расплывчатое «коротко» —
+    нет."""
+    lay = thumb_layout(style)
+    col = min(w for _, w in lay["schemes"])     # худшая из схем канала
+    chars = int(col / (lay["advance"] * (FEED_MIN_FONT / FEED_SCALE)))
+    return max(chars, 6), THUMB_MAX_LINES, lay["max_words"]
+
+
+def fit_headline(headline: str, style: str = "", layout: str = "") -> str:
+    """Переразбить заголовок на строки, влезающие в ленту.
+
+    Переносы расставляет модель, и расставляет их по смыслу, а не по
+    ширине колонки: «TURING / SALVÓ LA CIVILIZACIÓN» — две смысловые
+    строки, но вторая из них в ленте 11 px. Здесь длинные строки режутся
+    по словам, короткие остаются как есть, порядок сохраняется — то есть
+    смысловое членение модели уважается там, где оно физически проходит.
+
+    Слово длиннее бюджета не режем: перенос внутри слова на обложке хуже
+    мелкого кегля. Такой заголовок вернётся из thumb_feed_report как
+    негодный, и это правильный ответ."""
+    chars, _, _ = thumb_char_budget(style)
+    out = []
+    for line in (headline or "").split("\n"):
+        line = " ".join(line.split())
+        if not line:
+            continue
+        if len(line) <= chars:
+            out.append(line)
+            continue
+        cur = ""
+        for w in line.split(" "):
+            probe = f"{cur} {w}".strip()
+            if cur and len(probe) > chars:
+                out.append(cur)
+                cur = w
+            else:
+                cur = probe
+        if cur:
+            out.append(cur)
+    # Лишние строки НЕ обрезаем. Обрезка была бы худшим из возможного:
+    # «...INQUIRY STONE DEAD» превратилось бы в «...INQUIRY STONE», проверка
+    # сказала бы «претензий нет», и на обложку ушла бы оборванная фраза.
+    # Пусть перебор по строкам увидит thumb_feed_report и концепция
+    # отбракуется — их для того и просят с запасом.
+    return "\n".join(out)
+
+
+def feed_preview(src: Path, dest: Path, width: int = FEED_W) -> Path:
+    """Копия обложки РОВНО того размера, в каком её видит зритель.
+
+    Нужна не для красоты: судить обложку по файлу 1280x720 — это судить не
+    то изображение. Мелкий текст, который в полный рост «просто мелкий», в
+    ленте превращается в серую полосу, а лицо в тени — в пятно. Именно
+    поэтому внутренняя оценка держалась 82/100 при CTR 1.4 %.
+
+    LANCZOS, а не NEAREST: браузер уменьшает картинку сглаживанием, и
+    жёсткое прореживание показало бы артефакты, которых у зрителя нет."""
+    from PIL import Image
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    im = Image.open(Path(src)).convert("RGB")
+    h = max(1, round(im.height * width / im.width))
+    im.resize((width, h), Image.LANCZOS).save(dest, format="PNG")
+    return dest
+
+
+def feed_strip(paths: list[Path], dest: Path, width: int = FEED_W) -> Path:
+    """Все обложки ролика рядом, каждая размером карточки — как их увидят
+    в ленте, где они и конкурируют друг с другом и с чужими.
+
+    Отдельный файл, а не три: человек выбирает не «хорошая ли эта», а
+    «какая из трёх остановит взгляд», и по одиночке этот вопрос не
+    задаётся."""
+    from PIL import Image
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    gap, pad = 14, 14
+    cards = []
+    for p in paths:
+        im = Image.open(Path(p)).convert("RGB")
+        cards.append(im.resize((width, max(1, round(im.height * width / im.width))),
+                               Image.LANCZOS))
+    if not cards:
+        raise ValueError("нет обложек для полосы")
+    h = max(c.height for c in cards)
+    sheet = Image.new("RGB", (pad * 2 + len(cards) * width + gap * (len(cards) - 1),
+                              pad * 2 + h), (15, 15, 17))
+    for i, c in enumerate(cards):
+        sheet.paste(c, (pad + i * (width + gap), pad))
+    sheet.save(dest, format="PNG")
+    return dest
+
+
+def thumb_metrics_drift(log=print) -> list[str]:
+    """Сверить числа выше с настоящим Thumbnail.tsx.
+
+    Смысл только в одном: расхождение должно быть ШУМНЫМ. Кегль считается
+    в двух местах — в TSX при рендере и здесь при проверке, — и молчаливо
+    разъехавшись, они дадут худшее из возможного: отбраковку по числам,
+    которых на картинке нет. Файла нет или разобрать не вышло — молчим,
+    это проверка, а не зависимость."""
+    try:
+        src = (Path(__file__).parent / "remotion" / "src"
+               / "Thumbnail.tsx").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    bad = []
+    m = re.search(r"MIN_SIZE\s*=\s*(\d+)", src)
+    if m and int(m.group(1)) != THUMB_MIN_SIZE:
+        bad.append(f"MIN_SIZE: в TSX {m.group(1)}, здесь {THUMB_MIN_SIZE}")
+    for name, lay in list(THUMB_LAYOUT.items()) + [("", THUMB_LAYOUT_DEFAULT)]:
+        if not name:
+            continue
+        block = re.search(name + r":\s*\{(.*?)\n  \}", src, re.S)
+        if not block:
+            bad.append(f"{name}: не найден в Thumbnail.tsx")
+            continue
+        for key, field in (("advance", "advance"), ("max", "maxSize"),
+                           ("loud", "loud")):
+            g = re.search(field + r":\s*(-?[\d.]+)", block.group(1))
+            if g and abs(float(g.group(1)) - float(lay[key])) > 1e-9:
+                bad.append(f"{name}.{field}: в TSX {g.group(1)}, "
+                           f"здесь {lay[key]}")
+    if bad:
+        log("[Обложка] ⚠ Числа макета разъехались с Thumbnail.tsx — "
+            "проверка читаемости считает не то, что рисуется: "
+            + "; ".join(bad), "warn")
+    return bad
 
 
 def _json_fix_quotes(raw: str) -> str:
@@ -4734,6 +5292,10 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
     layouts = st["layouts"]
     upper = st["case"] == "upper"
     parts = st.get("parts", ())
+    # Бюджет строки считается из НАСТОЯЩЕГО макета канала (ширина колонки,
+    # гарнитура, порог читаемости в ленте) — а не назначается на глаз.
+    max_chars, max_lines, max_words = thumb_char_budget(ch.get("palette", ""))
+    thumb_metrics_drift(log)
     # Форма ответа собирается ПОД КАНАЛ: лишние поля не просто балласт —
     # попроси у документалки о философе «выгоды с галочками», и она их
     # придумает, а потом кто-нибудь их нарисует.
@@ -4756,7 +5318,12 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
               "for documentaries in general. Curiosity-driven, never "
               "clickbait that the video doesn't deliver."},
              {"role": "user", "content":
-              f"Based on this narration, propose {count} DIFFERENT thumbnail "
+              # Просим С ЗАПАСОМ: часть концепций отсеется отбраковкой по
+              # ленте (см. ниже), а обложек нужно ровно три — их положено
+              # загружать втроём в сравнение YouTube Studio. Запас стоит
+              # десяток токенов в том же самом вызове, а нехватка стоит
+              # целого сравнения: на двух обложках оно не запускается.
+              f"Based on this narration, propose {count + 2} DIFFERENT thumbnail "
               f"concepts. Everything you write — the headline above all — "
               f"must be in {lang_name}: this is what the channel's viewers "
               "read in their feed.\n\n"
@@ -4766,8 +5333,28 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
               + ("- write it in CAPITALS\n" if upper else
                  "- sentence case, NOT capitals — capitals read as shouting "
                  "and this channel does not shout\n")
-              + "- it is read at 210px wide, so every line stays short\n"
+              # ТОЧНЫЕ ЦИФРЫ вместо «покороче». В промпте уже стояло
+              # «it is read at 210px wide, so every line stays short», и
+              # модель прислала «SALVÓ LA CIVILIZACIÓN» — 21 знак, 11 px в
+              # ленте. Расплывчатую просьбу модель считает выполненной
+              # всегда; число знаков она соблюдает.
+              + f"- HARD LIMIT: at most {max_chars} characters per line "
+              f"(counting spaces), at most {max_lines} lines, at most "
+              f"{max_words} words in total. This is not style advice: the "
+              "cover is rendered 1280 px wide and shown at 210 px, so a "
+              f"line of more than {max_chars} characters comes out below 12 "
+              "px on the viewer's screen and is not read at all. A line "
+              "over the limit gets the concept thrown away.\n"
               "- it is NOT the video title — it is the hook ON the image\n"
+              # Тот же закон, что и у заголовка ролика (TITLE_CLICK_LAW), и
+              # по той же причине: на карточке в ленте текст и картинка
+              # читаются вместе, и если самое крупное слово — незнакомое
+              # имя, картинка его не спасёт.
+              "- the largest word must be something the viewer can PICTURE "
+              "from the word alone — a thing, a structure, a place. Not a "
+              "proper name he has never heard, not an abstraction, not an "
+              "era. A name nobody recognises is the measured way to fail "
+              "here: 1,100 impressions, 15 views.\n"
               f"- {st['words']}\n\n"
               + (st.get("sub_ask", "") + "\n\n" if st.get("sub_ask") else "")
               + ("`object_prompt` names the ONE object the video is about — "
@@ -4785,8 +5372,25 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
                  "height. An arrow and a magnified inset are drawn to that "
                  "point, so name the spot where the remedy or the damage "
                  "actually is.\n\n" if "focus" in parts else "")
-              + "Rules for `bg_prompt`: one sentence describing a photographic "
-              f"background image for that concept. {st['bg']} "
+              # ОБЪЕКТ, А НЕ ПОРТРЕТ НЕЗНАКОМЦА. У испанского ролика на
+              # обложке был нарисован человек за столом при свечах: зритель
+              # не знает, кто это, и лицо незнакомца не работает крючком —
+              # 1.4 % CTR на 1 100 показах. Тот же вывод замерен на немецкой
+              # нише с другой стороны: выигрывали заголовки с КРУПНЫМ
+              # УЗНАВАЕМЫМ ОБЪЕКТОМ, проваливались — с именами и
+              # отвлечённостями. Обложка обязана показывать то же, что
+              # обещает заголовок.
+              + "Rules for `bg_prompt`: one sentence describing a "
+              "photographic background image for that concept. It is built "
+              "around ONE large object, structure or place that fills most "
+              "of the frame and is recognisable at 210 px — a machine, a "
+              "gate, a press, a hull, a facade, a book. A human figure may "
+              "be in it, but never as the subject and never large: a "
+              "stranger's face is not a hook, because the viewer does not "
+              "know whose it is. That is measured on this pipeline's own "
+              "last video — a man at a candlelit desk, 1,100 impressions, "
+              "1.4% click-through. "
+              f"{st['bg']} "
               + ("The remedy itself must NOT be in this background: it is "
                  "photographed separately (`object_prompt`) and stood on top "
                  "of the cover, and the same thing twice in one frame reads "
@@ -4915,6 +5519,50 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
                 "focusX": _pct("focusX", 68.0),
                 "focusY": _pct("focusY", 52.0),
             })
+        # ОТБРАКОВКА ПО ЛЕНТЕ — до рендера и до траты картинки на фон.
+        #
+        # Проверка стояла только ПОСЛЕ рендера и только зрением, по
+        # полноразмерному файлу: у испанского ролика она поставила 82/100
+        # заголовку, который в ленте выходит 11 px. Здесь тот же вопрос
+        # задаётся арифметикой макета, бесплатно и до того, как на фон
+        # потрачена картинка из суточных.
+        #
+        # Сначала ПОДГОНКА, потом отбраковка: модель ставит переносы по
+        # смыслу, а не по ширине колонки, и «TURING / SALVÓ LA CIVILIZACIÓN»
+        # чинится одним лишним переносом, а не выбрасыванием концепции.
+        pal = ch.get("palette", "")
+        graded = []
+        for it in ideas:
+            fitted = fit_headline(it["headline"], pal, it["layout"])
+            if fitted != it["headline"]:
+                log("[Обложка] Перенос переставлен под ленту: "
+                    f"«{it['headline'].replace(chr(10), ' / ')}» → "
+                    f"«{fitted.replace(chr(10), ' / ')}»")
+            it["headline"] = fitted
+            rep = thumb_feed_report(fitted, pal, it["layout"])
+            it["feed"] = rep
+            graded.append((it, rep))
+            if not rep["ok"]:
+                log(f"[Обложка] Отбраковка «{fitted.replace(chr(10), ' / ')}»: "
+                    + "; ".join(rep["problems"]))
+        good = [it for it, rep in graded if rep["ok"]]
+        if good:
+            if len(good) < len(graded):
+                log(f"[Обложка] В ленте читаются {len(good)} из "
+                    f"{len(graded)} концепций — остальные отброшены")
+            ideas = good
+        elif graded:
+            # Ни одна не прошла. Ролик без обложки не выложить вовсе,
+            # поэтому берём наименее плохую — ту, где самое крупное слово
+            # крупнее, — и говорим об этом вслух. Молча отдать негодную
+            # обложку было бы возвратом ровно к тому, что дало 1.4 %.
+            graded.sort(key=lambda g: (len(g[1]["problems"]),
+                                       -g[1]["biggest"]))
+            ideas = [graded[0][0]]
+            log("[Обложка] ⚠ Ни одна из концепций не читается в ленте "
+                f"210 px. Беру наименее плохую ({graded[0][1]['biggest']:.0f} "
+                "px у самого крупного слова), но текст на ней стоит "
+                "переписать короче — именно этим и был 1.4 % CTR.", "warn")
         # Язык проверяем по СЛОВАМ обложек, а не по всему ответу: bg_prompt
         # мы сами просили писать по-английски (он идёт в модель картинок),
         # и он бы перевесил статистику на любом канале.

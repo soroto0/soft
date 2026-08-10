@@ -1772,46 +1772,64 @@ class Api:
             except Exception as e:
                 self.log(f"[Обложка] Рендер {i} не вышел: {e}", "warn")
                 continue
-            # ОЦЕНКА В ЛЕНТЕ, а не просто «читается ли текст».
+            # ОЦЕНКА ПО УМЕНЬШЕННОЙ КОПИИ, а не по файлу 1280x720.
             #
-            # Проверка тут стояла и раньше, но делала половину дела. Она
-            # спрашивала только про ЗАГОЛОВОК — а замер на живом канале
-            # показал, что теряется не он. У estoico-es (Кантор, 2026-08-08)
-            # YouTube дал 318 показов, кликнули 1.9% — при том, что
-            # кликнувшие смотрели 10:19 из 45:55. То есть ролик держит, а
-            # обложка не зовёт. На обеих обложках канала герой стоял мелко
-            # и в тени: разглядеть человека в ленте нельзя, а лицо — самый
-            # сильный элемент превью.
+            # Проверка тут стояла и раньше, но судила не то изображение. Она
+            # ПРОСИЛА модель «представить 210 пикселей», отдавая ей полный
+            # файл, — и представлять модель отказывалась: у испанского
+            # ролика вердикт был 82/100, а живой замер в YouTube Studio по
+            # тому же ролику — 1 100 показов, CTR 1.4 %, 15 просмотров при
+            # рабочем удержании 6:50 из 22:39. Оценка, расходящаяся с
+            # замером на порядок, ничего не измеряет.
             #
-            # И главное: вердикт НИ НА ЧТО НЕ ВЛИЯЛ. Обложек рисуется три,
-            # на YouTube уходит thumb1.jpg, и если негодной оказывалась
-            # именно она — в журнале появлялась строка «замечание», а
-            # ролик всё равно выходил с ней. Теперь оценка решает порядок.
+            # Тот же вывод замерен и раньше, на этом же канале: у estoico-es
+            # (Кантор, 2026-08-08) YouTube дал 318 показов, кликнули 1.9 %,
+            # а кликнувшие смотрели 10:19 из 45:55. Ролик держит, обложка не
+            # зовёт — и оба раза герой на ней был мелким и в тени.
+            #
+            # Теперь картинка ДЕЙСТВИТЕЛЬНО уменьшается до ширины ленты, и
+            # смотрит модель именно на неё. Мелкий текст там уже не «мелкий
+            # текст», а серая полоса — то же, что видит зритель.
             #
             # Про свет НЕ спрашиваем. Тёмный кадр у harsh и contemplative —
             # не оплошность, а вывод из разбора каналов-образцов (см.
             # core.THUMB_STYLES), и переписывать его по одному замеру CTR
             # значило бы принять шум за правило. Спрашиваем про то, что от
             # стиля не зависит: РАЗЛИЧИМО ли главное при ширине 210px.
+            # Имя временное и с точкой: после оценки обложки ПЕРЕСТАВЛЯЮТСЯ
+            # (_rank_thumbnails), и файл «thumb2 в ленте», сделанный до
+            # перестановки, показывал бы уже другую обложку. Копии для
+            # человека собираются заново, из окончательного порядка.
+            feed = None
+            try:
+                feed = core.feed_preview(dest, out_dir / f".feed{i}.png")
+            except Exception as e:
+                self.log(f"[Обложка] Не смог уменьшить до ленты ({e}) — "
+                         "сужу по полному размеру", "warn")
             score = 0
             try:
                 verdict = core.vision_chat(
-                    "This is a YouTube thumbnail. Judge it as it will "
-                    "actually be seen: 210 pixels wide, in a feed, next to "
-                    "other thumbnails, often on a phone. Reply with ONLY "
+                    "This image is a YouTube thumbnail AT ITS REAL FEED "
+                    f"SIZE — {core.FEED_W} pixels wide. It has not been "
+                    "shrunk for your convenience: this is exactly the number "
+                    "of pixels a viewer gets, scrolling past on a phone. "
+                    "Judge what is actually legible HERE, not what you can "
+                    "infer. Reply with ONLY "
                     'JSON: {"score":0-100,"headline_readable":true|false,'
                     '"subject_readable":true|false,'
                     '"problem":"<one short sentence>"}. '
                     "score is how likely a stranger scrolling past is to "
-                    "stop on it. Set headline_readable=false if the text is "
-                    "hard to read, cut off, or lost in the background. Set "
+                    "stop on it. Set headline_readable=false if you cannot "
+                    "read the words at this size without guessing. Set "
                     "subject_readable=false if the main subject — the "
-                    "person, object or place the cover is about — cannot be "
-                    "made out at that size because it is too small, too far "
-                    "away, or swallowed by shadow. Do NOT penalise a dark "
+                    "object, structure or place the cover is about — cannot "
+                    "be made out here because it is too small, too far "
+                    "away, or swallowed by shadow. A human figure you cannot "
+                    "identify does NOT count as a readable subject: the "
+                    "viewer does not know who it is. Do NOT penalise a dark "
                     "or moody image as such: judge only whether the thing "
                     "it is about comes across.",
-                    dest.read_bytes(), key,
+                    (feed or dest).read_bytes(), key,
                     system="You are a YouTube thumbnail reviewer.")
                 m = re.search(r"\{.*\}", verdict, re.S)
                 if m:
@@ -1821,30 +1839,115 @@ class Api:
                     if not data.get("headline_readable", True):
                         flaws.append("не читается заголовок")
                     if not data.get("subject_readable", True):
-                        flaws.append("не разглядеть героя")
+                        flaws.append("не разглядеть объект")
                     if flaws or score < 50:
                         self.log(
-                            f"[Обложка] {dest.name}: {score}/100"
+                            f"[Обложка] {dest.name}: {score}/100 в ленте"
                             + (" — " + ", ".join(flaws) if flaws else "")
                             + (f"; {data.get('problem', '')}"
                                if data.get("problem") else ""), "warn")
                     else:
-                        self.log(f"[Обложка] {dest.name}: {score}/100")
+                        self.log(f"[Обложка] {dest.name}: {score}/100 в ленте")
             except Exception:
                 pass   # проверка необязательна, обложка уже готова
+            # ЗАМЕР МАКЕТА ВАЖНЕЕ МНЕНИЯ. Модель зрения отвечает числом, и
+            # число это она придумывает; высота букв в ленте — величина, а
+            # не мнение. Если арифметика макета говорит, что строка выходит
+            # мельче порога, обложка уезжает вниз списка независимо от того,
+            # что о ней сказала модель.
+            rep = (idea.get("feed") or {})
+            if rep and not rep.get("ok", True):
+                score = min(score, 40)
+                self.log(f"[Обложка] {dest.name}: замер макета — "
+                         + "; ".join(rep.get("problems", []))
+                         + ". Оценка снижена до " + str(score), "warn")
+            elif rep:
+                self.log(f"[Обложка] {dest.name}: самое крупное слово в "
+                         f"ленте {rep.get('biggest', 0):.0f} px "
+                         f"(порог {core.FEED_MIN_FONT:.0f})")
             made.append((score, str(dest)))
         if made:
             made = self._rank_thumbnails(made, out_dir)
+            self._ab_pack(made, out_dir)
             self.log(f"[Обложка] Готово: {len(made)} шт. в {out_dir.name}\\")
         return made
+
+    def _ab_pack(self, paths: list[str], out_dir: Path) -> None:
+        """Сложить ВСЕ обложки для загрузки втроём и показать их в ленте.
+
+        Конвейер делал три концепции и оставлял одну «лучшую» по своей
+        оценке — то есть выбрасывал две трети работы по суждению, которое на
+        живом замере ошиблось на порядок (82/100 при CTR 1.4 %). В YouTube
+        Studio есть встроенное сравнение трёх обложек, и оно меряет CTR на
+        НАСТОЯЩИХ показах. Спорить с ним внутренней оценкой не за чем:
+        оценка нужна, чтобы выбрать, что вообще загружать, а решает замер.
+
+        Ничего не роняет: не вышло сложить — обложки всё равно лежат в
+        thumbs/, просто без подсказки."""
+        try:
+            ab = out_dir / "для_сравнения"
+            ab.mkdir(parents=True, exist_ok=True)
+            # Убираем ТОЛЬКО то, что кладёт сюда эта же функция, и только
+            # лишнее: в прошлый раз обложек могло быть три, а в этот две, и
+            # оставшаяся C.jpg — обложка ЧУЖОГО ролика, загруженная в
+            # сравнение вместе с нашими. Именно эта беда уже описана в
+            # _warn_stale. Чужие файлы, если человек что-то сюда положил,
+            # не трогаем: удалять в папке канала не наше дело.
+            for n in range(len(paths), 26):
+                for name in (f"{chr(65 + n)}.jpg", f"{chr(65 + n)}_в_ленте.png"):
+                    (ab / name).unlink(missing_ok=True)
+            names = []
+            for n, src in enumerate(paths):
+                dst = ab / f"{chr(65 + n)}.jpg"
+                shutil.copyfile(src, dst)
+                names.append(dst.name)
+                try:
+                    core.feed_preview(dst, ab / f"{chr(65 + n)}_в_ленте.png")
+                except Exception:
+                    pass    # полоса ниже показывает то же самое
+            for tmp in out_dir.glob(".feed*.png"):
+                tmp.unlink(missing_ok=True)   # черновики оценки, см. выше
+            strip = ""
+            try:
+                strip = str(core.feed_strip(
+                    [Path(p) for p in paths], ab / "как_в_ленте.png").name)
+            except Exception as e:
+                self.log(f"[Обложка] Полоса «как в ленте» не вышла ({e})")
+            (ab / "ЧТО_С_ЭТИМ_ДЕЛАТЬ.txt").write_text(
+                "Загрузить в YouTube Studio ВСЕ ТРИ, а не одну.\n\n"
+                "Ролик -> Сведения -> Значок -> «Тест и сравнение»\n"
+                "(Test & compare). Туда кладутся " + str(len(names))
+                + " файла: " + ", ".join(names) + ".\n\n"
+                "Зачем: YouTube сам покажет их живой аудитории и померит\n"
+                "CTR каждой. Это единственная честная оценка обложки.\n"
+                "Внутренняя оценка софта на прошлом ролике поставила\n"
+                "82 из 100 обложке, которая собрала 1,4 % CTR на 1 100\n"
+                "показах — выбирать одну по ней нельзя.\n\n"
+                + ("Файл «" + strip + "» — все три рядом в том размере,\n"
+                   "в каком их видно в ленте (210 px). Смотреть надо\n"
+                   "именно его, а не картинки в полный рост.\n"
+                   if strip else ""),
+                encoding="utf-8")
+            self.log(f"[Обложка] Для сравнения в YouTube Studio: "
+                     f"{out_dir.name}\\{ab.name}\\ — загрузи ВСЕ "
+                     f"{len(names)} ({', '.join(names)}) через «Тест и "
+                     "сравнение». Живой CTR честнее внутренней оценки.")
+        except Exception as e:
+            self.log(f"[Обложка] Пачку для сравнения не собрал ({e}) — "
+                     "обложки лежат в thumbs/ как обычно", "warn")
 
     def _rank_thumbnails(self, scored: list[tuple[int, str]],
                          out_dir: Path) -> list[str]:
         """Переставить обложки так, чтобы лучшая стала thumb1.jpg.
 
-        На YouTube уходит первая, а порядок до сих пор задавала очередь
-        генерации — то есть случайность. Оценка зрением при этом уже
+        На YouTube автозагрузка ставит первую, а порядок до сих пор задавала
+        очередь генерации — то есть случайность. Оценка зрением при этом уже
         считалась и выбрасывалась. Здесь она наконец решает.
+
+        Порядок — это ВСЁ, что решает оценка. Остальные две обложки не
+        выбрасываются: они уходят в thumbs/для_сравнения/ (см. _ab_pack),
+        потому что настоящий выбор делает встроенное сравнение YouTube
+        Studio на живых показах, а не эта оценка.
 
         Если оценок нет вовсе (модель зрения недоступна, ключ кончился),
         порядок остаётся прежним: тасовать вслепую хуже, чем не тасовать.
@@ -1868,7 +1971,8 @@ class Api:
             t.replace(final)
             out.append(str(final))
         self.log(f"[Обложка] Лучшая ({best[0][0]}/100) поставлена первой — "
-                 "именно она уходит на YouTube")
+                 "с неё ролик уходит на YouTube; остальные не выбрасываются, "
+                 "их надо загрузить в «Тест и сравнение»")
         return out
 
     def make_thumbnails(self, count: int = 3):

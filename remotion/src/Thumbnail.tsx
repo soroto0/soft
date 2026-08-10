@@ -481,7 +481,15 @@ export const Thumbnail: React.FC<ThumbnailProps> = (p) => {
               : lines.length > 1
               ? i === Math.min(look.loud, lines.length - 1)
               : true;
-          const size = fit(line, colW, look, look.maxSize * (big ? 1 : 0.66));
+          // loud < 0 значит «все ступени РАВНЫ», и равны они полному кеглю.
+          // Прежняя формула умножала на 0.66 и такие строки тоже: у harsh
+          // выходило 96*0.66 = 63.4, то есть НИЖЕ MIN_SIZE, и каждая строка
+          // канала рисовалась ровно 64 px независимо от длины — 10.5 px в
+          // ленте YouTube. Канал, у которого замеренный победный приём —
+          // целая фраза из 4-7 слов, физически не мог получить читаемую
+          // обложку: подгонка кегля для него не работала вовсе.
+          const mul = look.loud < 0 ? 1 : big ? 1 : 0.66;
+          const size = fit(line, colW, look, look.maxSize * mul);
           const onPlate = !!look.alarm && i === 2;
           return (
             <div key={i} style={{ position: 'relative', padding: onPlate ? '4px 16px 9px' : 0 }}>
