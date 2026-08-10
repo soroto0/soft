@@ -999,6 +999,12 @@ class Api:
         pal = (self._channel() or {}).get("palette", "")
         snd = core.sound_palette_of(pal)
         mood = core.pick_music_mood(hint, pal, seed_text=script)
+        # Настроение — В МЕТА-ФАЙЛ, а не только в лог. Его спрашивает фоновая
+        # атмосфера (_do_ambience), и спрашивать заново нельзя: guess_music_mood
+        # — это вызов модели, то есть лишние деньги и лишний шанс получить
+        # ДРУГОЙ ответ. Разъедься эти два ответа, и ролик получил бы светлую
+        # подложку с осыпающимся бетоном в фоне.
+        self._write_meta(mood=mood)
         gain = int(gain) + int(snd["music_gain"])
         if mood != hint:
             self.log(f"[Музыка] Звуковой профиль «{snd['name']}» сместил "
@@ -1089,22 +1095,92 @@ class Api:
                                             int(per_mood))
         self._bg("Наполнение библиотеки музыки", job)
 
+    def _do_ambience(self, path: str = "", every: float = 22.0) -> bool:
+        """Фоновая атмосфера в дорожку, которую возьмёт рендер.
+
+        ОДНО место на кнопку и на автоцепочку — по той же причине, по какой
+        одно место у музыки (_do_auto_music). Пока шаг жил только на кнопке,
+        его не было НИ В ОДНОМ ночном ролике: автопилот кнопок не нажимает.
+
+        Возвращает True, если дорожка действительно изменилась. False — это
+        «сделать не вышло, но и не сломалось»: add_ambience глушит сбой ffmpeg
+        внутри себя и отдаёт исходный файл, поэтому по исключению эту беду не
+        поймать, а по размеру файла — можно.
+        """
+        # Через core.voice_track — тем же правилом, что раскадровка и рендер:
+        # микс, оставшийся от прошлого ролика, здесь получил бы поверх чужой
+        # начитки ещё и звуки быта.
+        base = core.voice_track(self._project, self.log)
+        if not base.exists():
+            raise RuntimeError("Сначала озвучка (и по желанию музыка).")
+        pal = (self._channel() or {}).get("palette", "")
+        before = base.stat()
+        # ОТПЕЧАТОК, как у озвучки (.voice_stamp). Атмосфера пишется ПОВЕРХ
+        # той же дорожки, поэтому второй проход по тому же файлу кладёт второй
+        # слой: вдвое больше звуков и +3 dB. Это не выдумка про запас — ночь
+        # умеет возвращаться к брошенному ролику (night_plan.MAX_RESUME = 3
+        # попытки), а когда музыка падает (пустая библиотека, нет ключа
+        # Jamendo — падает детерминированно), базой обоих проходов остаётся
+        # один и тот же voiceover.mp3.
+        stamp_file = self._project / "audio" / ".ambience_stamp"
+
+        def _fp(p: Path) -> str:
+            st = p.stat()
+            return f"{p.name}|{st.st_size}|{int(st.st_mtime)}"
+
+        try:
+            was = stamp_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            was = ""
+        # Вторая проверка — про МАСТЕР-НАЧИТКУ, и без неё дыра остаётся
+        # открытой в самом вероятном сценарии: в первую ночь музыка не
+        # собралась, слой лёг прямо в voiceover.mp3; во вторую сеть ожила,
+        # add_music собрал микс ИЗ ЭТОГО ЖЕ файла — и слой в миксе уже есть,
+        # хотя сам микс новый. Отпечаток мастера не изменился, значит и
+        # доливать нечего.
+        master = self._project / "audio" / "voiceover.mp3"
+        if was and (was == _fp(base)
+                    or (was.startswith("voiceover.mp3|") and master.exists()
+                        and was == _fp(master))):
+            self.log(f"[ASMR] В {base.name} атмосфера уже вплетена — "
+                     "второго слоя не кладу")
+            return True
+        src = (path or "").strip()
+        if src:
+            pool = src                      # человек указал свою папку
+        else:
+            # Набор звуков — ПОД КАНАЛ И ПОД СОДЕРЖАНИЕ. Настроение берём то
+            # же, что выбрала музыка (оно лежит в meta.json), а не считаем
+            # своё: два независимых настроения означали бы ролик, у которого
+            # подложка и фон спорят друг с другом.
+            mood = self._read_meta().get("mood", "")
+            pool = core.ambience_pool(pal, mood, seed_text=self._read("script.txt"))
+            if not pool:
+                raise RuntimeError(
+                    "Библиотека звуков пуста (assets/sfx/ready). Наполни её: "
+                    "python sfx_library.py --fetch, потом обработай — или "
+                    "укажи свою папку со звуками быта в поле рядом с кнопкой.")
+            from collections import Counter
+            roles = Counter(p.name.split("_", 1)[0] for p in pool)
+            self.log(f"[ASMR] Набор канала «{pal or 'нет'}» под настроение "
+                     f"«{mood or 'не задано'}»: {len(pool)} звук(ов) — "
+                     + ", ".join(f"{r}×{n}" for r, n in roles.most_common()))
+        # Палитра канала — та же, что у монтажа: плотность и громкость быта
+        # это такой же признак канала, как переходы.
+        core.add_ambience(base, pool, self.log, every=float(every), palette=pal)
+        after = base.stat()
+        if (after.st_size, after.st_mtime) == (before.st_size, before.st_mtime):
+            return False                    # ffmpeg не отработал, файл прежний
+        try:
+            stamp_file.write_text(_fp(base), encoding="utf-8")
+        except OSError:
+            pass      # отпечаток не записался — в худшем случае пропустим шаг
+        return True
+
     def add_asmr(self, path: str, every: float):
-        def job():
-            # Через core.voice_track — тем же правилом, что раскадровка и
-            # рендер: микс, оставшийся от прошлого ролика, здесь получил бы
-            # поверх чужой начитки ещё и звуки быта.
-            base = core.voice_track(self._project, self.log)
-            if not base.exists():
-                raise RuntimeError("Сначала озвучка (и по желанию музыка).")
-            if not (path or "").strip():
-                raise RuntimeError("Укажи папку со звуками быта.")
-            # Палитра канала — та же, что у монтажа: плотность и громкость
-            # быта это такой же признак канала, как переходы.
-            core.add_ambience(base, path.strip(), self.log,
-                              every=float(every),
-                              palette=(self._channel() or {}).get("palette", ""))
-        self._bg("ASMR-звуки", job)
+        # Пустое поле больше не отказ: без папки берём библиотеку канала (ту
+        # же, что и ночная цепочка), а вписанный путь по-прежнему главнее.
+        self._bg("ASMR-звуки", lambda: self._do_ambience(path, float(every)))
 
     # ---------- субтитры / стоки / раскадровка ----------
     def subs(self, model: str, line_width: int = 42, lang: str = "английский"):
@@ -2525,6 +2601,36 @@ class Api:
                     hint="проверь папку библиотеки музыки и ключ Jamendo в "
                          "«Настройках»; можно просто положить mp3 руками",
                     level="заметно")
+            # СРАЗУ ЗА МУЗЫКОЙ, и именно здесь по двум причинам. Первая:
+            # настроение ролика определено шагом выше и лежит в meta.json —
+            # спрашивать модель второй раз значит платить дважды и рисковать
+            # другим ответом. Вторая: атмосфера пишется поверх той дорожки,
+            # которую возьмёт рендер (core.voice_track), а музыка эту дорожку
+            # как раз и создаёт — встань шаг раньше, и свежий микс затёр бы
+            # его работу целиком.
+            #
+            # Шаг НЕ ФАТАЛЬНЫЙ, как соседние: без фона ролик собирается.
+            if p.get("ambience", True):
+                self.log("[Цепочка] Атмосфера — звуки быта под голос…")
+                try:
+                    if not self._do_ambience():
+                        # add_ambience гасит сбой ffmpeg внутри себя и отдаёт
+                        # исходный файл, поэтому «не получилось» приходит сюда
+                        # не исключением, а неизменившейся дорожкой.
+                        raise RuntimeError("ffmpeg не свёл слой (см. [ASMR] выше)")
+                except Exception as e:
+                    self.log(f"[Цепочка] Атмосфера пропущена: {e}", "warn")
+                    # Не «критично» и не «заметно»: голос и музыка на месте,
+                    # ролик слушается. Пропажу слышно только рядом с образцом
+                    # ниши — но молчать всё равно нельзя, иначе разница «наш
+                    # ролик звучит пустее» так и останется необъяснимой.
+                    quality.degraded(
+                        "Звук", "ролик идёт без фоновой атмосферы "
+                        "(звуков быта под голосом)",
+                        why=f"шаг атмосферы не отработал: {e}",
+                        hint="проверь библиотеку assets/sfx/ready — она "
+                             "наполняется через python sfx_library.py --fetch",
+                        level="мелочь")
             if p.get("grow_variants", True):
                 # библиотека пополняется НА КАЖДЫЙ ролик — иначе десятое
                 # видео выглядит ровно как первое
