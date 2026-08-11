@@ -55,6 +55,25 @@ const hash = (s: string): number => {
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
+// Число на счётчике набирается от нуля к значению, и ОКРУГЛЯТЬ ЕГО ДО ЦЕЛОГО
+// нельзя: замер по настоящим роликам — «Theorie:0.6,Praxis:0.0» показывалось
+// как «1» и «0», «Soll-Anstieg:0.3 m/Tag» как «0». Столбик рисовался верной
+// высоты, а подпись над ним врала — хуже, чем если бы врало и то и другое,
+// потому что противоречие зритель замечает. Держим столько знаков после
+// запятой, сколько их в исходном значении (не больше двух: третий знак на
+// плашке в кадре всё равно не читается).
+const decimalsOf = (value: number): number => {
+  const s = String(value);
+  const dot = s.indexOf('.');
+  return dot < 0 ? 0 : Math.min(2, s.length - dot - 1);
+};
+
+// dec приходит ОДИН на весь набор: «0.6» рядом с «0» в одной таблице
+// читается как разная точность замера, хотя это одна и та же величина.
+// Берём наибольшее число знаков по строке и держим его у всех.
+const countText = (value: number, t: number, dec: number): string =>
+  (value * t).toFixed(dec);
+
 // Пустой прозрачный кадр — то, что обязан вернуть тип, которому нечего
 // показать. Не «плашка без текста», а именно ничего.
 //
@@ -640,6 +659,7 @@ const renderBars = (c: Ctx) => {
   // тёмная полоса 848x36 в верхней трети кадра, ни одного знака.
   if (!data.length) return NOTHING;
   const max = data.reduce((a, d) => Math.max(a, d.value), 0) || 1;
+  const dec = data.reduce((a, d) => Math.max(a, decimalsOf(d.value)), 0);
   return (
     <Framed c={c} grow>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 * c.u,
@@ -652,7 +672,7 @@ const renderBars = (c: Ctx) => {
                 marginBottom: 6 * c.u }}>
                 <span style={smallStyle(c, 28)}>{d.label}</span>
                 <span style={{ ...smallStyle(c, 28), color: c.accent, opacity: 1 }}>
-                  {Math.round(d.value * t)}
+                  {countText(d.value, t, dec)}
                 </span>
               </div>
               <div style={{ height: 16 * c.u, background: 'rgba(128,128,128,0.28)',
@@ -675,6 +695,7 @@ const renderInfographic = (c: Ctx) => {
   const data = numPairs(c.p.content).slice(0, 4);
   if (!data.length) return NOTHING;
   const max = data.reduce((a, d) => Math.max(a, d.value), 0) || 1;
+  const dec = data.reduce((a, d) => Math.max(a, decimalsOf(d.value)), 0);
   const R = 62 * c.u;
   const C = 2 * Math.PI * R;
   return (
@@ -697,7 +718,7 @@ const renderInfographic = (c: Ctx) => {
                     transform={`rotate(-90 ${R + 10 * c.u} ${R + 10 * c.u})`} />
                   <text x={R + 10 * c.u} y={R + 18 * c.u} textAnchor="middle"
                     fill={c.ink} fontFamily={c.L.display} fontSize={38 * c.u}>
-                    {Math.round(d.value * t)}
+                    {countText(d.value, t, dec)}
                   </text>
                 </svg>
                 <div style={smallStyle(c, 22)}>{d.label}</div>
@@ -967,7 +988,20 @@ const renderGallery = (c: Ctx) => {
       <div style={{ opacity: c.op, position: 'relative', width: 900 * c.u, height: 520 * c.u,
         transformStyle: 'preserve-3d' }}>
         {items.map((it, i) => {
-          const span = Math.max(20, c.L.build * 3);
+          // ШАГ СЧИТАЕТСЯ ОТ ДЛИТЕЛЬНОСТИ ПЛАШКИ, А НЕ ОТ ТЕМПА КАНАЛА.
+          // Было Math.max(20, c.L.build * 3) — у harsh это 21 кадр на
+          // карточку, четыре карточки заканчивались к 97-му кадру, а плашка
+          // живёт 120. Замер: кадры 5..75 давали 16.4%..3% закрашенного,
+          // кадры 85, 100 и 119 — ровно 0.00%. Последние 35 кадров из 120
+          // зритель смотрел на пустое место, и чем короче был текст, тем
+          // раньше галерея гасла.
+          //
+          // Раскладываем карточки так, чтобы последняя доезжала к концу:
+          // при n карточках последняя стартует на (n-1)*span и идёт span*1.6,
+          // значит span = всего / (n + 0.6). Пол в 20 кадров оставлен для
+          // совсем коротких плашек — там лучше обрезать хвост, чем мелькать.
+          const total = Math.max(1, Math.round((c.p.dur || 4) * c.fps));
+          const span = Math.max(20, total / (items.length + 0.6));
           const t = interpolate(c.frame, [i * span, i * span + span * 1.6], [0, 1], {
             extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
           });
@@ -979,9 +1013,16 @@ const renderGallery = (c: Ctx) => {
           const z = interpolate(t, [0, 1], [zFrom, zTo], {
             extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
           });
-          const vis = interpolate(t, [0, 0.2, 0.78, 1], [0, 1, 1, 0], {
-            extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
-          });
+          // Последняя карточка НЕ гаснет сама: её убирает уход всей плашки
+          // (c.op = p.enter * p.exit). Иначе галерея заканчивалась пустым
+          // кадром даже при верно посчитанном шаге — предыдущие карточки уже
+          // ушли, а последняя гасла по собственному расписанию.
+          const last = i === items.length - 1;
+          const vis = interpolate(
+            t,
+            last ? [0, 0.2, 1, 1.0001] : [0, 0.2, 0.78, 1],
+            [0, 1, 1, last ? 1 : 0],
+            { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
           return (
             <div key={`${it.label}-${i}`} style={{
               position: 'absolute', left: '50%', top: '50%',

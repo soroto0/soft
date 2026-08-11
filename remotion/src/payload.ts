@@ -61,14 +61,34 @@ export const numPairs = (s: string): { label: string; value: number }[] => {
  *  последнего знака (замер: b2_timeline_nopairs_harsh, «NUR EINE ZEILE TEX»
  *  в кадре). Отрицательный индекс в slice считается от конца строки, поэтому
  *  мусор получался молча, без единой ошибки в журнале. */
+/*  ЧАСЫ РАЗБИРАЮТСЯ КАК ЧАСЫ, А НЕ КАК ГОД. Ни первое двоеточие, ни
+ *  последнее здесь не годятся, и это не придирка — обе формы встречаются в
+ *  настоящих роликах:
+ *    «13:46:Stabil»       по первому -> год «13», подпись «46:STABIL»
+ *    «13:47:00:Bruch»     по первому -> год «13», подпись «47:00:BRUCH»
+ *    «1958:Stufe 2: Riss» по последнему -> год «1958:Stufe 2», подпись «Riss»
+ *  Поэтому левую часть берём ОБРАЗЦОМ: год (1-4 цифры) либо время (ЧЧ:ММ или
+ *  ЧЧ:ММ:СС), а всё после него — подпись, вместе со своими двоеточиями.
+ *  Замер 11.08: таких строк с часами по каналам 2, обе в timeline. */
+const YEAR_OR_CLOCK = /^\s*(\d{1,4}(?::\d{2}){0,2})\s*:\s*(.+)$/;
+
 export const textPairs = (s: string): { year: string; label: string }[] => {
   const out: { year: string; label: string }[] = [];
   const chunks = (s || '').split(',');
   for (let i = 0; i < chunks.length; i += 1) {
-    const idx = chunks[i].indexOf(':');
-    if (idx < 0) continue;
-    const year = chunks[i].slice(0, idx).trim();
-    const label = chunks[i].slice(idx + 1).trim();
+    const m = YEAR_OR_CLOCK.exec(chunks[i]);
+    let year: string;
+    let label: string;
+    if (m) {
+      year = m[1].trim();
+      label = m[2].trim();
+    } else {
+      // левая часть не число — старое поведение: делим по первому двоеточию
+      const idx = chunks[i].indexOf(':');
+      if (idx < 0) continue;
+      year = chunks[i].slice(0, idx).trim();
+      label = chunks[i].slice(idx + 1).trim();
+    }
     if (year && label) out.push({ year, label });
   }
   return out;
