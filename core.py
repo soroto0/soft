@@ -2834,8 +2834,27 @@ SEO_SHAPES = {
             "first line only reads as evasion. Then exactly two paragraphs: "
             "one on the chain of decisions that made the failure inevitable, "
             "one on what the official inquiry established and what was "
-            "changed in the codes afterwards. Name the inquiry or report if "
-            "the script names it. NEVER use a death toll as a hook, never "
+            "changed in the codes afterwards.\n"
+            # Ссылка на первоисточник — то, что отличает документальный канал
+            # от машинной поделки, и в этой нише это главный признак доверия.
+            # Раньше просили назвать отчёт «если сценарий его называет», и
+            # блок общих правил ниже запрещал ссылки целиком — источник
+            # выпадал почти всегда.
+            #
+            # ВЫДУМЫВАТЬ НОМЕР ОТЧЁТА ЗАПРЕЩЕНО ОТДЕЛЬНОЙ СТРОКОЙ. Ложная
+            # ссылка на канале, который держится на достоверности, хуже
+            # отсутствующей: её проверят ровно те зрители, ради которых всё
+            # и делается. Поэтому просим переносить то, что уже стоит в
+            # сценарии, а при отсутствии — назвать только ведомство.
+            "Close with a SOURCES line naming the investigating body and the "
+            "report (e.g. 'NTSB Highway Accident Report' or 'BFU "
+            "Untersuchungsbericht'), plus the year. Take these ONLY from what "
+            "the script itself states — NEVER invent a report number, a case "
+            "number or a date. If the script names no report, write the "
+            "investigating body alone. A fabricated citation is worse than "
+            "none on a channel whose whole claim is that the facts are "
+            "checkable.\n"
+            "NEVER use a death toll as a hook, never "
             "speculate about what the victims experienced, never call it "
             "'shocking' or 'chilling'. The restraint is the tone of this "
             "niche and audiences punish channels that break it.",
@@ -3319,7 +3338,14 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
           "'SHOCKING', 'This is why', trailing '...', any promise the script "
           "does not actually keep.\n\n"
           + shape["desc"] +
-          " No hashtag spam, no 'like and subscribe', no links.\n\n"
+          # «no links» стояло сплошным запретом и рубило вместе с рекламой
+          # ссылку на первоисточник — а для документального канала это
+          # ровно та строка, что отделяет его от машинной поделки. Запрет
+          # оставлен на всё постороннее, источник разрешён явно.
+          " No hashtag spam, no 'like and subscribe', no promotional or "
+          "affiliate links, no links to other channels — the only permitted "
+          "link is to the official investigation report itself, and only if "
+          "the script states its address.\n\n"
           + shape["tags"] + "\n"
           + chapters_note
           + (f"\nTHIS CHANNEL REFUSES TO DO THIS — it applies to the titles, "
