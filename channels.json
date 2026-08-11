@@ -66,7 +66,7 @@
   },
   {
     "name": "The Home Vault",
-    "active": true,
+    "active": false,
     "folder": "",
     "lang": "английский",
     "tone": "образовательный",
@@ -103,7 +103,8 @@
       "The $5 Amish Trick That Restores AC Cooling FOREVER (Save $2000 This Summer)",
       "The $3 Trick That Makes Any Metal Rust-Proof FOREVER (The Auto Industry Hates This)",
       "The $6 Trick That Kills Roof Moss FOREVER (The Roofing Industry Hates This)",
-      "The $2 Amish Trick That Banishes Ants FOREVER (The Pest Control Industry Hates This)"
+      "The $2 Amish Trick That Banishes Ants FOREVER (The Pest Control Industry Hates This)",
+      "The $2 Ancient Powder That Banishes Every Roach FOREVER (The Pest Control Industry Hates This)"
     ],
     "series": "",
     "series_next": 1,
@@ -127,7 +128,7 @@
   },
   {
     "name": "Pensamiento Estoico - ES",
-    "active": true,
+    "active": false,
     "folder": "",
     "lang": "испанский",
     "tone": "документальный",
@@ -151,7 +152,7 @@
     "avoid": "Никаких приветствий. Не утверждать, что чувствует конкретный человек зрителя — только закономерности. Без лозунгов и самопомощи «выбери себя» — в этой нише такое проваливается в 100 раз.",
     "script_extra": "Spanish-language documentary about a philosopher or a single work.\n\nSHAPE: follow one mind through time. What happened to this person, and what it made them think. Alternate between the life and the idea it produced, so neither runs dry. There is no withheld mystery here — the pull is watching a worldview being forged and what it cost the person who forged it.\n\nNEVER address the viewer's own life. No 'you', no advice, no lessons to apply. This is measured, not taste: on the reference channel the same author scored 199,346 views when the subject was his ordeal and 538 when the subject was the viewer's demons.\n\nName dates, places, correspondents, book titles and the year of publication out loud — they are the spine of a documentary.\n\nSTYLE: calm, unhurried, Castilian Spanish. The tone of someone recounting a life they have studied for years, not selling insight. End where the idea outlives the person.\n\nVISUAL CUES: directing notes in SQUARE BRACKETS — period, location, where archive material belongs. They are stripped before the voice-over.",
     "topic_formula": "Spanish-language long-form documentaries about philosophers, their lives and the ideas those lives produced.\n\nMEASURED on the reference channel (54 videos, median 19,738 views, spread 17x between best and worst):\n  WON  330k-166k : why intelligence leads to loneliness (Schopenhauer); the philosopher who reinvented God (Spinoza); the genius who descended into the darkness of the human soul (Dostoyevsky); the book that drove Jung to the edge of the abyss; the warning the world refused to hear (Orwell)\n  LOST 1.7k-538  : existentialist philosophy explained; HOW TO BECOME the man Nietzsche admired; HOW TO BUILD a just society (Rousseau); the book that reveals YOUR inner demons (Jung)\n\nThe distinguishing variable is exact, and it is NOT the thinker's name: Jung appears in both halves — 199,346 views for 'the book that drove HIM to the abyss' and 538 for 'the book that reveals YOUR demons'. Same author, same length, same format.\n\nA video WINS when the promise is about what happened TO THE THINKER or TO THE WORLD — third person, past tense, a catastrophe or a cost.\nA video FAILS when the promise is about what the VIEWER should do or get — 'how to become', 'how to build', 'your demons'. Never write a title in the second person.\n\nAlready covered on the reference channel, do NOT repeat: Schopenhauer, Spinoza, Dostoyevsky, Nietzsche, Jung's Red Book, Orwell's 1984, Musashi.\n\nLength is table stakes, not an advantage: the failures run 52-86 minutes too. Do NOT pad to reach length: a tight video beats a padded one. Win on the promise, not the runtime.",
-    "stats_from": "",
+    "stats_from": "2026-08-06",
     "used_topics": [
       "El pensador que vio el colapso de la civilización antes que nadie",
       "El hombre que lo perdió todo ante el tirano al que educó",
@@ -164,7 +165,10 @@
       "El filósofo que fue exiliado por denunciar la insaciable crueldad de la naturaleza humana",
       "El genio que fue encarcelado por revelar la fragilidad de la razón humana",
       "El genio que salvó a la civilización de la tiranía para luego ser destruido por la sociedad que rescató",
-      "El genio que abandonó la ciencia tras ser aterrorizado por el silencio eterno del universo"
+      "El genio que abandonó la ciencia tras ser aterrorizado por el silencio eterno del universo",
+      "El emperador que gobernó el mundo mientras veía cómo la peste y la traición destruían su imperio",
+      "La filósofa que fue masacrada por una multitud por el crimen de poseer un conocimiento prohibido",
+      "El genio que renunció a su inmensa fortuna para buscar la verdad en el aislamiento y la pobreza extrema"
     ],
     "series": "",
     "series_next": 1,
@@ -315,13 +319,50 @@
     "stats_from": "",
     "used_topics": [
       "Warum stürzte diese brandneue Brücke ein?",
-      "brandnew dam failing immediately): * Object: Staudamm (dam) * Formula: \"Warum brach dieser brandneue"
+      "brandnew dam failing immediately): * Object: Staudamm (dam) * Formula: \"Warum brach dieser brandneue",
+      "Ocean Ranger / Sleipner A oil rig / Deepwater Horizon / Alexander L. Kielland oil platform failure. * *Idea",
+      "Warum stürzte dieses brandneue Stadiondach ein?"
     ],
     "series": "",
     "series_next": 1,
     "youtube_url": "",
     "notes": "Немецкие реконструкции разрушения инженерных объектов. Образец: Dark Records Deutsch 9.9k подписчиков, 21 ролик, медиана 66 665, 14 мин (замер 2026-08-09), молчит с марта. Решает форма заголовка: вопрос + «dieser» + «brandneu» + крупный узнаваемый объект. Дословный перевод формулы Fascinating Horror на немецкий ПРОВАЛИЛСЯ: Faszinierender Horror, 93 ролика, медиана 105. Язык выбран замером: та же сеть на французском даёт медиану 416 против 66 665 на немецком. Имя проверено поиском YouTube 2026-08-09 — каналов «Einsturzpunkt» не нашлось ни одного.",
     "id": "einsturzpunkt",
+    "script_shape": "disaster"
+  },
+  {
+    "name": "Fisura Crítica",
+    "active": true,
+    "folder": "",
+    "lang": "испанский",
+    "tone": "документальный",
+    "minutes": 14,
+    "voice": "es-ES-AlvaroNeural",
+    "rate": -4,
+    "pitch": -3,
+    "visual_style": "бетон и предупреждающая жёлтая",
+    "palette": "harsh",
+    "ai_ratio": 0.85,
+    "sub_style": "grotesk_air",
+    "sub_size": "средние",
+    "sub_width": 38,
+    "sub_font": "Bahnschrift",
+    "sub_punct": true,
+    "subs_on": true,
+    "watermark": "",
+    "accent": "#e8b21f",
+    "thumb_layout": "harsh",
+    "thumb_ref": "",
+    "avoid": "Никакой выдумки, поданной как факт. Не смаковать гибель людей ради шока. Версии называть версиями. Никакой псевдоархеологии и теорий заговора — ниша ими забита, и это отдельная, чужая аудитория.",
+    "script_extra": "Documental en español sobre UN fallo estructural concreto.\n\nTrabaja a partir de lo que estableció el peritaje o la investigación oficial. Nombra la estructura, el año, la constructora, los ingenieros, el informe. Si un dato está en disputa, dilo así.\n\nAbre en el día corriente y en la gente corriente, con nombres y detalles. Construye la cadena de decisiones pequeñas que hicieron inevitable el resultado — cada una razonable por separado en su momento. Luego el fallo minuto a minuto, en lenguaje que siga un lector sin formación técnica. Luego las consecuencias: qué encontró el peritaje, qué se cambió en la norma y qué no.\n\nNUNCA especules sobre lo que sintieron las víctimas. Nunca inventes diálogos ni pensamientos. Nunca te recrees en el sufrimiento. La contención es el tono.\n\nINDICACIONES VISUALES entre CORCHETES: la estructura, la época, dónde van los esquemas. Se eliminan antes de la locución.",
+    "topic_formula": "Reconstrucciones en español de FALLOS DE EDIFICIOS Y ESTRUCTURAS: colapsos de edificios y puentes, presas, grietas y patologías de la construcción, cimentaciones, torres que se inclinan o se degradan, obras paradas por defectos.\n\nMEDIDO en la nicho de referencia (CONSTRUCTUM: alta 19.03.2026, 60 900 suscriptores en cinco meses, mediana 43 534, mejor vídeo 1 047 139, duración 11-18 min). Ese canal demuestra que un canal NUEVO crece aquí desde cero — es la única nicho del estudio donde eso está demostrado.\n\nEL TÍTULO manda, y su forma está medida: PREGUNTA + DEMOSTRATIVO ('este/esta') + PARADOJA (recién construido, recién inaugurado, a los tres años) + UN OBJETO GRANDE QUE EL EXTRAÑO PUEDE IMAGINAR SOLO CON LAS PALABRAS. Ejemplos reales de la nicho con siete cifras: «Por qué un terremoto TIRA un edificio y deja el de al lado INTACTO», «La torre de ASTON MARTIN en Miami se CAE A TROZOS», «La Torre Eiffel se PUDRE por dentro».\n\nFALLA MEDIDA: construir el título sobre un NOMBRE PROPIO que el espectador no reconoce. Si el vídeo trata de una persona, el título lleva LA COSA — la torre, la grieta, la presa — y la persona va después o no va.\n\nREGLA DURA: murió gente en muchos de estos casos. Nunca especular sobre lo que sintieron, nunca usar la cifra de muertos como gancho del título.",
+    "stats_from": "",
+    "used_topics": [],
+    "series": "",
+    "series_next": 1,
+    "youtube_url": "",
+    "notes": "Ниша выбрана замером 11.08.2026 (brand/НИША_ПОИСК.md). Образец CONSTRUCTUM: заведён 19.03.2026, за пять месяцев 60 900 подписчиков, медиана 43 534, лучший ролик 1 047 139 — единственный случай во всём разборе, где НОВЫЙ канал доказанно вырос с нуля. Формат 11-18 мин совпадает с конвейером буквально. Заголовки образца — измеренная формула слово в слово. Материал общий с Einsturzpunkt (конструкции, отчёты расследований), язык другой — публику у него не отъедает.",
+    "id": "fisura-critica",
     "script_shape": "disaster"
   }
 ]
