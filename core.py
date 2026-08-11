@@ -4834,20 +4834,44 @@ THUMB_STYLES = {
     # верху. Ни стрелок, ни галочек, ни плашек. Заголовок — ЦЕЛАЯ ФРАЗА
     # («They Used Newspaper Instead of Cement…»), а не два слова.
     "harsh": {
+        # ВЕРДИКТ, А НЕ ОПИСАНИЕ, и два-три слова вместо предложения.
+        # Здесь стояло «4-7 слов, разбей на 2-4 строки» — и это спорило с
+        # приёмкой: thumb_char_budget для этой палитры режет всё, что больше
+        # 4 слов и 2 строк. Модель писала по промпту, приёмка отвергала,
+        # цикл жёг запросы. Замер на ролике 10.08: пришло «DIE SPANNUNG
+        # ZERBRACH DIE BETONSTRUKTUR» — три плотные строки, крупнейшее слово
+        # 15 px в ленте, CTR 2,3% при норме старта 5-8%.
         "words":
-            "The headline is a full sentence of 4-7 words naming the OBJECT "
-            "and the specific thing that was wrong with it — the shape that "
-            "won this niche is 'They Used Newspaper Instead of Cement…', not "
-            "a two-word label. Flat and factual, the way an inquiry report "
-            "would put it. Never an exclamation, never a number of dead, "
-            "never a word like SHOCKING or HORROR. Split it with \\n into 2-4 "
-            "short lines.",
+            "The headline is a VERDICT, not a description: 2-3 words that "
+            "name the failure itself. 'Fatal miscalculation', 'In 0.4 "
+            "seconds', 'The rivet that held everything' — the way an "
+            "inquiry report words its conclusion. NOT a sentence retelling "
+            "what happened. Flat and factual. Never an exclamation, never a "
+            "number of dead, never a word like SHOCKING or HORROR. At most "
+            "two lines, split with \\n.",
+        # ОБЪЕКТ-ГЕРОЙ И КОНТРАСТ. Прежнее правило просило дословно «faded
+        # colour, overcast daylight, grain, slight softness» — то есть само
+        # заказывало блёклую картинку, и генератор честно её отдавал. Замер
+        # на перерисовке обложек 11.08: кадр с ровным серым бетоном дал
+        # перепад яркости 127 в ленте против 184 у кадра с выраженным
+        # предметом — при одинаковой типографике. То есть фон решает не
+        # меньше шрифта, а «архивность» тут работала против канала.
+        #
+        # Честность ниши при этом не тронута: по-прежнему никаких
+        # постановочных людей, лиц в камеру и мнимой хроники бедствия.
         "bg":
-            "The background looks like recovered archive footage, not a "
-            "fresh photograph: the structure or the site after the event, "
-            "faded colour, overcast daylight or worklight, grain, slight "
-            "softness. No people posing, no faces to camera, no drama "
-            "lighting.",
+            "ONE object fills the frame and is the whole picture: the "
+            "structural detail that failed — a sheared bolt, a cracked "
+            "weld, a buckled beam, a split cable — photographed close, "
+            "sharp, and large. It must read at 210 px wide, so: one subject, "
+            "no busy scene, nothing small.\n"
+            "STRONG CONTRAST is required — the subject clearly lighter or "
+            "darker than what is behind it, with a dark uncluttered area "
+            "where the headline will sit. Avoid an evenly grey frame: flat "
+            "concrete wall to wall measures as unreadable in the feed.\n"
+            "Documentary light, not advertising: worklight, low sun or "
+            "overcast is fine, but the frame must not be faded or hazy. No "
+            "people posing, no faces to camera, no staged disaster imagery.",
         "case": "upper",
         "layouts": ("bottom", "split"),
         # sub — имя рубрики мелко под заголовком, как «Fascinating Horror»
