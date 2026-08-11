@@ -132,11 +132,48 @@ export const isFixedLayout = (type: string): boolean =>
 // номера гарантированно дают РАЗНЫЕ подложку и появление, а не «как повезёт».
 // 4x4x4 = 64 непохожих сочетания на канал — столько вариантов на тип ни один
 // канал не выберет, значит фабрика не упрётся в потолок.
-export const formSpec = (palette: Palette, n: number): FormSpec => {
+// В какой полосе кадра живёт каждый якорь. Списано с anchorBox в _forms.tsx:
+// justifyContent flex-start — верх, flex-end — низ, center — середина.
+const ANCHOR_BAND: Record<string, string> = {
+  tl: 'top', tr: 'top', topQuiet: 'top',
+  center: 'mid', leftColumn: 'mid',
+  bl: 'bottom', br: 'bottom', bottomBar: 'bottom', blCard: 'bottom',
+  bottomCard: 'bottom', bottomWide: 'bottom', centerLow: 'bottom',
+};
+
+// Типы, у которых полоса задана НАЗВАНИЕМ, а не вкусом. Баннер — это шапка,
+// нижняя треть — это низ; в FIXED_LAYOUT их нет, потому что рисуются они
+// общим телом, но место у них не свободное.
+//
+// Без этого колонка «| top |» в overlays.txt и OVL_POS['banner'] = 'top' были
+// МЁРТВЫМИ данными: место выбиралось только по номеру варианта, по кругу из
+// четырёх якорей канала. Замер einsturzpunkt 10.08: у палитры harsh якоря
+// ['bl','tl','br','bottomBar'], и баннерные варианты 06..13 дают br,
+// bottomBar, bl, tl, br, bottomBar, bl, tl — ШЕСТЬ БАННЕРОВ ИЗ ВОСЬМИ падают
+// вниз, туда же, где идут субтитры. На кадре 03:18 баннер занял y 806..906
+// при субтитре 840..1027 — 67 px прямого наложения, первая строка реплики
+// легла прямо на плашку.
+//
+// Разнообразие при этом не теряется: по кругу продолжают идти подложка и
+// появление (они считаются от других разрядов номера), меняется только то,
+// что и не должно было меняться, — полоса кадра.
+const TYPE_BAND: Record<string, string> = { banner: 'top', lower3: 'bottom' };
+
+export const formSpec = (palette: Palette, n: number,
+                         type: string = ''): FormSpec => {
   const L = LOOKS[palette];
   const i = Math.max(0, Math.floor(n));
+  const band = TYPE_BAND[type];
+  // Фильтруем ЯКОРЯ КАНАЛА, а не подставляем общий: у тёплого канала верх —
+  // это 'tr' со своими отступами, у созерцательного 'topQuiet'. Канал
+  // остаётся собой. Если в полосе нет ни одного якоря — берём как раньше,
+  // молча ломать канал ради полосы нельзя.
+  const pool = band
+    ? L.anchors.filter((a) => ANCHOR_BAND[a] === band)
+    : L.anchors;
+  const anchors = pool.length ? pool : L.anchors;
   return {
-    anchor: L.anchors[i % L.anchors.length],
+    anchor: anchors[i % anchors.length],
     plate: L.plates[Math.floor(i / L.anchors.length) % L.plates.length],
     reveal: L.reveals[
       Math.floor(i / (L.anchors.length * L.plates.length)) % L.reveals.length],

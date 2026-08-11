@@ -2,6 +2,7 @@ import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, Easing } from 'remotion';
 import type { VariantProps } from '../types';
 import { LOOKS, formSpec, isFixedLayout } from './_look';
+import { numPairs, textPairs, redactLines } from '../payload';
 import type { Look, Palette, FormSpec } from './_look';
 
 // ОБЩЕЕ ТЕЛО ВСЕХ КАНАЛЬНЫХ ПЛАШЕК.
@@ -23,7 +24,8 @@ import type { Look, Palette, FormSpec } from './_look';
 //     плашка разрастается на весь экран и не уходит;
 //   * p.enter и p.exit умножены в прозрачность — их считает ядро, чтобы все
 //     плашки ролика появлялись и уходили синхронно;
-//   * ничего случайного: кадры считаются параллельно и не по порядку.
+//   * ничего случайного: кадры считаются параллельно и не по порядку;
+//   * подложка рисуется ТОЛЬКО когда есть что положить внутрь — см. NOTHING.
 
 type Ctx = {
   p: VariantProps;
@@ -52,6 +54,19 @@ const hash = (s: string): number => {
 };
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+// Пустой прозрачный кадр — то, что обязан вернуть тип, которому нечего
+// показать. Не «плашка без текста», а именно ничего.
+//
+// Порядок здесь принципиальный: подложка (plateStyle) заливается непрозрачным
+// L.plate ДО того, как кто-либо посмотрел на содержимое, и её размер задан
+// не текстом, а minWidth — 780px у bars, 760px у timeline, 620px у redact.
+// Поэтому список из нуля пунктов давал не «плашку поменьше», а тёмный
+// прямоугольник в полкадра без единого знака внутри. Ворота в Overlay.tsx
+// такие входы теперь отсекают, но проверка обязана быть и здесь: варианты
+// открываются напрямую в remotion studio, и ворота — не единственный путь
+// сюда.
+const NOTHING = <AbsoluteFill />;
 
 // Ступенька 0..1 с задержкой — единственный способ сделать очередь
 // (слова, строки, столбики) без таймеров и случайностей.
@@ -295,18 +310,21 @@ const bodyLine = (c: Ctx, size: number) => (
 
 // lower3 / banner: одна строка. Различие между ними — кегль и ширина, всё
 // остальное задаёт канал.
-const renderLine = (c: Ctx, size: number) => (
-  <Framed c={c} grow={c.spec.anchor === 'bottomBar'}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 16 * c.u }}>
-      <div style={{
-        width: 10 * c.u, height: 10 * c.u, borderRadius: c.L.radius > 4 ? '50%' : 0,
-        background: c.accent2, flexShrink: 0,
-        transform: `scale(${clamp01(c.k * 1.4)})`,
-      }} />
-      {bodyLine(c, size)}
-    </div>
-  </Framed>
-);
+const renderLine = (c: Ctx, size: number) => {
+  if (!(c.p.content || '').trim()) return NOTHING;
+  return (
+    <Framed c={c} grow={c.spec.anchor === 'bottomBar'}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 * c.u }}>
+        <div style={{
+          width: 10 * c.u, height: 10 * c.u, borderRadius: c.L.radius > 4 ? '50%' : 0,
+          background: c.accent2, flexShrink: 0,
+          transform: `scale(${clamp01(c.k * 1.4)})`,
+        }} />
+        {bodyLine(c, size)}
+      </div>
+    </Framed>
+  );
+};
 
 // Композиция полнокадровых типов. Якорь канала как «место» тут не годится
 // (титр всегда крупный и по центру кадра), поэтому его номер переключает
@@ -347,8 +365,41 @@ const wordShift = (c: Ctx, t: number): string => {
 const renderTitleCard = (c: Ctx) => {
   const [head, sub] = splitPair(c.p.content);
   const words = head.split(/\s+/).filter((w) => w.length > 0);
+  // Без заголовка от титра остаётся подложка, черта и номер главы — ровно
+  // то, что владелец увидел в ролике как пустую плашку («::01», название
+  // главы потерялось при генерации).
+  if (!words.length) return NOTHING;
   const lay = fullLayout(c);
   const justify = c.ai === 1 ? 'flex-start' : (c.ai === 3 ? 'flex-end' : 'center');
+
+  // КЕГЕЛЬ СЧИТАЕТСЯ ПО САМОМУ ДЛИННОМУ СЛОВУ, а не берётся константой.
+  //
+  // Слова разложены по flex-контейнеру с переносом, а он рвёт строку только
+  // по пробелам. Немецкое составное существительное пробелов не содержит:
+  // «Rechtsschutzversicherungsgesellschaften» — 39 знаков одним куском. На
+  // фиксированных 92px оно уезжало за правый край КАДРА, унося с собой конец
+  // заголовка: замер p13 — в кадре читалось 28 знаков из 39, дальше срез
+  // рамкой. Карточки глав как раз такие («Der verhängnisvolle
+  // Nachspannvorgang»), и приходят они из генерации, где длину никто не
+  // ограничивает.
+  //
+  // Ширина знака снята с отрендеренных кадров, а не взята на глаз:
+  // «NACHSPANNVORGANG» (16 знаков) занял 991px при кегле 92 у harsh
+  // (991/16/92 = 0.67 em) и 828px у warm (0.56 em) — капс с разрядкой 0.13em
+  // шире антиквы строчными. Берём с запасом: 0.70 и 0.58.
+  //
+  // Ширина коробки — из самой вёрстки, а не число из воздуха: lay.box даёт
+  // padding 0 10% (остаётся 80% кадра), блок ниже ограничен maxWidth 86%,
+  // из них уходят поля подложки 34px с каждой стороны.
+  const box = (c.p.width ?? 1920) * 0.8 * 0.86 - 68 * c.u;   // реальные px
+  const em = c.L.upper ? 0.70 : 0.58;
+  const longest = words.reduce((a, w) => Math.max(a, w.length), 0);
+  // titleStyle сам умножает кегль на c.u, поэтому приводим к масштабу 1080p.
+  // Нижний предел 34 — ниже титр перестаёт быть титром; до него дело дойдёт
+  // только на слове длиннее 60 знаков, а там уже сработает overflowWrap.
+  const size = Math.max(34, Math.min(c.ai === 2 ? 74 : 92,
+    box / Math.max(longest, 1) / em / c.u));
+
   const body = (
     <>
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: justify,
@@ -357,8 +408,13 @@ const renderTitleCard = (c: Ctx) => {
           const t = step(c.frame, i * Math.max(2, Math.round(c.L.build / 3)), c.L.build);
           return (
             <span key={`${w}-${i}`} style={{
-              ...titleStyle(c, c.ai === 2 ? 74 : 92),
+              ...titleStyle(c, size),
               display: 'inline-block',
+              // Последний рубеж: если замер по знакам всё-таки промахнулся
+              // (нестандартная гарнитура, кегль упёрся в нижний предел), слово
+              // рвётся посередине. Некрасиво, но в кадре, а не за ним.
+              maxWidth: '100%',
+              overflowWrap: 'anywhere',
               opacity: c.spec.reveal === 'letterFade' ? t : Math.min(1, t * 1.4),
               filter: c.spec.reveal === 'letterFade' ? `blur(${(1 - t) * 8}px)` : undefined,
               transform: wordShift(c, t),
@@ -393,6 +449,7 @@ const renderTitleCard = (c: Ctx) => {
 
 const renderKinetic = (c: Ctx) => {
   const words = (c.p.content || '').split(/\s+/).filter((w) => w.length > 0);
+  if (!words.length) return NOTHING;
   const gap = Math.max(2, Math.round(c.L.build / 2));
   const lay = fullLayout(c);
   const justify = c.ai === 1 ? 'flex-start' : (c.ai === 3 ? 'flex-end' : 'center');
@@ -421,6 +478,7 @@ const renderKinetic = (c: Ctx) => {
 
 const renderMarker = (c: Ctx) => {
   const words = (c.p.content || '').split(/\s+/).filter((w) => w.length > 0);
+  if (!words.length) return NOTHING;
   const gap = Math.max(3, Math.round(c.L.build / 2));
   const lay = fullLayout(c);
   const justify = c.ai === 1 ? 'flex-start' : (c.ai === 3 ? 'flex-end' : 'center');
@@ -463,6 +521,8 @@ const renderMarker = (c: Ctx) => {
 
 const renderQuote = (c: Ctx) => {
   const [text, who] = splitPair(c.p.content);
+  // Автор без цитаты — это кавычка, черта и фамилия на подложке.
+  if (!text) return NOTHING;
   const lay = fullLayout(c);
   const inner = (
     <>
@@ -500,6 +560,7 @@ const renderQuote = (c: Ctx) => {
 
 const renderStamp = (c: Ctx) => {
   const [main, sub] = splitPair(c.p.content);
+  if (!main) return NOTHING;
   return (
     <Framed c={c}>
       <div style={titleStyle(c, 40)}>{main}</div>
@@ -516,9 +577,12 @@ const renderStamp = (c: Ctx) => {
 
 const renderCounter = (c: Ctx) => {
   const m = /([^\d]*)([\d][\d,.\s]*)(.*)/.exec(c.p.content || '') ;
-  const pre = m ? m[1] : '';
-  const raw = m ? m[2] : (c.p.content || '');
-  const post = m ? m[3] : '';
+  // Без единой цифры счётчик показывал «0» — число, которого никто не
+  // называл. Ложная цифра в кадре хуже отсутствующей плашки.
+  if (!m) return NOTHING;
+  const pre = m[1];
+  const raw = m[2];
+  const post = m[3];
   const target = parseFloat(raw.replace(/[^\d.]/g, '')) || 0;
   const grow = interpolate(c.frame, [0, Math.max(c.L.build * 2, 18)], [0, 1], {
     easing: Easing.out(Easing.cubic),
@@ -545,21 +609,16 @@ const renderCounter = (c: Ctx) => {
   );
 };
 
-const pairsOf = (content: string): { label: string; value: number }[] => {
-  const out: { label: string; value: number }[] = [];
-  const chunks = (content || '').split(',');
-  for (let i = 0; i < chunks.length; i += 1) {
-    const idx = chunks[i].lastIndexOf(':');
-    if (idx < 0) continue;
-    const label = chunks[i].slice(0, idx).trim();
-    const value = parseFloat(chunks[i].slice(idx + 1).replace(/[^\d.]/g, ''));
-    if (label && !isNaN(value)) out.push({ label, value });
-  }
-  return out;
-};
+// Разбор пар переехал в src/payload.ts: им же проверяют содержимое ворота в
+// Overlay.tsx. Пока разбор был здесь, а проверка там — они читали строку
+// по-разному, и «Kein Datensatz vorhanden» проходило ворота, а сюда
+// приходило нулём пар.
 
 const renderBars = (c: Ctx) => {
-  const data = pairsOf(c.p.content);
+  const data = numPairs(c.p.content);
+  // Ноль пар — подложка растянута на minWidth 780px и пуста внутри. Замер:
+  // тёмная полоса 848x36 в верхней трети кадра, ни одного знака.
+  if (!data.length) return NOTHING;
   const max = data.reduce((a, d) => Math.max(a, d.value), 0) || 1;
   return (
     <Framed c={c} grow>
@@ -593,7 +652,8 @@ const renderBars = (c: Ctx) => {
 };
 
 const renderInfographic = (c: Ctx) => {
-  const data = pairsOf(c.p.content).slice(0, 4);
+  const data = numPairs(c.p.content).slice(0, 4);
+  if (!data.length) return NOTHING;
   const max = data.reduce((a, d) => Math.max(a, d.value), 0) || 1;
   const R = 62 * c.u;
   const C = 2 * Math.PI * R;
@@ -631,10 +691,12 @@ const renderInfographic = (c: Ctx) => {
 };
 
 const renderTimeline = (c: Ctx) => {
-  const items = (c.p.content || '').split(',').map((s) => {
-    const idx = s.indexOf(':');
-    return { year: s.slice(0, idx).trim(), label: s.slice(idx + 1).trim() };
-  }).filter((it) => it.year.length > 0);
+  // Через общий разбор: свой не проверял indexOf(':') на -1, и строка БЕЗ
+  // двоеточия давала год «Nur eine Zeile Tex» — всю строку без последнего
+  // знака (slice с отрицательным индексом отсчитывает от конца). В кадр
+  // уходил обрубок, и ни одной ошибки в журнале.
+  const items = textPairs(c.p.content);
+  if (!items.length) return NOTHING;
   return (
     <Framed c={c} grow>
       <div style={{ position: 'relative', minWidth: 760 * c.u, paddingTop: 10 * c.u }}>
@@ -671,6 +733,9 @@ const renderTimeline = (c: Ctx) => {
 
 const renderCompare = (c: Ctx) => {
   const [left, right] = splitPair(c.p.content);
+  // Рамки одинаковы по размеру и рисуются парой: половина без текста даёт не
+  // «полплашки», а пустой прямоугольник рядом с заполненным.
+  if (!left || !right) return NOTHING;
   const side = (txt: string, i: number) => {
     const t = step(c.frame, i * Math.max(3, c.L.build), c.L.build * 2);
     return (
@@ -701,18 +766,22 @@ const renderCompare = (c: Ctx) => {
 };
 
 const renderRedact = (c: Ctx) => {
-  const lines = (c.p.content || '').split('::');
+  // Пустые строки выкидываются: лист документа непрозрачен и растянут на
+  // minWidth 620px, а split('::') на «Bericht::» даёт вторую строку-пустышку,
+  // под которую всё равно отводится место.
+  const lines = redactLines(c.p.content);
+  if (!lines.length) return NOTHING;
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
       <div style={{ opacity: c.op, ...revealStyle(c.spec.reveal, c.k) }}>
         <div style={{ ...plateStyle(c), minWidth: 620 * c.u }}>
           {plateDecor(c)}
-          {lines.map((raw, i) => {
-            const hidden = raw.charAt(0) === '*';
-            const txt = hidden ? raw.slice(1).trim() : raw.trim();
+          {lines.map((ln, i) => {
+            const hidden = ln.hidden;
+            const txt = ln.text;
             const t = step(c.frame, 6 + i * Math.max(3, Math.round(c.L.build / 2)), c.L.build);
             return (
-              <div key={`${raw}-${i}`} style={{ position: 'relative', margin: `${8 * c.u}px 0` }}>
+              <div key={`${txt}-${i}`} style={{ position: 'relative', margin: `${8 * c.u}px 0` }}>
                 <div style={{
                   fontFamily: c.L.body, fontSize: 32 * c.u, color: c.ink,
                   letterSpacing: '0.03em', textShadow: inkShadow(c),
@@ -734,6 +803,9 @@ const renderRedact = (c: Ctx) => {
 };
 
 const renderCallout = (c: Ctx) => {
+  // Без подписи от выноски остаётся кружок, линия и пустая подложка на её
+  // конце — указатель в никуда.
+  if (!(c.p.content || '').trim()) return NOTHING;
   const [px, py] = pointOf(c.p.pos);
   const toRight = px < 55;
   const len = 190 * c.u * clamp01(c.k);
@@ -770,6 +842,7 @@ const renderCallout = (c: Ctx) => {
 };
 
 const renderHighlight = (c: Ctx) => {
+  if (!(c.p.content || '').trim()) return NOTHING;
   const [px, py] = pointOf(c.p.pos);
   const R = 92 * c.u;
   const C = 2 * Math.PI * R;
@@ -800,6 +873,9 @@ const renderHighlight = (c: Ctx) => {
 };
 
 const renderPopup = (c: Ctx) => {
+  // Без картинки остаётся рамка/подложка вокруг ничего: <Img src=""> ничего
+  // не займёт, а padding и фон подложки нарисуются.
+  if (!(c.p.img || '').trim()) return NOTHING;
   const drift = Math.sin(c.frame / 24) * 6 * c.u;
   return (
     <AbsoluteFill style={anchorBox(c.spec.anchor === 'bottomBar' ? 'tr' : c.spec.anchor)}>
@@ -825,7 +901,8 @@ const renderPopup = (c: Ctx) => {
 };
 
 const renderCollage = (c: Ctx) => {
-  const items = (c.p.items ?? []).slice(0, 3);
+  const items = (c.p.items ?? []).filter((it) => it && it.img).slice(0, 3);
+  if (!items.length) return NOTHING;
   // Раскладка карточек — четвёртый приём канала по счёту якоря: ровный ряд,
   // ряд «лесенкой», веер внахлёст, ряд со смещением вниз у краёв.
   const offsetY = (i: number) => [0, i * 26, (i - 1) * 18, Math.abs(i - 1) * 30][c.ai] * c.u;
@@ -860,7 +937,10 @@ const renderCollage = (c: Ctx) => {
 };
 
 const renderGallery = (c: Ctx) => {
-  const items = (c.p.items ?? []).slice(0, 4);
+  // Карточка галереи рисует непрозрачную подложку L.plate вокруг <Img>:
+  // пункт без картинки — тёмный прямоугольник, уезжающий вглубь кадра.
+  const items = (c.p.items ?? []).filter((it) => it && it.img).slice(0, 4);
+  if (!items.length) return NOTHING;
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center',
       perspective: `${1400 * c.u}px` }}>
@@ -909,7 +989,7 @@ export const Formed: React.FC<{ p: VariantProps; palette: Palette; n: number }> 
   ({ p, palette, n }) => {
     const frame = useCurrentFrame();
     const L = LOOKS[palette];
-    const spec = formSpec(palette, n);
+    const spec = formSpec(palette, n, p.type);
     const u = (p.height ?? 1080) / 1080;
     const k = interpolate(frame, [0, L.build], [0, 1], {
       easing: Easing.out(Easing.cubic),

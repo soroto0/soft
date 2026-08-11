@@ -2,6 +2,7 @@ import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import { DISPLAY, TEXT, SERIF } from './fonts';
 import { VARIANTS, DECOR } from './variants/_registry';
+import { anyAlnum, headOf, numPairs, textPairs, redactLines } from './payload';
 import type { OverlayProps } from './types';
 
 // тип переехал в types.ts (варианты не могут тянуть его отсюда — вышел бы
@@ -14,14 +15,14 @@ export type { OverlayProps };
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#3a8b7a',
-  accentLight: '#7fbfb3',
-  accentRgb: '58,139,122',
-  bannerFrom: '#f5ebe0',
-  bannerTo: '#e8d8c8',
-  bannerText: '#2c2018',
-  kickerFrom: '#1e3a35',
-  kickerTo: '#2d4a44',
+  accent: '#0ea4c4',
+  accentLight: '#48c9d4',
+  accentRgb: '14,164,196',
+  bannerFrom: '#dceef5',
+  bannerTo: '#b8dce8',
+  bannerText: '#0a2530',
+  kickerFrom: '#0e2a38',
+  kickerTo: '#143d52',
 };
 
 const useExit = (dur: number) => {
@@ -304,10 +305,15 @@ const CounterTag = ({ content, exit, enter }: { content: string; exit: number; e
 const BarChart = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
   const frame = useCurrentFrame();
 
-  const items = content.split(',').map(pair => {
-    const [label, val] = pair.split(':');
-    return { label: label.trim(), val: parseFloat(val) };
-  });
+  // Пары читает общий разбор (payload.numPairs), а не своя строчка на месте.
+  // Прежняя своя роняла ВЕСЬ рендер оверлея на строке без двоеточия:
+  // parseFloat(undefined) = NaN, дальше Math.max(...,NaN) = NaN и remotion
+  // падал с «outputRange must contain only finite numbers, but got [0,NaN]»
+  // (замер: bars | Kein Datensatz vorhanden). Оверлей при этом не «выходил
+  // пустым», а срывался в запасной Pillow — то есть ролик молча получал
+  // плашку не того вида.
+  const items = numPairs(content).map(d => ({ label: d.label, val: d.value }));
+  if (!items.length) return <AbsoluteFill />;
 
   const maxVal = Math.max(...items.map(i => i.val), 1);
   const opacity = enter * exit;
@@ -353,10 +359,10 @@ const BarChart = ({ content, exit, enter }: { content: string; exit: number; ent
 const Timeline = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
   const frame = useCurrentFrame();
 
-  const events = content.split(',').map(pair => {
-    const [year, label] = pair.split(':');
-    return { year: year.trim(), label: label.trim() };
-  });
+  // Общий разбор вместо своего: своя строчка звала label.trim() на строке без
+  // двоеточия, где label === undefined, и роняла рендер оверлея целиком.
+  const events = textPairs(content);
+  if (!events.length) return <AbsoluteFill />;
 
   const opacity = enter * exit;
   const scale = interpolate(enter, [0, 1], [0.9, 1]);
@@ -511,7 +517,11 @@ const Popup = ({ img, exit, enter }: { img: string; exit: number; enter: number 
 const Compare = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
 
   const [left, right] = content.split('::').map(s => s.trim());
-  
+  // Рамки рисуются парой и всегда одного размера. Половина без текста — это
+  // не «половина плашки», а полноценный пустой прямоугольник рядом с полным
+  // (замер: compare | Nur eine Seite, 4.87% кадра залито, справа пусто).
+  if (!left || !right) return <AbsoluteFill />;
+
   const opacity = enter * exit;
   const scale = interpolate(enter, [0, 1], [0.9, 1]);
 
@@ -721,8 +731,25 @@ const Collage = ({ items, exit, enter }: { items: { label: string; img: string }
 
 const TitleCard = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
   const frame = useCurrentFrame();
+  const { width } = useVideoConfig();
   const [head, sub] = content.split('::');
-  const words = head.trim().split(/\s+/);
+  const words = (head ?? '').trim().split(/\s+/).filter(Boolean);
+  // Самый дорогой пустой кадр во всём файле: корневой AbsoluteFill ниже
+  // заливает ВЕСЬ кадр rgba(0,0,0,0.35), и без заголовка зритель четыре
+  // секунды смотрит на затемнённое видео с одной чёрточкой посередине.
+  // Именно так выглядела карточка главы «::01», у которой потерялось
+  // название. Затемнение имеет смысл только под словами, поэтому нет слов —
+  // нет и затемнения.
+  if (!words.length) return <AbsoluteFill />;
+
+  // Кегль по самому длинному слову — та же причина, что и в
+  // variants/_forms.tsx: flex-wrap рвёт строку только по пробелам, а
+  // немецкое составное существительное пробелов не содержит, и на
+  // фиксированных 78px оно уезжало за край кадра вместе с концом заголовка.
+  // 0.70 em на знак — замер по отрендеренному кадру этой же гарнитуры
+  // капсом (16 знаков заняли 991px при кегле 92).
+  const longest = words.reduce((a, w) => Math.max(a, w.length), 0);
+  const size = Math.max(30, Math.min(78, (width * 0.84) / longest / 0.70));
 
   const barWidth = interpolate(frame, [0, 18], [0, 1], {
     easing: Easing.out(Easing.cubic), extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
@@ -736,7 +763,7 @@ const TitleCard = ({ content, exit, enter }: { content: string; exit: number; en
       <div style={{ opacity: exit, textAlign: 'center', maxWidth: '84%' }}>
         <div style={{
           display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0 20px',
-          fontFamily: DISPLAY, fontSize: 78, lineHeight: 1.05,
+          fontFamily: DISPLAY, fontSize: size, lineHeight: 1.05,
           textTransform: 'uppercase', color: '#fff',
         }}>
           {words.map((w, i) => {
@@ -748,6 +775,9 @@ const TitleCard = ({ content, exit, enter }: { content: string; exit: number; en
             return (
               <span key={i} style={{
                 display: 'inline-block',
+                // последний рубеж, если замер по знакам промахнулся:
+                // слово рвётся посередине, но остаётся в кадре
+                maxWidth: '100%', overflowWrap: 'anywhere',
                 opacity: interpolate(frame, [start, start + 8], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }),
                 transform: `scale(${Math.max(0.001, interpolate(k, [0, 1], [1.6, 1]))}) translateY(${(1 - k) * 30}px)`,
                 textShadow: '0 8px 30px rgba(0,0,0,0.7)',
@@ -945,8 +975,11 @@ const Stamp = ({ content, exit }: { content: string; exit: number }) => {
 const Redact = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const lines = content.split('::').filter(Boolean);
+  // Пустые строки выкидываются: подложка документа непрозрачная (#efe9dd) и
+  // растянута по числу строк — пара пустых давала лист бумаги с пробелами.
+  const lines = redactLines(content);
   const step = Math.max(3, Math.round(fps * 0.22));
+  if (!lines.length) return <AbsoluteFill />;
 
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', opacity: enter * exit }}>
@@ -960,8 +993,8 @@ const Redact = ({ content, exit, enter }: { content: string; exit: number; enter
             easing: Easing.out(Easing.cubic),
             extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
           });
-          const hide = ln.startsWith('*');
-          const txt = hide ? ln.slice(1) : ln;
+          const hide = ln.hidden;
+          const txt = ln.text;
           return (
             <div key={i} style={{ position: 'relative' }}>
               <div style={{
@@ -1194,12 +1227,68 @@ const OverlayCore: React.FC<OverlayProps> = (p) => {
 // пустоту, а большую тёмную плашку посреди кадра. Ровно это и попало в
 // ролик, когда вариант banner/ai_f3e5 брал текст из props.children, которых
 // ему никто не передаёт.
+//
+// Проверка ОБЯЗАНА быть здесь, а не в компонентах: через эти ворота проходят
+// и встроенные виды, и полсотни вариантов из VARIANTS (в том числе полтора
+// десятка нагенерированных ИИ, которые сплошь рисуют подложку до того, как
+// посмотрят на текст — titlecard/ai_1be7 заливает весь кадр rgba(0,0,0,0.25),
+// titlecard/ai_e566 — светлым на 0.4). Починить каждый по отдельности нельзя:
+// новые появляются с каждым роликом.
+//
+// Здесь стояло `Boolean(p.content.trim())` с комментарием «зеркало
+// питоновской проверки» — зеркалом оно не было. Питон требует букву или
+// цифру ПОСЛЕ вычистки разделителей (overlays.has_payload), а тут проходило
+// всё непустое, включая «::». Но главная дыра была не в этом: обе проверки
+// смотрят на строку целиком, а рисующий код разбирает её на части, и
+// «строка есть» ≠ «части есть». Замер на стенде, кадр 45:
+//   bars      | Kein Datensatz vorhanden       -> пустая полоса 848x36
+//   compare   | Nur eine Seite                 -> пустая правая рамка
+//   titlecard | ::01                           -> ВЕСЬ кадр залит на 35%
+// Каждая из этих строк проходила и питон, и прежние ворота.
 const hasPayload = (p: OverlayProps): boolean => {
   if (p.type === 'popup') return Boolean((p.img ?? '').trim());
   if (p.type === 'collage' || p.type === 'gallery') {
     return (p.items ?? []).some((it) => it && Boolean(it.img));
   }
-  return Boolean((p.content ?? '').trim());
+  const text = p.content ?? '';
+  if (!anyAlnum(text)) return false;
+  switch (p.type) {
+    // Составное содержимое «ГЛАВНОЕ::подпись». Вторая половина пустой бывает
+    // законно (автор цитаты, дата штампа, номер главы), первая — никогда:
+    // без неё титр это подложка с номером. Так пришла карточка главы «::01»
+    // — название потерялось при генерации, а цифры номера проходили проверку
+    // на буквы и цифры, и плашка уезжала в ролик.
+    case 'titlecard':
+    case 'quote':
+    case 'stamp':
+      return anyAlnum(headOf(text));
+    // Сравнению нужны ОБЕ половины: рамки рисуются парой независимо от того,
+    // достался ли им текст, и половина без текста — пустой прямоугольник
+    // ровно того же размера, что и полный.
+    case 'compare': {
+      const parts = text.split('::');
+      return anyAlnum(parts[0] ?? '') && anyAlnum(parts[1] ?? '');
+    }
+    // Списковые типы: нет ни одной пары — нечего рисовать внутри подложки,
+    // а подложка при этом растянута на minWidth 780px.
+    case 'bars':
+    case 'infographic':
+      return numPairs(text).length > 0;
+    case 'timeline':
+      return textPairs(text).length > 0;
+    // Счётчик без единой цифры показывал «0» — число, которого никто не
+    // называл, хуже отсутствия плашки.
+    case 'counter':
+      return /\d/.test(text);
+    // Зачернено всё — на экране одни чёрные полосы, ровно тот кадр, из-за
+    // которого в overlays.py появилась redact_all_hidden.
+    case 'redact': {
+      const lines = redactLines(text);
+      return lines.length > 0 && !lines.every((ln) => ln.hidden);
+    }
+    default:
+      return true;
+  }
 };
 
 export const Overlay: React.FC<OverlayProps> = (p) => {
