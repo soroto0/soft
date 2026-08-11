@@ -7958,7 +7958,13 @@ def apply_chapters(out_dir, log=print) -> list[tuple[float, str]]:
         for line in over.read_text("utf-8").splitlines():
             parts = [p.strip() for p in line.split("|")]
             # Старые титульные карточки рядом с границей главы убираем: две
-            # карточки подряд читаются как сбой, а не как структура.
+            # карточки подряд читаются как сбой, а не как структура. Окно
+            # МИНУТА, а не полминуты: на замере einsturzpunkt 10.08 при 20 с
+            # уцелела карточка на 08:01 против главы на 08:32 — «STRUKTURELLES
+            # VERSAGEN», а через полминуты «RISSBILDUNG AN KNOTENPUNKT 11».
+            # Два заголовка раздела подряд спорят друг с другом. При 60 с
+            # выживают только те, что стоят посреди главы (10:47 — до соседних
+            # границ две минуты), и они читаются как акцент, а не как раздел.
             if len(parts) > 2 and parts[1].lower() == "titlecard":
                 try:
                     tc = parts[0] if parts[0].count(":") == 2 else "00:" + parts[0]
@@ -7966,7 +7972,7 @@ def apply_chapters(out_dir, log=print) -> list[tuple[float, str]]:
                 except Exception:
                     keep.append(line)
                     continue
-                if any(abs(t - sec) < 20 for sec, _ in times):
+                if any(abs(t - sec) < 60 for sec, _ in times):
                     dropped += 1
                     continue
             keep.append(line)

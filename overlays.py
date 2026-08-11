@@ -144,6 +144,41 @@ def has_payload(text: str) -> bool:
     return any(ch.isalnum() for ch in RE_SEPS.sub(" ", text or ""))
 
 
+# Типы, у которых content — это «ГЛАВНОЕ::подпись». Вторая половина пустой
+# бывает законно (автор цитаты, дата штампа, номер главы), первая — никогда.
+HEAD_TYPES = ("titlecard", "quote", "stamp", "compare")
+
+
+def head_missing(otype: str, text: str) -> bool:
+    """Потеряна первая половина составного content.
+
+    Дыра в has_payload, которую открыли карточки глав. Они пишутся в
+    overlays.txt строкой «HH:MM:SS | titlecard | НАЗВАНИЕ::01 | center | 4s»,
+    и когда название не доехало из генерации, остаётся «::01». Букв нет, но
+    ЦИФРЫ номера главы есть — has_payload такую строку пропускает, потому что
+    смотрит на content целиком и не знает, что у этого типа он составной.
+
+    Дальше плашка рисовалась: у встроенного вида titlecard корневой слой
+    заливает ВЕСЬ кадр rgba(0,0,0,0.35), и зритель четыре секунды смотрел на
+    затемнённое видео с одной чёрточкой и номером посреди экрана.
+
+    Remotion такие входы теперь тоже отсекает (Overlay.hasPayload), но отсев
+    обязан быть и здесь — по той же причине, что и у has_payload: секвенция
+    всё равно рендерится минуту и всё равно занимает вход ffmpeg, у которого
+    свой потолок MAX_OVERLAY_INPUTS, то есть пустышка вытесняет из ролика
+    настоящую плашку. У compare нужны обе половины: рамки рисуются парой и
+    одного размера, половина без текста — пустой прямоугольник.
+    """
+    if otype not in HEAD_TYPES:
+        return False
+    parts = (text or "").split("::")
+    need = 2 if otype == "compare" else 1
+    # len(parts) проверяем отдельно: у compare без «::» срез parts[:2] вернёт
+    # один элемент, и all() по нему благополучно пройдёт — то есть строка без
+    # разделителя вообще притворилась бы годной.
+    return len(parts) < need or not all(has_payload(p) for p in parts[:need])
+
+
 def parse_overlays(text: str) -> list[dict]:
     """-> [{t, type, content, pos, dur}], битые строки пропускаются."""
     items = []
@@ -175,10 +210,13 @@ def parse_overlays(text: str) -> list[dict]:
                          "kinetic", "highlight", "quote", "stamp", "redact",
                          "marker", "gallery"):
             continue
-        if not has_payload(parts[2]) or (
-                parts[1].strip() == 'redact'
-                and redact_all_hidden(parts[2])):
-            # Оверлей без содержимого не рисуется вовсе — см. has_payload.
+        if (not has_payload(parts[2])
+                or head_missing(otype, parts[2])
+                or (otype == 'redact' and redact_all_hidden(parts[2]))):
+            # Оверлей без содержимого не рисуется вовсе — см. has_payload и
+            # head_missing (пустая первая половина «::»; сравнение redact
+            # идёт по otype, а не по сырому parts[1], иначе строка «REDACT»
+            # заглавными проскакивала бы мимо проверки).
             # То же самое проверяет и Remotion (Overlay.hasPayload), но
             # отсев обязан быть ЗДЕСЬ: секвенция такого оверлея всё равно
             # рендерится минуту и всё равно попадает в список входов
