@@ -187,6 +187,98 @@ import { ElenchosDeconstructionScene } from './scenes/elenchos_deconstruction';
 import { SequenceOfFailureScene } from './scenes/sequence_of_failure';
 import { IncubationFlowDiagramScene } from './scenes/incubation_flow_diagram';
 import { LegalWallDiagramScene } from './scenes/legal_wall_diagram';
+import { CorrosionTimelineScene } from './scenes/corrosion_timeline';
+import { FrameComparisonScene } from './scenes/frame_comparison';
+import { CostEfficiencyScene } from './scenes/cost_efficiency';
+import { InsideOutRotScene } from './scenes/inside_out_rot';
+import { HydrophobicBarrierScene } from './scenes/hydrophobic_barrier';
+import { CapillaryActionFailureScene } from './scenes/capillary_action_failure';
+import { CrossSectionMoistureScene } from './scenes/cross_section_moisture';
+import { InternalDecompositionScene } from './scenes/internal_decomposition';
+import { MechanicalFailureScene } from './scenes/mechanical_failure';
+import { SurfaceErosionScene } from './scenes/surface_erosion';
+import { HiddenOverlapViewScene } from './scenes/hidden_overlap_view';
+import { LocationContextScene } from './scenes/location_context';
+import { LevelsOfInfinityScene } from './scenes/levels_of_infinity';
+import { CountableUncountableCardinalityScene } from './scenes/countable_uncountable_cardinality';
+import { LineToSquareMappingScene } from './scenes/line_to_square_mapping';
+import { TopologicalFractureScene } from './scenes/topological_fracture';
+import { DoctrinalOverlapScene } from './scenes/doctrinal_overlap';
+import { GeografiaEstaticaScene } from './scenes/geografia_estatica';
+import { TensionSistemicaScene } from './scenes/tension_sistemica';
+import { SeccionTransversalScene } from './scenes/seccion_transversal';
+import { FuerzasDeLaNaturalezaScene } from './scenes/fuerzas_de_la_naturaleza';
+import { InversionDelSistemaScene } from './scenes/inversion_del_sistema';
+import { MaquinariaDelRegicidioScene } from './scenes/maquinaria_del_regicidio';
+import { FilosofoEntreFaccionesScene } from './scenes/filosofo_entre_facciones';
+import { OpticalIllusionDiagramScene } from './scenes/optical_illusion_diagram';
+import { FloatingStructureScene } from './scenes/floating_structure';
+import { CrossSectionPinboardScene } from './scenes/cross_section_pinboard';
+import { PressureDiagramScene } from './scenes/pressure_diagram';
+import { DualityMapScene } from './scenes/duality_map';
+import { PathwayMapScene } from './scenes/pathway_map';
+import { TrojanHorseDiagramScene } from './scenes/trojan_horse_diagram';
+import { ScaleOfComplexityScene } from './scenes/scale_of_complexity';
+import { DynamicLabyrinthScene } from './scenes/dynamic_labyrinth';
+import { LogicalEliminationScene } from './scenes/logical_elimination';
+import { MassAttritionScene } from './scenes/mass_attrition';
+import { StatisticalOverlapScene } from './scenes/statistical_overlap';
+import { AbstractQuantityScene } from './scenes/abstract_quantity';
+import { FeedbackLoopScene } from './scenes/feedback_loop';
+import { GeographyOfIsolationScene } from './scenes/geography_of_isolation';
+import { ConceptualTransitionScene } from './scenes/conceptual_transition';
+import { AsymmetricValueScene } from './scenes/asymmetric_value';
+import { CurrencyHierarchyScene } from './scenes/currency_hierarchy';
+import { MechanicalCrossSectionScene } from './scenes/mechanical_cross_section';
+import { AtmosphericPressureForcesScene } from './scenes/atmospheric_pressure_forces';
+import { ElevationComparisonScene } from './scenes/elevation_comparison';
+import { CosmicBoundaryScene } from './scenes/cosmic_boundary';
+import { PhysicsOfFailureScene } from './scenes/physics_of_failure';
+import { SpatialHallucinationScene } from './scenes/spatial_hallucination';
+import { RelativeScaleScene } from './scenes/relative_scale';
+import { Node11CrossSectionScene } from './scenes/node_11_cross_section';
+import { ShearFrictionInterfaceScene } from './scenes/shear_friction_interface';
+import { SurfaceFrictionCoefficientScene } from './scenes/surface_friction_coefficient';
+import { ShearTransferCapacityScene } from './scenes/shear_transfer_capacity';
+import { ShearForceFactorTwoScene } from './scenes/shear_force_factor_two';
+import { DamDimensionsScene } from './scenes/dam_dimensions';
+import { GeologicalFissuresScene } from './scenes/geological_fissures';
+import { SiltErosionMechanicsScene } from './scenes/silt_erosion_mechanics';
+import { FillingRateGraphScene } from './scenes/filling_rate_graph';
+import { HydraulicFracturingScene } from './scenes/hydraulic_fracturing';
+import { CavitationVibrationScene } from './scenes/cavitation_vibration';
+import { PathogenOriginScene } from './scenes/pathogen_origin';
+import { DataErasureScene } from './scenes/data_erasure';
+import { MortalityPeakScene } from './scenes/mortality_peak';
+import { InternalObstructionScene } from './scenes/internal_obstruction';
+import { UnitAttritionScene } from './scenes/unit_attrition';
+import { ForceCompositionScene } from './scenes/force_composition';
+import { DensityComparisonScene } from './scenes/density_comparison';
+import { SupplyStarvationScene } from './scenes/supply_starvation';
+import { ImperialFragmentationScene } from './scenes/imperial_fragmentation';
+import { PlatformStructuralLayoutScene } from './scenes/platform_structural_layout';
+import { BuoyancyLossDistributionScene } from './scenes/buoyancy_loss_distribution';
+import { ColumnFloodingCrossSectionScene } from './scenes/column_flooding_cross_section';
+import { HydrophoneCutoutDimensionScene } from './scenes/hydrophone_cutout_dimension';
+import { WeldMicrocrackSectionScene } from './scenes/weld_microcrack_section';
+import { FatigueCrackPropagationScene } from './scenes/fatigue_crack_propagation';
+import { LamellarTearingMicrostructureScene } from './scenes/lamellar_tearing_microstructure';
+import { EpoxyCoatingOcclusionScene } from './scenes/epoxy_coating_occlusion';
+import { CenterOfGravityShiftScene } from './scenes/center_of_gravity_shift';
+import { SeccionesConicasGeometriaScene } from './scenes/secciones_conicas_geometria';
+import { ProyeccionEstereograficaAstrolabioScene } from './scenes/proyeccion_estereografica_astrolabio';
+import { DesmantelamientoSistematicoBibliotecaScene } from './scenes/desmantelamiento_sistematico_biblioteca';
+import { EsferasInfluenciaPoliticaScene } from './scenes/esferas_influencia_politica';
+import { StructuralLoadAnalysisScene } from './scenes/structural_load_analysis';
+import { StressDistributionCutScene } from './scenes/stress_distribution_cut';
+import { LoadPathAnimationScene } from './scenes/load_path_animation';
+import { CrossSectionComparisonScene } from './scenes/cross_section_comparison';
+import { PropagationMapScene } from './scenes/propagation_map';
+import { DeflectionDiagramScene } from './scenes/deflection_diagram';
+import { StructuralModelErrorScene } from './scenes/structural_model_error';
+import { SchematicOverlayScene } from './scenes/schematic_overlay';
+import { LoadAccumulationGraphScene } from './scenes/load_accumulation_graph';
+import { WeldSectionCutScene } from './scenes/weld_section_cut';
 export type { SceneProps };
 
 // Точка входа для СЦЕН — планов, которые целиком нарисованы, а не сняты.
@@ -594,6 +686,190 @@ const pickScene = (props: SceneProps): React.ReactElement | null => {
       return <IncubationFlowDiagramScene {...props} />;
     case 'legal_wall_diagram':
       return <LegalWallDiagramScene {...props} />;
+    case 'corrosion_timeline':
+      return <CorrosionTimelineScene {...props} />;
+    case 'frame_comparison':
+      return <FrameComparisonScene {...props} />;
+    case 'cost_efficiency':
+      return <CostEfficiencyScene {...props} />;
+    case 'inside_out_rot':
+      return <InsideOutRotScene {...props} />;
+    case 'hydrophobic_barrier':
+      return <HydrophobicBarrierScene {...props} />;
+    case 'capillary_action_failure':
+      return <CapillaryActionFailureScene {...props} />;
+    case 'cross_section_moisture':
+      return <CrossSectionMoistureScene {...props} />;
+    case 'internal_decomposition':
+      return <InternalDecompositionScene {...props} />;
+    case 'mechanical_failure':
+      return <MechanicalFailureScene {...props} />;
+    case 'surface_erosion':
+      return <SurfaceErosionScene {...props} />;
+    case 'hidden_overlap_view':
+      return <HiddenOverlapViewScene {...props} />;
+    case 'location_context':
+      return <LocationContextScene {...props} />;
+    case 'levels_of_infinity':
+      return <LevelsOfInfinityScene {...props} />;
+    case 'countable_uncountable_cardinality':
+      return <CountableUncountableCardinalityScene {...props} />;
+    case 'line_to_square_mapping':
+      return <LineToSquareMappingScene {...props} />;
+    case 'topological_fracture':
+      return <TopologicalFractureScene {...props} />;
+    case 'doctrinal_overlap':
+      return <DoctrinalOverlapScene {...props} />;
+    case 'geografia_estatica':
+      return <GeografiaEstaticaScene {...props} />;
+    case 'tension_sistemica':
+      return <TensionSistemicaScene {...props} />;
+    case 'seccion_transversal':
+      return <SeccionTransversalScene {...props} />;
+    case 'fuerzas_de_la_naturaleza':
+      return <FuerzasDeLaNaturalezaScene {...props} />;
+    case 'inversion_del_sistema':
+      return <InversionDelSistemaScene {...props} />;
+    case 'maquinaria_del_regicidio':
+      return <MaquinariaDelRegicidioScene {...props} />;
+    case 'filosofo_entre_facciones':
+      return <FilosofoEntreFaccionesScene {...props} />;
+    case 'optical_illusion_diagram':
+      return <OpticalIllusionDiagramScene {...props} />;
+    case 'floating_structure':
+      return <FloatingStructureScene {...props} />;
+    case 'cross_section_pinboard':
+      return <CrossSectionPinboardScene {...props} />;
+    case 'pressure_diagram':
+      return <PressureDiagramScene {...props} />;
+    case 'duality_map':
+      return <DualityMapScene {...props} />;
+    case 'pathway_map':
+      return <PathwayMapScene {...props} />;
+    case 'trojan_horse_diagram':
+      return <TrojanHorseDiagramScene {...props} />;
+    case 'scale_of_complexity':
+      return <ScaleOfComplexityScene {...props} />;
+    case 'dynamic_labyrinth':
+      return <DynamicLabyrinthScene {...props} />;
+    case 'logical_elimination':
+      return <LogicalEliminationScene {...props} />;
+    case 'mass_attrition':
+      return <MassAttritionScene {...props} />;
+    case 'statistical_overlap':
+      return <StatisticalOverlapScene {...props} />;
+    case 'abstract_quantity':
+      return <AbstractQuantityScene {...props} />;
+    case 'feedback_loop':
+      return <FeedbackLoopScene {...props} />;
+    case 'geography_of_isolation':
+      return <GeographyOfIsolationScene {...props} />;
+    case 'conceptual_transition':
+      return <ConceptualTransitionScene {...props} />;
+    case 'asymmetric_value':
+      return <AsymmetricValueScene {...props} />;
+    case 'currency_hierarchy':
+      return <CurrencyHierarchyScene {...props} />;
+    case 'mechanical_cross_section':
+      return <MechanicalCrossSectionScene {...props} />;
+    case 'atmospheric_pressure_forces':
+      return <AtmosphericPressureForcesScene {...props} />;
+    case 'elevation_comparison':
+      return <ElevationComparisonScene {...props} />;
+    case 'cosmic_boundary':
+      return <CosmicBoundaryScene {...props} />;
+    case 'physics_of_failure':
+      return <PhysicsOfFailureScene {...props} />;
+    case 'spatial_hallucination':
+      return <SpatialHallucinationScene {...props} />;
+    case 'relative_scale':
+      return <RelativeScaleScene {...props} />;
+    case 'node_11_cross_section':
+      return <Node11CrossSectionScene {...props} />;
+    case 'shear_friction_interface':
+      return <ShearFrictionInterfaceScene {...props} />;
+    case 'surface_friction_coefficient':
+      return <SurfaceFrictionCoefficientScene {...props} />;
+    case 'shear_transfer_capacity':
+      return <ShearTransferCapacityScene {...props} />;
+    case 'shear_force_factor_two':
+      return <ShearForceFactorTwoScene {...props} />;
+    case 'dam_dimensions':
+      return <DamDimensionsScene {...props} />;
+    case 'geological_fissures':
+      return <GeologicalFissuresScene {...props} />;
+    case 'silt_erosion_mechanics':
+      return <SiltErosionMechanicsScene {...props} />;
+    case 'filling_rate_graph':
+      return <FillingRateGraphScene {...props} />;
+    case 'hydraulic_fracturing':
+      return <HydraulicFracturingScene {...props} />;
+    case 'cavitation_vibration':
+      return <CavitationVibrationScene {...props} />;
+    case 'pathogen_origin':
+      return <PathogenOriginScene {...props} />;
+    case 'data_erasure':
+      return <DataErasureScene {...props} />;
+    case 'mortality_peak':
+      return <MortalityPeakScene {...props} />;
+    case 'internal_obstruction':
+      return <InternalObstructionScene {...props} />;
+    case 'unit_attrition':
+      return <UnitAttritionScene {...props} />;
+    case 'force_composition':
+      return <ForceCompositionScene {...props} />;
+    case 'density_comparison':
+      return <DensityComparisonScene {...props} />;
+    case 'supply_starvation':
+      return <SupplyStarvationScene {...props} />;
+    case 'imperial_fragmentation':
+      return <ImperialFragmentationScene {...props} />;
+    case 'platform_structural_layout':
+      return <PlatformStructuralLayoutScene {...props} />;
+    case 'buoyancy_loss_distribution':
+      return <BuoyancyLossDistributionScene {...props} />;
+    case 'column_flooding_cross_section':
+      return <ColumnFloodingCrossSectionScene {...props} />;
+    case 'hydrophone_cutout_dimension':
+      return <HydrophoneCutoutDimensionScene {...props} />;
+    case 'weld_microcrack_section':
+      return <WeldMicrocrackSectionScene {...props} />;
+    case 'fatigue_crack_propagation':
+      return <FatigueCrackPropagationScene {...props} />;
+    case 'lamellar_tearing_microstructure':
+      return <LamellarTearingMicrostructureScene {...props} />;
+    case 'epoxy_coating_occlusion':
+      return <EpoxyCoatingOcclusionScene {...props} />;
+    case 'center_of_gravity_shift':
+      return <CenterOfGravityShiftScene {...props} />;
+    case 'secciones_conicas_geometria':
+      return <SeccionesConicasGeometriaScene {...props} />;
+    case 'proyeccion_estereografica_astrolabio':
+      return <ProyeccionEstereograficaAstrolabioScene {...props} />;
+    case 'desmantelamiento_sistematico_biblioteca':
+      return <DesmantelamientoSistematicoBibliotecaScene {...props} />;
+    case 'esferas_influencia_politica':
+      return <EsferasInfluenciaPoliticaScene {...props} />;
+    case 'structural_load_analysis':
+      return <StructuralLoadAnalysisScene {...props} />;
+    case 'stress_distribution_cut':
+      return <StressDistributionCutScene {...props} />;
+    case 'load_path_animation':
+      return <LoadPathAnimationScene {...props} />;
+    case 'cross_section_comparison':
+      return <CrossSectionComparisonScene {...props} />;
+    case 'propagation_map':
+      return <PropagationMapScene {...props} />;
+    case 'deflection_diagram':
+      return <DeflectionDiagramScene {...props} />;
+    case 'structural_model_error':
+      return <StructuralModelErrorScene {...props} />;
+    case 'schematic_overlay':
+      return <SchematicOverlayScene {...props} />;
+    case 'load_accumulation_graph':
+      return <LoadAccumulationGraphScene {...props} />;
+    case 'weld_section_cut':
+      return <WeldSectionCutScene {...props} />;
     default:
       return null;
   }

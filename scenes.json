@@ -443,5 +443,1109 @@
     "quote": "Apenas tres años después de su primera demostración, mientras intentaba comparar los puntos de una línea de un centímetro con los de un plano cuadrado, Cantor encontró que ambos conjuntos tenían exact",
     "brief": "A 1D line segment unfolds and distributes its points across a 2D square, showing a bijective coordinate mapping where every point on the line matches a point in the plane.",
     "vision": "ok"
+  },
+  "estoico-es/nested_circles_diagram": {
+    "kind": "nested_circles_diagram",
+    "channel": "estoico-es",
+    "title": "Niveles del infinito",
+    "quote": "el infinito no es un concepto único, sino un abismo con diferentes niveles y tamaños",
+    "brief": "Círculos concéntricos y superpuestos que representan conjuntos de infinitos, donde cada capa es más grande que la anterior.",
+    "vision": "ok"
+  },
+  "estoico-es/line_vs_dots_diagram": {
+    "kind": "line_vs_dots_diagram",
+    "channel": "estoico-es",
+    "title": "Real vs Entero",
+    "quote": "los números reales, aquellos que llenan la línea continua, son incontables, infinitamente más numerosos que los números enteros",
+    "brief": "Una línea continua sólida frente a una serie de puntos discretos y espaciados para mostrar la diferencia de densidad.",
+    "vision": "ok"
+  },
+  "estoico-es/fractured_line_diagram": {
+    "kind": "fractured_line_diagram",
+    "channel": "estoico-es",
+    "title": "Espacio fracturado",
+    "quote": "la función de Cantor no era continua, lo que significaba que para mantener la igualdad de puntos había tenido que desgarrar el espacio geométrico",
+    "brief": "Una línea que se rompe en segmentos infinitos para poder encajar dentro de un cuadrado, simbolizando la pérdida de continuidad.",
+    "vision": "ok"
+  },
+  "estoico-es/infinite_staircase": {
+    "kind": "infinite_staircase",
+    "channel": "estoico-es",
+    "title": "Jerarquía transfinita",
+    "quote": "detrás del primer infinito no había un vacío, sino una jerarquía interminable de infinitos",
+    "brief": "Una escalera que asciende indefinidamente hacia arriba, donde cada escalón representa un nivel superior de infinito.",
+    "vision": "ok"
+  },
+  "estoico-es/split_diagram": {
+    "kind": "split_diagram",
+    "channel": "estoico-es",
+    "title": "Infinito y Absoluto",
+    "quote": "el infinito transfinito, que los matemáticos podían estudiar y clasificar, y el Infinito Absoluto",
+    "brief": "Un diagrama dividido: una zona inferior con estructuras geométricas claras y una zona superior etérea que representa lo inalcanzable.",
+    "vision": "ok"
+  },
+  "estoico-es/expanding_sphere_diagram": {
+    "kind": "expanding_sphere_diagram",
+    "channel": "estoico-es",
+    "title": "Infinitud de la creación",
+    "quote": "negar la existencia de infinitos reales en el universo físico equivalía a limitar el poder de un creador omnipotente",
+    "brief": "Una esfera que se expande desde un punto central, representando cómo la teoría de Cantor abarca la totalidad de la creación.",
+    "vision": "ok"
+  },
+  "estoico-es/overlapping_circles_blur": {
+    "kind": "overlapping_circles_blur",
+    "channel": "estoico-es",
+    "title": "Frontera borrosa",
+    "quote": "la existencia de múltiples infinitos matemáticos abría la puerta al panteísmo",
+    "brief": "Dos círculos (Dios y el Universo) cuyos bordes comienzan a fundirse, ilustrando el riesgo teológico que temía la Iglesia.",
+    "vision": "ok"
+  },
+  "estoico-es/cracked_surface_diagram": {
+    "kind": "cracked_surface_diagram",
+    "channel": "estoico-es",
+    "title": "Colapso mental",
+    "quote": "fracturar el delicado equilibrio de su mente, abriendo una grieta por la que se colaría su primera crisis psiquiátrica grave",
+    "brief": "Una superficie plana y ordenada que desarrolla una grieta profunda y oscura, simbolizando el quiebre de la psique.",
+    "vision": "ok"
+  },
+  "estoico-es/list_highlight": {
+    "kind": "list_highlight",
+    "channel": "estoico-es",
+    "title": "Lista de conspiradores",
+    "quote": "El nombre de Maquiavelo figuraba en la séptima línea.",
+    "brief": "Un pergamino se despliega lentamente; una línea vertical recorre los nombres hasta detenerse y resaltar la séptima posición.",
+    "vision": "ok"
+  },
+  "estoico-es/structural_collapse": {
+    "kind": "structural_collapse",
+    "channel": "estoico-es",
+    "title": "Colapso institucional",
+    "quote": "La caída de la República en septiembre de 1512 y el regreso triunfal de los Médici [...] destruyeron en cuarenta y ocho horas toda la estructura institucional para la que Maquiavelo había trabajado de",
+    "brief": "Un diagrama de bloques interconectados (la administración) se fragmenta y cae en una ventana de 48 horas representada por un cronómetro antiguo.",
+    "vision": "ok"
+  },
+  "estoico-es/geography_containment": {
+    "kind": "geography_containment",
+    "channel": "estoico-es",
+    "title": "Confinamiento domiciliario",
+    "quote": "En menos de veinticuatro horas, el hombre que había cabalgado junto a reyes y papas se encontró confinado en su hogar, con la prohibición expresa de abandonar el territorio de la República durante un ",
+    "brief": "Un mapa de la Toscana muestra una línea de frontera que se contrae hasta encerrar únicamente la residencia de Maquiavelo.",
+    "vision": "ok"
+  },
+  "estoico-es/pulley_mechanics": {
+    "kind": "pulley_mechanics",
+    "channel": "estoico-es",
+    "title": "La polea de tortura",
+    "quote": "El proceso consistía en atar las manos del acusado a la espalda, elevarlo mediante una polea hasta el techo y dejarlo caer bruscamente, deteniendo la caída en seco antes de que los pies tocaran el sue",
+    "brief": "Un esquema técnico de la polea muestra cómo la cuerda cambia de dirección, convirtiendo el peso del cuerpo en una fuerza de tracción hacia arriba sobre los hombros.",
+    "vision": "ok"
+  },
+  "estoico-es/force_redistribution": {
+    "kind": "force_redistribution",
+    "channel": "estoico-es",
+    "title": "Fuerza sobre el cuerpo",
+    "quote": "Niccolò Machiavelli, el hombre que había escrito que el fundamento de todo Estado es la fuerza, estaba a punto de sentir seis sacudidas de esa fuerza aplicadas directamente sobre sus propios tendones.",
+    "brief": "Un diagrama anatómico simplificado muestra vectores de fuerza aplicados en los hombros, ilustrando cómo el peso del cuerpo se concentra en las articulaciones.",
+    "vision": "ok"
+  },
+  "estoico-es/decision_tree": {
+    "kind": "decision_tree",
+    "channel": "estoico-es",
+    "title": "El cálculo de Borgia",
+    "quote": "Borgia no solo estaba ganando tiempo; estaba evaluando si Florence valía más como aliada o como botín de guerra.",
+    "brief": "Un árbol de decisión con dos ramas: 'Aliada' vs 'Botín', sopesando los recursos de Florencia contra las necesidades de Borgia.",
+    "vision": "ok"
+  },
+  "estoico-es/financial_pressure": {
+    "kind": "financial_pressure",
+    "channel": "estoico-es",
+    "title": "Asfixia financiera",
+    "quote": "Machiavelli descubrió a la mañana siguiente que la matanza de Senigallia no fue ejecutada desde una posición de fuerza invulnerable, sino por pura asfixia financiera.",
+    "brief": "Un gráfico de barras muestra la disminución del tesoro de Borgia frente al aumento de sus deudas, forzando la acción violenta como única salida.",
+    "vision": "ok"
+  },
+  "abyss/static_load_comparison": {
+    "kind": "static_load_comparison",
+    "channel": "abyss",
+    "title": "RAILING LOAD ANALYSIS",
+    "quote": "Engineers estimated that a single one-meter section of railing, originally designed to weigh roughly twenty-five kilograms, was now supporting over five hundred kilograms of dead weight.",
+    "brief": "An orthogonal projection of a railing segment showing a grey vector arrow for the 25kg design load and a large orange vector arrow for the 500kg actual load.",
+    "vision": "ok"
+  },
+  "abyss/eccentric_force_leverage": {
+    "kind": "eccentric_force_leverage",
+    "channel": "abyss",
+    "title": "ECCENTRIC MOMENT CALCULATION",
+    "quote": "This was not a uniform load; it was a concentrated, eccentric force pulling the top rail downward and outward, creating a lever effect on the mounting brackets...",
+    "brief": "A cross-section of the railing with dimension lines showing the offset center of gravity and an orange rotational arrow indicating the torque applied to the bracket welds.",
+    "vision": "ok"
+  },
+  "abyss/lateral_wind_pressure": {
+    "kind": "lateral_wind_pressure",
+    "channel": "abyss",
+    "title": "WIND LOAD COEFFICIENT",
+    "quote": "the locks had turned the porous mesh into a solid sail. During high winds... it was catching it, transferring thousands of pounds of lateral pressure into the 1980s-era welds.",
+    "brief": "A top-down diagram showing grey wind vectors hitting a solid plane (the mesh) with orange stress arrows pointing at the weld points where the panel meets the frame.",
+    "vision": "ok"
+  },
+  "abyss/bridge_load_distribution": {
+    "kind": "bridge_load_distribution",
+    "channel": "abyss",
+    "title": "CUMULATIVE STATIC LOAD",
+    "quote": "The cumulative effect of forty-five thousand locks across the span created a static load of fifty-four tons.",
+    "brief": "A side elevation of the entire 155-meter span with a running tally of tonnage and orange heat-mapping showing where the 54-ton load is most concentrated.",
+    "vision": "ok"
+  },
+  "abyss/stress_corrosion_cutaway": {
+    "kind": "stress_corrosion_cutaway",
+    "channel": "abyss",
+    "title": "INTERNAL BRACKET DEGRADATION",
+    "quote": "The document reveals that the mounting brackets—the four-inch steel plates connecting the decorative mesh to the structural arches—were showing signs of stress corrosion cracking.",
+    "brief": "A section cut of a 4-inch steel plate showing moisture trapped behind locks and orange hairline fractures propagating through the metal thickness.",
+    "vision": "ok"
+  },
+  "abyss/thermal_expansion_differential": {
+    "kind": "thermal_expansion_differential",
+    "channel": "abyss",
+    "title": "THERMAL EXPANSION VARIANCE",
+    "quote": "the new panels acted as heat sinks, trapping solar radiation and causing the metal frames to expand at a different rate than the bridge’s floorboards.",
+    "brief": "A cross-section of the railing and floorboard with dimension lines showing expansion deltas in millimeters, highlighting the shearing rivet in orange.",
+    "vision": "ok"
+  },
+  "abyss/safety_factor_breach": {
+    "kind": "safety_factor_breach",
+    "channel": "abyss",
+    "title": "DESIGN SPECIFICATION VARIANCE",
+    "quote": "Each standard panel of the bridge’s railing was engineered to support the weight of a leaning pedestrian, roughly eighty kilograms, yet this specific section had been carrying over five hundred kilogr",
+    "brief": "A side-by-side orthogonal view of two panels: one with an 80kg human icon (grey) and one with a solid block of 500kg mass (orange) showing the resulting mesh sag.",
+    "vision": "ok"
+  },
+  "abyss/riverbed_sediment_section": {
+    "kind": "riverbed_sediment_section",
+    "channel": "abyss",
+    "title": "BENTHIC SEDIMENT COMPOSITION",
+    "quote": "Divers from the Brigade Fluviale reported that the silt beneath the arches was no longer composed of sand and organic matter, but was instead armored by a thick, oxidizing crust of discarded keys.",
+    "brief": "A vertical section cut of the Seine riverbed showing the natural silt layers in grey and the top 'armored' layer of keys highlighted in orange.",
+    "vision": "ok"
+  },
+  "abyss/core_erosion_mechanics": {
+    "kind": "core_erosion_mechanics",
+    "channel": "abyss",
+    "title": "INTERNAL SEDIMENT TRANSPORT",
+    "quote": "brown water meant soil was leaving the inside of the 305-foot structure, carried away from the core meant to hold back 80 billion gallons of water.",
+    "brief": "A cross-section of the dam shows blue hydrostatic pressure arrows forcing orange sediment particles through the grey structural core.",
+    "vision": "ok"
+  },
+  "abyss/grout_curtain_bypass": {
+    "kind": "grout_curtain_bypass",
+    "channel": "abyss",
+    "title": "UNMAPPED SEEPAGE PATHWAY",
+    "quote": "water was bypassing a three-hundred-foot concrete curtain entirely, routed through an unmapped pathway",
+    "brief": "An engineering plan view shows the intended grout curtain line in grey, with a jagged orange flow line bypassing the barrier through rock fissures.",
+    "vision": "ok"
+  },
+  "abyss/piping_progression": {
+    "kind": "piping_progression",
+    "channel": "abyss",
+    "title": "INTERNAL PIPING DEVELOPMENT",
+    "quote": "Water under immense pressure from the filled reservoir was carving a channel straight through the dam's impervious soil core.",
+    "brief": "A longitudinal section shows an orange void expanding horizontally from the reservoir side toward the downstream face, labeled with PSI figures.",
+    "vision": "ok"
+  },
+  "abyss/geological_fissure_map": {
+    "kind": "geological_fissure_map",
+    "channel": "abyss",
+    "title": "VOLCANIC RHYOLITE DISCONTINUITIES",
+    "quote": "shrinking into an intricate web of open cracks, fissures, and lava tubes.",
+    "brief": "A technical geological map shows a grid of vertical and horizontal fissures in the bedrock, with dimension lines indicating the width of the openings.",
+    "vision": "ok"
+  },
+  "abyss/grout_curtain_continuity": {
+    "kind": "grout_curtain_continuity",
+    "channel": "abyss",
+    "title": "BARRIER DISCONTINUITY",
+    "quote": "The rock was so thoroughly shattered that the grout curtain was leaving massive, untreated gaps directly beneath the planned dam core.",
+    "brief": "An elevation view of the grout curtain shows vertical grey cement columns with large orange gaps where the slurry failed to register pressure.",
+    "vision": "ok"
+  },
+  "abyss/concrete_leaching_matrix": {
+    "kind": "concrete_leaching_matrix",
+    "channel": "abyss",
+    "title": "CONCRETE LATTICE LEACHING",
+    "quote": "Dissolved calcium hydroxide washed out of the hardened cement paste, leaving microscopic voids throughout the internal lattice of the concrete slab.",
+    "brief": "Technical cross-section of the cement matrix animates fluid flow paths removing calcium hydroxide particles, expanding micro-void percentage over an indicated timeline.",
+    "vision": "ok"
+  },
+  "abyss/thaumasite_sulfate_matrix_decay": {
+    "kind": "thaumasite_sulfate_matrix_decay",
+    "channel": "abyss",
+    "title": "MATRIX BINDER DEGRADATION",
+    "quote": "The cement matrix binding the limestone aggregate together had undergone thaumasite sulfate attack, a chemical degradation triggered by decades of immersion in warm, brackish groundwater.",
+    "brief": "Microscopic cutaway schematic highlights solid aggregate bonds disintegrating into soft mineral slurry, triggered by animated groundwater ingress arrows.",
+    "vision": "unverified"
+  },
+  "home-vault/thermal_conductivity_barrier": {
+    "kind": "thermal_conductivity_barrier",
+    "channel": "home-vault",
+    "title": "Thermal Conductivity Drop",
+    "quote": "Clean aluminum boasts a thermal conductivity of roughly two hundred and thirty-seven Watts per meter-Kelvin, but an organic grime layer just one-hundredth of an inch thick drops that conductive transf",
+    "brief": "A cross-section diagram of an aluminum fin shows bright heat arrows passing easily through clean metal (237 W/m-K) but shrinking to tiny trickles when hitting a microscopic grime layer (under 1 W/m-K).",
+    "vision": "ok"
+  },
+  "home-vault/compressor_pressure_spike": {
+    "kind": "compressor_pressure_spike",
+    "channel": "home-vault",
+    "title": "Internal Pressure Rise",
+    "quote": "The compressor reacts to this trapped heat by compressing the refrigerant gas to extreme pressures, driving internal system stress from a normal operating baseline of three hundred and fifty pounds pe",
+    "brief": "A simplified HVAC flow diagram turns from honey yellow to deep brick red as a drawn gauge needle surges from 350 to 420 PSI due to trapped thermal energy.",
+    "vision": "ok"
+  },
+  "home-vault/electrical_draw_doubling": {
+    "kind": "electrical_draw_doubling",
+    "channel": "home-vault",
+    "title": "Amperage Spike",
+    "quote": "A three-ton central air compressor designed to draw around twelve to fourteen amps of electrical current under normal loads begins drawing twenty-six to twenty-nine amps as it fights that internal pre",
+    "brief": "An animated electrical meter gauge ticks up from 14A to 29A while motor winding coil diagrams glow with red resistance waves.",
+    "vision": "ok"
+  },
+  "home-vault/caustic_metal_reaction": {
+    "kind": "caustic_metal_reaction",
+    "channel": "home-vault",
+    "title": "Caustic Acid Reaction",
+    "quote": "In reality, that violent bubbling is an exothermic reaction between the caustic base and the bare aluminum metal itself.",
+    "brief": "Microscopic cutaway shows caustic foam molecules eating into the aluminum wall, releasing gas bubbles and leaving behind pitted, thinned metal.",
+    "vision": "ok"
+  },
+  "home-vault/condensation_flush_coverage": {
+    "kind": "condensation_flush_coverage",
+    "channel": "home-vault",
+    "title": "Incomplete Rinse Zone",
+    "quote": "Their sensors revealed that the natural condensation produced by a standard three-ton heat pump provides only enough liquid volume to flush the bottom thirty percent of the coil assembly.",
+    "brief": "A side view diagram of a tall coil highlights the bottom 30% being washed by blue water flow while the top 70% turns chalky red with un-rinsed chemical residue.",
+    "vision": "ok"
+  },
+  "home-vault/galvanic_corrosion_leak": {
+    "kind": "galvanic_corrosion_leak",
+    "channel": "home-vault",
+    "title": "Galvanic Corrosion",
+    "quote": "It triggers galvanic corrosion directly at the physical boundary where the aluminum fins press against the copper refrigerant tubes.",
+    "brief": "Zoomed-in cross-section of the copper-aluminum joint shows an ionic salt bridge causing aluminum particles to erode away until a small pinhole opens and leaks gas particles.",
+    "vision": "unverified"
+  },
+  "estoico-es/mechanical_gears_diagram": {
+    "kind": "mechanical_gears_diagram",
+    "channel": "estoico-es",
+    "title": "Maquinaria Legal Ateniense",
+    "quote": "El peso de la ley ateniense, una maquinaria diseñada para proteger la cohesión de los dioses del Estado, se había puesto en marcha con la precisión de un engranaje de bronce.",
+    "brief": "Dibuja engranajes interconectados que comienzan a girar; cada engranaje representa una institución (Asamblea, Tribunales, Dioses) que se activan al unísono.",
+    "vision": "ok"
+  },
+  "estoico-es/structural_collapse_diagram": {
+    "kind": "structural_collapse_diagram",
+    "channel": "estoico-es",
+    "title": "Desintegración de la Hegemonía",
+    "quote": "La hegemonía ateniense, construida durante un siglo sobre el bronce de sus trirremes y el orgullo de su asamblea, se desintegró en cuestión de semanas tras la devastadora hambruna del asedio.",
+    "brief": "Una estructura piramidal de bloques (trirremes y asamblea) que se fragmenta y cae lentamente hacia la base, representando la pérdida de poder.",
+    "vision": "ok"
+  },
+  "estoico-es/population_loss_graph": {
+    "kind": "population_loss_graph",
+    "channel": "estoico-es",
+    "title": "Purga de los Treinta",
+    "quote": "En menos de doce meses, el régimen oligárquico de los Treinta Tiranos, liderado por el aristócrata Critias, ejecutó a más de mil quinientos ciudadanos sin juicio previo",
+    "brief": "Una línea vertical que desciende bruscamente en el eje del tiempo, con pequeños puntos que desaparecen, simbolizando la ejecución masiva.",
+    "vision": "unverified"
+  },
+  "estoico-es/knowledge_overlap_diagram": {
+    "kind": "knowledge_overlap_diagram",
+    "channel": "estoico-es",
+    "title": "La Paradoja del Saber",
+    "quote": "Sócrates concluyó entonces que la ventaja que él tenía sobre ellos era mínima pero decisiva: ellos no sabían nada pero creían saberlo; él, en cambio, ni sabía nada ni creía saberlo.",
+    "brief": "Dos círculos superpuestos; uno grande y sólido (falsa sabiduría) y otro pequeño y vacío (sabiduría socrática), mostrando que el vacío es más real.",
+    "vision": "ok"
+  },
+  "estoico-es/social_tension_flow": {
+    "kind": "social_tension_flow",
+    "channel": "estoico-es",
+    "title": "El Rencor Público",
+    "quote": "La pesquisa de la sabiduría dejó de ser un dilema filosófico para convertirse, a los ojos de los ciudadanos comunes, en un espectáculo público patrocinado por la juventud dorada de la ciudad.",
+    "brief": "Un flujo de energía que va de Sócrates hacia los jóvenes, provocando una acumulación de presión en la base de los ciudadanos comunes.",
+    "vision": "ok"
+  },
+  "estoico-es/skill_trap_diagram": {
+    "kind": "skill_trap_diagram",
+    "channel": "estoico-es",
+    "title": "La Trampa del Oficio",
+    "quote": "Interrogó también a los artesanos, que al menos dominaban su oficio manual, pero descubrió que el éxito técnico los hacía caer en la misma trampa",
+    "brief": "Un círculo que representa una habilidad técnica que se expande artificialmente para cubrir temas de política y ética, volviéndose inestable.",
+    "vision": "ok"
+  },
+  "estoico-es/elenchos_deconstruction": {
+    "kind": "elenchos_deconstruction",
+    "channel": "estoico-es",
+    "title": "Desmontaje del Elenchos",
+    "quote": "Su método de interrogación, el elenchos, comenzaba siempre con una declaración de absoluta ignorancia que desarmaba al interlocutor más soberbio.",
+    "brief": "Un diagrama de una estructura compleja (argumento) que, al recibir un pequeño impacto puntual (pregunta), se desmorona en sus partes básicas.",
+    "vision": "ok"
+  },
+  "estoico-es/sequence_of_failure": {
+    "kind": "sequence_of_failure",
+    "channel": "estoico-es",
+    "title": "El Desmantelamiento Dialéctico",
+    "quote": "Cuando el general Laques intentaba definir el valor... Sócrates desmantelaba su definición en apenas tres turnos de réplica",
+    "brief": "Tres capas de una definición que se van eliminando una a una, dejando el centro vacío, ilustrando la pérdida de argumentos del general.",
+    "vision": "unverified"
+  },
+  "estoico-es/incubation_flow_diagram": {
+    "kind": "incubation_flow_diagram",
+    "channel": "estoico-es",
+    "title": "La Incubadora de Tiranos",
+    "quote": "Para los demócratas que acababan de recuperar el control de la ciudad a precio de sangre en las calles del Píreo, la filosofía socrática no era un ejercicio de especulación inofensiva, sino la incubad",
+    "brief": "Un flujo de ideas que emana de Sócrates y se transforma en las figuras de los tiranos (Critias y Alcibíades) mediante flechas sutiles.",
+    "vision": "ok"
+  },
+  "estoico-es/legal_wall_diagram": {
+    "kind": "legal_wall_diagram",
+    "channel": "estoico-es",
+    "title": "El Muro de Amnistía",
+    "quote": "el líder demócrata Trasíbulo había impulsado un juramento solemne de amnistía general que prohibía por ley procesar a cualquier ciudadano",
+    "brief": "Una línea horizontal sólida que atraviesa el lienzo, bloqueando el acceso al pasado, con la palabra 'Amnistía' escrita en trazo fino.",
+    "vision": "ok"
+  },
+  "home-vault/corrosion_timeline": {
+    "kind": "corrosion_timeline",
+    "channel": "home-vault",
+    "title": "5-YEAR STEEL DEGRADATION",
+    "quote": "In a state where road salt eats through quarter-inch steel in five winters",
+    "brief": "A cross-section of a thick steel beam thins and turns brick-red over a five-step timeline arrow.",
+    "vision": "ok"
+  },
+  "home-vault/frame_comparison": {
+    "kind": "frame_comparison",
+    "channel": "home-vault",
+    "title": "TREATED VS. UNTREATED",
+    "quote": "While nearby trucks return to the earth as iron oxide, this frame remains chemically frozen.",
+    "brief": "A split-screen shows a honey-toned protected rail on the right and a crumbling brick-toned rail on the left.",
+    "vision": "ok"
+  },
+  "home-vault/cost_efficiency": {
+    "kind": "cost_efficiency",
+    "channel": "home-vault",
+    "title": "TOTAL COST: $3.00",
+    "quote": "The secret is a three-dollar amber fluid Gary applies with a garden sprayer.",
+    "brief": "A large cost counter counts down to $3.00 next to a diagram of a garden sprayer nozzle on a cream background.",
+    "vision": "unverified"
+  },
+  "home-vault/inside_out_rot": {
+    "kind": "inside_out_rot",
+    "channel": "home-vault",
+    "title": "INTERNAL CORROSION POCKETS",
+    "quote": "why does the billion-dollar automotive industry sell coatings that actually accelerate the rot from the inside out?",
+    "brief": "A cutaway of a hollow frame rail shows moisture trapped between the metal and a thick outer shell.",
+    "vision": "unverified"
+  },
+  "home-vault/hydrophobic_barrier": {
+    "kind": "hydrophobic_barrier",
+    "channel": "home-vault",
+    "title": "NON-DRYING PROTECTION",
+    "quote": "but Gary’s mixture creates a hydrophobic barrier that never cures.",
+    "brief": "A droplet of water bounces off a honey-toned layer that remains fluid and viscous on the metal surface.",
+    "vision": "unverified"
+  },
+  "home-vault/capillary_action_failure": {
+    "kind": "capillary_action_failure",
+    "channel": "home-vault",
+    "title": "THE CAPILLARY TRAP",
+    "quote": "Rubberized sprays create a hard shell that inevitably cracks, trapping salted slush against the metal through capillary action.",
+    "brief": "A zoomed-in cross-section shows a crack in a hard shell sucking blue liquid inward toward the steel via curved arrows.",
+    "vision": "ok"
+  },
+  "home-vault/cross_section_moisture": {
+    "kind": "cross_section_moisture",
+    "channel": "home-vault",
+    "title": "Trapped Moisture Layers",
+    "quote": "The fiberglass matting underneath was damp, despite three weeks of record-breaking summer heat.",
+    "brief": "A cutaway shows the fiberglass layer beneath the asphalt with blue moisture droplets trapped inside while a sun icon beats down from above.",
+    "vision": "ok"
+  },
+  "home-vault/internal_decomposition": {
+    "kind": "internal_decomposition",
+    "channel": "home-vault",
+    "title": "Limestone Filler Decay",
+    "quote": "yet the limestone filler inside his shingles was now dissolving into a green, gelatinous sludge.",
+    "brief": "A microscopic view inside the shingle shows grey limestone particles being replaced by green blobs as liquid seeps through the layers.",
+    "vision": "unverified"
+  },
+  "home-vault/mechanical_failure": {
+    "kind": "mechanical_failure",
+    "channel": "home-vault",
+    "title": "Adhesive Seal Failure",
+    "quote": "expanding with enough force to snap the adhesive seal of a high-wind shingle.",
+    "brief": "Red stress arrows point outward from a spore colony, showing the physical lifting and snapping of the bond between two overlapping shingles.",
+    "vision": "ok"
+  },
+  "home-vault/surface_erosion": {
+    "kind": "surface_erosion",
+    "channel": "home-vault",
+    "title": "Granule Stripping Effect",
+    "quote": "Pressure washing only accelerates this decay by stripping the protective granules.",
+    "brief": "A before-and-after split screen shows a thick layer of granules on the left and a bare, exposed asphalt surface on the right.",
+    "vision": "ok"
+  },
+  "home-vault/hidden_overlap_view": {
+    "kind": "hidden_overlap_view",
+    "channel": "home-vault",
+    "title": "Hidden Overlap Rot",
+    "quote": "The real destruction hides where the shingles overlap.",
+    "brief": "A side-view cutaway peels back the top shingle layer to reveal moisture and spores festering in the dark space between the two sheets.",
+    "vision": "ok"
+  },
+  "home-vault/location_context": {
+    "kind": "location_context",
+    "channel": "home-vault",
+    "title": "Seattle, Washington",
+    "quote": "At 10:15 AM in Seattle, Mark poured forty-dollar 'Roof Wash' onto a voided warranty.",
+    "brief": "A simple map of the Pacific Northwest shows a pin on Seattle with a 'Humidity High' label to explain the environmental context.",
+    "vision": "ok"
+  },
+  "estoico-es/levels_of_infinity": {
+    "kind": "levels_of_infinity",
+    "channel": "estoico-es",
+    "title": "Niveles del infinito",
+    "quote": "El joven profesor de veintiocho años acababa de descubrir que el infinito no es un concepto único, sino un abismo con diferentes niveles y tamaños, una idea tan radical que amenazaba con demoler los c",
+    "brief": "A single point unfolds into a sequence of expanding concentric hairline circles on faded indigo, visually establishing distinct nested orders of magnitude.",
+    "vision": "ok"
+  },
+  "estoico-es/countable_uncountable_cardinality": {
+    "kind": "countable_uncountable_cardinality",
+    "channel": "estoico-es",
+    "title": "Enteros y continuos",
+    "quote": "los números reales, aquellos que llenan la línea continua, son incontables, infinitamente más numerosos que los números enteros con los que contamos los objetos cotidianos.",
+    "brief": "A line of discrete stone nodes extends infinitely while an adjacent line dissolves into an unbroken, infinitely dense dust of green points.",
+    "vision": "ok"
+  },
+  "estoico-es/line_to_square_mapping": {
+    "kind": "line_to_square_mapping",
+    "channel": "estoico-es",
+    "title": "Correspondencia biunívoca",
+    "quote": "Cantor había logrado construir una correspondencia biunívoca, una fórmula matemática estricta que asignaba a cada punto de un segmento de longitud uno un punto único dentro de un cuadrado de área uno,",
+    "brief": "Delicate hairline threads stretch from points along a one-dimensional segment to fill every coordinate of a two-dimensional square with equal density.",
+    "vision": "ok"
+  },
+  "estoico-es/topological_fracture": {
+    "kind": "topological_fracture",
+    "channel": "estoico-es",
+    "title": "Desgarro del espacio",
+    "quote": "la función de Cantor no era continua, lo que significaba que para mantener la igualdad de puntos había tenido que desgarrar el espacio geométrico, rompiendo la línea en infinitos fragmentos invisibles",
+    "brief": "A continuous hairline vector fractures into infinite dust-like fragments that reassemble inside a square boundary, illustrating space torn to preserve cardinality.",
+    "vision": "ok"
+  },
+  "estoico-es/doctrinal_overlap": {
+    "kind": "doctrinal_overlap",
+    "channel": "estoico-es",
+    "title": "Colisión conceptual",
+    "quote": "Varios teólogos jesuitas advirtieron que la existencia de múltiples infinitos matemáticos abría la puerta al panteísmo, la doctrina que equiparaba la creación con Dios.",
+    "brief": "Two distinct circles representing Creation and Divinity drift together until their overlapping intersection expands, illustrating the threat of pantheistic fusion.",
+    "vision": "ok"
+  },
+  "проба-es/geografia_estatica": {
+    "kind": "geografia_estatica",
+    "channel": "проба-es",
+    "title": "Carnuntum, 171 d.C.",
+    "quote": "En el invierno de 171, Marco Aurelio contó quinientas piras en Carnuntum.",
+    "brief": "Una línea finísima de color piedra traza el curso del Danubio sobre un fondo índigo, con un único punto denso que emite círculos concéntricos de color verde polvoriento.",
+    "vision": "ok"
+  },
+  "проба-es/tension_sistemica": {
+    "kind": "tension_sistemica",
+    "channel": "проба-es",
+    "title": "Inestabilidad comercial",
+    "quote": "El rumor bastó para colapsar los mercados.",
+    "brief": "Una red de círculos solapados que representan nodos comerciales se contrae rítmicamente hasta que las conexiones entre ellos se vuelven tenues y desaparecen.",
+    "vision": "ok"
+  },
+  "проба-es/seccion_transversal": {
+    "kind": "seccion_transversal",
+    "channel": "проба-es",
+    "title": "Degradación del denario",
+    "quote": "y el contenido de plata en el denario cayó un veintiuno por ciento en cuestión de semanas.",
+    "brief": "La sección de una moneda muestra cómo el núcleo de plata se retrae hacia el centro, dejando un vacío del veintiuno por ciento que se llena con una textura de piedra oscura.",
+    "vision": "ok"
+  },
+  "estoico-es/fuerzas_de_la_naturaleza": {
+    "kind": "fuerzas_de_la_naturaleza",
+    "channel": "estoico-es",
+    "title": "Las Dos Fuerzas Constantes",
+    "quote": "Para Hobbes, la naturaleza humana no es más que un mecanismo biológico impulsado por dos fuerzas constantes: el deseo insaciable de dominación y el terror brutal a la muerte violenta.",
+    "brief": "A horizontal timeline of human life is pulled by two subtle, dusty green circles on either end—one representing infinite desire, the other violent death—creating a tense, vibrating balance.",
+    "vision": "ok"
+  },
+  "estoico-es/inversion_del_sistema": {
+    "kind": "inversion_del_sistema",
+    "channel": "estoico-es",
+    "title": "El Sistema Invertido",
+    "quote": "La matanza que comenzó en la batalla de Edgehill en octubre de 1642 le obligó a publicar el final de su sistema antes de escribir el principio. Invirtió el orden del pensamiento puro para responder al",
+    "brief": "Three elegant, stone-colored concentric paths representing Materia, Hombre, and Estado are shown; the outer path is suddenly drawn first, marked with the date 1642, reversing the natural inside-out flow of his philosophy.",
+    "vision": "ok"
+  },
+  "estoico-es/maquinaria_del_regicidio": {
+    "kind": "maquinaria_del_regicidio",
+    "channel": "estoico-es",
+    "title": "La Maquinaria del Regicidio",
+    "quote": "El Parlamento no asesinó al rey en un rapto de furia callejera; lo juzgó mediante un tribunal autoconstituido de 135 comisionados, redactó una sentencia formal firmada por 59 regicidas y ejecutó la pe",
+    "brief": "A geometric cascade of hairline lines flows from a broad circle of 135 points down to 59 points, which converge into a single, sharp stone-colored vector representing the legal execution of the king.",
+    "vision": "ok"
+  },
+  "estoico-es/filosofo_entre_facciones": {
+    "kind": "filosofo_entre_facciones",
+    "channel": "estoico-es",
+    "title": "El Filósofo Entre Facciones",
+    "quote": "Hobbes descubrió que se había convertido en un fugitivo para las dos facciones enfrentadas de Europa. Los protestantes lo tildaban de ateo opresor; los católicos, de herético peligroso.",
+    "brief": "A single stone-colored dot representing Hobbes is squeezed in the narrow, negative space between two huge, overlapping circles of dusty green representing the Protestant and Catholic factions of Europe.",
+    "vision": "ok"
+  },
+  "estoico-es/optical_illusion_diagram": {
+    "kind": "optical_illusion_diagram",
+    "channel": "estoico-es",
+    "title": "El espejismo del orden",
+    "quote": "Si nuestros sentidos son limitados y nuestra percepción del orden es solo un espejismo óptico, la verdad absoluta deja de existir.",
+    "brief": "Líneas de perspectiva que convergen en un punto se desdibujan lentamente, revelando un fondo de caos abstracto.",
+    "vision": "ok"
+  },
+  "estoico-es/floating_structure": {
+    "kind": "floating_structure",
+    "channel": "estoico-es",
+    "title": "Conocimiento sobre el vacío",
+    "quote": "que el conocimiento humano es una estructura flotante sobre un abismo de oscuridad.",
+    "brief": "Una plataforma geométrica sólida flota sobre un espacio vacío, representando la fragilidad de la razón humana.",
+    "vision": "ok"
+  },
+  "estoico-es/cross_section_pinboard": {
+    "kind": "cross_section_pinboard",
+    "channel": "estoico-es",
+    "title": "El sistema de cálculo",
+    "quote": "Saunderson diseñó una tabla de madera perforada con miles de alfileres cuyas cabezas de distintos tamaños representaban números y límites geométricos.",
+    "brief": "Un zoom a una rejilla de alfileres donde las alturas y grosores de las cabezas se organizan en patrones matemáticos complejos.",
+    "vision": "ok"
+  },
+  "estoico-es/pressure_diagram": {
+    "kind": "pressure_diagram",
+    "channel": "estoico-es",
+    "title": "La presión del encierro",
+    "quote": "las claustrofóbicas paredes de piedra de tres metros de grosor redujeron su fe en la razón natural a un pánico febril.",
+    "brief": "Diagrama de fuerzas donde los muros se cierran sobre un pequeño punto central, representando la reducción de su campo mental.",
+    "vision": "ok"
+  },
+  "estoico-es/duality_map": {
+    "kind": "duality_map",
+    "channel": "estoico-es",
+    "title": "La doble vida",
+    "quote": "Diderot no se había retractado por convicción, sino por un terror paralizante a la prisión perpetua en la Bastilla.",
+    "brief": "Dos líneas paralelas: una muestra la sumisión pública (línea calma) y otra la actividad intelectual oculta (línea caótica).",
+    "vision": "ok"
+  },
+  "estoico-es/pathway_map": {
+    "kind": "pathway_map",
+    "channel": "estoico-es",
+    "title": "El encuentro en Vincennes",
+    "quote": "Al cruzar el foso del castillo y ver a un Diderot demacrado, consumido por la ansiedad y con la razón rota por la humedad del calabozo",
+    "brief": "Un mapa esquemático simple que muestra el trayecto desde París hasta Vincennes, marcando el punto de colapso de Diderot.",
+    "vision": "ok"
+  },
+  "estoico-es/trojan_horse_diagram": {
+    "kind": "trojan_horse_diagram",
+    "channel": "estoico-es",
+    "title": "La Enciclopedia como Caballo",
+    "quote": "la Encyclopédie se transformaría en un caballo de Troya ideológico cuyos primeros volúmenes estaban a punto de salir de las prensas de París.",
+    "brief": "Un libro cerrado que, al abrirse, libera una serie de conceptos e ideas que se expanden geométricamente por el espacio.",
+    "vision": "ok"
+  },
+  "estoico-es/scale_of_complexity": {
+    "kind": "scale_of_complexity",
+    "channel": "estoico-es",
+    "title": "El espacio de búsqueda",
+    "quote": "Este sistema generaba ciento cincuenta y ocho trillones de combinaciones posibles.",
+    "brief": "Un pequeño círculo central que representa una sola solución correcta se ve rodeado por anillos concéntricos de filamentos que se expanden hasta llenar el vacío, ilustrando la escala astronómica de posibilidades.",
+    "vision": "ok"
+  },
+  "estoico-es/dynamic_labyrinth": {
+    "kind": "dynamic_labyrinth",
+    "channel": "estoico-es",
+    "title": "Arquitectura del cifrado",
+    "quote": "Enigma no era solo un aparato; era un laberinto matemático que se reconstruía cada noche para proteger los movimientos de la flota del Atlántico.",
+    "brief": "Tres círculos (rotores) con conexiones internas de líneas finas rotan de forma independiente, mostrando cómo el camino de un pulso eléctrico cambia drásticamente con cada movimiento.",
+    "vision": "ok"
+  },
+  "estoico-es/logical_elimination": {
+    "kind": "logical_elimination",
+    "channel": "estoico-es",
+    "title": "Lógica de contradicción",
+    "quote": "Si una posición del tambor generaba una letra imposible según el texto cifrado, el circuito eléctrico se cortaba y el motor seguía girando.",
+    "brief": "Una red de filamentos eléctricos se ilumina secuencialmente hasta que una línea roja interrumpe el flujo, causando que el nodo se apague y el sistema avance al siguiente nivel.",
+    "vision": "ok"
+  },
+  "estoico-es/mass_attrition": {
+    "kind": "mass_attrition",
+    "channel": "estoico-es",
+    "title": "Atrición en el Atlántico",
+    "quote": "sumaban quinientas mil toneladas de suministros perdidos en un solo mes.",
+    "brief": "Un bloque sólido de color piedra que representa el total de suministros se va desmoronando en fragmentos finos que caen hacia la base del encuadre, dejando un vacío proporcional al 500,000.",
+    "vision": "ok"
+  },
+  "estoico-es/statistical_overlap": {
+    "kind": "statistical_overlap",
+    "channel": "estoico-es",
+    "title": "Método Banburismus",
+    "quote": "Inventó entonces el Banburismus, un método estadístico que permitía descartar millones de configuraciones de Enigma usando simples hojas de papel perforadas.",
+    "brief": "Dos rectángulos traslúcidos con perforaciones irregulares se deslizan uno sobre otro; la luz solo pasa cuando los orificios coinciden, reduciendo el área de búsqueda visualmente.",
+    "vision": "ok"
+  },
+  "estoico-es/abstract_quantity": {
+    "kind": "abstract_quantity",
+    "channel": "estoico-es",
+    "title": "La unidad de certeza",
+    "quote": "Introdujo el ban, una unidad de información que cuantificaba la certeza, adelantándose décadas a la teoría de la información moderna.",
+    "brief": "Un eje horizontal donde una marca se desplaza desde el 'azar' hacia la 'certeza' a medida que se superponen capas de datos, ganando opacidad el color verde polvoriento.",
+    "vision": "ok"
+  },
+  "estoico-es/feedback_loop": {
+    "kind": "feedback_loop",
+    "channel": "estoico-es",
+    "title": "Unificación de la máquina",
+    "quote": "Quería eliminar la distinción entre el hardware y el software, permitiendo que el aparato cambiara sus propias instrucciones en tiempo real.",
+    "brief": "Dos círculos que representan 'instrucción' y 'ejecución' se funden lentamente en una sola forma orgánica donde las líneas de flujo circulan sin principio ni fin.",
+    "vision": "ok"
+  },
+  "estoico-es/geography_of_isolation": {
+    "kind": "geography_of_isolation",
+    "channel": "estoico-es",
+    "title": "Ruta de supervivencia",
+    "quote": "Recorría quince millas diarias desde Teddington hasta el centro de la ciudad, esquivando los cráteres de las bombas V-2 que aún salpicaban el asfalto.",
+    "brief": "Una línea fina y solitaria traza un recorrido errático sobre un fondo índigo vacío, con pequeños círculos de 'piedra' representando los puntos de impacto de las bombas.",
+    "vision": "ok"
+  },
+  "estoico-es/conceptual_transition": {
+    "kind": "conceptual_transition",
+    "channel": "estoico-es",
+    "title": "Morfogénesis e inteligencia",
+    "quote": "el secreto de la inteligencia no estaba en el metal, sino en la química de las células.",
+    "brief": "Estructuras rígidas y angulares de una máquina se disuelven en patrones de reacción-difusión que imitan las manchas de un leopardo o el crecimiento de una planta.",
+    "vision": "ok"
+  },
+  "estoico-es/asymmetric_value": {
+    "kind": "asymmetric_value",
+    "channel": "estoico-es",
+    "title": "La asimetría del valor",
+    "quote": "llamó a la policía local para denunciar un robo de apenas siete libras esterlinas.",
+    "brief": "En un extremo, un punto minúsculo representa las 7 libras; en el otro, una masa inmensa representa el peso del secreto de Bletchley, unidos por una balanza que se inclina fatalmente.",
+    "vision": "ok"
+  },
+  "estoico-es/currency_hierarchy": {
+    "kind": "currency_hierarchy",
+    "channel": "estoico-es",
+    "title": "Sistema Monetario Francés",
+    "quote": "Una libra equivalía a veinte sueldos, y un sueldo a doce dineros.",
+    "brief": "Tres círculos concéntricos de diferentes grosores de línea que representan la libra, el sueldo y el dinero, subdividiéndose orgánicamente para mostrar la complejidad del cálculo.",
+    "vision": "ok"
+  },
+  "estoico-es/mechanical_cross_section": {
+    "kind": "mechanical_cross_section",
+    "channel": "estoico-es",
+    "title": "Mecanismo de la Pascalina",
+    "quote": "un sistema de ruedas dentadas de bronce, numeradas del cero al nueve, enlazadas por un mecanismo de trinquete que aprovechaba la gravedad para arrastrar la cifra contigua",
+    "brief": "Un corte lateral de dos engranajes donde una pequeña pieza metálica (trinquete) cae por su propio peso al llegar al nueve, empujando suavemente la siguiente rueda.",
+    "vision": "unverified"
+  },
+  "estoico-es/atmospheric_pressure_forces": {
+    "kind": "atmospheric_pressure_forces",
+    "channel": "estoico-es",
+    "title": "Presión sobre el Fluido",
+    "quote": "el aire pesado simplemente aplastaba el mercurio dentro de un tubo.",
+    "brief": "Líneas finas verticales que descienden desde la parte superior de la pantalla y ejercen peso sobre la superficie de un cuenco, manteniendo la columna de mercurio elevada.",
+    "vision": "ok"
+  },
+  "estoico-es/elevation_comparison": {
+    "kind": "elevation_comparison",
+    "channel": "estoico-es",
+    "title": "Experimento del Puy de Dôme",
+    "quote": "un tubo se quedaría en la base, a cuatrocientos metros sobre el nivel del mar... el otro subiría hasta los mil cuatrocientos sesenta y cinco metros del pico.",
+    "brief": "Una línea de horizonte que se eleva suavemente formando una montaña, marcando dos puntos de medición y la diferencia de altura de la columna de aire sobre cada uno.",
+    "vision": "ok"
+  },
+  "estoico-es/cosmic_boundary": {
+    "kind": "cosmic_boundary",
+    "channel": "estoico-es",
+    "title": "El Límite de la Atmósfera",
+    "quote": "si la atmósfera de la Tierra tenía un límite medible, más allá de la capa de aire que nos envuelve no había nada.",
+    "brief": "Un círculo pequeño (la Tierra) rodeado por un anillo sutil de color piedra que se desvanece, rodeado por una inmensidad de espacio vacío en azul índigo.",
+    "vision": "ok"
+  },
+  "estoico-es/physics_of_failure": {
+    "kind": "physics_of_failure",
+    "channel": "estoico-es",
+    "title": "Dinámica del Accidente",
+    "quote": "Los dos animales delanteros cayeron al Sena, pero la tensión del peso rompió los arneses de cuero en el último instante.",
+    "brief": "Un diagrama de fuerzas donde el vector de peso de los caballos tira hacia abajo y el punto de unión del arnés se fragmenta en finas líneas de tensión.",
+    "vision": "ok"
+  },
+  "estoico-es/spatial_hallucination": {
+    "kind": "spatial_hallucination",
+    "channel": "estoico-es",
+    "title": "El Abismo de Pascal",
+    "quote": "empezó a ver un abismo físico e insondable a su izquierda.",
+    "brief": "Un plano horizontal que se corta abruptamente, dejando un espacio vacío infinito a la izquierda de un punto central que representa la posición del filósofo.",
+    "vision": "ok"
+  },
+  "estoico-es/relative_scale": {
+    "kind": "relative_scale",
+    "channel": "estoico-es",
+    "title": "Razón frente al Infinito",
+    "quote": "la razón pura... era apenas un fósforo encendido en medio de un abismo infinito.",
+    "brief": "Un punto minúsculo de color verde pálido en el centro de una pantalla vasta y vacía, ilustrando la desproporción entre el conocimiento humano y el universo.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/node_11_cross_section": {
+    "kind": "node_11_cross_section",
+    "channel": "einsturzpunkt",
+    "title": "SCHNITT KNOTENPUNKT 11",
+    "quote": "Hier traf die elfte Diagonale in einem spitzen Winkel auf den unteren Brückengurt und den nördlichen Pfeiler.",
+    "brief": "An orthogonal section cut reveals the interior rebar grid and joint interface at Node 11, with load vectors showing compressive forces pushing against the lower deck.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/shear_friction_interface": {
+    "kind": "shear_friction_interface",
+    "channel": "einsturzpunkt",
+    "title": "SCHERKRAFT AN BETONFÜGE",
+    "quote": "Die Berechnungen für den Knotenpunkt 11 basierten auf der Annahme, dass die Reibung zwischen den verschiedenen Betonierabschnitten ausreichen würde, um die enormen Scherkräfte aufzufangen, die die Dia",
+    "brief": "Horizontal force arrows push outward along the cold joint interface while callout leaders contrast theoretical friction resistance against actual shear load.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/surface_friction_coefficient": {
+    "kind": "surface_friction_coefficient",
+    "channel": "einsturzpunkt",
+    "title": "REIBUNGSKOEFFIZIENT DER FUGE",
+    "quote": "In der Realität war der Beton an dieser Stelle jedoch glatt ausgeführt worden, was die Haltekraft halbiert hatte.",
+    "brief": "Side-by-side technical micro-sections compare a required roughened concrete profile against the smooth actual surface, reducing the friction force vector by half.",
+    "vision": "unverified"
+  },
+  "einsturzpunkt/shear_transfer_capacity": {
+    "kind": "shear_transfer_capacity",
+    "channel": "einsturzpunkt",
+    "title": "SCHERTRAGFÄHIGKEIT 5,4 MN",
+    "quote": "Die Berechnungen basierten auf einer Interface Shear Transfer Capacity, die einen Reibungswiderstand von 5,4 Millionen Newton voraussetzte.",
+    "brief": "An engineering force diagram plots the 5.4 MN calculated friction threshold against actual resistance figures with dimensioned vector arrows.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/shear_force_factor_two": {
+    "kind": "shear_force_factor_two",
+    "channel": "einsturzpunkt",
+    "title": "QUERKRAFT-UNTERSCHÄTZUNG FAKTOR 2",
+    "quote": "Die Ingenieure unterschätzten die auftretenden Scherkräfte am Knoten 11 um den Faktor zwei.",
+    "brief": "A static shear diagram extends the slate force vector arrow to twice its calculated length, crossing the material limit line marked with a signal-orange threshold indicator.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/dam_dimensions": {
+    "kind": "dam_dimensions",
+    "channel": "einsturzpunkt",
+    "title": "TECHNISCHE ABMESSUNGEN",
+    "quote": "Der Damm war 93 Meter hoch, fast einen Kilometer lang und sollte das Tal für Jahrzehnte sichern.",
+    "brief": "Orthogonale Projektion der Dammfront mit Bemaßungslinien für Höhe und Kronenlänge in Stahlgrau.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/geological_fissures": {
+    "kind": "geological_fissures",
+    "channel": "einsturzpunkt",
+    "title": "GEOLOGISCHE KLÜFTE",
+    "quote": "Der Canyon bestand aus brüchigem, vulkanischem Rhyolith, durchzogen von vertikalen Klüften und offenen Hohlräumen.",
+    "brief": "Schnittzeichnung der Canyonwand mit feinen vertikalen Linien, die Felsspalten und orange markierte Hohlräume zeigen.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/silt_erosion_mechanics": {
+    "kind": "silt_erosion_mechanics",
+    "channel": "einsturzpunkt",
+    "title": "EROSIONSDYNAMIK (SCHLUFF)",
+    "quote": "Sobald fließendes Wasser mit minimaler Geschwindigkeit an einer Schluffschicht entlangstreicht, löst es die feinen Partikel ab und spült sie fort.",
+    "brief": "Mikroskopischer Schnitt zeigt Wasser-Vektorpfeile, die Partikel von einer grauen Materialoberfläche abtragen.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/filling_rate_graph": {
+    "kind": "filling_rate_graph",
+    "channel": "einsturzpunkt",
+    "title": "PEGELANSTIEG VS. SICHERHEITSNORM",
+    "quote": "Zwischen dem 3. Mai und dem 1. Juni 1976 schoss das Wasser um bis zu 1,20 Meter pro Tag nach oben.",
+    "brief": "Technisches Liniendiagramm vergleicht die 0,30m-Grenze mit der tatsächlichen 1,20m-Kurve, die orange markiert ist.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/hydraulic_fracturing": {
+    "kind": "hydraulic_fracturing",
+    "channel": "einsturzpunkt",
+    "title": "HYDRAULISCHE FRAKTURIERUNG",
+    "quote": "Es trieb die mikroskopischen Poren des Schluffes gewaltsam auseinander und riss den Kern von innen her auf.",
+    "brief": "Schnittansicht eines Risses, in den ein orangefarbener hydraulischer Keil eindringt und das Material spaltet.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/cavitation_vibration": {
+    "kind": "cavitation_vibration",
+    "channel": "einsturzpunkt",
+    "title": "STRÖMUNGSINDUZIERTE VIBRATION",
+    "quote": "Die Ingenieure an der Krone spürten unter ihren Stiefeln eine hochfrequente Vibration, ausgelöst durch die gewaltigen Kavitationskräfte der unterirdischen Strömung.",
+    "brief": "Stahlgraue Wellenlinien visualisieren die Schwingungsfrequenz innerhalb der Dammstruktur nahe der Krone.",
+    "vision": "ok"
+  },
+  "estoico-es/pathogen_origin": {
+    "kind": "pathogen_origin",
+    "channel": "estoico-es",
+    "title": "Origen del Contagio",
+    "quote": "no traía consigo el oro saqueado en las bóvedas de Seleucia, sino una tos seca que estrangulaba sus pulmones desde la marcha por Mesopotamia.",
+    "brief": "A hairline stroke traces the route from Seleucia to Aquileia on a faded indigo background, with a dusty green pulse expanding slowly at each resting point.",
+    "vision": "ok"
+  },
+  "estoico-es/data_erasure": {
+    "kind": "data_erasure",
+    "channel": "estoico-es",
+    "title": "Censura de Bajas",
+    "quote": "el secretario de correspondencia quemó el registro completo de la Legión I Minerva antes de que el propio emperador pudiera leer los nombres de los primeros enfermos.",
+    "brief": "A grid of stone-colored dots representing the legion's roster fades into the indigo background as a single horizontal line passes over them.",
+    "vision": "ok"
+  },
+  "estoico-es/mortality_peak": {
+    "kind": "mortality_peak",
+    "channel": "estoico-es",
+    "title": "Mortalidad Diaria",
+    "quote": "En el mes de diciembre, la tasa de mortalidad en Aquileya alcanzó los cien hombres por día.",
+    "brief": "A horizontal timeline in stone-grey develops a vertical peak that reaches a specific height labeled 'Diciembre', showing the volume of loss relative to the months prior.",
+    "vision": "ok"
+  },
+  "estoico-es/internal_obstruction": {
+    "kind": "internal_obstruction",
+    "channel": "estoico-es",
+    "title": "Efecto de la Patología",
+    "quote": "ulceraciones internas que destruían la tráquea antes de la muerte del paciente.",
+    "brief": "A minimalist cross-section of a passage where concentric stone circles expand inward until they overlap, representing the closing of the airway.",
+    "vision": "ok"
+  },
+  "estoico-es/unit_attrition": {
+    "kind": "unit_attrition",
+    "channel": "estoico-es",
+    "title": "Desgaste de la Legio X",
+    "quote": "la peste antonina había devorado a la mitad de los hombres de la Décima Legión en menos de tres semanas.",
+    "brief": "An indigo circle representing the full legion is slowly overlapped by a dusty green circle until exactly half of the original area remains visible.",
+    "vision": "ok"
+  },
+  "estoico-es/force_composition": {
+    "kind": "force_composition",
+    "channel": "estoico-es",
+    "title": "Composición de Emergencia",
+    "quote": "Juntó el oro suficiente para equipar dos nuevas legiones... compuestas no por ciudadanos veteranos, sino por esclavos libertos, gladiadores y bandidos.",
+    "brief": "A large circle representing a new legion is divided into three distinct shaded segments of stone and green, illustrating the non-traditional origins of the recruits.",
+    "vision": "ok"
+  },
+  "estoico-es/density_comparison": {
+    "kind": "density_comparison",
+    "channel": "estoico-es",
+    "title": "Velocidad de Contagio",
+    "quote": "Se propagaba más rápido dentro de los campamentos militares apelotonados que en las calles de Roma.",
+    "brief": "Two overlapping circles of different sizes; the smaller, denser circle (camp) fills with dusty green color much faster than the larger, sparse circle (city).",
+    "vision": "ok"
+  },
+  "estoico-es/supply_starvation": {
+    "kind": "supply_starvation",
+    "channel": "estoico-es",
+    "title": "Vulnerabilidad de Suministro",
+    "quote": "Si las flotas alejandrinas cortaban el suministro de trigo a Italia, la capital del imperio colapsaría por hambre en menos de seis semanas.",
+    "brief": "A thin stone line connecting Alexandria to Rome gradually thins out and snaps, while a dusty green shadow begins to grow from the center of Rome.",
+    "vision": "ok"
+  },
+  "estoico-es/imperial_fragmentation": {
+    "kind": "imperial_fragmentation",
+    "channel": "estoico-es",
+    "title": "Fragmentación del Imperio",
+    "quote": "Siria, Fenicia, Cilicia y Egipto quedaron desligadas del poder central.",
+    "brief": "A unified indigo map of the Mediterranean where the eastern provinces slowly drift away from the central mass, leaving a gap of empty space.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/platform_structural_layout": {
+    "kind": "platform_structural_layout",
+    "channel": "einsturzpunkt",
+    "title": "STRUKTURELLER AUFBAU PENTAGONE",
+    "quote": "Fünf riesige Säulen, untereinander durch ein komplexes Netz aus röhrenförmigen Stahlstreben mit einem Durchmesser von bis zu 2,6 Metern verbunden, hielten das Deck weit über den Wellen.",
+    "brief": "An orthogonal top-down blueprint of the five columns (A-E) and their connecting steel tubes animates in with dimension lines, highlighting the symmetrical pentagonal layout in slate grey.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/buoyancy_loss_distribution": {
+    "kind": "buoyancy_loss_distribution",
+    "channel": "einsturzpunkt",
+    "title": "STABILITÄTSVERLUST SÄULE D",
+    "quote": "Als Säule D abriss, verlor die Konstruktion schlagartig ein Fünftel ihres Auftriebs und ihrer Stabilität.",
+    "brief": "A side-view engineering section cut shows the center of buoyancy shifting instantly away from Column D, with slate-grey load vectors shrinking and a signal-orange cross marking the severed Column D.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/column_flooding_cross_section": {
+    "kind": "column_flooding_cross_section",
+    "channel": "einsturzpunkt",
+    "title": "FLUTUNG DER TRAGSÄULEN",
+    "quote": "Das Meerwasser drang sofort durch offene Luken und Lüftungsschächte in die verbliebenen Säulen ein.",
+    "brief": "A vertical section cut of a column shows the rising water level inside the hollow compartments as the platform tilts, with dimension lines indicating the tilt angle and water volume.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/hydrophone_cutout_dimension": {
+    "kind": "hydrophone_cutout_dimension",
+    "channel": "einsturzpunkt",
+    "title": "AUSSCHNITT STREBE D-3",
+    "quote": "Um ein akustisches Positionierungssystem der Firma Simrad zu installieren, schnitt die Werft in Dünkirchen nachträglich eine kreisrunde Öffnung von dreihundertfünfundzwanzig Millimetern Durchmesser in",
+    "brief": "An orthogonal projection of the 2.6-meter tube zooms in to show a 325 mm circular cutout being subtracted, with precise dimension lines and a signal-orange indicator for the cut edge.",
+    "vision": "unverified"
+  },
+  "einsturzpunkt/weld_microcrack_section": {
+    "kind": "weld_microcrack_section",
+    "channel": "einsturzpunkt",
+    "title": "GEFÜGESTRUKTUR SCHWEISSNAHT",
+    "quote": "Beim Erkalten bildeten sich in der wärmebeeinflussten Zone Mikrorisse von bis zu sechs Millimetern Tiefe.",
+    "brief": "A technical cross-section of the 6mm fillet weld joining the sleeve to the 26mm tube wall shows microscopic cracks propagating into the heat-affected zone, marked in signal-orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/fatigue_crack_propagation": {
+    "kind": "fatigue_crack_propagation",
+    "channel": "einsturzpunkt",
+    "title": "RISSFORTPFLANZUNG 1976-1980",
+    "quote": "Mit jedem Wellenschlag der Nordsee – genau 14 Millionen Mal seit der Inbetriebnahme – trieb die zyklische Wechselbelastung die Rissspitze weiter durch den Werkstoff.",
+    "brief": "A flat-pattern unrolled projection of the tubular steel wall shows a timeline counter advancing from 0 to 14 million cycles as a signal-orange crack line grows incrementally across the grey steel surface.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/lamellar_tearing_microstructure": {
+    "kind": "lamellar_tearing_microstructure",
+    "channel": "einsturzpunkt",
+    "title": "TERRASSENBRUCH IM STAHL",
+    "quote": "Die Werft verwendete einen Baustahl mit hohem Schwefelanteil, der extrem anfällig für sogenannte Terrassenbrüche war.",
+    "brief": "A highly magnified structural section cut shows horizontal steel rolling planes separating vertically under weld shrinkage stress, with the tearing path highlighted in signal-orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/epoxy_coating_occlusion": {
+    "kind": "epoxy_coating_occlusion",
+    "channel": "einsturzpunkt",
+    "title": "OBERFLÄCHENSCHUTZ UND RISS",
+    "quote": "Diese Sollbruchstelle blieb über Jahre hinweg unsichtbar, weil sie unter einer dicken Schicht aus elastischer Epoxidfarbe lag.",
+    "brief": "A technical section cut shows the grey steel tube wall and a thick outer layer of epoxy paint spanning over the growing signal-orange crack underneath, showing why visual inspection failed.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/center_of_gravity_shift": {
+    "kind": "center_of_gravity_shift",
+    "channel": "einsturzpunkt",
+    "title": "SCHWERPUNKTABWEICHUNG COG",
+    "quote": "Durch die ungleiche Verteilung von Vorräten und das Gewicht der zusätzlichen Unterkünfte lag der Schwerpunkt der Plattform deutlich höher als in den Sicherheitszertifikaten vermerkt.",
+    "brief": "An orthogonal elevation profile of the platform compares the theoretical center of gravity (grey dot) with the actual, higher center of gravity (signal-orange dot), showing the reduced metacentric height.",
+    "vision": "ok"
+  },
+  "estoico-es/secciones_conicas_geometria": {
+    "kind": "secciones_conicas_geometria",
+    "channel": "estoico-es",
+    "title": "Secciones cónicas de Apolonio",
+    "quote": "mientras Hipatia publicaba sus trabajos sobre las secciones cónicas de Apolonio de Perge, una obra que analizaba las curvas producidas por la intersección de un plano y un cono, la multitud solo veía ",
+    "brief": "Un cono de líneas finas en verde polvoriento es intersecado lentamente por un plano de color piedra, revelando de forma sutil las elipses y parábolas resultantes.",
+    "vision": "ok"
+  },
+  "estoico-es/proyeccion_estereografica_astrolabio": {
+    "kind": "proyeccion_estereografica_astrolabio",
+    "channel": "estoico-es",
+    "title": "Proyección estereográfica del astrolabio",
+    "quote": "Ella descubrió que el diseño de los astrolabios podía simplificarse mediante proyecciones estereográficas, una mejora técnica que superaba el trabajo de su propio padre.",
+    "brief": "Las coordenadas tridimensionales de una esfera celeste se proyectan lentamente hacia abajo en líneas finas de color piedra, aplanándose sobre un disco plano verde.",
+    "vision": "unverified"
+  },
+  "estoico-es/desmantelamiento_sistematico_biblioteca": {
+    "kind": "desmantelamiento_sistematico_biblioteca",
+    "channel": "estoico-es",
+    "title": "Desmantelamiento de la biblioteca",
+    "quote": "La biblioteca no fue destruida por un incendio accidental, sino desmantelada estante por estante bajo la supervisión de hombres que veían en el cálculo de las órbitas una forma de brujería matemática.",
+    "brief": "Una cuadrícula ordenada de pequeños círculos que representa el conocimiento acumulado se desvanece de forma progresiva y silenciosa de los márgenes hacia el centro.",
+    "vision": "unverified"
+  },
+  "estoico-es/esferas_influencia_politica": {
+    "kind": "esferas_influencia_politica",
+    "channel": "estoico-es",
+    "title": "Esferas de influencia en conflicto",
+    "quote": "Cada vez que el prefecto visitaba la casa de la filósofa en la calle Canope, el mensaje para Cirilo era claro: la administración civil prefería el consejo de una pagana al mandato de la Iglesia.",
+    "brief": "Tres grandes círculos de trazo fino que representan el poder civil, religioso y filosófico se desplazan lentamente hasta superponerse, oscureciendo su área de intersección común.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/structural_load_analysis": {
+    "kind": "structural_load_analysis",
+    "channel": "einsturzpunkt",
+    "title": "Scherkraft an Bolzen",
+    "quote": "Sobald die vertikale Achse der Last aus dem Schwerpunkt wandert, entstehen enorme Querkräfte an den Verbindungspunkten der temporären Stützen.",
+    "brief": "Eine Detailansicht einer Bolzenverbindung zeigt die Verschiebung der Lastachse und die daraus resultierenden entgegengesetzten Scherkräfte in Orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/stress_distribution_cut": {
+    "kind": "stress_distribution_cut",
+    "channel": "einsturzpunkt",
+    "title": "Druckspannung im Obergurt",
+    "quote": "Der obere Gurt des zentralen Fachwerkträgers stand in diesem Augenblick unter einer Druckspannung von 210 Megapascal.",
+    "brief": "Ein Querschnitt des Trägers zeigt die gleichmäßige Druckverteilung, die bei der seitlichen Auslenkung asymmetrisch und kritisch wird.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/load_path_animation": {
+    "kind": "load_path_animation",
+    "channel": "einsturzpunkt",
+    "title": "Kettenreaktion der Last",
+    "quote": "Sie schießt über die vertikalen Knotenbleche direkt in die angrenzenden Diagonalstreben.",
+    "brief": "Animierte orangefarbene Pfeile zeigen, wie die Last vom Obergurt schlagartig in die Diagonalstreben abgeleitet wird und diese überlastet.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/cross_section_comparison": {
+    "kind": "cross_section_comparison",
+    "channel": "einsturzpunkt",
+    "title": "Fehlende Wandstärke",
+    "quote": "Ultraschallmessungen an den Trümmern zeigten jedoch, dass das gelieferte Profil an den Kanten nur 19,8 Millimeter maß.",
+    "brief": "Ein technischer Vergleich zweier Kreisquerschnitte: Soll-Dicke (grau) vs. Ist-Dicke (orange), um den 20-prozentigen Flächenverlust zu visualisieren.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/propagation_map": {
+    "kind": "propagation_map",
+    "channel": "einsturzpunkt",
+    "title": "Kollaps-Ausbreitung",
+    "quote": "Die Überlastung wanderte mit einer Geschwindigkeit von dreihundert Metern pro Sekunde durch das gesamte Raster der Überdachung.",
+    "brief": "Eine Draufsicht des Daches, bei der sich eine orangefarbene Schockwelle vom Ausfallpunkt sternförmig über das gesamte Raster ausbreitet.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/deflection_diagram": {
+    "kind": "deflection_diagram",
+    "channel": "einsturzpunkt",
+    "title": "Statische Durchbiegung",
+    "quote": "Drei Zentimeter Abweichung registrierten die Vermesser an der kritischsten Stelle.",
+    "brief": "Ein Längsschnitt zeigt die ursprüngliche gerade Linie des Trägers im Vergleich zur tatsächlichen, um 3 cm durchgebogenen Linie.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/structural_model_error": {
+    "kind": "structural_model_error",
+    "channel": "einsturzpunkt",
+    "title": "Rechenmodell vs. Realität",
+    "quote": "Die freie Knicklänge der Stäbe war doppelt so groß wie im Rechenmodell angesetzt.",
+    "brief": "Gegenüberstellung von zwei Balkenmodellen: Eines mit theoretischen Stützpunkten und eines mit den realen, fehlenden Verbindungen.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/schematic_overlay": {
+    "kind": "schematic_overlay",
+    "channel": "einsturzpunkt",
+    "title": "Optische Korrektur",
+    "quote": "Anstatt die Statik neu zu berechnen oder die verformten Röhren und Winkel zu verstärken, entschied die Projektleitung auf der Baustelle, die Deckenverkleidung anzupassen.",
+    "brief": "Ein Schnitt zeigt den durchgebogenen Träger, der durch eine gerade, untergehängte Deckenverkleidung optisch maskiert wird.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/load_accumulation_graph": {
+    "kind": "load_accumulation_graph",
+    "channel": "einsturzpunkt",
+    "title": "Ansteigende Lastkurve",
+    "quote": "Jeder Schneefall im Winter 1977 erhöhte die Druckspannung in den nicht ausreichend ausgesteiften Stäben schleichend.",
+    "brief": "Ein Diagramm zeigt den schleichenden Anstieg der Schneelast über die Zeit, der die kritische Knickgrenze (orange Linie) erreicht.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/weld_section_cut": {
+    "kind": "weld_section_cut",
+    "channel": "einsturzpunkt",
+    "title": "Fehlerhafte Schweißnaht",
+    "quote": "Statt einer durchgängigen Verfüllung der Nahtflanken zeigten die Ultraschallprüfungen Lunkereinschlüsse und eine unvollständige Durchschweißung",
+    "brief": "Ein Schnitt durch eine Schweißnaht zeigt die unvollständige Durchdringung und Hohlräume (Lunker) in Signalorange.",
+    "vision": "ok"
   }
 }

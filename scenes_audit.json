@@ -398,5 +398,971 @@
     "checked": "2026-08-06 23:10",
     "subject": "A 1D line segment unfolds and distributes its points across a 2D square, showing a bijective coordinate mapping where every point on the line matches a point in the plane.",
     "title": "Línea vs Plano Cuadrado"
+  },
+  "nested_circles_diagram": {
+    "verdict": "ok",
+    "why": "Three concentric dashed circles of increasing size (white, yellow, and red) with labels pointing to each circle denoting levels of infinity (Aleph-0, Aleph-1, Aleph-2).",
+    "checked": "2026-08-07 02:22",
+    "subject": "Círculos concéntricos y superpuestos que representan conjuntos de infinitos, donde cada capa es más grande que la anterior.",
+    "title": "Niveles del infinito"
+  },
+  "line_vs_dots_diagram": {
+    "verdict": "ok",
+    "why": "Two horizontal lines numbered 0 to 10: the top line features eleven discrete yellow dots at integer marks, while the bottom line is a solid continuous red line with dense tick marks.",
+    "checked": "2026-08-07 02:24",
+    "subject": "Una línea continua sólida frente a una serie de puntos discretos y espaciados para mostrar la diferencia de densidad.",
+    "title": "Real vs Entero"
+  },
+  "fractured_line_diagram": {
+    "verdict": "ok",
+    "why": "a dashed square frame containing angled parallel line segments arranged in two rows, with an axis at the bottom labeled 0, 0.5, and 1",
+    "checked": "2026-08-07 02:29",
+    "subject": "Una línea que se rompe en segmentos infinitos para poder encajar dentro de un cuadrado, simbolizando la pérdida de continuidad.",
+    "title": "Espacio fracturado"
+  },
+  "infinite_staircase": {
+    "verdict": "ok",
+    "why": "a vertical stack of horizontal rectangular steps labeled with Aleph numbers (ℵ₀ through ℵ₈) connected by a central vertical line ascending upwards",
+    "checked": "2026-08-07 02:30",
+    "subject": "Una escalera que asciende indefinidamente hacia arriba, donde cada escalón representa un nivel superior de infinito.",
+    "title": "Jerarquía transfinita"
+  },
+  "split_diagram": {
+    "verdict": "ok",
+    "why": "a lower boxed area with three white outlined circles of increasing size, and a separate upper rectangular area featuring a glowing gradient background with a dashed red line across it",
+    "checked": "2026-08-07 02:32",
+    "subject": "Un diagrama dividido: una zona inferior con estructuras geométricas claras y una zona superior etérea que representa lo inalcanzable.",
+    "title": "Infinito y Absoluto"
+  },
+  "expanding_sphere_diagram": {
+    "verdict": "ok",
+    "why": "a glowing central point surrounded by concentric dashed circular rings with a radial gradient, a radius line extending from the center to the outer circle labeled 'R = ∞', and labels reading 'OMNIPOTENT DOMAIN' and 'CANTOR SET CONTINUUM'",
+    "checked": "2026-08-07 02:33",
+    "subject": "Una esfera que se expande desde un punto central, representando cómo la teoría de Cantor abarca la totalidad de la creación.",
+    "title": "Infinitud de la creación"
+  },
+  "overlapping_circles_blur": {
+    "verdict": "ok",
+    "why": "A soft-edged, blurred circular ring divided down the middle by a vertical red dashed line labelled FRONTERA, with the text labels DIOS and UNIVERSO overlapping at the center, above a horizontal percentage axis with a slider set near 75%.",
+    "checked": "2026-08-07 02:35",
+    "subject": "Dos círculos (Dios y el Universo) cuyos bordes comienzan a fundirse, ilustrando el riesgo teológico que temía la Iglesia.",
+    "title": "Frontera borrosa"
+  },
+  "cracked_surface_diagram": {
+    "verdict": "ok",
+    "why": "Three horizontal rectangular blocks stacked vertically (labeled CORTEX, LIMBIC, and BRAINSTEM) traversed by a jagged fracture line cutting through all three layers.",
+    "checked": "2026-08-07 02:38",
+    "subject": "Una superficie plana y ordenada que desarrolla una grieta profunda y oscura, simbolizando el quiebre de la psique.",
+    "title": "Colapso mental"
+  },
+  "list_highlight": {
+    "verdict": "ok",
+    "why": "A numbered list of nine names inside a rectangular box, with a vertical yellow line ending in a dot next to the seventh name, which is highlighted in yellow text.",
+    "checked": "2026-08-07 08:04",
+    "subject": "Un pergamino se despliega lentamente; una línea vertical recorre los nombres hasta detenerse y resaltar la séptima posición.",
+    "title": "Lista de conspiradores"
+  },
+  "structural_collapse": {
+    "verdict": "ok",
+    "why": "six separate tilted gradient rectangular blocks scattered across a black background, a circular clock graphic with tick marks and a red hand labelled '48 HORAS', and text reading 'Colapso institucional'",
+    "checked": "2026-08-07 08:07",
+    "subject": "Un diagrama de bloques interconectados (la administración) se fragmenta y cae en una ventana de 48 horas representada por un cronómetro antiguo.",
+    "title": "Colapso institucional"
+  },
+  "geography_containment": {
+    "verdict": "ok",
+    "why": "A dark blue rectangular map region labeled 'TOSCANA' containing three yellow dots labeled 'FIRENZE', 'S. CASCIANO', and 'SIENA', with a red dashed boundary box surrounding 'S. CASCIANO' and a 100 km scale bar.",
+    "checked": "2026-08-07 08:08",
+    "subject": "Un mapa de la Toscana muestra una línea de frontera que se contrae hasta encerrar únicamente la residencia de Maquiavelo.",
+    "title": "Confinamiento domiciliario"
+  },
+  "pulley_mechanics": {
+    "verdict": "ok",
+    "why": "A white circle labeled 'POLEA' at the top, connected to a dashed white line that goes down to a gray rectangle with red horizontal bars and a yellow upward-pointing arrow inside, labeled 'PESO (G)'. The dashed line also extends horizontally from the circle and then vertically down, labeled 'TRACCIÓN'.",
+    "checked": "2026-08-07 08:12",
+    "subject": "Un esquema técnico de la polea muestra cómo la cuerda cambia de dirección, convirtiendo el peso del cuerpo en una fuerza de tracción hacia arriba sobre los hombros.",
+    "title": "La polea de tortura"
+  },
+  "force_redistribution": {
+    "verdict": "ok",
+    "why": "A simplified grey trapezoidal shape with two yellow circles at its top corners, two red triangular arrowheads pointing upwards above the circles, five small vertical white lines at the bottom, and the text 'TENDON LOAD DISTRIBUTION' and 'Fuerza sobre el cuerpo'.",
+    "checked": "2026-08-07 08:14",
+    "subject": "Un diagrama anatómico simplificado muestra vectores de fuerza aplicados en los hombros, ilustrando cómo el peso del cuerpo se concentra en las articulaciones.",
+    "title": "Fuerza sobre el cuerpo"
+  },
+  "decision_tree": {
+    "verdict": "ok",
+    "why": "A branching diagram from 'Borgia' to 'Aliada' and 'Botín', below which is a horizontal bar chart with three bars labeled 'Oro', 'Tropas', and 'Influencia' measured against a numerical axis and a vertical threshold line labeled 'Cálculo'.",
+    "checked": "2026-08-07 08:21",
+    "subject": "Un árbol de decisión con dos ramas: 'Aliada' vs 'Botín', sopesando los recursos de Florencia contra las necesidades de Borgia.",
+    "title": "El cálculo de Borgia"
+  },
+  "financial_pressure": {
+    "verdict": "ok",
+    "why": "A bar chart with a vertical axis numbered from 0 to 100, a grey bar labeled 'Tesoro' at height 30, a taller orange gradient bar labeled 'Deuda' at height 82, and a small red bar labeled 'Violencia' at the bottom of the 'Deuda' bar.",
+    "checked": "2026-08-07 08:23",
+    "subject": "Un gráfico de barras muestra la disminución del tesoro de Borgia frente al aumento de sus deudas, forzando la acción violenta como única salida.",
+    "title": "Asfixia financiera"
+  },
+  "static_load_comparison": {
+    "verdict": "ok",
+    "why": "a schematic railing with a small grey downward arrow labeled 25kg, a much larger orange downward arrow labeled 515kg, and a side bar chart comparing a short grey bar to a tall orange bar.",
+    "checked": "2026-08-07 16:58",
+    "subject": "An orthogonal projection of a railing segment showing a grey vector arrow for the 25kg design load and a large orange vector arrow for the 500kg actual load.",
+    "title": "RAILING LOAD ANALYSIS"
+  },
+  "eccentric_force_leverage": {
+    "verdict": "ok",
+    "why": "A cross-section of a rail and bracket, a dot labeled C.G., a dimension line for distance 'd', a red force arrow, and an orange curved arrow on the bracket.",
+    "checked": "2026-08-07 16:59",
+    "subject": "A cross-section of the railing with dimension lines showing the offset center of gravity and an orange rotational arrow indicating the torque applied to the bracket welds.",
+    "title": "ECCENTRIC MOMENT CALCULATION"
+  },
+  "lateral_wind_pressure": {
+    "verdict": "ok",
+    "why": "grey downward arrows, a curved white line between two grey rectangles, red dots at the connection points, and orange arrows pointing at those dots",
+    "checked": "2026-08-07 17:01",
+    "subject": "A top-down diagram showing grey wind vectors hitting a solid plane (the mesh) with orange stress arrows pointing at the weld points where the panel meets the frame.",
+    "title": "WIND LOAD COEFFICIENT"
+  },
+  "bridge_load_distribution": {
+    "verdict": "ok",
+    "why": "a horizontal axis marked from 0m to 155m, an arched line, a series of downward-pointing red arrows of varying lengths, a central orange-to-black gradient band, and a large numerical value labeled 'METRIC TONS'.",
+    "checked": "2026-08-07 17:04",
+    "subject": "A side elevation of the entire 155-meter span with a running tally of tonnage and orange heat-mapping showing where the 54-ton load is most concentrated.",
+    "title": "CUMULATIVE STATIC LOAD"
+  },
+  "stress_corrosion_cutaway": {
+    "verdict": "ok",
+    "why": "Three vertical rectangles labeled as structural components, a dimension line for 4.00 inches, three wavy orange lines, and a vertical yellow translucent bar.",
+    "checked": "2026-08-07 17:06",
+    "subject": "A section cut of a 4-inch steel plate showing moisture trapped behind locks and orange hairline fractures propagating through the metal thickness.",
+    "title": "INTERNAL BRACKET DEGRADATION"
+  },
+  "thermal_expansion_differential": {
+    "verdict": "ok",
+    "why": "Three horizontal layers of different colors, an orange tilted rectangle labeled 'SHEAR FAILURE' connecting the bottom two, downward arrows, and numerical labels '+13.8mm' and '+2.6mm' indicating different lengths for the layers.",
+    "checked": "2026-08-07 17:12",
+    "subject": "A cross-section of the railing and floorboard with dimension lines showing expansion deltas in millimeters, highlighting the shearing rivet in orange.",
+    "title": "THERMAL EXPANSION VARIANCE"
+  },
+  "safety_factor_breach": {
+    "verdict": "ok",
+    "why": "Two side-by-side grids; the left one is flat with a grey stick figure and '80 kg' label, while the right one is curved downwards with an orange block and '500 kg' label.",
+    "checked": "2026-08-07 17:16",
+    "subject": "A side-by-side orthogonal view of two panels: one with an 80kg human icon (grey) and one with a solid block of 500kg mass (orange) showing the resulting mesh sag.",
+    "title": "DESIGN SPECIFICATION VARIANCE"
+  },
+  "riverbed_sediment_section": {
+    "verdict": "ok",
+    "why": "a vertical axis with depth markers, and a rectangle divided into three horizontal layers: a top orange layer containing small key icons, followed by two grey layers of different shades.",
+    "checked": "2026-08-07 17:18",
+    "subject": "A vertical section cut of the Seine riverbed showing the natural silt layers in grey and the top 'armored' layer of keys highlighted in orange.",
+    "title": "BENTHIC SEDIMENT COMPOSITION"
+  },
+  "core_erosion_mechanics": {
+    "verdict": "ok",
+    "why": "a trapezoidal cross-section with a central grey zone, blue arrows pointing into it from a blue reservoir, and a horizontal channel containing orange dots passing through the core to an outflow.",
+    "checked": "2026-08-07 18:54",
+    "subject": "A cross-section of the dam shows blue hydrostatic pressure arrows forcing orange sediment particles through the grey structural core.",
+    "title": "INTERNAL SEDIMENT TRANSPORT"
+  },
+  "grout_curtain_bypass": {
+    "verdict": "ok",
+    "why": "a vertical grey rectangle, a yellow line that descends from the left, passes under the rectangle, and ascends to the right, and several thin jagged grey lines.",
+    "checked": "2026-08-07 18:57",
+    "subject": "An engineering plan view shows the intended grout curtain line in grey, with a jagged orange flow line bypassing the barrier through rock fissures.",
+    "title": "UNMAPPED SEEPAGE PATHWAY"
+  },
+  "piping_progression": {
+    "verdict": "ok",
+    "why": "a rectangle divided into three vertical zones labeled 'UPSTREAM SHELL', 'IMPERVIOUS CORE', and 'DOWNSTREAM SHELL', with a horizontal orange-to-yellow segmented bar extending from left to right across the core, marked with PSI numbers and a red arrow at its tip.",
+    "checked": "2026-08-07 18:59",
+    "subject": "A longitudinal section shows an orange void expanding horizontally from the reservoir side toward the downstream face, labeled with PSI figures.",
+    "title": "INTERNAL PIPING DEVELOPMENT"
+  },
+  "geological_fissure_map": {
+    "verdict": "ok",
+    "why": "a vertical depth axis, horizontal layers with labels, a grid of thin white lines, and three yellow dimension lines with numerical values (0.42m, 0.18m, 1.15m)",
+    "checked": "2026-08-07 19:03",
+    "subject": "A technical geological map shows a grid of vertical and horizontal fissures in the bedrock, with dimension lines indicating the width of the openings.",
+    "title": "VOLCANIC RHYOLITE DISCONTINUITIES"
+  },
+  "grout_curtain_continuity": {
+    "verdict": "ok",
+    "why": "vertical grey bars and orange hatched rectangles arranged along a horizontal axis, with numerical pressure values (MPa) and depth markers on a vertical axis.",
+    "checked": "2026-08-07 19:08",
+    "subject": "An elevation view of the grout curtain shows vertical grey cement columns with large orange gaps where the slurry failed to register pressure.",
+    "title": "BARRIER DISCONTINUITY"
+  },
+  "concrete_leaching_matrix": {
+    "verdict": "ok",
+    "why": "A square cross-section showing labeled aggregate polygons, dissolving calcium hydroxide spheres, expanding micro-void outlines, and dashed fluid leaching paths, alongside a line graph plotting internal void ratio percentage against exposure time.",
+    "checked": "2026-08-07 19:42",
+    "subject": "Technical cross-section of the cement matrix animates fluid flow paths removing calcium hydroxide particles, expanding micro-void percentage over an indicated timeline.",
+    "title": "CONCRETE LATTICE LEACHING"
+  },
+  "thaumasite_sulfate_matrix_decay": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"Three circles labeled 'AGGREGATE', a horizontal band with a color gradient labeled 'MINERAL SLURRY', three diagonal yellow lines, and a horizontal ax",
+    "checked": "2026-08-07 19:53",
+    "subject": "Microscopic cutaway schematic highlights solid aggregate bonds disintegrating into soft mineral slurry, triggered by animated groundwater ingress arrows.",
+    "title": "MATRIX BINDER DEGRADATION"
+  },
+  "thermal_conductivity_barrier": {
+    "verdict": "ok",
+    "why": "a horizontal cross-section diagram showing a grey aluminum block labeled 'ALUMINUM (237 W/m-K)' and a brown block labeled 'GRIME (<1 W/m-K)', featuring a large bright yellow chevron inside the aluminum section that shrinks to a thin, dim red chevron past the grime layer",
+    "checked": "2026-08-07 20:58",
+    "subject": "A cross-section diagram of an aluminum fin shows bright heat arrows passing easily through clean metal (237 W/m-K) but shrinking to tiny trickles when hitting a microscopic grime layer (under 1 W/m-K).",
+    "title": "Thermal Conductivity Drop"
+  },
+  "compressor_pressure_spike": {
+    "verdict": "ok",
+    "why": "a rectangle labeled 'REFRIGERANT FLOW' containing a yellow-to-red gradient, a gauge with a scale from 300 to 450, a red needle pointing past 400, and a numerical readout of 414 PSI.",
+    "checked": "2026-08-07 21:00",
+    "subject": "A simplified HVAC flow diagram turns from honey yellow to deep brick red as a drawn gauge needle surges from 350 to 420 PSI due to trapped thermal energy.",
+    "title": "Internal Pressure Rise"
+  },
+  "electrical_draw_doubling": {
+    "verdict": "ok",
+    "why": "A semi-circular gauge arc marked from 10A to 30A with a red needle pointing near 29A, alongside three curved parallel lines with the middle line glowing red above the text 'WINDING RESISTANCE'.",
+    "checked": "2026-08-07 21:04",
+    "subject": "An animated electrical meter gauge ticks up from 14A to 29A while motor winding coil diagrams glow with red resistance waves.",
+    "title": "Amperage Spike"
+  },
+  "caustic_metal_reaction": {
+    "verdict": "ok",
+    "why": "a rectangular cross-section of a metal block with a concave thinned depression on top containing a colored gradient layer, labeled 'INTERFACE' and 'PITTED', with small circles floating above it",
+    "checked": "2026-08-07 21:06",
+    "subject": "Microscopic cutaway shows caustic foam molecules eating into the aluminum wall, releasing gas bubbles and leaving behind pitted, thinned metal.",
+    "title": "Caustic Acid Reaction"
+  },
+  "condensation_flush_coverage": {
+    "verdict": "ok",
+    "why": "A vertical rectangular shape divided into a lower blue section labelled '30% Flush' and a larger upper reddish-brown section divided by horizontal lines labelled '70% Residue', with text below reading 'INCOMPLETE RINSE ZONE'.",
+    "checked": "2026-08-07 21:09",
+    "subject": "A side view diagram of a tall coil highlights the bottom 30% being washed by blue water flow while the top 70% turns chalky red with un-rinsed chemical residue.",
+    "title": "Incomplete Rinse Zone"
+  },
+  "galvanic_corrosion_leak": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"Two adjacent rectangular blocks labeled 'ALUMINUM FIN' and 'COPPER TUBE' with a red vertical block straddling their upper border, a pinhole d",
+    "checked": "2026-08-07 21:11",
+    "subject": "Zoomed-in cross-section of the copper-aluminum joint shows an ionic salt bridge causing aluminum particles to erode away until a small pinhole opens and leaks gas particles.",
+    "title": "Galvanic Corrosion"
+  },
+  "mechanical_gears_diagram": {
+    "verdict": "ok",
+    "why": "three gear shapes horizontally aligned and linked by dashed lines, with labels reading 'ASAMBLEA', 'TRIBUNALES', and 'DIOSES' underneath each shape",
+    "checked": "2026-08-07 21:21",
+    "subject": "Dibuja engranajes interconectados que comienzan a girar; cada engranaje representa una institución (Asamblea, Tribunales, Dioses) que se activan al unísono.",
+    "title": "Maquinaria Legal Ateniense"
+  },
+  "structural_collapse_diagram": {
+    "verdict": "ok",
+    "why": "Three gradient-filled rectangular blocks labeled 'ASAMBLEA' and 'TRIRREME' arranged in a fragmented, offset stack above a horizontal percentage axis labeled 'INTEGRIDAD DE LA HEGEMONÍA'.",
+    "checked": "2026-08-07 21:24",
+    "subject": "Una estructura piramidal de bloques (trirremes y asamblea) que se fragmenta y cae lentamente hacia la base, representando la pérdida de poder.",
+    "title": "Desintegración de la Hegemonía"
+  },
+  "population_loss_graph": {
+    "verdict": "unverified",
+    "why": "ответ зрения не JSON: {\"shows\": \"A line graph with a vertical y-axis labeled 'Ciudadanos' (0 to 1500), a horizontal x-axis labeled 'Tiempo (Meses)', and a single red line sloping dia",
+    "checked": "2026-08-07 21:26",
+    "subject": "Una línea vertical que desciende bruscamente en el eje del tiempo, con pequeños puntos que desaparecen, simbolizando la ejecución masiva.",
+    "title": "Purga de los Treinta"
+  },
+  "knowledge_overlap_diagram": {
+    "verdict": "ok",
+    "why": "a large filled circle containing a smaller yellow dashed circular outline, with leader lines pointing to both circles and a percentage axis below",
+    "checked": "2026-08-07 21:32",
+    "subject": "Dos círculos superpuestos; uno grande y sólido (falsa sabiduría) y otro pequeño y vacío (sabiduría socrática), mostrando que el vacío es más real.",
+    "title": "La Paradoja del Saber"
+  },
+  "social_tension_flow": {
+    "verdict": "ok",
+    "why": "a top yellow node labelled 'SÓCRATES' with dashed lines branching down to three white nodes, above five red bars on a line labelled '0', 'PRESIÓN SOCIAL', and 'MAX' under 'CIUDADANOS'.",
+    "checked": "2026-08-07 21:35",
+    "subject": "Un flujo de energía que va de Sócrates hacia los jóvenes, provocando una acumulación de presión en la base de los ciudadanos comunes.",
+    "title": "El Rencor Público"
+  },
+  "skill_trap_diagram": {
+    "verdict": "ok",
+    "why": "A dark central circle inside a larger gradient outer circle resting on a horizontal white baseline, with three dashed lines extending from the center to labeled points: 'ÉTICA', 'POLÍTICA', and 'OFICIO'.",
+    "checked": "2026-08-07 21:36",
+    "subject": "Un círculo que representa una habilidad técnica que se expande artificialmente para cubrir temas de política y ética, volviéndose inestable.",
+    "title": "La Trampa del Oficio"
+  },
+  "elenchos_deconstruction": {
+    "verdict": "ok",
+    "why": "a white dashed square outline with four gradient square blocks scattered outside its corners, and a central red dot struck by a yellow line segment",
+    "checked": "2026-08-07 21:38",
+    "subject": "Un diagrama de una estructura compleja (argumento) que, al recibir un pequeño impacto puntual (pregunta), se desmorona en sus partes básicas.",
+    "title": "Desmontaje del Elenchos"
+  },
+  "sequence_of_failure": {
+    "verdict": "unverified",
+    "why": "ответ зрения не JSON: {\"shows\": \"a horizontal dark gray rectangle labeled 'VALOR ABSOLUTO' between vertical dotted lines labeled 'INICIO' and 'FINAL', with a central dashed rectangle",
+    "checked": "2026-08-07 21:43",
+    "subject": "Tres capas de una definición que se van eliminando una a una, dejando el centro vacío, ilustrando la pérdida de argumentos del general.",
+    "title": "El Desmantelamiento Dialéctico"
+  },
+  "incubation_flow_diagram": {
+    "verdict": "ok",
+    "why": "a white circle node labeled 'SÓCRATES' connected by two downward dashed lines with arrowheads to two red rectangular nodes labeled 'CRITIAS' and 'ALCIBÍADES'",
+    "checked": "2026-08-07 21:44",
+    "subject": "Un flujo de ideas que emana de Sócrates y se transforma en las figuras de los tiranos (Critias y Alcibíades) mediante flechas sutiles.",
+    "title": "La Incubadora de Tiranos"
+  },
+  "legal_wall_diagram": {
+    "verdict": "ok",
+    "why": "a rectangular block divided into two vertical sections by a bright yellow horizontal line, with text 'Amnistía' in thin stroke font above the line, flanked by labels 'PASADO JUDICIAL', 'AMNISTÍA', 'FUTURO DEMOCRÁTICO' and numerical unit values",
+    "checked": "2026-08-07 21:46",
+    "subject": "Una línea horizontal sólida que atraviesa el lienzo, bloqueando el acceso al pasado, con la palabra 'Amnistía' escrita en trazo fino.",
+    "title": "El Muro de Amnistía"
+  },
+  "corrosion_timeline": {
+    "verdict": "ok",
+    "why": "A grey central bar between orange-red layers, a timeline with Year 0-5 ticks, and labeled leader lines.",
+    "checked": "2026-08-08 18:16",
+    "subject": "A cross-section of a thick steel beam thins and turns brick-red over a five-step timeline arrow.",
+    "title": "5-YEAR STEEL DEGRADATION"
+  },
+  "frame_comparison": {
+    "verdict": "ok",
+    "why": "two rectangular blocks side-by-side on a depth axis; the left block has a jagged interface between a grey base and a brick-red top layer, while the right block has clean, flat horizontal layers including a honey-toned top layer.",
+    "checked": "2026-08-08 18:18",
+    "subject": "A split-screen shows a honey-toned protected rail on the right and a crumbling brick-toned rail on the left.",
+    "title": "TREATED VS. UNTREATED"
+  },
+  "cost_efficiency": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a large numerical counter at $3.16, a schematic of a nozzle composed of white outlines and rectangles, leader lines with text labels, and a brown tri",
+    "checked": "2026-08-08 18:19",
+    "subject": "A large cost counter counts down to $3.00 next to a diagram of a garden sprayer nozzle on a cream background.",
+    "title": "TOTAL COST: $3.00"
+  },
+  "inside_out_rot": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"Three vertical rectangular layers (white, orange with dots, and grey) aligned to a horizontal axis with millimeter markings, with leader line",
+    "checked": "2026-08-08 18:20",
+    "subject": "A cutaway of a hollow frame rail shows moisture trapped between the metal and a thick outer shell.",
+    "title": "INTERNAL CORROSION POCKETS"
+  },
+  "hydrophobic_barrier": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"A grey rectangle labeled STEEL, a gold rectangle labeled VISCOUS, a blue droplet labeled H2O, and a progress bar labeled CURING PROGRESS set ",
+    "checked": "2026-08-08 18:23",
+    "subject": "A droplet of water bounces off a honey-toned layer that remains fluid and viscous on the metal surface.",
+    "title": "NON-DRYING PROTECTION"
+  },
+  "capillary_action_failure": {
+    "verdict": "ok",
+    "why": "a cross-section with two distinct layers, a vertical gap in the upper layer, a horizontal blue band between the layers, and two curved arrows pointing outward from the base of the gap.",
+    "checked": "2026-08-08 18:25",
+    "subject": "A zoomed-in cross-section shows a crack in a hard shell sucking blue liquid inward toward the steel via curved arrows.",
+    "title": "THE CAPILLARY TRAP"
+  },
+  "cross_section_moisture": {
+    "verdict": "ok",
+    "why": "A three-layered horizontal rectangle with labels for asphalt, fiberglass, and concrete, containing blue circles in the middle layer, a sun icon above, and a thermal gradient scale on the left.",
+    "checked": "2026-08-08 18:45",
+    "subject": "A cutaway shows the fiberglass layer beneath the asphalt with blue moisture droplets trapped inside while a sun icon beats down from above.",
+    "title": "Trapped Moisture Layers"
+  },
+  "internal_decomposition": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"A three-layered cross-section with a micron scale bar, containing small grey circles and larger green-haloed circles with orange centers.\", \"",
+    "checked": "2026-08-08 18:49",
+    "subject": "A microscopic view inside the shingle shows grey limestone particles being replaced by green blobs as liquid seeps through the layers.",
+    "title": "Limestone Filler Decay"
+  },
+  "mechanical_failure": {
+    "verdict": "ok",
+    "why": "two overlapping grey rectangles, a cluster of yellow circles between them, three red arrows pointing upwards from the circles, and broken vertical red dashed lines labeled 'ADHESIVE BOND'.",
+    "checked": "2026-08-08 18:58",
+    "subject": "Red stress arrows point outward from a spore colony, showing the physical lifting and snapping of the bond between two overlapping shingles.",
+    "title": "Adhesive Seal Failure"
+  },
+  "surface_erosion": {
+    "verdict": "ok",
+    "why": "two grey rectangles separated by a dashed line, with small yellow circles on top of the left rectangle and a large red arrow pointing at the empty top of the right rectangle",
+    "checked": "2026-08-08 18:59",
+    "subject": "A before-and-after split screen shows a thick layer of granules on the left and a bare, exposed asphalt surface on the right.",
+    "title": "Granule Stripping Effect"
+  },
+  "hidden_overlap_view": {
+    "verdict": "ok",
+    "why": "three horizontal layers labeled as deck, underlayment, and shingle, a diagonal bar representing a top shingle being peeled back, and a highlighted zone with dots and curved lines between the shingle layers.",
+    "checked": "2026-08-08 19:00",
+    "subject": "A side-view cutaway peels back the top shingle layer to reveal moisture and spores festering in the dark space between the two sheets.",
+    "title": "Hidden Overlap Rot"
+  },
+  "location_context": {
+    "verdict": "ok",
+    "why": "a jagged white line representing a coast, a red dot labeled SEATTLE, geographic labels, and a vertical color-gradient bar with percentage ticks and an arrow pointing to a high value labeled HIGH.",
+    "checked": "2026-08-08 19:02",
+    "subject": "A simple map of the Pacific Northwest shows a pin on Seattle with a 'Humidity High' label to explain the environmental context.",
+    "title": "Seattle, Washington"
+  },
+  "levels_of_infinity": {
+    "verdict": "ok",
+    "why": "a central glowing point surrounded by four concentric circles of increasing radii, with a vertical axis labeled with transfinite numbers and callouts linking each circle to a specific aleph number and power set equation.",
+    "checked": "2026-08-08 19:37",
+    "subject": "A single point unfolds into a sequence of expanding concentric hairline circles on faded indigo, visually establishing distinct nested orders of magnitude.",
+    "title": "Niveles del infinito"
+  },
+  "countable_uncountable_cardinality": {
+    "verdict": "ok",
+    "why": "A row of numbered yellow squares separated by gaps and a dashed line, above a solid green line composed of dense points with a numerical axis from 0.0 to 1.0.",
+    "checked": "2026-08-08 19:38",
+    "subject": "A line of discrete stone nodes extends infinitely while an adjacent line dissolves into an unbroken, infinitely dense dust of green points.",
+    "title": "Enteros y continuos"
+  },
+  "line_to_square_mapping": {
+    "verdict": "ok",
+    "why": "a horizontal line with numerical ticks, a square containing a grid of red dots, and multiple thin lines connecting points on the line to the dots in the square",
+    "checked": "2026-08-08 19:39",
+    "subject": "Delicate hairline threads stretch from points along a one-dimensional segment to fill every coordinate of a two-dimensional square with equal density.",
+    "title": "Correspondencia biunívoca"
+  },
+  "topological_fracture": {
+    "verdict": "ok",
+    "why": "a horizontal axis with tick marks and numbers from 0 to 1, vertical dashed arrows, a central transition arrow, and a 2D coordinate plane containing a grid of dots",
+    "checked": "2026-08-08 19:43",
+    "subject": "A continuous hairline vector fractures into infinite dust-like fragments that reassemble inside a square boundary, illustrating space torn to preserve cardinality.",
+    "title": "Desgarro del espacio"
+  },
+  "doctrinal_overlap": {
+    "verdict": "ok",
+    "why": "Two overlapping circles, one dashed yellow and one solid red, with a shaded intersection labeled 'PANTEÍSMO' positioned above a horizontal axis marked with distance values decreasing to zero at the center.",
+    "checked": "2026-08-08 19:47",
+    "subject": "Two distinct circles representing Creation and Divinity drift together until their overlapping intersection expands, illustrating the threat of pantheistic fusion.",
+    "title": "Colisión conceptual"
+  },
+  "geografia_estatica": {
+    "verdict": "ok",
+    "why": "a thin wavy line labeled 'DANUVIVS FLVVIVS', a central point, and several dashed concentric circles around it on a dark background.",
+    "checked": "2026-08-08 22:14",
+    "subject": "Una línea finísima de color piedra traza el curso del Danubio sobre un fondo índigo, con un único punto denso que emite círculos concéntricos de color verde polvoriento.",
+    "title": "Carnuntum, 171 d.C."
+  },
+  "tension_sistemica": {
+    "verdict": "ok",
+    "why": "A cluster of overlapping translucent red circles with bright central dots, enclosed within a large faint dotted circular ring.",
+    "checked": "2026-08-08 22:19",
+    "subject": "Una red de círculos solapados que representan nodos comerciales se contrae rítmicamente hasta que las conexiones entre ellos se vuelven tenues y desaparecen.",
+    "title": "Inestabilidad comercial"
+  },
+  "seccion_transversal": {
+    "verdict": "ok",
+    "why": "A circular coin schematic divided into a light silver inner circle, a dark middle ring, and a reddish outer ring, with leader lines and an adjacent vertical bar chart marked from 0% to 100% highlighting a 79% level.",
+    "checked": "2026-08-08 22:24",
+    "subject": "La sección de una moneda muestra cómo el núcleo de plata se retrae hacia el centro, dejando un vacío del veintiuno por ciento que se llena con una textura de piedra oscura.",
+    "title": "Degradación del denario"
+  },
+  "fuerzas_de_la_naturaleza": {
+    "verdict": "ok",
+    "why": "A horizontal timeline marked 0% to 100% with a dashed reference line and a curved solid line stretched between two dusty green circles at either end.",
+    "checked": "2026-08-09 00:19",
+    "subject": "A horizontal timeline of human life is pulled by two subtle, dusty green circles on either end—one representing infinite desire, the other violent death—creating a tense, vibrating balance.",
+    "title": "Las Dos Fuerzas Constantes"
+  },
+  "inversion_del_sistema": {
+    "verdict": "ok",
+    "why": "Three concentric circular paths colored with an orange-to-white gradient, labeled MATERIA, HOMBRE, and ESTADO from inside out, with the number 1642 at the top of the outer circle and 'El Sistema Invertido' centered at the bottom.",
+    "checked": "2026-08-09 00:22",
+    "subject": "Three elegant, stone-colored concentric paths representing Materia, Hombre, and Estado are shown; the outer path is suddenly drawn first, marked with the date 1642, reversing the natural inside-out flow of his philosophy.",
+    "title": "El Sistema Invertido"
+  },
+  "maquinaria_del_regicidio": {
+    "verdict": "ok",
+    "why": "Two fan-like clusters of fine converging lines labeled '135 COMISIONADOS' and '59 REGICIDAS', which funnel down into a single thick vertical line.",
+    "checked": "2026-08-09 00:28",
+    "subject": "A geometric cascade of hairline lines flows from a broad circle of 135 points down to 59 points, which converge into a single, sharp stone-colored vector representing the legal execution of the king.",
+    "title": "La Maquinaria del Regicidio"
+  },
+  "filosofo_entre_facciones": {
+    "verdict": "ok",
+    "why": "Two large overlapping dusty green circles positioned over a timeline with text labels 'PROTESTANTES' and 'CATÓLICOS', and a small orange dot connected by a dashed line to 'FUGITIVO' in the narrow overlapping section near the bottom of the circles.",
+    "checked": "2026-08-09 00:33",
+    "subject": "A single stone-colored dot representing Hobbes is squeezed in the narrow, negative space between two huge, overlapping circles of dusty green representing the Protestant and Catholic factions of Europe.",
+    "title": "El Filósofo Entre Facciones"
+  },
+  "optical_illusion_diagram": {
+    "verdict": "ok",
+    "why": "Thin lines radiating from a top point, a horizontal axis with labels, scattered orange circles, and faint dashed lines converging to a central point.",
+    "checked": "2026-08-09 10:29",
+    "subject": "Líneas de perspectiva que convergen en un punto se desdibujan lentamente, revelando un fondo de caos abstracto.",
+    "title": "El espejismo del orden"
+  },
+  "floating_structure": {
+    "verdict": "ok",
+    "why": "a tilted, three-layered rectangular block with white, yellow, and red bands labeled 'EMPIRICAL', 'LOGIC', and 'INTUITION', intersected by a vertical dashed line, floating in a black space",
+    "checked": "2026-08-09 10:31",
+    "subject": "Una plataforma geométrica sólida flota sobre un espacio vacío, representando la fragilidad de la razón humana.",
+    "title": "Conocimiento sobre el vacío"
+  },
+  "cross_section_pinboard": {
+    "verdict": "ok",
+    "why": "a grid of orange circles of varying diameters, each attached to a vertical grey line of varying length, arranged on a dark background with text at the bottom",
+    "checked": "2026-08-09 10:32",
+    "subject": "Un zoom a una rejilla de alfileres donde las alturas y grosores de las cabezas se organizan en patrones matemáticos complejos.",
+    "title": "El sistema de cálculo"
+  },
+  "pressure_diagram": {
+    "verdict": "ok",
+    "why": "Three concentric rectangular outlines labeled 'Outer Stone', 'Inner Masonry', and 'Structural Core', with four red arrows pointing inward from the four sides towards a small central dot, each labeled '265 kPa'.",
+    "checked": "2026-08-09 10:39",
+    "subject": "Diagrama de fuerzas donde los muros se cierran sobre un pequeño punto central, representando la reducción de su campo mental.",
+    "title": "La presión del encierro"
+  },
+  "duality_map": {
+    "verdict": "ok",
+    "why": "A horizontal axis with percentage ticks, a straight dashed white line labeled 'SUMISIÓN PÚBLICA', and a jagged, oscillating colored line labeled 'ACTIVIDAD INTELECTUAL OCULTA'.",
+    "checked": "2026-08-09 10:40",
+    "subject": "Dos líneas paralelas: una muestra la sumisión pública (línea calma) y otra la actividad intelectual oculta (línea caótica).",
+    "title": "La doble vida"
+  },
+  "pathway_map": {
+    "verdict": "ok",
+    "why": "A horizontal line connecting three dots labeled 'PARIS', 'ROUTE', and 'VINCENNES', with a distance scale line below showing '0 KM' and '10 KM', and a red circle and pointer line marking the Vincennes dot with the label 'DIDEROT COLLAP'.",
+    "checked": "2026-08-09 10:41",
+    "subject": "Un mapa esquemático simple que muestra el trayecto desde París hasta Vincennes, marcando el punto de colapso de Diderot.",
+    "title": "El encuentro en Vincennes"
+  },
+  "trojan_horse_diagram": {
+    "verdict": "ok",
+    "why": "A central white rectangle intersected by a horizontal red rectangle, with six dashed yellow lines radiating outwards to red circular nodes labeled with words like 'CRITIQUE', 'RAISON', and 'LIBERTÉ'.",
+    "checked": "2026-08-09 10:47",
+    "subject": "Un libro cerrado que, al abrirse, libera una serie de conceptos e ideas que se expanden geométricamente por el espacio.",
+    "title": "La Enciclopedia como Caballo"
+  },
+  "scale_of_complexity": {
+    "verdict": "ok",
+    "why": "a central yellow dot with a leader line, surrounded by many concentric rings of short radial dashes, a second leader line pointing to an outer ring, and a logarithmic scale at the bottom",
+    "checked": "2026-08-09 13:29",
+    "subject": "Un pequeño círculo central que representa una sola solución correcta se ve rodeado por anillos concéntricos de filamentos que se expanden hasta llenar el vacío, ilustrando la escala astronómica de posibilidades.",
+    "title": "El espacio de búsqueda"
+  },
+  "dynamic_labyrinth": {
+    "verdict": "ok",
+    "why": "Three circles labeled 'ROTOR I', 'ROTOR II', and 'ROTOR III' containing internal networks of thin lines, with one path highlighted in red; each circle has a 'POS' value in degrees above it, and they are connected by a dashed red line between a 'REFLECTOR' and an 'INTERFACE'.",
+    "checked": "2026-08-09 13:32",
+    "subject": "Tres círculos (rotores) con conexiones internas de líneas finas rotan de forma independiente, mostrando cómo el camino de un pulso eléctrico cambia drásticamente con cada movimiento.",
+    "title": "Arquitectura del cifrado"
+  },
+  "logical_elimination": {
+    "verdict": "ok",
+    "why": "a network of lettered boxes connected by yellow lines that converge on a final box marked with a red X, alongside a circular dial and a color-coded legend.",
+    "checked": "2026-08-09 13:33",
+    "subject": "Una red de filamentos eléctricos se ilumina secuencialmente hasta que una línea roja interrumpe el flujo, causando que el nodo se apague y el sistema avance al siguiente nivel.",
+    "title": "Lógica de contradicción"
+  },
+  "mass_attrition": {
+    "verdict": "ok",
+    "why": "a horizontal axis marked from 0k to 1000k tons, a solid grey rectangle from 0 to 500k, a dashed rectangle from 500k to 1000k, and a cluster of small brown squares falling below the dashed area.",
+    "checked": "2026-08-09 13:34",
+    "subject": "Un bloque sólido de color piedra que representa el total de suministros se va desmoronando en fragmentos finos que caen hacia la base del encuadre, dejando un vacío proporcional al 500,000.",
+    "title": "Atrición en el Atlántico"
+  },
+  "statistical_overlap": {
+    "verdict": "ok",
+    "why": "Two overlapping translucent grey rectangles labeled 'SHEET ALPHA' and 'SHEET BETA' containing small circular dots, a horizontal axis with a slider marker, and a vertical bar chart labeled 'SEARCH SPACE' with a small highlighted segment.",
+    "checked": "2026-08-09 13:35",
+    "subject": "Dos rectángulos traslúcidos con perforaciones irregulares se deslizan uno sobre otro; la luz solo pasa cuando los orificios coinciden, reduciendo el área de búsqueda visualmente.",
+    "title": "Método Banburismus"
+  },
+  "abstract_quantity": {
+    "verdict": "ok",
+    "why": "A horizontal axis with tick marks and numbers 0-10, labeled 'AZAR' and 'CERTEZA'; a stack of overlapping semi-transparent green rectangles; a yellow vertical marker with a triangular head at position 9 labeled '9 BAN'.",
+    "checked": "2026-08-09 13:36",
+    "subject": "Un eje horizontal donde una marca se desplaza desde el 'azar' hacia la 'certeza' a medida que se superponen capas de datos, ganando opacidad el color verde polvoriento.",
+    "title": "La unidad de certeza"
+  },
+  "feedback_loop": {
+    "verdict": "ok",
+    "why": "Two overlapping colored circles at the center of concentric dashed and solid circular lines, with text labels for 'ejecución' and 'instrucción' positioned above.",
+    "checked": "2026-08-09 13:40",
+    "subject": "Dos círculos que representan 'instrucción' y 'ejecución' se funden lentamente en una sola forma orgánica donde las líneas de flujo circulan sin principio ni fin.",
+    "title": "Unificación de la máquina"
+  },
+  "geography_of_isolation": {
+    "verdict": "ok",
+    "why": "A jagged white line connecting two yellow dots labeled 'TEDDINGTON' and 'CITY CENTER', with several red circular target icons placed along and near the path, set against a dark background with a distance scale at the bottom.",
+    "checked": "2026-08-09 13:41",
+    "subject": "Una línea fina y solitaria traza un recorrido errático sobre un fondo índigo vacío, con pequeños círculos de 'piedra' representando los puntos de impacto de las bombas.",
+    "title": "Ruta de supervivencia"
+  },
+  "conceptual_transition": {
+    "verdict": "ok",
+    "why": "dashed angular outlines on the left transitioning into a central cluster of interconnected organic blobs, with a horizontal axis labeled 'METAL' to 'QUÍMICA' at the bottom.",
+    "checked": "2026-08-09 13:42",
+    "subject": "Estructuras rígidas y angulares de una máquina se disuelven en patrones de reacción-difusión que imitan las manchas de un leopardo o el crecimiento de una planta.",
+    "title": "Morfogénesis e inteligencia"
+  },
+  "asymmetric_value": {
+    "verdict": "ok",
+    "why": "A lever on a fulcrum tilted sharply to the right, with a small yellow dot and thin arrow on the high left end labeled '£7.00' and a large red rectangle and thick arrow on the low right end labeled 'ULTRA SECRET'.",
+    "checked": "2026-08-09 13:44",
+    "subject": "En un extremo, un punto minúsculo representa las 7 libras; en el otro, una masa inmensa representa el peso del secreto de Bletchley, unidos por una balanza que se inclina fatalmente.",
+    "title": "La asimetría del valor"
+  },
+  "currency_hierarchy": {
+    "verdict": "ok",
+    "why": "three concentric circles of varying line thickness and color, with the middle ring divided into 20 segments and the inner ring filled with numerous fine radial lines, accompanied by labels and a legend.",
+    "checked": "2026-08-09 22:48",
+    "subject": "Tres círculos concéntricos de diferentes grosores de línea que representan la libra, el sueldo y el dinero, subdividiéndose orgánicamente para mostrar la complejidad del cálculo.",
+    "title": "Sistema Monetario Francés"
+  },
+  "mechanical_cross_section": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\n \"shows\": \"two circular dials with numbers 0-9, a grey lever arm connecting them, and a red arrow pointing down on a central weight.\",\n \"depicts\": true,\n \"why",
+    "checked": "2026-08-09 22:49",
+    "subject": "Un corte lateral de dos engranajes donde una pequeña pieza metálica (trinquete) cae por su propio peso al llegar al nueve, empujando suavemente la siguiente rueda.",
+    "title": "Mecanismo de la Pascalina"
+  },
+  "atmospheric_pressure_forces": {
+    "verdict": "ok",
+    "why": "a bowl of fluid with a central vertical column, a scale from 0 to 760 mmHg, dashed vertical lines with downward arrows hitting the fluid surface, and an upward arrow at the base of the column labeled P_atm.",
+    "checked": "2026-08-09 22:50",
+    "subject": "Líneas finas verticales que descienden desde la parte superior de la pantalla y ejercen peso sobre la superficie de un cuenco, manteniendo la columna de mercurio elevada.",
+    "title": "Presión sobre el Fluido"
+  },
+  "elevation_comparison": {
+    "verdict": "ok",
+    "why": "a blue mountain profile against a vertical axis with height markings, two vertical rectangles representing air columns starting at different elevations, and a dimension line showing the height difference between the base and peak",
+    "checked": "2026-08-09 22:51",
+    "subject": "Una línea de horizonte que se eleva suavemente formando una montaña, marcando dos puntos de medición y la diferencia de altura de la columna de aire sobre cada uno.",
+    "title": "Experimento del Puy de Dôme"
+  },
+  "cosmic_boundary": {
+    "verdict": "ok",
+    "why": "a central blue circle with concentric rings, a horizontal axis with distance markers (0 to 1,000 km), a plotted curve, and callout lines with labels.",
+    "checked": "2026-08-09 22:57",
+    "subject": "Un círculo pequeño (la Tierra) rodeado por un anillo sutil de color piedra que se desvanece, rodeado por una inmensidad de espacio vacío en azul índigo.",
+    "title": "El Límite de la Atmósfera"
+  },
+  "physics_of_failure": {
+    "verdict": "ok",
+    "why": "a grid with a vertical axis in kN, a downward-pointing red arrow, a central point with radiating thin yellow lines, and a white dot.",
+    "checked": "2026-08-09 23:03",
+    "subject": "Un diagrama de fuerzas donde el vector de peso de los caballos tira hacia abajo y el punto de unión del arnés se fragmenta en finas líneas de tensión.",
+    "title": "Dinámica del Accidente"
+  },
+  "spatial_hallucination": {
+    "verdict": "ok",
+    "why": "A central point on a horizontal line, with three labeled horizontal layers to its right and a dark gradient area to its left bounded by a vertical axis marked with depths down to negative infinity.",
+    "checked": "2026-08-09 23:07",
+    "subject": "Un plano horizontal que se corta abruptamente, dejando un espacio vacío infinito a la izquierda de un punto central que representa la posición del filósofo.",
+    "title": "El Abismo de Pascal"
+  },
+  "relative_scale": {
+    "verdict": "ok",
+    "why": "a central green dot, concentric dashed circles labeled with powers of ten, and a horizontal axis with scale markers from 10⁻¹⁵ m to 10²⁶ m.",
+    "checked": "2026-08-09 23:11",
+    "subject": "Un punto minúsculo de color verde pálido en el centro de una pantalla vasta y vacía, ilustrando la desproporción entre el conocimiento humano y el universo.",
+    "title": "Razón frente al Infinito"
+  },
+  "node_11_cross_section": {
+    "verdict": "ok",
+    "why": "A horizontal rectangle, a vertical rectangle, and a diagonal line meeting at a central point, containing a grid of small yellow dots and three red arrows pointing toward the intersection.",
+    "checked": "2026-08-10 16:04",
+    "subject": "An orthogonal section cut reveals the interior rebar grid and joint interface at Node 11, with load vectors showing compressive forces pushing against the lower deck.",
+    "title": "SCHNITT KNOTENPUNKT 11"
+  },
+  "shear_friction_interface": {
+    "verdict": "ok",
+    "why": "a rectangle divided by a dashed horizontal line, with two horizontal arrows pointing in opposite directions along that line, a diagonal line pointing to the center, and a bar chart comparing two values (500 and 820).",
+    "checked": "2026-08-10 16:06",
+    "subject": "Horizontal force arrows push outward along the cold joint interface while callout leaders contrast theoretical friction resistance against actual shear load.",
+    "title": "SCHERKRAFT AN BETONFÜGE"
+  },
+  "surface_friction_coefficient": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"Two side-by-side squares divided into two horizontal layers by a jagged line (left) and a straight line (right), with vertical arrows labeled",
+    "checked": "2026-08-10 16:07",
+    "subject": "Side-by-side technical micro-sections compare a required roughened concrete profile against the smooth actual surface, reducing the friction force vector by half.",
+    "title": "REIBUNGSKOEFFIZIENT DER FUGE"
+  },
+  "shear_transfer_capacity": {
+    "verdict": "ok",
+    "why": "a cross-section of two blocks with vertical compression arrows, a horizontal red arrow labeled 5.4 MN, a horizontal yellow arrow labeled 5.4 MN, and a bar graph at the bottom showing a gold bar reaching a 5.4 MN limit on a numbered axis.",
+    "checked": "2026-08-10 16:11",
+    "subject": "An engineering force diagram plots the 5.4 MN calculated friction threshold against actual resistance figures with dimensioned vector arrows.",
+    "title": "SCHERTRAGFÄHIGKEIT 5,4 MN"
+  },
+  "shear_force_factor_two": {
+    "verdict": "ok",
+    "why": "A horizontal bar labeled 'KNOTEN 11' with a vertical orange arrow pointing down from it; a vertical axis with ticks for '1.0x (CALC)', 'LIMIT', and '2.0x (ACTUAL)'; a horizontal dashed orange line labeled 'MATERIAL LIMIT' that the arrow crosses; and the number '1.98x' at the arrowhead.",
+    "checked": "2026-08-10 16:13",
+    "subject": "A static shear diagram extends the slate force vector arrow to twice its calculated length, crossing the material limit line marked with a signal-orange threshold indicator.",
+    "title": "QUERKRAFT-UNTERSCHÄTZUNG FAKTOR 2"
+  },
+  "dam_dimensions": {
+    "verdict": "ok",
+    "why": "a steel-gray trapezoid with a horizontal dimension line at the top labeled 980m, a vertical dimension line on the right labeled 93m, and a hatched ground line.",
+    "checked": "2026-08-10 18:19",
+    "subject": "Orthogonale Projektion der Dammfront mit Bemaßungslinien für Höhe und Kronenlänge in Stahlgrau.",
+    "title": "TECHNISCHE ABMESSUNGEN"
+  },
+  "geological_fissures": {
+    "verdict": "ok",
+    "why": "three horizontal grey bands, a vertical depth scale from 0m to 200m, dashed vertical lines, and four orange circles with leader lines and labels.",
+    "checked": "2026-08-10 18:19",
+    "subject": "Schnittzeichnung der Canyonwand mit feinen vertikalen Linien, die Felsspalten und orange markierte Hohlräume zeigen.",
+    "title": "GEOLOGISCHE KLÜFTE"
+  },
+  "silt_erosion_mechanics": {
+    "verdict": "ok",
+    "why": "a two-layered gray rectangle with a micrometer scale, rows of yellow arrows of varying lengths pointing right, and a diagonal line of white dots moving away from the top layer",
+    "checked": "2026-08-10 18:20",
+    "subject": "Mikroskopischer Schnitt zeigt Wasser-Vektorpfeile, die Partikel von einer grauen Materialoberfläche abtragen.",
+    "title": "EROSIONSDYNAMIK (SCHLUFF)"
+  },
+  "filling_rate_graph": {
+    "verdict": "ok",
+    "why": "a line graph with a horizontal yellow line at 0.30 m/d and an orange curve that rises from below the line to a peak of 1.20 m/d, plotted against a vertical axis with numerical increments and a horizontal axis with dates.",
+    "checked": "2026-08-10 18:26",
+    "subject": "Technisches Liniendiagramm vergleicht die 0,30m-Grenze mit der tatsächlichen 1,20m-Kurve, die orange markiert ist.",
+    "title": "PEGELANSTIEG VS. SICHERHEITSNORM"
+  },
+  "hydraulic_fracturing": {
+    "verdict": "ok",
+    "why": "two grey rectangular blocks separated by a horizontal gap containing a tapered orange wedge, with red arrows pointing outwards from the wedge into the blocks",
+    "checked": "2026-08-10 18:32",
+    "subject": "Schnittansicht eines Risses, in den ein orangefarbener hydraulischer Keil eindringt und das Material spaltet.",
+    "title": "HYDRAULISCHE FRAKTURIERUNG"
+  },
+  "cavitation_vibration": {
+    "verdict": "ok",
+    "why": "a trapezoidal dam structure with wavy lines near the top, a vertical frequency axis with ticks from 0 to 200 Hz, horizontal arrows, and labeled zones.",
+    "checked": "2026-08-10 18:33",
+    "subject": "Stahlgraue Wellenlinien visualisieren die Schwingungsfrequenz innerhalb der Dammstruktur nahe der Krone.",
+    "title": "STRÖMUNGSINDUZIERTE VIBRATION"
+  },
+  "pathogen_origin": {
+    "verdict": "ok",
+    "why": "A dark grid background with a thin yellow line connecting labeled points from Seleucia to Aquileia, with dusty green circular dots at each resting point along the path.",
+    "checked": "2026-08-10 21:17",
+    "subject": "A hairline stroke traces the route from Seleucia to Aquileia on a faded indigo background, with a dusty green pulse expanding slowly at each resting point.",
+    "title": "Origen del Contagio"
+  },
+  "data_erasure": {
+    "verdict": "ok",
+    "why": "a bordered rectangle containing a grid of faint square dots, with a horizontal glowing orange line across the bottom and surrounding text labels",
+    "checked": "2026-08-10 21:18",
+    "subject": "A grid of stone-colored dots representing the legion's roster fades into the indigo background as a single horizontal line passes over them.",
+    "title": "Censura de Bajas"
+  },
+  "mortality_peak": {
+    "verdict": "ok",
+    "why": "a line graph with a horizontal axis labeled Septiembre through Diciembre and a vertical axis numbered 0 to 100, depicting a line connecting data points from low values in previous months to a high peak at Diciembre labeled 97 / DÍA",
+    "checked": "2026-08-10 21:23",
+    "subject": "A horizontal timeline in stone-grey develops a vertical peak that reaches a specific height labeled 'Diciembre', showing the volume of loss relative to the months prior.",
+    "title": "Mortalidad Diaria"
+  },
+  "internal_obstruction": {
+    "verdict": "ok",
+    "why": "a dashed circle containing six overlapping red circles that converge on a tiny central yellow dot, plus two bar charts showing 3% and 97% values.",
+    "checked": "2026-08-10 21:24",
+    "subject": "A minimalist cross-section of a passage where concentric stone circles expand inward until they overlap, representing the closing of the airway.",
+    "title": "Efecto de la Patología"
+  },
+  "unit_attrition": {
+    "verdict": "ok",
+    "why": "an indigo circle partially overlapped by a dusty green circle, with a side panel displaying 52.5% remaining strength and a timeline axis below",
+    "checked": "2026-08-10 21:28",
+    "subject": "An indigo circle representing the full legion is slowly overlapped by a dusty green circle until exactly half of the original area remains visible.",
+    "title": "Desgaste de la Legio X"
+  },
+  "force_composition": {
+    "verdict": "ok",
+    "why": "A circle divided into three distinct colored segments (yellow, red, and grey-green) with leader lines and percentage labels.",
+    "checked": "2026-08-10 21:30",
+    "subject": "A large circle representing a new legion is divided into three distinct shaded segments of stone and green, illustrating the non-traditional origins of the recruits.",
+    "title": "Composición de Emergencia"
+  },
+  "density_comparison": {
+    "verdict": "ok",
+    "why": "Two overlapping circles labeled 'Ciudad' (larger) and 'Campamento' (smaller) filled with dusty green shades, along with a dashed outer ring and a percentage scale labeled 'NIVEL DE CONTAGIO' at the bottom.",
+    "checked": "2026-08-10 21:32",
+    "subject": "Two overlapping circles of different sizes; the smaller, denser circle (camp) fills with dusty green color much faster than the larger, sparse circle (city).",
+    "title": "Velocidad de Contagio"
+  },
+  "supply_starvation": {
+    "verdict": "ok",
+    "why": "A horizontal line with tick marks from 0w to 6w connecting the labels 'ALEXANDRIA' and 'ROME', surrounded at Rome by a soft green glow.",
+    "checked": "2026-08-10 21:35",
+    "subject": "A thin stone line connecting Alexandria to Rome gradually thins out and snaps, while a dusty green shadow begins to grow from the center of Rome.",
+    "title": "Vulnerabilidad de Suministro"
+  },
+  "imperial_fragmentation": {
+    "verdict": "ok",
+    "why": "a large blue rectangle labeled 'CENTRAL POWER', a central dark rectangle labeled 'GAP: 149 km', and four yellow rectangles labeled 'Siria', 'Fenicia', 'Cilicia', and 'Egipto'",
+    "checked": "2026-08-10 21:37",
+    "subject": "A unified indigo map of the Mediterranean where the eastern provinces slowly drift away from the central mass, leaving a gap of empty space.",
+    "title": "Fragmentación del Imperio"
+  },
+  "platform_structural_layout": {
+    "verdict": "ok",
+    "why": "five circles labeled A through E arranged in a pentagon, connected by thick lines, with a dashed dimension line and a numerical measurement.",
+    "checked": "2026-08-11 04:35",
+    "subject": "An orthogonal top-down blueprint of the five columns (A-E) and their connecting steel tubes animates in with dimension lines, highlighting the symmetrical pentagonal layout in slate grey.",
+    "title": "STRUKTURELLER AUFBAU PENTAGONE"
+  },
+  "buoyancy_loss_distribution": {
+    "verdict": "ok",
+    "why": "A horizontal deck supported by five columns labeled A through E, a signal-orange X drawn over Column D, a yellow circle labeled 'BUOYANCY' positioned above Column C, vertical yellow lines above each column (with a shorter line above D), and a diagonal line across the structure.",
+    "checked": "2026-08-11 04:36",
+    "subject": "A side-view engineering section cut shows the center of buoyancy shifting instantly away from Column D, with slate-grey load vectors shrinking and a signal-orange cross marking the severed Column D.",
+    "title": "STABILITÄTSVERLUST SÄULE D"
+  },
+  "column_flooding_cross_section": {
+    "verdict": "ok",
+    "why": "A tilted rectangle divided into three vertical compartments with blue fill filling the lower portion, accompanied by a dashed axis line, a yellow height dimension line marked 'H: 158mm', text reading 'VOLUME: 3225 L', and text reading '13° TILT'.",
+    "checked": "2026-08-11 04:39",
+    "subject": "A vertical section cut of a column shows the rising water level inside the hollow compartments as the platform tilts, with dimension lines indicating the tilt angle and water volume.",
+    "title": "FLUTUNG DER TRAGSÄULEN"
+  },
+  "hydrophone_cutout_dimension": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a rectangle with three horizontal gray bands, a yellow dimension line for '2.6 m TUBE DIAMETER', and a dashed orange circle with a radial line for '3",
+    "checked": "2026-08-11 04:41",
+    "subject": "An orthogonal projection of the 2.6-meter tube zooms in to show a 325 mm circular cutout being subtracted, with precise dimension lines and a signal-orange indicator for the cut edge.",
+    "title": "AUSSCHNITT STREBE D-3"
+  },
+  "weld_microcrack_section": {
+    "verdict": "ok",
+    "why": "A schematic cross-section featuring grey blocks labeled 'Base Metal' and 'Sleeve', a central gradient region labeled 'HAZ', and two signal-orange lines extending upward toward the HAZ marked with 'CRACK DEPTH: 5.8mm'.",
+    "checked": "2026-08-11 04:42",
+    "subject": "A technical cross-section of the 6mm fillet weld joining the sleeve to the 26mm tube wall shows microscopic cracks propagating into the heat-affected zone, marked in signal-orange.",
+    "title": "GEFÜGESTRUKTUR SCHWEISSNAHT"
+  },
+  "fatigue_crack_propagation": {
+    "verdict": "ok",
+    "why": "a grey rectangle containing a horizontal orange line ending in a dot, a digital counter at the top, and a horizontal axis at the bottom with labels from 0M to 14M",
+    "checked": "2026-08-11 04:44",
+    "subject": "A flat-pattern unrolled projection of the tubular steel wall shows a timeline counter advancing from 0 to 14 million cycles as a signal-orange crack line grows incrementally across the grey steel surface.",
+    "title": "RISSFORTPFLANZUNG 1976-1980"
+  },
+  "lamellar_tearing_microstructure": {
+    "verdict": "ok",
+    "why": "Three horizontal grey bars labeled ROLLING PLANE 1, 2, and 3, an upward orange arrow labeled WELD SHRINKAGE above the top bar, and an orange highlighted box containing a dashed line labeled TEARING PATH over the middle bar.",
+    "checked": "2026-08-11 04:49",
+    "subject": "A highly magnified structural section cut shows horizontal steel rolling planes separating vertically under weld shrinkage stress, with the tearing path highlighted in signal-orange.",
+    "title": "TERRASSENBRUCH IM STAHL"
+  },
+  "epoxy_coating_occlusion": {
+    "verdict": "ok",
+    "why": "A two-layer horizontal rectangle labeled 'STEEL WALL' and 'EPOXY COATING', with a signal-orange line labeled 'RISS' above the steel wall, a yellow dashed line passing through the wall, and a callout on the outer epoxy layer labeled 'VISUAL INSPECTION: OK'.",
+    "checked": "2026-08-11 04:50",
+    "subject": "A technical section cut shows the grey steel tube wall and a thick outer layer of epoxy paint spanning over the growing signal-orange crack underneath, showing why visual inspection failed.",
+    "title": "OBERFLÄCHENSCHUTZ UND RISS"
+  },
+  "center_of_gravity_shift": {
+    "verdict": "ok",
+    "why": "A three-layered block representing a platform elevation profile alongside a vertical height scale, featuring a lower grey dot labelled THEORETICAL COG and a higher signal-orange dot labelled ACTUAL COG connected by a vertical line.",
+    "checked": "2026-08-11 04:55",
+    "subject": "An orthogonal elevation profile of the platform compares the theoretical center of gravity (grey dot) with the actual, higher center of gravity (signal-orange dot), showing the reduced metacentric height.",
+    "title": "SCHWERPUNKTABWEICHUNG COG"
+  },
+  "secciones_conicas_geometria": {
+    "verdict": "ok",
+    "why": "A cone formed by thin green lines intersected by a stone-colored translucent plane, showing a golden conic section curve at the intersection.",
+    "checked": "2026-08-11 08:23",
+    "subject": "Un cono de líneas finas en verde polvoriento es intersecado lentamente por un plano de color piedra, revelando de forma sutil las elipses y parábolas resultantes.",
+    "title": "Secciones cónicas de Apolonio"
+  },
+  "proyeccion_estereografica_astrolabio": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"A white circle with a vertical center line labeled 'POLO', several parallel dashed orange lines extending from the circle's lower edge down t",
+    "checked": "2026-08-11 08:28",
+    "subject": "Las coordenadas tridimensionales de una esfera celeste se proyectan lentamente hacia abajo en líneas finas de color piedra, aplanándose sobre un disco plano verde.",
+    "title": "Proyección estereográfica del astrolabio"
+  },
+  "desmantelamiento_sistematico_biblioteca": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"A grid of small circles where the central ones are dimmer than those at the edges, with a dotted line below labeled 'MARGEN' on the left and 'CENTRO'",
+    "checked": "2026-08-11 08:29",
+    "subject": "Una cuadrícula ordenada de pequeños círculos que representa el conocimiento acumulado se desvanece de forma progresiva y silenciosa de los márgenes hacia el centro.",
+    "title": "Desmantelamiento de la biblioteca"
+  },
+  "esferas_influencia_politica": {
+    "verdict": "ok",
+    "why": "Three thin overlapping circles in white, yellow, and red, with text labels identifying administrative, religious, and philosophical spheres, plus a central overlapping region.",
+    "checked": "2026-08-11 08:33",
+    "subject": "Tres grandes círculos de trazo fino que representan el poder civil, religioso y filosófico se desplazan lentamente hasta superponerse, oscureciendo su área de intersección común.",
+    "title": "Esferas de influencia en conflicto"
+  },
+  "structural_load_analysis": {
+    "verdict": "ok",
+    "why": "Two stacked horizontal rectangles with a vertical cylinder passing through them, a dashed vertical line offset to the right, and two opposing horizontal arrows at the interface of the rectangles.",
+    "checked": "2026-08-11 10:23",
+    "subject": "Eine Detailansicht einer Bolzenverbindung zeigt die Verschiebung der Lastachse und die daraus resultierenden entgegengesetzten Scherkräfte in Orange.",
+    "title": "Scherkraft an Bolzen"
+  },
+  "stress_distribution_cut": {
+    "verdict": "ok",
+    "why": "A tilted rectangle divided into three sections labeled 'Flansch', 'Steg', and 'Flansch', featuring a continuous color gradient along its height, labeled tick marks showing values from 0 MPa to 210 MPa, and a bracket labeled 'Querschnitt'.",
+    "checked": "2026-08-11 10:24",
+    "subject": "Ein Querschnitt des Trägers zeigt die gleichmäßige Druckverteilung, die bei der seitlichen Auslenkung asymmetrisch und kritisch wird.",
+    "title": "Druckspannung im Obergurt"
+  },
+  "load_path_animation": {
+    "verdict": "ok",
+    "why": "a schematic truss diagram with white lines labeled 'Obergurt' and 'Diagonalstrebe', a thick orange arrow following from the top chord down along a diagonal strut, and a red circle highlighting the bottom joint",
+    "checked": "2026-08-11 10:27",
+    "subject": "Animierte orangefarbene Pfeile zeigen, wie die Last vom Obergurt schlagartig in die Diagonalstreben abgeleitet wird und diese überlastet.",
+    "title": "Kettenreaktion der Last"
+  },
+  "cross_section_comparison": {
+    "verdict": "ok",
+    "why": "Two overlapping hatched circles—one grey labeled 'Soll: 25.0 mm' and one orange labeled 'Ist: 19.8 mm'—with a yellow dotted line between them labeled '-20% Fläche'.",
+    "checked": "2026-08-11 10:28",
+    "subject": "Ein technischer Vergleich zweier Kreisquerschnitte: Soll-Dicke (grau) vs. Ist-Dicke (orange), um den 20-prozentigen Flächenverlust zu visualisieren.",
+    "title": "Fehlende Wandstärke"
+  },
+  "propagation_map": {
+    "verdict": "ok",
+    "why": "a grid of thin white lines with dots at the intersections, a central point labeled 'Ausfallpunkt', a circular orange-yellow gradient expanding outwards, and a diagonal orange line labeled '300 m/s'",
+    "checked": "2026-08-11 10:31",
+    "subject": "Eine Draufsicht des Daches, bei der sich eine orangefarbene Schockwelle vom Ausfallpunkt sternförmig über das gesamte Raster ausbreitet.",
+    "title": "Kollaps-Ausbreitung"
+  },
+  "deflection_diagram": {
+    "verdict": "ok",
+    "why": "a straight dashed line with scale ticks alongside a curved beam line, with a red vertical dimension mark indicating 3 cm",
+    "checked": "2026-08-11 10:32",
+    "subject": "Ein Längsschnitt zeigt die ursprüngliche gerade Linie des Trägers im Vergleich zur tatsächlichen, um 3 cm durchgebogenen Linie.",
+    "title": "Statische Durchbiegung"
+  },
+  "structural_model_error": {
+    "verdict": "ok",
+    "why": "A comparison between two sides separated by a dashed vertical line: on the left under 'Rechenmodell', a vertical white double-headed arrow connected to a horizontal line; on the right under 'Realität', a vertical yellow arrow pointing down, crossed by a red horizontal line labeled 'Fehlende Verbindung'.",
+    "checked": "2026-08-11 10:34",
+    "subject": "Gegenüberstellung von zwei Balkenmodellen: Eines mit theoretischen Stützpunkten und eines mit den realen, fehlenden Verbindungen.",
+    "title": "Rechenmodell vs. Realität"
+  },
+  "schematic_overlay": {
+    "verdict": "ok",
+    "why": "a downward-curving red line positioned above a straight horizontal white bar, with a shaded blue area between them and a horizontal axis with numerical labels below.",
+    "checked": "2026-08-11 10:35",
+    "subject": "Ein Schnitt zeigt den durchgebogenen Träger, der durch eine gerade, untergehängte Deckenverkleidung optisch maskiert wird.",
+    "title": "Optische Korrektur"
+  },
+  "load_accumulation_graph": {
+    "verdict": "ok",
+    "why": "a graph with a vertical axis labeled in kN, a horizontal axis labeled with 'W' prefixes, a rising curve that changes color, and a horizontal dashed orange line at the 100 kN mark labeled 'Knickgrenze'",
+    "checked": "2026-08-11 10:36",
+    "subject": "Ein Diagramm zeigt den schleichenden Anstieg der Schneelast über die Zeit, der die kritische Knickgrenze (orange Linie) erreicht.",
+    "title": "Ansteigende Lastkurve"
+  },
+  "weld_section_cut": {
+    "verdict": "ok",
+    "why": "Two grey blocks labeled 'Base Metal' flanking a central light grey wedge labeled 'Weld Zone', containing three orange circular shapes, with a dashed orange line at the bottom of the wedge and an open gap below it labeled 'Incomplete Penetration'.",
+    "checked": "2026-08-11 10:39",
+    "subject": "Ein Schnitt durch eine Schweißnaht zeigt die unvollständige Durchdringung und Hohlräume (Lunker) in Signalorange.",
+    "title": "Fehlerhafte Schweißnaht"
   }
 }

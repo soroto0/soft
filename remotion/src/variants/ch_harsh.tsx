@@ -21,3 +21,19 @@ export const ChHarsh04: React.FC<VariantProps> = (p) => <Formed p={p} palette="h
 export const ChHarsh05: React.FC<VariantProps> = (p) => <Formed p={p} palette="harsh" n={5} />;
 
 export const ChHarsh06: React.FC<VariantProps> = (p) => <Formed p={p} palette="harsh" n={6} />;
+
+export const ChHarsh07: React.FC<VariantProps> = (p) => <Formed p={p} palette="harsh" n={7} />;
+
+export const ChHarsh08: React.FC<VariantProps> = (p) => <Formed p={p} palette="harsh" n={8} />;
+
+export const ChHarsh09: React.FC<VariantProps> = (p) => <Formed p={p} palette="harsh" n={9} />;
+
+export const ChHarsh10: React.FC<VariantProps> = (p) => <Formed p={p} palette="harsh" n={10} />;
+
+export const ChHarsh11: React.FC<VariantProps> = (p) => <Formed p={p} palette="harsh" n={11} />;
+
+export const ChHarsh12: React.FC<VariantProps> = (p) => <Formed p={p} palette="harsh" n={12} />;
+
+export const ChHarsh13: React.FC<VariantProps> = (p) => <Formed p={p} palette="harsh" n={13} />;
+
+export const ChHarsh14: React.FC<VariantProps> = (p) => <Formed p={p} palette="harsh" n={14} />;
