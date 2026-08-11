@@ -252,21 +252,41 @@ const inkShadow = (c: Ctx): string =>
 
 // Общая обёртка: место в кадре + появление + подложка.
 const Framed: React.FC<{ c: Ctx; children: React.ReactNode; grow?: boolean }> =
-  ({ c, children, grow }) => (
-    <AbsoluteFill style={anchorBox(c.spec.anchor)}>
-      <div style={{
-        opacity: c.op,
-        maxWidth: grow ? '100%' : '74%',
-        width: c.spec.anchor === 'bottomBar' ? '100%' : undefined,
-        ...revealStyle(c.spec.reveal, c.k),
-      }}>
-        <div style={plateStyle(c)}>
-          {plateDecor(c)}
-          {children}
+  ({ c, children, grow }) => {
+    // ПРОЗРАЧНОСТЬ ПЕРЕМНОЖАЕТСЯ, А НЕ ПЕРЕЗАПИСЫВАЕТСЯ. c.op — это
+    // p.enter * p.exit, то есть въезд и уход плашки. Половина приёмов
+    // появления возвращает СВОЮ opacity (snap, blink, fadeUp, breathe,
+    // drawRule, driftUp, letterFade), и раскрытие их объекта стояло ПОСЛЕ
+    // «opacity: c.op» — то есть просто затирало уход. Плашка держалась до
+    // последнего кадра и пропадала рывком.
+    //
+    // Замер на живом рендере einsturzpunkt/2026-08-11_2: 59 готовых
+    // секвенций из 80 имели последний кадр ровно той же средней альфы, что и
+    // середина. Въезд при этом был цел у всех 82 — потому что у приёмов
+    // opacity растёт от k и на въезде совпадает с c.op по направлению.
+    // Своего затухания ffmpeg не добавляет (render.py кладёт голый overlay с
+    // enable=between), так что альфа в PNG и есть единственный уход.
+    //
+    // У harsh это било по всем номерам сразу: reveal = floor(n/16) % 4, то
+    // есть у вариантов 1..15 приём один и тот же — snap.
+    const rev = revealStyle(c.spec.reveal, c.k);
+    return (
+      <AbsoluteFill style={anchorBox(c.spec.anchor)}>
+        <div style={{
+          maxWidth: grow ? '100%' : '74%',
+          width: c.spec.anchor === 'bottomBar' ? '100%' : undefined,
+          ...rev,
+          // строго ПОСЛЕ раскрытия rev, иначе снова затрут
+          opacity: c.op * (typeof rev.opacity === 'number' ? rev.opacity : 1),
+        }}>
+          <div style={plateStyle(c)}>
+            {plateDecor(c)}
+            {children}
+          </div>
         </div>
-      </div>
-    </AbsoluteFill>
-  );
+      </AbsoluteFill>
+    );
+  };
 
 // ---------- содержимое по типам ----------
 

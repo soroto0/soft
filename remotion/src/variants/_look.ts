@@ -172,11 +172,21 @@ export const formSpec = (palette: Palette, n: number,
     ? L.anchors.filter((a) => ANCHOR_BAND[a] === band)
     : L.anchors;
   const anchors = pool.length ? pool : L.anchors;
+  // Делим на длину ОТФИЛЬТРОВАННОГО пула, а не исходного списка якорей.
+  // Разряды номера идут подряд: якорь, потом подложка, потом появление. Если
+  // пул сузился до одного якоря, а делитель остался четыре, три четверти
+  // номеров дают ту же подложку — разнообразие теряется не там, где надо.
+  // Замер на баннере harsh (в полосе «верх» у него один якорь 'tl'): 8 новых
+  // номеров давали 4 разные картинки, 06 и 07 по отдельности, 08=09=10=11,
+  // 12=13. С делением на пул из 13 номеров баннера выходит 13 непохожих
+  // сочетаний вместо 5, и это ровно то разнообразие, ради которого фабрика
+  // вариантов и заведена.
+  const an = anchors.length;
   return {
-    anchor: anchors[i % anchors.length],
-    plate: L.plates[Math.floor(i / L.anchors.length) % L.plates.length],
+    anchor: anchors[i % an],
+    plate: L.plates[Math.floor(i / an) % L.plates.length],
     reveal: L.reveals[
-      Math.floor(i / (L.anchors.length * L.plates.length)) % L.reveals.length],
+      Math.floor(i / (an * L.plates.length)) % L.reveals.length],
     accentSwap: Math.floor(i / 7) % 2 === 1,
   };
 };
