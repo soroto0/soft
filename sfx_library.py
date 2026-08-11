@@ -58,6 +58,39 @@ CATEGORIES = {
     "SSE_Library_MUSICAL":     "ding",
     "SSE_Library_GLASS":       "ding",
     "SSE_Library_ICE":         "ding",
+    # Добор 11.08.2026. Шапка модуля обещает 63 коллекции, а подключено было
+    # 19 — и ровно поэтому фон у каналов совпадал. Замер: после --fetch все 11
+    # скачанных файлов оказались ДУБЛЯМИ, роль thud упёрлась в потолок 14, а
+    # ding и pop остановились на пяти каждая. Пять не-ударных на два канала,
+    # которым нужны именно они, — отсюда пересечение наборов 7 из 10 у тёплого
+    # с созерцательным (при 1 из 10 у хроники с тёплым).
+    #
+    # Добираем перекосом в голодные роли, а не «всё подряд»: ударных не
+    # трогаем, их и так с запасом. Намеренно НЕ берём CREATURES, VOICES,
+    # CROWDS, BIRDS, CARTOON, FIGHT, BULLETS — голоса и живность под голосом
+    # диктора читаются как посторонний звук в записи, а не как атмосфера.
+    "SSE_Library_BEEPS":          "ding",
+    "SSE_Library_COMMUNICATIONS": "ding",
+    "SSE_Library_CHAINS":         "ding",
+    "SSE_Library_FOOD_DRINK":     "pop",
+    "SSE_Library_FOOTSTEPS":      "pop",
+    "SSE_Library_DIRT_SAND":      "pop",
+    "SSE_Library_MACHINES":       "tick",
+    "SSE_Library_MOTORS":         "tick",
+    "SSE_Library_WEATHER":        "whoosh",
+    "SSE_Library_SNOW":           "whoosh",
+    "SSE_Library_AIRCRAFT":       "whoosh",
+    "SSE_Library_TRAINS":         "thud",
+    "SSE_Library_LIQUID_MUD":     "thud",
+    # Второй добор того же дня: первый поднял фон с 26 файлов до 34, но
+    # пересечение тёплого с созерцательным упало только с 7 до 6 из 10 —
+    # не-ударных стало 17 на два канала, которым нужны они же. Берём ещё.
+    "SSE_Library_GAMES":          "tick",
+    "SSE_Library_DESIGNED":       "ding",
+    "SSE_Library_SPORTS":         "pop",
+    "SSE_Library_ARCHIVED":       "pop",
+    "SSE_Library_RAIN":           "whoosh",
+    "SSE_Library_GEOTHERMAL":     "whoosh",
 }
 
 MIN_S, MAX_S = 0.15, 6.0
