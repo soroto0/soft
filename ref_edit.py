@@ -28,6 +28,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+# Окно консоли НЕ ДОЛЖНО выскакивать. Программа живёт в своём окне
+# (pythonw), а каждый вызов ffmpeg, ffprobe и npx без этого флага открывает
+# чёрный прямоугольник поверх всего — при рендере их сотни за ролик, и они
+# перехватывают фокус, пока человек работает. Замер 2026-08-12: восемь мест
+# в четырёх файлах запускали процессы без него.
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE))
 
@@ -48,7 +56,7 @@ SCENE_THRESHOLD = 0.30
 
 def _run(args: list[str], timeout: int = 900) -> str:
     r = subprocess.run(args, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", timeout=timeout)
+                       encoding="utf-8", errors="replace", timeout=timeout, creationflags=CREATE_NO_WINDOW)
     return (r.stdout or "") + (r.stderr or "")
 
 

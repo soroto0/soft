@@ -44,6 +44,14 @@ import tempfile
 import time
 from pathlib import Path
 
+
+# Окно консоли НЕ ДОЛЖНО выскакивать. Программа живёт в своём окне
+# (pythonw), а каждый вызов ffmpeg, ffprobe и npx без этого флага открывает
+# чёрный прямоугольник поверх всего — при рендере их сотни за ролик, и они
+# перехватывают фокус, пока человек работает. Замер 2026-08-12: восемь мест
+# в четырёх файлах запускали процессы без него.
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 # Порог замирания. 2 c выбраны не на глаз: жалоба владельца звучала как
 # «замирает на 2-3 секунды, когда кончается ИИ-клип», а осмысленная статичная
 # заставка короче двух секунд в этом конвейере не встречается.
@@ -132,7 +140,7 @@ SUBS_PROBES = 7
 def _run(cmd: list[str], timeout: int = 3600) -> str:
     """ffmpeg пишет измерения в stderr — возвращаем оба потока одной строкой."""
     r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=timeout)
+                       errors="replace", timeout=timeout, creationflags=CREATE_NO_WINDOW)
     return (r.stdout or "") + (r.stderr or "")
 
 
@@ -589,7 +597,7 @@ def _ink_line(mp4: Path, t: float, w: int, h: int) -> int:
     out = subprocess.run(
         ["ffmpeg", "-v", "error", "-ss", f"{t:.2f}", "-i", str(mp4),
          "-frames:v", "1", "-vf", "format=gray", "-f", "rawvideo", "-"],
-        capture_output=True, timeout=120).stdout
+        capture_output=True, timeout=120, creationflags=CREATE_NO_WINDOW).stdout
     if len(out) < w * h:
         return 0
     a = np.frombuffer(out[:w * h], dtype=np.uint8).reshape(h, w)

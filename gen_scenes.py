@@ -47,6 +47,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+# Окно консоли НЕ ДОЛЖНО выскакивать. Программа живёт в своём окне
+# (pythonw), а каждый вызов ffmpeg, ffprobe и npx без этого флага открывает
+# чёрный прямоугольник поверх всего — при рендере их сотни за ролик, и они
+# перехватывают фокус, пока человек работает. Замер 2026-08-12: восемь мест
+# в четырёх файлах запускали процессы без него.
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE))
 
@@ -608,7 +616,7 @@ def _still(kind: str, title: str, dur: float, at: float, dest: Path) -> str:
         ["npx", "remotion", "still", "Scene", str(dest), "--frame", str(fr),
          "--image-format", "png", "--props", json.dumps(props, ensure_ascii=False)],
         cwd=REMOTION, capture_output=True, text=True, encoding="utf-8",
-        errors="replace", timeout=600, shell=True)
+        errors="replace", timeout=600, shell=True, creationflags=CREATE_NO_WINDOW)
     if r.returncode != 0 or not dest.exists():
         return f"рендер упал: {(r.stderr or '')[-200:]}"
     return ""
@@ -832,7 +840,7 @@ def unregister(kind: str, component: str) -> None:
 def typecheck() -> tuple[bool, str]:
     r = subprocess.run(["npx", "tsc", "--noEmit"], cwd=REMOTION,
                        capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=600, shell=True)
+                       errors="replace", timeout=600, shell=True, creationflags=CREATE_NO_WINDOW)
     return r.returncode == 0, (r.stdout or r.stderr)[-900:]
 
 
@@ -1008,7 +1016,7 @@ def render_scene(kind: str, dest: Path, seconds: float, *, title: str = "",
            "--codec", "h264", "--log", "error"]
     r = subprocess.run(cmd, cwd=REMOTION, capture_output=True, text=True,
                        encoding="utf-8", errors="replace", timeout=900,
-                       env=ov._node_env())
+                       env=ov._node_env(), creationflags=CREATE_NO_WINDOW)
     if r.returncode != 0 or not dest.exists():
         # Жалуемся ЗДЕСЬ, хотя ошибку ловит вызывающий (core: «сцена не
         # отрисовалась — беру обычный кадр»). Там она превращается в строку

@@ -299,7 +299,7 @@ def run_tree(cmd: list, timeout: float, **kw):
     # первом же нерусском байте поток-читатель падал с UnicodeDecodeError,
     # уводя за собой весь вызов (поймано на таймаут-тесте с ping)
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True, encoding="utf-8", errors="replace", **kw)
+                         text=True, encoding="utf-8", errors="replace", **kw, creationflags=CREATE_NO_WINDOW)
     deadline = time.time() + timeout
     while True:
         try:

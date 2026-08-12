@@ -2122,7 +2122,7 @@ def _has_audio(path: Path) -> bool:
         r = subprocess.run(
             ["ffprobe", "-v", "error", "-select_streams", "a",
              "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True, timeout=60)
+            capture_output=True, text=True, timeout=60, creationflags=CREATE_NO_WINDOW)
         return bool(r.stdout.strip())
     except Exception:
         return False
