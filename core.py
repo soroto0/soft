@@ -293,13 +293,24 @@ def run_tree(cmd: list, timeout: float, **kw):
     Ожидание идёт короткими шагами, а не одним communicate(timeout=...), ровно
     чтобы между шагами смотреть на CANCEL: иначе «Стоп» на минутном ffmpeg или
     получасовом рендере Remotion отзывался бы только после конца команды."""
+    # ФЛАГ ЗАДАЁТСЯ РОВНО ОДИН РАЗ — через setdefault, и больше нигде.
+    # Здесь стояло и setdefault, и явное creationflags= рядом с **kw, а это
+    # для Python «два значения одного аргумента»: Popen падал с TypeError
+    # ВСЕГДА, на любой команде. Замер: core._run_child(['ffmpeg','-version'])
+    # -> TypeError: subprocess.Popen() got multiple values for keyword
+    # argument 'creationflags'. Через _run_child идут обрезка кусков озвучки,
+    # сшивка дорожки, кадры для проверки зрением — то есть с этой строкой
+    # конвейер не мог собрать НИ ОДНОГО ролика. И половина вызовов обёрнута
+    # в `except Exception` с запасным путём, так что наружу это выходило не
+    # ошибкой, а «кадр не извлекается» и «обработку голоса пропустил».
+    # setdefault оставлен намеренно: вызывающий вправе передать свой флаг.
     kw.setdefault("creationflags", CREATE_NO_WINDOW)
     _stop_check()          # на взведённом флаге новый процесс не заводим
     # errors="replace" обязателен: часть windows-утилит пишет в cp866, и на
     # первом же нерусском байте поток-читатель падал с UnicodeDecodeError,
     # уводя за собой весь вызов (поймано на таймаут-тесте с ping)
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True, encoding="utf-8", errors="replace", **kw, creationflags=CREATE_NO_WINDOW)
+                         text=True, encoding="utf-8", errors="replace", **kw)
     deadline = time.time() + timeout
     while True:
         try:
@@ -5200,6 +5211,33 @@ def fit_headline(headline: str, style: str = "", layout: str = "") -> str:
     # Пусть перебор по строкам увидит thumb_feed_report и концепция
     # отбракуется — их для того и просят с запасом.
     return "\n".join(out)
+
+
+def still_frame(src: Path, dest: Path, at: float = 1.0) -> Path | None:
+    """Один кадр из видеофайла в JPG. None — не вышло, и это не беда.
+
+    Нужен там, где картинка есть только внутри уже скачанного плана: в
+    раскадровке лежат mp4, а обложке нужен фон. Кадр берём не с нуля, а на
+    секунде: у сгенерированных планов первый кадр часто ещё вытемнен, и
+    обложка вышла бы чёрной.
+
+    Ничего не бросает намеренно: это запасной путь, и падать на нём значит
+    менять «плохую обложку» на «никакой».
+    """
+    src, dest = Path(src), Path(dest)
+    if not src.exists():
+        return None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _run_child(["ffmpeg", "-y", "-v", "error", "-ss", f"{at:g}",
+                    "-i", str(src), "-frames:v", "1",
+                    "-vf", "scale=1280:-2", "-q:v", "3", str(dest)],
+                   timeout=60, check=True)
+    except Cancelled:
+        raise
+    except Exception:                                   # noqa: BLE001
+        return None
+    return dest if dest.exists() and dest.stat().st_size > 1000 else None
 
 
 def feed_preview(src: Path, dest: Path, width: int = FEED_W) -> Path:

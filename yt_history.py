@@ -391,8 +391,28 @@ def _side(ya, missing: list, what: str, **kw) -> list[dict] | None:
     try:
         return _rows(ya, **kw)
     except Exception as e:
-        missing.append(f"{what}: {str(e)[:80]}")
+        missing.append(f"{what}: {_why(e)}")
         return None
+
+
+def _why(e: Exception) -> str:
+    """Причина отказа разреза — коротко, читаемо и БЕЗ ссылки.
+
+    Здесь стояло `str(e)[:80]`, и восемьдесят знаков HttpError — это ровно
+    начало URL: в history.json лежит шесть записей вида
+    «<HttpError 500 when requesting https://youtubeanalytics.googleapis.com/
+    v2/report», обрезанных перед тем местом, где Google говорит, ЧТО не так.
+    То есть причина писалась, но не сохранялась ни разу.
+
+    URL выбрасываем ещё и потому, что в него уходят параметры запроса, а
+    этот текст ложится в history.json рядом с публичным репозиторием.
+    """
+    txt = str(e)
+    status = getattr(getattr(e, "resp", None), "status", 0)
+    m = re.search(r'returned "([^"]+)"', txt)
+    reason = m.group(1) if m else re.sub(r"https?://\S+", "…", txt)
+    reason = " ".join(reason.split())
+    return (f"HTTP {status}: {reason}" if status else reason)[:160]
 
 
 def _tally(rows: list[dict] | None, key: str) -> dict | None:
@@ -601,8 +621,24 @@ def collect(channel: dict, log=print, force: bool = False) -> dict:
         if missing:
             snap["partial"] = missing
         _say(log, f"[История] {cid}: {len(vids)} роликов, "
-                  f"{facts['subs']} подписчиков, кривых {len(curves)}"
-                  + (f"; не далось: {len(missing)}" if missing else ""))
+                  f"{facts['subs']} подписчиков, кривых {len(curves)}")
+        # ЧТО ИМЕННО не собралось — словами, а не числом. Здесь стояло
+        # «не далось: 1», и по этой строке нельзя было понять ни какой
+        # разрез отвалился, ни почему: цифра выглядела как мелкая
+        # шероховатость. Замер по analytics/history.json на 2026-08-12: во
+        # всех шести неполных снимках (home-vault 09/11/12, einsturzpunkt
+        # 11/12, fisura-critica 12) не дался ОДИН И ТОТ ЖЕ разрез —
+        # subscribedStatus, «подписчики/чужие», и всегда с HTTP 500. То
+        # есть это не разовая осечка Google, как считалось, а устойчивый
+        # отказ на этих каналах — и три дня подряд он проходил цифрой «1».
+        for m in missing:
+            _say(log, f"[История] {cid}: разрез «{m}» — НЕ СОБРАН. Это не "
+                      "«ноль»: в отчёте этих цифр просто не будет.")
+        if missing:
+            _say(log, f"[История] {cid}: остальное собрано полностью — "
+                      "каталог роликов, просмотры и досмотры на месте. "
+                      "Если разрез не даётся несколько сборов подряд, это "
+                      "уже не осечка: смотри partial в analytics/history.json")
     except Exception as e:
         # Текст ошибки может тянуть за собой URL с ключом — обрезаем и
         # прячем: этот файл читают люди и он лежит рядом с репозиторием.
@@ -1528,14 +1564,31 @@ def report(channel: dict, data: dict | None = None) -> str:
             L.append("   Ищут словами: " + ", ".join(
                 f"«{q}»" for q, _ in srch[:4]))
     sub = snap.get("subscribed")
-    if sub and sum(sub.values()):
+    if sub is None:
+        # Та же развилка, что и у источников трафика выше: None — «не
+        # ответили», {} — «ответили, там пусто». Раньше None и пустой
+        # словарь одинаково не проходили `if sub and ...`, и строка про
+        # подписчиков просто исчезала из отчёта — так, что заметить её
+        # отсутствие было нечем. Это и есть тот разрез, который в
+        # history.json помечен partial на трёх каналах.
+        L.append("   Из них подписчиков: разрез не дался в этот сбор — "
+                 "доля своей аудитории неизвестна (не ноль)")
+    elif sub and sum(sub.values()):
         share = sub.get("SUBSCRIBED", 0) * 100 // (sum(sub.values()) or 1)
         L.append(f"   Из них подписчиков: {share}% — "
                  + ("канал живёт на случайных заходах"
                     if share < 15 else "своя аудитория уже возвращается"))
     if snap.get("partial"):
-        L.append(f"   (в снимке не хватает {len(snap['partial'])} разрез(ов) — "
-                 "остальное собрано полностью)")
+        # Раньше здесь стояло только число. Число не говорит ни что
+        # потеряно, ни насколько это важно, — а разрезы разной цены: без
+        # источников трафика непонятно, откуда идут зрители, без
+        # подписчиков — своя ли это аудитория.
+        L.append("   Не собралось в этот сбор:")
+        for m in snap["partial"]:
+            L.append(f"     • {m}")
+        L.append("     ↑ это НЕ нули, а пропуски. Ролики, просмотры и "
+                 "досмотры собраны полностью; повторяется из сбора в сбор — "
+                 "смотри partial в analytics/history.json")
 
     # 7. Ниша: с чем сравниваемся.
     n = snap.get("niche") or {}
