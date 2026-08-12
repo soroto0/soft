@@ -16,6 +16,31 @@ from pathlib import Path
 import core
 import overlays as _ov
 
+
+def _tsc_cmd(args: list[str]) -> list[str]:
+    """Команда проверки типов БЕЗ оболочки.
+
+    Здесь стояло `["npx", "tsc", ...]` с shell=True. Оболочка была нужна
+    ровно затем, чтобы Windows нашла «npx» в PATH, — а платой за это было
+    окно cmd.exe поверх всего экрана на КАЖДЫЙ вызов. Проверка типов
+    гоняется на каждую сгенерированную плашку и каждую её переделку, то
+    есть десятки раз за ролик; владелец видел эти окна и просил убрать.
+    CREATE_NO_WINDOW тут не спасал: окно открывает сам cmd, а не наш
+    процесс, и флаг до него не доходит.
+
+    Локальный tsc из node_modules предпочтительнее ещё и по второй
+    причине: в отдельном рабочем каталоге npx подтягивает посторонний
+    пакет tsc@2.0.4, который отвечает «This is not the tsc command you are
+    looking for», — и приёмка читает это как ошибки типов, браку́я
+    исправный код.
+    """
+    tsc = REMOTION_DIR / "node_modules" / ".bin" / (
+        "tsc.cmd" if os.name == "nt" else "tsc")
+    if tsc.exists():
+        return [str(tsc)] + args
+    npx = shutil.which("npx.cmd") or shutil.which("npx") or "npx"
+    return [npx, "tsc"] + args
+
 BASE = Path(__file__).resolve().parent
 REMOTION_DIR = BASE / "remotion"
 OVERLAY_PATH = REMOTION_DIR / "src" / "Overlay.tsx"
@@ -720,11 +745,11 @@ def _tsc_check_variant(code: str, fname: str) -> str:
         dest = tmp_src / "variants" / fname
         dest.write_text(code, encoding="utf-8")
         r = subprocess.run(
-            ["npx", "tsc", "--noEmit", str(dest), "--jsx", "react-jsx",
-             "--esModuleInterop", "--skipLibCheck", "--strict",
-             "--noUnusedLocals", "--moduleResolution", "bundler",
-             "--module", "esnext", "--target", "es2020"],
-            cwd=REMOTION_DIR, capture_output=True, text=True, shell=True,
+            _tsc_cmd(["--noEmit", str(dest), "--jsx", "react-jsx",
+                      "--esModuleInterop", "--skipLibCheck", "--strict",
+                      "--noUnusedLocals", "--moduleResolution", "bundler",
+                      "--module", "esnext", "--target", "es2020"]),
+            cwd=REMOTION_DIR, capture_output=True, text=True,
             timeout=60, creationflags=core.CREATE_NO_WINDOW)
         return (r.stdout + r.stderr).strip()
 
@@ -1335,10 +1360,10 @@ def gen_overlay_code(theme: str, api_key: str = "", log=print) -> str:
 def typecheck(code_path: Path, log=print) -> str:
     """Пусто, если ок; иначе текст ошибок tsc."""
     r = subprocess.run(
-        ["npx", "tsc", "--noEmit", str(code_path), "--jsx", "react-jsx",
-         "--esModuleInterop", "--skipLibCheck", "--moduleResolution",
-         "bundler", "--module", "esnext", "--target", "es2020"],
-        cwd=REMOTION_DIR, capture_output=True, text=True, shell=True, timeout=60,
+        _tsc_cmd(["--noEmit", str(code_path), "--jsx", "react-jsx",
+                  "--esModuleInterop", "--skipLibCheck", "--moduleResolution",
+                  "bundler", "--module", "esnext", "--target", "es2020"]),
+        cwd=REMOTION_DIR, capture_output=True, text=True, timeout=60,
         creationflags=core.CREATE_NO_WINDOW)
     return (r.stdout + r.stderr).strip()
 

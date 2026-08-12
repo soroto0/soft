@@ -43,6 +43,7 @@
 import argparse
 import json
 import re
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -612,11 +613,24 @@ def _still(kind: str, title: str, dur: float, at: float, dest: Path) -> str:
              "items": ["Опора A", "Опора B", "! Опора C"],
              "lat": 55, "lon": 37}
     fr = max(0, min(int(dur * 30) - 1, int(dur * 30 * at)))
+    # БЕЗ shell=True и по ПОЛНОМУ ПУТИ. shell=True стоял здесь только ради
+    # того, чтобы Windows нашла «npx» в PATH — а платой за это было окно
+    # cmd.exe поверх всего на каждый вызов. Их здесь по три на каждую
+    # схему, и владелец видел их десятками за ролик; CREATE_NO_WINDOW при
+    # запуске через оболочку не спасает, потому что окно открывает уже
+    # сам cmd, а не наш процесс.
+    #
+    # overlays._npx() возвращает полный путь к npx.cmd, и CreateProcess
+    # запускает батник напрямую — оболочка не нужна.
+    import overlays as _ov
+    npx = _ov._npx()
+    if not npx:
+        return "Node.js/npx не найден — рисовать сцены нечем"
     r = subprocess.run(
-        ["npx", "remotion", "still", "Scene", str(dest), "--frame", str(fr),
+        [npx, "remotion", "still", "Scene", str(dest), "--frame", str(fr),
          "--image-format", "png", "--props", json.dumps(props, ensure_ascii=False)],
         cwd=REMOTION, capture_output=True, text=True, encoding="utf-8",
-        errors="replace", timeout=600, shell=True, creationflags=CREATE_NO_WINDOW)
+        errors="replace", timeout=600, creationflags=CREATE_NO_WINDOW)
     if r.returncode != 0 or not dest.exists():
         return f"рендер упал: {(r.stderr or '')[-200:]}"
     return ""
@@ -838,9 +852,28 @@ def unregister(kind: str, component: str) -> None:
 
 
 def typecheck() -> tuple[bool, str]:
-    r = subprocess.run(["npx", "tsc", "--noEmit"], cwd=REMOTION,
+    # Локальный компилятор из node_modules, а НЕ «npx tsc». Здесь, в
+    # основном чекауте, npx находит правильный tsc (проверено: код 0), но
+    # это везение: в отдельном рабочем каталоге npx ставит посторонний
+    # пакет tsc@2.0.4, тот отвечает «This is not the tsc command you are
+    # looking for» — и приёмка схем читает это как ОШИБКИ ТИПОВ, браку́я
+    # исправные сцены. Локальный путь такого не допускает.
+    #
+    # shell=True убран заодно: он открывал окно cmd.exe на каждый вызов.
+    tsc = REMOTION / "node_modules" / ".bin" / (
+        "tsc.cmd" if os.name == "nt" else "tsc")
+    if not tsc.exists():
+        import overlays as _ov
+        npx = _ov._npx()
+        if not npx:
+            return False, "нет ни локального tsc, ни npx"
+        cmd = [npx, "tsc", "--noEmit"]
+    else:
+        cmd = [str(tsc), "--noEmit"]
+    r = subprocess.run(cmd, cwd=REMOTION,
                        capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=600, shell=True, creationflags=CREATE_NO_WINDOW)
+                       errors="replace", timeout=600,
+                       creationflags=CREATE_NO_WINDOW)
     return r.returncode == 0, (r.stdout or r.stderr)[-900:]
 
 
