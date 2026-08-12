@@ -321,7 +321,9 @@
       "Warum stürzte diese brandneue Brücke ein?",
       "brandnew dam failing immediately): * Object: Staudamm (dam) * Formula: \"Warum brach dieser brandneue",
       "Ocean Ranger / Sleipner A oil rig / Deepwater Horizon / Alexander L. Kielland oil platform failure. * *Idea",
-      "Warum stürzte dieses brandneue Stadiondach ein?"
+      "Warum stürzte dieses brandneue Stadiondach ein?",
+      "Warum explodierte dieser brandneue Wasserpark?",
+      "Warum kippte dieser brandneue Wolkenkratzer einfach um?"
     ],
     "series": "",
     "series_next": 1,
@@ -357,7 +359,9 @@
     "script_extra": "Documental en español sobre UN fallo estructural concreto.\n\nTrabaja a partir de lo que estableció el peritaje o la investigación oficial. Nombra la estructura, el año, la constructora, los ingenieros, el informe. Si un dato está en disputa, dilo así.\n\nAbre en el día corriente y en la gente corriente, con nombres y detalles. Construye la cadena de decisiones pequeñas que hicieron inevitable el resultado — cada una razonable por separado en su momento. Luego el fallo minuto a minuto, en lenguaje que siga un lector sin formación técnica. Luego las consecuencias: qué encontró el peritaje, qué se cambió en la norma y qué no.\n\nNUNCA especules sobre lo que sintieron las víctimas. Nunca inventes diálogos ni pensamientos. Nunca te recrees en el sufrimiento. La contención es el tono.\n\nINDICACIONES VISUALES entre CORCHETES: la estructura, la época, dónde van los esquemas. Se eliminan antes de la locución.",
     "topic_formula": "Reconstrucciones en español de FALLOS DE EDIFICIOS Y ESTRUCTURAS: colapsos de edificios y puentes, presas, grietas y patologías de la construcción, cimentaciones, torres que se inclinan o se degradan, obras paradas por defectos.\n\nMEDIDO en la nicho de referencia (CONSTRUCTUM: alta 19.03.2026, 60 900 suscriptores en cinco meses, mediana 43 534, mejor vídeo 1 047 139, duración 11-18 min). Ese canal demuestra que un canal NUEVO crece aquí desde cero — es la única nicho del estudio donde eso está demostrado.\n\nEL TÍTULO manda, y su forma está medida: PREGUNTA + DEMOSTRATIVO ('este/esta') + PARADOJA (recién construido, recién inaugurado, a los tres años) + UN OBJETO GRANDE QUE EL EXTRAÑO PUEDE IMAGINAR SOLO CON LAS PALABRAS. Ejemplos reales de la nicho con siete cifras: «Por qué un terremoto TIRA un edificio y deja el de al lado INTACTO», «La torre de ASTON MARTIN en Miami se CAE A TROZOS», «La Torre Eiffel se PUDRE por dentro».\n\nFALLA MEDIDA: construir el título sobre un NOMBRE PROPIO que el espectador no reconoce. Si el vídeo trata de una persona, el título lleva LA COSA — la torre, la grieta, la presa — y la persona va después o no va.\n\nREGLA DURA: murió gente en muchos de estos casos. Nunca especular sobre lo que sintieron, nunca usar la cifra de muertos como gancho del título.",
     "stats_from": "",
-    "used_topics": [],
+    "used_topics": [
+      "Por qué este rascacielos recién inaugurado comenzó a hundirse a los tres meses"
+    ],
     "series": "",
     "series_next": 1,
     "youtube_url": "",

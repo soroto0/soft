@@ -1364,5 +1364,147 @@
     "checked": "2026-08-11 10:39",
     "subject": "Ein Schnitt durch eine Schweißnaht zeigt die unvollständige Durchdringung und Hohlräume (Lunker) in Signalorange.",
     "title": "Fehlerhafte Schweißnaht"
+  },
+  "ballistic_stresses": {
+    "verdict": "ok",
+    "why": "a thick grey arc and a dashed arc plotted on a coordinate system, a thin yellow line connecting an elevated rectangle to the end of the thick arc, and labels for battery, observation, and impact.",
+    "checked": "2026-08-11 13:29",
+    "subject": "A diagram showing a high stone-colored arc representing a shell's path, with a thin hairline connecting an elevated observation point to the point of impact to show the correction of the angle.",
+    "title": "Trayectoria de Artillería"
+  },
+  "wealth_redistribution": {
+    "verdict": "ok",
+    "why": "three identical dusty green circular sectors labeled '33.3% SHARE' positioned around an empty central dashed circle on a grid",
+    "checked": "2026-08-11 13:32",
+    "subject": "A single large dusty green circle representing the total fortune fragmenting into three equal parts that drift toward the edges of the screen, leaving the center empty.",
+    "title": "Cesión de Patrimonio"
+  },
+  "conceptual_friction": {
+    "verdict": "ok",
+    "why": "a white rectangular grid superimposed on an irregular wavy grey shape, with red circles at intersection points and yellow arrows pointing upwards from those circles, alongside a vertical axis with numerical labels.",
+    "checked": "2026-08-11 13:35",
+    "subject": "A diagram of a perfect geometric grid (the Tractatus) being lowered onto an irregular, textured stone-colored surface (rural reality) to show where the points of contact and stress occur.",
+    "title": "Fricción Metodológica"
+  },
+  "topographic_isolation": {
+    "verdict": "ok",
+    "why": "two large grey shapes flanking a central, tapering indigo triangle that narrows to a point at the top, with horizontal lines marking depths and a scale bar at the bottom.",
+    "checked": "2026-08-11 13:38",
+    "subject": "A vertical view of a fjord where two massive stone-colored shapes converge, leaving only a thin sliver of indigo water that terminates at a single point.",
+    "title": "Skjolden, Noruega"
+  },
+  "cross_section_diagram": {
+    "verdict": "ok",
+    "why": "a grey rectangle with a dashed line and text 'Rhine River', and a larger dark grey area containing a brown rectangle flanked by two thin yellow vertical bars",
+    "checked": "2026-08-11 18:52",
+    "subject": "the diagram is named \"cross section diagram\" — the drawing must show exactly that"
+  },
+  "defect_cutaway": {
+    "verdict": "ok",
+    "why": "a large rectangle divided into three horizontal layers by dashed lines, with a brown oval shape outlined in yellow located in the middle layer",
+    "checked": "2026-08-11 18:53",
+    "subject": "the diagram is named \"defect cutaway\" — the drawing must show exactly that"
+  },
+  "pour_sequence_animation": {
+    "verdict": "ok",
+    "why": "a vertical yellow line above a horizontal rectangle divided into a thin red top layer and a thicker grey bottom layer",
+    "checked": "2026-08-11 18:53",
+    "subject": "the diagram is named \"pour sequence animation\" — the drawing must show exactly that"
+  },
+  "erosion_void_diagram": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"four horizontal rectangles in white, red, and yellow arranged in three layers, with a missing section in the bottom right corner.\", \"depicts\": false,",
+    "checked": "2026-08-11 18:53",
+    "subject": "the diagram is named \"erosion void diagram\" — the drawing must show exactly that"
+  },
+  "pressure_force_diagram": {
+    "verdict": "ok",
+    "why": "a thin vertical rectangle with five horizontal red arrows pointing at its left side and a small red bulge on the right side",
+    "checked": "2026-08-11 18:54",
+    "subject": "the diagram is named \"pressure force diagram\" — the drawing must show exactly that"
+  },
+  "geological_stratigraphy_section": {
+    "verdict": "ok",
+    "why": "a vertical stack of four rectangles with distinct hatching patterns, a vertical axis with depth markers from 0m to -76m, and labels for each layer.",
+    "checked": "2026-08-11 22:14",
+    "subject": "An orthogonal soil section extends dimension lines down to -76m while hatching distinct strata for surface mud, Young Bay Clay, Colma sand, and bedrock.",
+    "title": "PERFIL GEOLÓGICO Y PROFUNDIDAD"
+  },
+  "overburden_stress_vectors": {
+    "verdict": "ok",
+    "why": "three horizontal layers, five red downward arrows, a vertical percentage scale, a dashed yellow line at 100%, and a solid orange line at 114%",
+    "checked": "2026-08-11 22:16",
+    "subject": "Vertical force arrows press downward into the clay layer, triggering a signal-orange threshold marker indicating a 14% overburden above safe allowable stress.",
+    "title": "EXCESO DE CARGA ADMISIBLE"
+  },
+  "pore_water_consolidation": {
+    "verdict": "ok",
+    "why": "a cluster of grey ovals within a dark rectangle, three red downward arrows at the top, six blue horizontal arrows pointing outward from the sides, a dashed line indicating a previous height, and a scale bar.",
+    "checked": "2026-08-11 22:18",
+    "subject": "A microscopic void cross-section compresses under vertical load arrows, driving horizontal water-expulsion vectors out of clay pores as layer thickness decreases.",
+    "title": "CONSOLIDACIÓN POR EXPULSIÓN HÍDRICA"
+  },
+  "underpinning_pile_scheme": {
+    "verdict": "ok",
+    "why": "Vertical yellow bars extending from a 0m mark, past a -24m mark, down to a large brown block at a -76m mark on a vertical axis.",
+    "checked": "2026-08-11 22:33",
+    "subject": "52 new end-bearing steel pile shafts extend past the original 24m friction piles to anchor directly into Franciscan bedrock at -76m.",
+    "title": "ANCLAJE A ROCA FIRME"
+  },
+  "coring_confinement_loss": {
+    "verdict": "ok",
+    "why": "A cross-section of soil layers with a central auger inside dashed lines, horizontal red arrows pointing inward labeled 'σ_h', and vertical yellow arrows pointing downward at the surface.",
+    "checked": "2026-08-11 22:35",
+    "subject": "An auger extraction section shows lateral confinement vectors collapsing into the open pile casing, driving local settlement arrows around the collar highlighted in signal orange.",
+    "title": "PÉRDIDA DE CONFINAMIENTO LATERAL"
+  },
+  "total_roof_displacement": {
+    "verdict": "ok",
+    "why": "a tilted rectangle containing a grid, a vertical dashed line, a central yellow axis line, and a horizontal dimension line at the top labeled '55 cm'.",
+    "checked": "2026-08-11 22:38",
+    "subject": "A vertical tower profile aligns an ideal plumb baseline against the tilted building axis, dimensioning a 55cm horizontal offset at the roof line.",
+    "title": "DESVIACIÓN DE EJE VERTICAL"
+  },
+  "vertical_load_distribution": {
+    "verdict": "ok",
+    "why": "a rectangle with horizontal lines, four vertical bars extending into two distinct ground layers (the bottom one hatched), and four yellow downward-pointing arrows on the bars.",
+    "checked": "2026-08-12 18:48",
+    "subject": "Schnittzeichnung des Gebäudes mit vertikalen Lastpfeilen, die durch die Pfähle in die untere, dunkler schraffierte Bodenschicht zeigen.",
+    "title": "SOLL-ZUSTAND DER GRÜNDUNG"
+  },
+  "pile_cross_section": {
+    "verdict": "ok",
+    "why": "a grey hatched ring with a central black void, eight small yellow circles embedded in the ring, a dimension line for the outer diameter (400 mm), and a dimension line for the wall thickness (80 mm).",
+    "checked": "2026-08-12 18:49",
+    "subject": "Detaillierter Querschnitt eines Pfahls mit Maßketten für den Durchmesser und die Wandstärke in technischem Grau.",
+    "title": "SPEZIFIKATION PHC-PFAHL"
+  },
+  "site_pressure_gradient": {
+    "verdict": "ok",
+    "why": "a cross-section with three horizontal layers, a terrain profile line with a 10m high embankment, a 4.6m deep section, and a large horizontal yellow arrow.",
+    "checked": "2026-08-12 18:50",
+    "subject": "Geländeprofil im Schnitt mit Bemaßung der 10m-Aufschüttung und der 4,6m-Grube sowie einem großen horizontalen Druckvektor.",
+    "title": "ASYMMETRISCHE BODENBELASTUNG"
+  },
+  "soil_fluidization": {
+    "verdict": "ok",
+    "why": "three horizontal layers of different shades, three vertical bars intersecting them, horizontal red arrows pointing at the first bar, and curved yellow lines in the middle layer.",
+    "checked": "2026-08-12 18:51",
+    "subject": "Schnitt durch die Bodenschichten, in dem sich die Textur der Mittelschicht verändert und Pfeile den lateralen Druck auf die Pfahlreihe visualisieren.",
+    "title": "HYDROSTATISCHER BODENDRUCK"
+  },
+  "lateral_soil_displacement": {
+    "verdict": "ok",
+    "why": "three horizontal layers of different colors, vertical downward arrows on the top layer, a sequence of horizontal and upward-curving arrows within the middle layer, and a horizontal scale with meter markings.",
+    "checked": "2026-08-12 18:53",
+    "subject": "Vektordiagramm, das die Verschiebung der Bodenmasse von der Aufschüttung unter dem Gebäude hindurch zur Grube zeigt.",
+    "title": "LATERALER BODENFLUSS"
+  },
+  "structural_vulnerability": {
+    "verdict": "ok",
+    "why": "two vertical rectangles on a ground line next to a vertical scale, one with a vertical yellow arrow pointing down and the other with a horizontal red arrow pointing into its side at an orange zigzag symbol",
+    "checked": "2026-08-12 18:54",
+    "subject": "Vergleich zweier Pfahlsegmente: Eines mit hohem vertikalem Lastpfeil (stabil) und eines mit horizontalem Pfeil und orangefarbenem Bruchpunkt.",
+    "title": "BELASTUNGSGRENZEN (SCHERUNG)"
   }
 }

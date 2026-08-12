@@ -279,6 +279,23 @@ import { StructuralModelErrorScene } from './scenes/structural_model_error';
 import { SchematicOverlayScene } from './scenes/schematic_overlay';
 import { LoadAccumulationGraphScene } from './scenes/load_accumulation_graph';
 import { WeldSectionCutScene } from './scenes/weld_section_cut';
+import { BallisticStressesScene } from './scenes/ballistic_stresses';
+import { WealthRedistributionScene } from './scenes/wealth_redistribution';
+import { ConceptualFrictionScene } from './scenes/conceptual_friction';
+import { TopographicIsolationScene } from './scenes/topographic_isolation';
+import { GeologicalStratigraphySectionScene } from './scenes/geological_stratigraphy_section';
+import { OverburdenStressVectorsScene } from './scenes/overburden_stress_vectors';
+import { PoreWaterConsolidationScene } from './scenes/pore_water_consolidation';
+import { UnderpinningPileSchemeScene } from './scenes/underpinning_pile_scheme';
+import { CoringConfinementLossScene } from './scenes/coring_confinement_loss';
+import { TotalRoofDisplacementScene } from './scenes/total_roof_displacement';
+import { VerticalLoadDistributionScene } from './scenes/vertical_load_distribution';
+import { PileCrossSectionScene } from './scenes/pile_cross_section';
+import { SitePressureGradientScene } from './scenes/site_pressure_gradient';
+import { SoilFluidizationScene } from './scenes/soil_fluidization';
+import { LateralSoilDisplacementScene } from './scenes/lateral_soil_displacement';
+import { StructuralVulnerabilityScene } from './scenes/structural_vulnerability';
+import { FailureSequencePlanScene } from './scenes/failure_sequence_plan';
 export type { SceneProps };
 
 // Точка входа для СЦЕН — планов, которые целиком нарисованы, а не сняты.
@@ -870,6 +887,40 @@ const pickScene = (props: SceneProps): React.ReactElement | null => {
       return <LoadAccumulationGraphScene {...props} />;
     case 'weld_section_cut':
       return <WeldSectionCutScene {...props} />;
+    case 'ballistic_stresses':
+      return <BallisticStressesScene {...props} />;
+    case 'wealth_redistribution':
+      return <WealthRedistributionScene {...props} />;
+    case 'conceptual_friction':
+      return <ConceptualFrictionScene {...props} />;
+    case 'topographic_isolation':
+      return <TopographicIsolationScene {...props} />;
+    case 'geological_stratigraphy_section':
+      return <GeologicalStratigraphySectionScene {...props} />;
+    case 'overburden_stress_vectors':
+      return <OverburdenStressVectorsScene {...props} />;
+    case 'pore_water_consolidation':
+      return <PoreWaterConsolidationScene {...props} />;
+    case 'underpinning_pile_scheme':
+      return <UnderpinningPileSchemeScene {...props} />;
+    case 'coring_confinement_loss':
+      return <CoringConfinementLossScene {...props} />;
+    case 'total_roof_displacement':
+      return <TotalRoofDisplacementScene {...props} />;
+    case 'vertical_load_distribution':
+      return <VerticalLoadDistributionScene {...props} />;
+    case 'pile_cross_section':
+      return <PileCrossSectionScene {...props} />;
+    case 'site_pressure_gradient':
+      return <SitePressureGradientScene {...props} />;
+    case 'soil_fluidization':
+      return <SoilFluidizationScene {...props} />;
+    case 'lateral_soil_displacement':
+      return <LateralSoilDisplacementScene {...props} />;
+    case 'structural_vulnerability':
+      return <StructuralVulnerabilityScene {...props} />;
+    case 'failure_sequence_plan':
+      return <FailureSequencePlanScene {...props} />;
     default:
       return null;
   }

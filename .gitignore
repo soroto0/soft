@@ -6,6 +6,9 @@
 .env.bak
 .env.*.bak
 settings.json
+# Резервные копии профилей каналов — делаются перед правкой руками и
+# накапливаются: channels.json уже в репозитории, копии в нём лишние.
+channels.json.bak*
 .secrets/
 client_secret*.json
 token_*.json

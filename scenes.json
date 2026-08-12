@@ -1547,5 +1547,85 @@
     "quote": "Statt einer durchgängigen Verfüllung der Nahtflanken zeigten die Ultraschallprüfungen Lunkereinschlüsse und eine unvollständige Durchschweißung",
     "brief": "Ein Schnitt durch eine Schweißnaht zeigt die unvollständige Durchdringung und Hohlräume (Lunker) in Signalorange.",
     "vision": "ok"
+  },
+  "estoico-es/ballistic_stresses": {
+    "kind": "ballistic_stresses",
+    "channel": "estoico-es",
+    "title": "Trayectoria de Artillería",
+    "quote": "corregir la trayectoria de los proyectiles de gran calibre mediante señales visuales",
+    "brief": "A diagram showing a high stone-colored arc representing a shell's path, with a thin hairline connecting an elevated observation point to the point of impact to show the correction of the angle.",
+    "vision": "ok"
+  },
+  "estoico-es/wealth_redistribution": {
+    "kind": "wealth_redistribution",
+    "channel": "estoico-es",
+    "title": "Cesión de Patrimonio",
+    "quote": "firmar la transferencia total de su patrimonio a sus hermanos Helene, Hermine y Paul",
+    "brief": "A single large dusty green circle representing the total fortune fragmenting into three equal parts that drift toward the edges of the screen, leaving the center empty.",
+    "vision": "ok"
+  },
+  "estoico-es/conceptual_friction": {
+    "kind": "conceptual_friction",
+    "channel": "estoico-es",
+    "title": "Fricción Metodológica",
+    "quote": "comprobar si su filosofía podía sobrevivir fuera de los salones de la élite",
+    "brief": "A diagram of a perfect geometric grid (the Tractatus) being lowered onto an irregular, textured stone-colored surface (rural reality) to show where the points of contact and stress occur.",
+    "vision": "ok"
+  },
+  "estoico-es/topographic_isolation": {
+    "kind": "topographic_isolation",
+    "channel": "estoico-es",
+    "title": "Skjolden, Noruega",
+    "quote": "situado al final del Sognefjord, funcionaba como un callejón sin salida geográfico",
+    "brief": "A vertical view of a fjord where two massive stone-colored shapes converge, leaving only a thin sliver of indigo water that terminates at a single point.",
+    "vision": "ok"
+  },
+  "fisura-critica/geological_stratigraphy_section": {
+    "kind": "geological_stratigraphy_section",
+    "channel": "fisura-critica",
+    "title": "PERFIL GEOLÓGICO Y PROFUNDIDAD",
+    "quote": "Debajo del lodo inicial hay una capa de veinticinco metros de arcilla blanda, conocida como Young Bay Mud, seguida por la arena densa de la formación Colma. La roca sólida, el llamado bloque francisca",
+    "brief": "An orthogonal soil section extends dimension lines down to -76m while hatching distinct strata for surface mud, Young Bay Clay, Colma sand, and bedrock.",
+    "vision": "ok"
+  },
+  "fisura-critica/overburden_stress_vectors": {
+    "kind": "overburden_stress_vectors",
+    "channel": "fisura-critica",
+    "title": "EXCESO DE CARGA ADMISIBLE",
+    "quote": "un memorando interno del socio principal de la firma estructural, fechado en marzo de 2006, advertía que la presión acumulada sobre la arcilla inferior superaba los límites de carga segura en un cator",
+    "brief": "Vertical force arrows press downward into the clay layer, triggering a signal-orange threshold marker indicating a 14% overburden above safe allowable stress.",
+    "vision": "ok"
+  },
+  "fisura-critica/pore_water_consolidation": {
+    "kind": "pore_water_consolidation",
+    "channel": "fisura-critica",
+    "title": "CONSOLIDACIÓN POR EXPULSIÓN HÍDRICA",
+    "quote": "El agua atrapada en los microporos de la arcilla profunda empezó a ser expulsada por el peso del rascacielos, un proceso físico irreversible llamado consolidación.",
+    "brief": "A microscopic void cross-section compresses under vertical load arrows, driving horizontal water-expulsion vectors out of clay pores as layer thickness decreases.",
+    "vision": "ok"
+  },
+  "fisura-critica/underpinning_pile_scheme": {
+    "kind": "underpinning_pile_scheme",
+    "channel": "fisura-critica",
+    "title": "ANCLAJE A ROCA FIRME",
+    "quote": "La intervención técnica consistía en instalar 52 pilotes de acero rellenos de hormigón, de 90 centímetros de diámetro, que debían descender 76 metros hasta alcanzar la formación franciscana.",
+    "brief": "52 new end-bearing steel pile shafts extend past the original 24m friction piles to anchor directly into Franciscan bedrock at -76m.",
+    "vision": "ok"
+  },
+  "fisura-critica/coring_confinement_loss": {
+    "kind": "coring_confinement_loss",
+    "channel": "fisura-critica",
+    "title": "PÉRDIDA DE CONFINAMIENTO LATERAL",
+    "quote": "al retirar tierra para insertar las camisas de acero de los nuevos pilotes, se estaba eliminando el soporte lateral y la presión de poros del agua en la arcilla circundante.",
+    "brief": "An auger extraction section shows lateral confinement vectors collapsing into the open pile casing, driving local settlement arrows around the collar highlighted in signal orange.",
+    "vision": "ok"
+  },
+  "fisura-critica/total_roof_displacement": {
+    "kind": "total_roof_displacement",
+    "channel": "fisura-critica",
+    "title": "DESVIACIÓN DE EJE VERTICAL",
+    "quote": "Este hundimiento inducido por la reparación elevó la inclinación total en la cima de la torre a más de 55 centímetros respecto a su eje vertical original.",
+    "brief": "A vertical tower profile aligns an ideal plumb baseline against the tilted building axis, dimensioning a 55cm horizontal offset at the roof line.",
+    "vision": "ok"
   }
 }
