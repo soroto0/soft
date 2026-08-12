@@ -184,6 +184,11 @@ def hw_encoder() -> str:
 # это примерно две группы восьмисекундных сцен с запасом.
 DISK_FLOOR_GB = float(os.getenv("RENDER_DISK_FLOOR_GB", "5"))
 
+# Диск, на котором лежит софт: на него же пишутся и проекты, и render_tmp.
+# Нужен, чтобы спросить остаток места из мест, где папки проекта под рукой нет
+# (например, из _run — он видит только команду ffmpeg).
+BASE_ANCHOR = Path(__file__).resolve().anchor
+
 
 def disable_hw(reason: str = "", where: str = "") -> None:
     """Выключает аппаратный путь до конца процесса. Нужно при отказе на
@@ -531,6 +536,31 @@ VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm"}
 CMDLINE_LIMIT = 30000
 
 
+class DiskFull(RuntimeError):
+    """Кончилось место на диске. ОТДЕЛЬНЫЙ тип, а не текст внутри RuntimeError.
+
+    Зачем тип: у рендера три слоя отступления, и каждый ловит RuntimeError,
+    чтобы продолжить работу похуже. При полном диске это ровно то, чего делать
+    нельзя, — продолжать некуда, а человек утром читает не причину, а список
+    отступлений. Так и вышло в ночь 2026-08-12: сперва «отказал h264_nvenc»,
+    потом «склейка переходами не удалась, собираю встык», и только третьей
+    строкой «No space left on device». Владелец полез проверять видеокарту.
+
+    Этот тип пролетает все три слоя насквозь: каждый обработчик начинается с
+    `except DiskFull: raise`.
+    """
+
+
+# Как ffmpeg (и Windows) говорят «места нет». Строки разные, повод один.
+_NOSPACE = ("no space left", "errno 28", "enospc",
+            "недостаточно места", "not enough space", "disk full")
+
+
+def _disk_full(err: str) -> bool:
+    low = (err or "").lower()
+    return any(s in low for s in _NOSPACE)
+
+
 def _run(cmd: list[str], label: str = "ffmpeg", cwd: Path | None = None):
     """ffmpeg с живым прогрессом в Консоль и внятной ошибкой (хвост stderr)."""
     full = list(cmd)
@@ -582,6 +612,20 @@ def _run(cmd: list[str], label: str = "ffmpeg", cwd: Path | None = None):
             f"код {p.returncode}, stderr пуст — процесс, похоже, был убит "
             "системой (обычно не хватило оперативной памяти: 60fps и большие "
             "группы прожорливы; попробуй 30 fps или черновой режим)")
+        # Полный диск отделяем ЗДЕСЬ, в единственном месте, где запускается
+        # ffmpeg. Дальше по стеку стоят обработчики, которые на любую ошибку
+        # ffmpeg отступают на путь похуже (процессор вместо видеокарты, стык
+        # вместо перехода, чёрная заглушка вместо кадра) — и каждое такое
+        # отступление пишет в журнал свою причину поверх настоящей.
+        if _disk_full(tail):
+            raise DiskFull(
+                f"НА ДИСКЕ КОНЧИЛОСЬ МЕСТО (свободно "
+                f"{shutil.disk_usage(str(BASE_ANCHOR)).free / 1024 ** 3:.1f} ГБ) "
+                f"— ffmpeg не смог дописать «{label}». Это НЕ отказ "
+                "видеокарты и не битый материал.\n"
+                "Освободи место (python disk.py покажет, что можно убрать) и "
+                "запусти заново: сценарий, озвучка и кадры уже готовы.\n"
+                + tail)
         raise RuntimeError(f"ffmpeg упал ({label}):\n" + tail)
 
 
@@ -638,6 +682,12 @@ def _run_enc(build_cmd, label: str, crf: str, preset: str, final: bool = False):
     try:
         _run(build_cmd(used), label=label)
         return
+    except DiskFull:
+        # Повторять на процессоре бессмысленно: он упрётся в тот же полный
+        # диск. Именно эта попытка и породила в журнале «видеокарта в рендере
+        # не участвует ×13» — тринадцать отказов NVENC подряд, из которых ни
+        # один не был отказом NVENC.
+        raise
     except RuntimeError as e:
         if CANCEL.is_set() or not is_hw:
             raise          # отмена пользователем или уже процессор — не глушим
@@ -1247,6 +1297,8 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
                          dest.stem, CRF_SEGMENT, PRESET_SEG)
                 if not _has_video(dest):
                     raise RuntimeError("пустой результат")
+            except DiskFull:
+                raise          # заглушку тоже некуда писать — см. DiskFull
             except RuntimeError as e:
                 if CANCEL.is_set():
                     raise
@@ -1264,6 +1316,8 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
                      dest.stem, CRF_SEGMENT, PRESET_SEG)
             if not _has_video(dest):
                 raise RuntimeError("пустой результат")
+        except DiskFull:
+            raise              # заглушку тоже некуда писать — см. DiskFull
         except RuntimeError as e:
             if CANCEL.is_set():
                 raise
@@ -1354,6 +1408,8 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
         try:
             enc(offset)
             ok = _has_video(dest)
+        except DiskFull:
+            raise              # см. DiskFull: отступать некуда, диск полон
         except RuntimeError as e:
             if CANCEL.is_set():
                 raise
@@ -1370,6 +1426,8 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
             try:
                 enc(offset, pad=True, plain=True)
                 ok = _has_video(dest)
+            except DiskFull:
+                raise
             except RuntimeError:
                 if CANCEL.is_set():
                     raise
@@ -1380,6 +1438,8 @@ def render_segment(src: Path, kind: str, dur: float, dest: Path,
             try:
                 enc(0, pad=True, plain=True)
                 ok = _has_video(dest)
+            except DiskFull:
+                raise
             except RuntimeError as e:
                 if CANCEL.is_set():
                     raise
@@ -1496,6 +1556,10 @@ def render_group(seg_files: list[Path], durs: list[float],
     try:
         _run_enc(lambda v: cmd + tail + list(v) + ["-r", str(fps), str(dest)],
                  dest.stem, CRF_SEGMENT, PRESET_SEG)
+    except DiskFull:
+        # Склейка встык пишет ФАЙЛ ТОГО ЖЕ РАЗМЕРА: на полном диске она не
+        # запасной путь, а вторая такая же ошибка через двадцать минут.
+        raise
     except RuntimeError as e:
         if CANCEL.is_set():
             raise
@@ -2546,9 +2610,124 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
 
 # ---------- Оркестратор ----------
 
+# Кэш кадров оверлеев внутри render_tmp. Папки ovl_NN — единственное в
+# промежуточных файлах, что дорого посчитать заново: один оверлей это ~14
+# секунд Remotion, и на сотне оверлеев перезапуск ролика стоит 25 минут
+# (замер 2026-08-04: четыре перезапуска одного видео — полтора часа впустую).
+# Весит кэш при этом мало: в оставшемся от оборванной сборки render_tmp на
+# 7.63 ГБ на него приходится 1.1 ГБ, а на сегменты, группы и запечённый
+# промежуточный файл — 6.5 ГБ. Поэтому уборка после ПАДЕНИЯ его щадит:
+# следующая попытка подхватит кадры с диска (отпечаток сверяется, чужие и
+# устаревшие всё равно будут перерисованы — см. overlays._stamped_frames).
+OVERLAY_CACHE_PREFIX = "ovl_"
+
+
+def wipe_render_tmp(out_dir: Path, log=None, keep_overlays: bool = False) -> int:
+    """Убрать промежуточные файлы сборки. Возвращает освобождённые байты.
+
+    keep_overlays — оставить кэш кадров оверлеев (см. OVERLAY_CACHE_PREFIX).
+    Ставится там, где сборка ещё будет повторена: перед новой попыткой и
+    после падения. После УСПЕХА папка уходит целиком — ролик собран, кадры
+    больше не нужны никому.
+
+    Отдельной функцией, потому что зовётся из трёх мест: перед сборкой (мусор
+    прошлого прогона), после успеха и — главное — ПОСЛЕ ПАДЕНИЯ. Раньше был
+    только первый и второй случай, и упавшая сборка оставляла папку целиком:
+    замер 2026-08-09 — 55.5 ГБ в render_tmp у трёх проектов при 511 ГБ диска.
+    Именно этот остаток и не дал ночи 2026-08-12 собрать ни одного ролика.
+    """
+    tmp = Path(out_dir) / "render_tmp"
+    if not tmp.is_dir():
+        return 0
+
+    def _size(p: Path) -> int:
+        try:
+            if p.is_file():
+                return p.stat().st_size
+            return sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+        except OSError:
+            return 0
+
+    size = 0
+    if not keep_overlays:
+        size = _size(tmp)
+        shutil.rmtree(tmp, ignore_errors=True)
+    else:
+        try:
+            children = list(tmp.iterdir())
+        except OSError:
+            children = []
+        for ch in children:
+            if ch.is_dir() and ch.name.startswith(OVERLAY_CACHE_PREFIX):
+                continue
+            size += _size(ch)
+            if ch.is_dir():
+                shutil.rmtree(ch, ignore_errors=True)
+            else:
+                try:
+                    ch.unlink()
+                except OSError:
+                    pass
+    if log and size > 100 * 1024 ** 2:
+        log(f"[Рендер] Убрано {size / 1024 ** 3:.1f} ГБ промежуточных файлов"
+            + (" (кадры оверлеев оставлены под повтор)" if keep_overlays
+               else ""))
+    return size
+
+
 def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
     """Полный авторендер. opts: resolution, fps, intensity, grain, vignette,
-    letterbox, vhs, subs. progress(done, total) — для прогресс-бара."""
+    letterbox, vhs, subs. progress(done, total) — для прогресс-бара.
+
+    Здесь только уборка за собой, вся работа — в _render_project.
+
+    Зачем обёртка. rmtree в конце работы стоял и раньше, но выполнялся ТОЛЬКО
+    при успехе: любое падение (а падает рендер как раз на нехватке места)
+    оставляло десятки гигабайт промежуточных кусков. Следующая сборка
+    начиналась с ещё меньшим остатком и падала раньше — четыре канала за ночь
+    легли именно так, по цепочке. Обёртка нужна потому, что выйти отсюда
+    можно из полусотни мест, и ни одно из них про уборку не помнит.
+    """
+    try:
+        return _render_project(out_dir, log, progress, opts)
+    except BaseException as e:
+        # ЖАЛОБА ПЕРВОЙ СТРОКОЙ. Дальше по стеку сообщение попадёт в общий
+        # журнал вперемешку с трассировкой, а решение («освободи место»)
+        # человек должен увидеть сразу.
+        if isinstance(e, DiskFull):
+            try:
+                log(f"[Рендер] {str(e).splitlines()[0]}")
+                import quality
+                quality.degraded(
+                    "Рендер", "на диске кончилось место — ролик не собран",
+                    why=str(e).splitlines()[0],
+                    hint="python disk.py покажет, что можно убрать; "
+                         "готовые ролики уборка не трогает",
+                    level="критично")
+            except BaseException:
+                # BaseException, а не Exception: log() интерфейса бросает
+                # «Стоп» (webapp.Stopped наследует BaseException), и на
+                # остановленной задаче попытка объяснить причину подменила бы
+                # настоящую ошибку своей.
+                pass
+        raise
+    finally:
+        # Промежуточные файлы не нужны никому и ни при каком исходе: при
+        # успехе они уже перекодированы в финал, при падении сборка всё равно
+        # начнётся заново (в начале _render_project стоит та же уборка).
+        # keep_overlays=True: сюда попадают И успех, И падение, но при успехе
+        # _render_project уже снёс папку целиком последней строкой. Значит,
+        # реально работает эта уборка только на падении — а там сборку ещё
+        # повторят, и кадры оверлеев ей пригодятся.
+        try:
+            wipe_render_tmp(Path(out_dir), log, keep_overlays=True)
+        except Exception:
+            pass       # уборка не имеет права заменить собой настоящую ошибку
+
+
+def _render_project(out_dir: Path, log, progress=None,
+                    opts: dict | None = None):
+    """Тело авторендера. Наружу зовут render_project — он убирает за собой."""
     opts = opts or {}
     out_dir = Path(out_dir)
     CANCEL.clear()
@@ -2633,21 +2812,21 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
         f"средняя {total / len(scenes):.1f} c")
 
     tmp = out_dir / "render_tmp"
-    # МУСОР ПРОШЛОГО ПРОГОНА — УБИРАЕМ ЗДЕСЬ, А НЕ ТОЛЬКО В КОНЦЕ.
+    # МУСОР ПРОШЛОГО ПРОГОНА. Уборка стоит и здесь, и в render_project (в
+    # finally, то есть при любом исходе). Две точки, а не одна: finally
+    # закрывает падения ЭТОГО процесса, а здешняя — тот случай, когда процесс
+    # убили целиком (Windows усыпил машину, человек снял задачу), и никакой
+    # finally уже не отработал.
     #
-    # rmtree в конце функции стоял и раньше, но срабатывал ТОЛЬКО при
-    # успехе. Упавшая сборка оставляла папку целиком, следующая писала
-    # рядом свою, и так далее. Замер 2026-08-09: у трёх проектов в
-    # render_tmp лежало 55.5 ГБ — при 511 ГБ диска это и есть та причина,
-    # по которой ночь на четыре ролика дала ноль: ffmpeg сыпал «No space
-    # left on device», рендер сперва отключил видеокарту, потом перешёл на
-    # склейку встык, потом упал совсем.
-    if tmp.exists():
-        было = sum(f.stat().st_size for f in tmp.rglob("*") if f.is_file())
-        shutil.rmtree(tmp, ignore_errors=True)
-        if было > 100 * 1024 ** 2:
-            log(f"[Рендер] Убран мусор прошлой сборки: "
-                f"{было / 1024 ** 3:.1f} ГБ")
+    # keep_overlays=True — ЗДЕСЬ ЭТО ГЛАВНОЕ. Кадры оверлеев лежат в той же
+    # папке, и уборка «всё подряд» отменяла кэш, ради которого он заведён:
+    # каждый перезапуск ролика заново тратил 25 минут Remotion на плашки,
+    # которые уже нарисованы. Сегменты и группы при этом уходят — они и есть
+    # те десятки гигабайт.
+    было = wipe_render_tmp(out_dir, keep_overlays=True)
+    if было > 100 * 1024 ** 2:
+        log(f"[Рендер] Убран мусор прошлой сборки: {было / 1024 ** 3:.1f} ГБ "
+            "(кадры оверлеев оставлены — их дорого считать заново)")
     tmp.mkdir(parents=True, exist_ok=True)
 
     # МЕСТО НА ДИСКЕ — ПРОВЕРЯЕМ ДО, А НЕ ПОСЛЕ.
@@ -2665,9 +2844,12 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
     need = max(10.0, total / 60.0 * 1.2)
     free = shutil.disk_usage(str(out_dir.resolve().anchor)).free / 1024 ** 3
     if free < need:
-        raise RuntimeError(
-            f"На диске {free:.1f} ГБ, а сборке нужно около {need:.0f} ГБ. "
+        raise DiskFull(
+            f"НА ДИСКЕ МАЛО МЕСТА: свободно {free:.1f} ГБ, а сборке нужно "
+            f"около {need:.0f} ГБ. Даже не начинаю — упрусь на середине.\n"
             "Промежуточные файлы весят вдвое-втрое больше готового ролика. "
+            "Что можно убрать, покажет «python disk.py» (готовые ролики он "
+            "не трогает).\n"
             "Освободи место и запусти заново — сценарий, озвучка и кадры "
             "уже готовы, заново их считать не придётся.")
     log(f"[Рендер] Места на диске: {free:.0f} ГБ, сборке нужно ~{need:.0f} ГБ")
@@ -2753,11 +2935,13 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
         # Здесь ошибка одна, ранняя и по делу.
         free_gb = shutil.disk_usage(str(out_dir.resolve().anchor)).free / 1024 ** 3
         if free_gb < DISK_FLOOR_GB:
-            raise RuntimeError(
-                f"На диске осталось {free_gb:.1f} ГБ — сборка остановлена на "
-                f"группе {g + 1} из {n_groups}, чтобы не рассыпаться на "
-                "полпути. Освободи место и запусти заново: сценарий, озвучка "
-                "и кадры уже готовы, заново их считать не придётся.")
+            raise DiskFull(
+                f"НА ДИСКЕ КОНЧАЕТСЯ МЕСТО: осталось {free_gb:.1f} ГБ. Сборка "
+                f"остановлена на группе {g + 1} из {n_groups}, чтобы не "
+                "рассыпаться на полпути.\n"
+                "Что можно убрать, покажет «python disk.py». Освободи место и "
+                "запусти заново: сценарий, озвучка и кадры уже готовы, заново "
+                "их считать не придётся.")
         lo, hi = g * GROUP_SIZE, min((g + 1) * GROUP_SIZE, len(scenes))
         dest = tmp / f"group_{g:03d}.mp4"
         render_group(seg_files[lo:hi], seg_durs[lo:hi],
@@ -2841,7 +3025,10 @@ def render_project(out_dir: Path, log, progress=None, opts: dict | None = None):
             log(f"[Рендер] Длина сходится: видео {vid_len:.1f} c, "
                 f"звук {aud_len:.1f} c ({drift:+.1f} c)")
 
-    shutil.rmtree(tmp, ignore_errors=True)   # временные сегменты больше не нужны
+    # Временные сегменты больше не нужны. Тот же вызов стоит в finally у
+    # render_project — здесь он остаётся ради строки в журнале: место
+    # освобождается ДО того, как вызывающий начнёт следующий ролик.
+    wipe_render_tmp(out_dir)
     log(f"[Рендер] ГОТОВО: {final} ({size_mb:.0f} МБ). Временные файлы "
         "удалены. Это черновик — доведи в Premiere перед публикацией.")
     return final

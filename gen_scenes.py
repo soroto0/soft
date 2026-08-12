@@ -645,33 +645,44 @@ def check_render(kind: str, title: str, dur: float, log=print) -> list[str]:
     """
     from PIL import Image
     import tempfile
+    import shutil
     bad = []
+    # Кадры ложатся во временную папку, и убрать её обязана эта же функция.
+    # Раньше уборки не было вовсе, а выходов отсюда четыре (в том числе
+    # ранний возврат по ошибке рендера) — каждая проверка сцены оставляла во
+    # временной папке системы два кадра 1920x1080, и проверок этих сотни за
+    # прогон. Замер 2026-08-12: во временной папке 6.86 ГБ.
     tmp = Path(tempfile.mkdtemp())
-    shots = []
-    for at in (0.25, 0.8):
-        dest = tmp / f"f{at}.png"
-        err = _still(kind, title, dur, at, dest)
-        if err:
-            return [err]
-        shots.append(dest)
+    try:
+        shots = []
+        for at in (0.25, 0.8):
+            dest = tmp / f"f{at}.png"
+            err = _still(kind, title, dur, at, dest)
+            if err:
+                return [err]
+            shots.append(dest)
 
-    stats = []
-    for s in shots:
-        im = Image.open(s).convert("RGB")
-        px = list(im.getdata())
-        colors = len(set(px))
-        # самый частый цвет: если он занимает почти всё — это заливка
-        top = max(px.count(c) for c in set(px[::5000])) if px else 0
-        stats.append((colors, top / len(px)))
-    if max(c for c, _ in stats) < 12:
-        bad.append(f"почти одноцветный кадр ({max(c for c, _ in stats)} цветов)")
-    if min(t for _, t in stats) > 0.985:
-        bad.append("кадр залит одним цветом — это заглушка, а не сцена")
-    a = list(Image.open(shots[0]).convert("RGB").getdata())[::997]
-    b = list(Image.open(shots[1]).convert("RGB").getdata())[::997]
-    if a == b:
-        bad.append("между началом и концом ничего не изменилось — нет анимации")
-    return bad
+        stats = []
+        for s in shots:
+            im = Image.open(s).convert("RGB")
+            px = list(im.getdata())
+            colors = len(set(px))
+            # самый частый цвет: если он занимает почти всё — это заливка
+            top = max(px.count(c) for c in set(px[::5000])) if px else 0
+            stats.append((colors, top / len(px)))
+        if max(c for c, _ in stats) < 12:
+            bad.append(f"почти одноцветный кадр "
+                       f"({max(c for c, _ in stats)} цветов)")
+        if min(t for _, t in stats) > 0.985:
+            bad.append("кадр залит одним цветом — это заглушка, а не сцена")
+        a = list(Image.open(shots[0]).convert("RGB").getdata())[::997]
+        b = list(Image.open(shots[1]).convert("RGB").getdata())[::997]
+        if a == b:
+            bad.append("между началом и концом ничего не изменилось — "
+                       "нет анимации")
+        return bad
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 # Что вернула ступень зрения. Три исхода, а не два, — и это главное решение
@@ -723,14 +734,36 @@ def check_vision(kind: str, title: str, subject: str, dur: float = 6.0,
         # вопрос модели вырождается в «красиво ли», а это не проверка.
         return VISION_BLIND, "нечего проверять: у сцены нет описания замысла"
 
+    # Свой кадр — своя уборка. Когда png передали снаружи, файл чужой и
+    # трогать его нельзя; когда сняли здесь — временная папка обязана уйти при
+    # ЛЮБОМ из шести выходов ниже, включая отказ зрения по квоте (а он тут
+    # обычное дело, см. док-строку).
     tmp = None
     if png is None:
         tmp = Path(tempfile.mkdtemp())
         png = tmp / f"{kind}.png"
         err = _still(kind, title, dur, VISION_AT, png)
         if err:
+            _drop_tmp(tmp)
             return VISION_BLIND, err
+    try:
+        return _check_vision(kind, title, dur, subject, png, api_key)
+    finally:
+        _drop_tmp(tmp)
 
+
+def _drop_tmp(tmp) -> None:
+    """Убрать временную папку, если она наша."""
+    if not tmp:
+        return
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _check_vision(kind: str, title: str, dur: float, subject: str,
+                  png, api_key: str) -> tuple[str, str]:
+    """Разговор со зрением по готовому кадру. Уборку делает check_vision."""
+    import core
     prompt = (VISION_PROMPT
               .replace("__TITLE__", str(title or "(нет подписи)")[:120])
               .replace("__SUBJECT__", subject[:400].replace("\n", " ")))

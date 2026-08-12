@@ -44,6 +44,7 @@ sys.path.insert(0, str(BASE))
 
 import channels as channels_mod          # noqa: E402
 import night_plan                        # noqa: E402
+import disk                              # noqa: E402
 
 REPORT = BASE / "autopilot_report.txt"
 
@@ -152,6 +153,20 @@ def main() -> int:
               f"живое видео Veo под него не попадает)"
               + ("" if quota.get("exact") else " — ОЦЕНКА, а не ответ сервиса"))
     print(night_plan.format_plan(plan))
+    # Место на диске — в плане ночи, а не только в её журнале. Ночь на
+    # 2026-08-12 дала ноль роликов на четырёх каналах из-за полного диска, и
+    # узнать об этом можно было только утром. Уборку отсюда НЕ делаем: её
+    # сделает сама ночь (webapp.Api.autopilot -> disk.before_night), а «показать
+    # план» обязано остаться действием без последствий.
+    free = disk.free_gb()
+    print(f"\nНа диске свободно {free:.0f} ГБ"
+          + ("" if free >= disk.NIGHT_FLOOR_GB else
+             f" — МАЛО, ночи нужно хотя бы {disk.NIGHT_FLOOR_GB:.0f}"))
+    к_уборке = sum(i["size"] for i in disk.plan(disk.SAFE) if not i.get("skip"))
+    if к_уборке:
+        print(f"Перед первым каналом ночь уберёт "
+              f"{к_уборке / disk.GB:.1f} ГБ мусора прошлых сборок "
+              f"(что именно — «python disk.py»)")
     if args.plan:
         # Сухой прогон намеренно НЕ импортирует webapp: его импорт сам по себе
         # переписывает Overlay.tsx и ходит в платный API. Посмотреть план
