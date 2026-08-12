@@ -1962,10 +1962,17 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
     """Читает overlays.txt проекта, рендерит секвенции.
     -> [{pattern, t0, t1, x, y}]. Упавший оверлей — warning и пропуск."""
     src = Path(out_dir) / "overlays.txt"
+    # Оба выхода молчали, хотя log в сигнатуре есть. Ролик собирался
+    # вообще без плашек, и по журналу нельзя было отличить «плашек не
+    # заказывали» от «overlays.txt потерялся или не разобрался».
     if not src.exists():
+        log("[Оверлеи] Файла overlays.txt нет — ролик соберётся без "
+            "единой плашки", "warn")
         return []
     items = parse_overlays(src.read_text(encoding="utf-8"))
     if not items:
+        log("[Оверлеи] overlays.txt есть, но ни одной строки не "
+            "разобралось — ролик соберётся без плашек", "warn")
         return []
     engine = overlay_engine()
     # Реестр мог устареть: вариант удалили руками, а импорт на него остался —
