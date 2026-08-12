@@ -483,11 +483,28 @@
         <div class="card">
           <div class="card-head">Слои и обработка</div>
           <div class="switches" id="renderSwitches">
-            <!-- ВРЕМЕННО выключено по умолчанию: текущий вид субтитров в кадре
-                 не устраивал. Вернуть — дописать `checked` обратно. Сам Whisper
-                 при этом работает всегда: таймкоды фраз нужны для нарезки сцен
-                 (render.py: build_render_plan), без .srt рендер не стартует. -->
-            <label class="switch"><input type="checkbox" id="rSubs"><span class="tr"></span>Вшить субтитры</label>
+            <!-- `checked` ВЕРНУЛСЯ. Здесь стояло «временно выключено, пока не
+                 нравится вид субтитров» — и это «временно» продержалось с
+                 07.08 по 12.08: за это время ни один ролик не вышел с
+                 субтитрами. Замер по app.log: 20 прогонов подряд напечатали
+                 «Субтитры в кадр НЕ вжигаются (галочка снята)», в том числе
+                 все ночные, хотя у КАЖДОГО канала в channels.json стоит
+                 subs_on: true. Снятая галочка перебивала профиль канала:
+                 genParams() шлёт subs: false -> channels.apply_to_params
+                 делает И с профилем -> render.assemble не добавляет фильтр
+                 субтитров.
+                 Цена: канал говорит закадровым голосом, лица в кадре нет —
+                 для зрителя без звука такой ролик пустой экран. Плюс правки
+                 положения субтитра (render._subtitles_filter, MarginV) всё
+                 это время были мёртвым кодом.
+                 Вид субтитров с тех пор чинился отдельно (pill: низ капсулы
+                 поднят с 4.8% до 7.0% высоты, из-под полосы проигрывателя),
+                 так что причины держать галочку снятой больше нет. Ночь
+                 теперь на неё и не смотрит — она слушает профиль канала
+                 (webapp.Api.autopilot). Сам Whisper работает всегда: таймкоды
+                 фраз нужны для нарезки сцен (render.py: build_render_plan),
+                 без .srt рендер не стартует. -->
+            <label class="switch"><input type="checkbox" id="rSubs" checked><span class="tr"></span>Вшить субтитры</label>
             <label class="switch"><input type="checkbox" id="rGrain"><span class="tr"></span>Зерно</label>
             <label class="switch"><input type="checkbox" id="rVignette"><span class="tr"></span>Виньетка</label>
             <label class="switch"><input type="checkbox" id="rLetterbox"><span class="tr"></span>Letterbox 2.35:1</label>
