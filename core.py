@@ -3205,7 +3205,114 @@ def seo_clean(seo_text: str) -> str:
     return "\n".join(out)
 
 
-def rank_titles(seo_text: str, lang: str = "английский", log=print) -> str:
+# Во сколько элементов закона обходится ПОЛНЫЙ повтор построения.
+#
+# 1.5, а не 1.0. При весе 1.0 заголовок 4/4 под копирку набирал ровно 3.00 и
+# обходил непохожий 3/4 (2.95) — то есть машина продолжала публиковать копию,
+# а предупреждение в журнале оставалось единственным следствием. Замер, ради
+# которого всё и делается, говорит обратное: четыре подряд по 4/4 одинакового
+# построения дали 99, 13, 7 и 0 просмотров, то есть повтор стоит дороже одного
+# недостающего элемента.
+#
+# Выше 1.5 не ставим: тогда свежий 2/4 обходил бы повторяющий 4/4, а закон
+# клика замерен на порядковых различиях (x16.41 против x0.15) и остаётся
+# главнее разнообразия.
+SAMENESS_WEIGHT = 1.5
+
+
+def title_sameness(title: str, past: list[str]) -> float:
+    """Насколько заголовок повторяет ПОСТРОЕНИЕ прошлых заголовков канала, 0..1.
+
+    Зачем это вообще понадобилось. Закон клика требует четыре элемента, и
+    модель ставит все четыре САМЫМ ДЕШЁВЫМ способом — одной и той же
+    конструкцией. Замер по живому каналу einsturzpunkt, четыре ролика подряд,
+    все четыре получили 4/4 по title_click_score:
+
+        Warum stürzte diese brandneue Brücke ein?          99 просмотров
+        Warum brach dieser brandneue Staudamm?             13
+        Warum kippte dieser brandneue Wolkenkratzer um?     7
+        Warum stürzte diese brandneue Tunneldecke ein?      0
+
+    Меняются только глагол и предмет. На странице канала это выглядит как
+    один ролик, выложенный четырежды, и падение 99 -> 13 -> 7 -> 0 ложится
+    ровно на это: первый собрал пробную партию показов, следующие показали
+    той же публике то же самое.
+
+    Причина не в модели, а в отборе: rank_titles публиковал заголовок с
+    НАИВЫСШЕЙ оценкой, а наивысшую всегда получает самый шаблонный. То есть
+    отбор сам загонял канал в один шаблон.
+
+    Меряем СКЕЛЕТ, а не слова: доля общих начальных слов плюс совпадение
+    служебных слов (вопросительное, указательное, слово новизны). Предмет и
+    глагол намеренно не учитываем — они и должны меняться.
+    """
+    def skel(s: str) -> list[str]:
+        w = re.findall(r"[^\W\d_]+", (s or "").lower(), re.UNICODE)
+        return w[:6]
+    a = skel(title)
+    if not a or not past:
+        return 0.0
+    worst = 0.0
+    for p in past:
+        b = skel(p)
+        if not b:
+            continue
+        # общий префикс: сколько первых слов совпадает подряд
+        pref = 0
+        for x, y in zip(a, b):
+            if x != y:
+                break
+            pref += 1
+        # общие слова вообще (без учёта порядка) — ловит перестановки
+        common = len(set(a) & set(b)) / max(len(set(a) | set(b)), 1)
+        worst = max(worst, min(1.0, pref / 3.0 * 0.6 + common * 0.6))
+    return worst
+
+
+def _past_titles(channel: dict | None, limit: int = 6) -> list[str]:
+    """Последние заголовки канала из used_topics.
+
+    Там же лежат обрывки промптов (модель иногда возвращает не заголовок, а
+    кусок рассуждения), поэтому берём только похожее на заголовок: одна
+    строка, от трёх слов, без служебных двоеточий вида «Formula:».
+    """
+    out = []
+    for s in reversed((channel or {}).get("used_topics") or []):
+        s = " ".join(str(s).split())
+        if (3 <= len(s.split()) <= 16
+                and not re.search(r"(Formula|Object|Idea)\s*:", s)):
+            out.append(s)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _title_variety_ask(channel: dict | None) -> str:
+    """Просьба НЕ повторять построение прошлых заголовков.
+
+    Одного закона клика мало: модель ставит все четыре его элемента самым
+    дешёвым способом и потому одинаково. Замер einsturzpunkt — четыре ролика
+    подряд, все 4/4, все вида «Warum … dieser brandneue …?»: 99, 13, 7, 0
+    просмотров. Отбор (rank_titles) штрафует повтор, но выбирает он из того,
+    что модель уже написала: если все пять вариантов под копирку, спасать
+    нечего. Поэтому список прошлых уходит В ЗАПРОС.
+    """
+    past = _past_titles(channel)
+    if not past:
+        return ""
+    return ("\nTHE LAST TITLES ON THIS CHANNEL — the five you write must NOT "
+            "repeat their SHAPE. Same four elements, different sentence:\n"
+            + "\n".join("  - " + p for p in past)
+            + "\nVary the construction ACROSS your five: one question, one "
+              "flat statement, one led by a number or a date, one led by the "
+              "object, one led by the contradiction. A channel whose titles "
+              "all open the same way reads in the feed as one video posted "
+              "many times — measured on this exact channel: four such videos "
+              "in a row scored 99, 13, 7 and 0 views.\n\n")
+
+
+def rank_titles(seo_text: str, lang: str = "английский", log=print,
+                past_titles: list[str] | None = None) -> str:
     """Поставить первым тот заголовок, который лучше отвечает закону клика.
 
     Первым уходит НЕ «первый попавшийся»: yt_upload.parse_seo берёт из
@@ -3239,22 +3346,40 @@ def rank_titles(seo_text: str, lang: str = "английский", log=print) ->
     for i, ln in items:
         bare = re.sub(r"^\s*(?:\d+[.)]|[-*•])\s*", "", ln).strip().strip("*_")
         n, miss = title_click_score(bare, lang)
-        scored.append((n, i, bare, miss))
+        # ШТРАФ ЗА ПОВТОР ПОСТРОЕНИЯ. Без него отбор всегда выбирал самый
+        # шаблонный вариант — см. title_sameness, там замер на четырёх
+        # роликах подряд. Штраф дробный и не превышает единицы: заголовок,
+        # набравший 4/4, но повторяющий прошлый скелет, проигрывает такому же
+        # 4/4 с другим построением, и НЕ проигрывает варианту на 3/4 —
+        # элементы закона важнее разнообразия.
+        same = title_sameness(bare, past_titles or [])
+        scored.append((n - same * SAMENESS_WEIGHT, i, bare, miss, n, same))
     best = sorted(scored, key=lambda x: (-x[0], x[1]))
     top = best[0]
-    if top[0] <= 1:
+    # top[4] — оценка ПО ЗАКОНУ, top[0] — она же за вычетом штрафа за повтор.
+    # В сообщении человеку нужна первая: «3/4» понятно, «2.4/4» нет.
+    if top[4] <= 1:
         # Ноль или один элемент из четырёх у ЛУЧШЕГО из пяти — это не
         # «слабый вариант», это тот самый заголовок на 1.4 % CTR. Говорим
         # вслух: перегенерация дешевле тысячи потраченных показов.
         log(f"[SEO] ⚠ Ни один из {len(scored)} заголовков не построен по "
-            f"закону клика (лучший — {top[0]}/4: "
+            f"закону клика (лучший — {top[4]}/4: "
             + ", ".join(top[3]) + "). Такой заголовок уже дал 1.4 % CTR на "
             "1 100 показов — перегенерируй SEO перед публикацией.", "warn")
     else:
-        log(f"[SEO] Заголовок по закону клика ({top[0]}/4) поставлен первым: "
+        log(f"[SEO] Заголовок по закону клика ({top[4]}/4) поставлен первым: "
             f"«{top[2]}»"
             + ("; не хватает: " + ", ".join(top[3]) if top[3] else ""))
-    ordered = [f"{n + 1}. {bare}" for n, (_, _, bare, _) in enumerate(best)]
+    # Про повтор построения говорим ОТДЕЛЬНОЙ строкой и только когда он есть:
+    # это не брак заголовка, а свойство всей пачки, и человеку полезно знать,
+    # что канал начал писать под копирку.
+    if top[5] >= 0.5:
+        log(f"[SEO] ⚠ Заголовок построен так же, как прошлые ролики канала "
+            f"(похожесть {top[5]:.2f}). На einsturzpunkt четыре таких подряд "
+            "дали 99 -> 13 -> 7 -> 0 просмотров: в ленте это читается как "
+            "один ролик, выложенный четырежды.", "warn")
+    ordered = [f"{n + 1}. {bare}" for n, (*_, ) in enumerate(best)
+               for bare in (best[n][2],)]
     return "\n".join(lines[:start] + ordered + lines[end:])
 
 
@@ -3325,6 +3450,7 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
           # нажимают. Раньше закон лежал в topic_formula одного немецкого
           # канала и до испанского не доезжал — тот и собрал 1.4 % CTR.
           + TITLE_CLICK_LAW + "\n"
+          + _title_variety_ask(ch)
           + (("WHAT WORKS ON THIS CHANNEL'S NICHE — measured on competing "
               "channels, follow this pattern for the titles, it matters more "
               f"than anything else here:\n{formula}\n\n") if formula.strip() else "")
@@ -3387,7 +3513,10 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
         # Сначала чистка разметки, потом перестановка: markdown вокруг
         # «TITLES:» прячет раздел от обеих — и от перестановки, и от
         # разбора при загрузке.
-        out = rank_titles(seo_clean(out), lang, log)
+        # Прошлые заголовки канала — чтобы отбор штрафовал повтор
+        # ПОСТРОЕНИЯ. Замер einsturzpunkt: четыре ролика подряд по 4/4,
+        # все «Warum … dieser brandneue …?», просмотры 99 -> 13 -> 7 -> 0.
+        out = rank_titles(seo_clean(out), lang, log, _past_titles(ch))
     except Exception as e:
         # Перестановка — улучшение, а не обязанность: сломаться на ней и
         # потерять готовое SEO было бы хуже, чем оставить порядок модели.
