@@ -112,7 +112,12 @@ const LOOKS: Record<string, Look> = {
     smallCaps: false,
     advance: 0.5,
     maxSize: 96,
-    schemes: ['column', 'band'],
+    // Четыре схемы, а не две: при двух из четырёх обложек подряд три легли
+    // на одну и ту же (замер einsturzpunkt 13.08), и канал в ленте читался
+    // как один ролик, размноженный. Список ДОЛЖЕН совпадать с
+    // core.THUMB_LAYOUT['harsh']['schemes'] — там по этим же именам считается
+    // бюджет знаков для приёмки обложек.
+    schemes: ['column', 'band', 'tl', 'br'],
     loud: -1,
     archive: true,
     glow: true,
