@@ -3287,6 +3287,72 @@ def _past_titles(channel: dict | None, limit: int = 6) -> list[str]:
     return out
 
 
+def _past_openings(channel: dict | None, limit: int = 5) -> list[str]:
+    """Первые фразы описаний прошлых роликов канала.
+
+    Читаются с диска, а не из профиля: описания нигде не хранятся, а
+    seo.txt лежит в каждой папке проекта.
+    """
+    try:
+        import channels as _ch
+        root = _ch.projects_dir(channel or {})
+        dirs = _ch.channel_projects(root)[:limit + 2]
+    except Exception:
+        return []
+    out = []
+    for d in dirs:
+        f = d / "seo.txt"
+        if not f.exists():
+            continue
+        try:
+            t = f.read_text("utf-8", errors="ignore")
+        except Exception:
+            continue
+        i = t.upper().find("DESCRIPTION")
+        if i < 0:
+            continue
+        for ln in t[i:].splitlines()[1:]:
+            ln = ln.strip()
+            if ln:
+                # НАЧАЛО строки, а не «первое предложение». Резать по точке
+                # тут нельзя: в немецком дата пишется «Am 8. September 2019»,
+                # и разбиение по «точка + пробел» давало «Am 8.» — модель
+                # увидела бы огрызок вместо конструкции. Для показа образца
+                # достаточно первых ста знаков, они и несут построение.
+                out.append(ln[:100])
+                break
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _desc_variety_ask(channel: dict | None) -> str:
+    """Просьба не начинать описание так же, как прошлые.
+
+    Та же болезнь, что у заголовков, и по той же причине: правило жанра
+    просит назвать сооружение, место и год в первой фразе, а модель
+    выполняет это самым дешёвым способом — «Am [дата] versagte …».
+
+    Замер einsturzpunkt 13.08: пять описаний из семи начинаются ровно так,
+    слово в слово по конструкции. На странице канала под каждым роликом
+    видна первая строка описания, и одинаковое начало усиливает то же
+    впечатление «один ролик выложен много раз», что и одинаковый заголовок.
+    """
+    past = _past_openings(channel)
+    if not past:
+        return ""
+    return ("\nHOW THE LAST DESCRIPTIONS ON THIS CHANNEL OPENED — do not "
+            "start the same way. The first line is visible under the video "
+            "in the feed, and openings that all match make the channel look "
+            "like one video posted many times:\n"
+            + "\n".join("  - " + p for p in past)
+            + "\nThe first sentence must still carry the structure, the place "
+              "and the year. Reach them differently: lead with the object, "
+              "with the number, with what the inquiry found, with the "
+              "ordinary moment before it — but not with the date every "
+              "time.\n\n")
+
+
 def _title_variety_ask(channel: dict | None) -> str:
     """Просьба НЕ повторять построение прошлых заголовков.
 
@@ -3451,6 +3517,7 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
           # канала и до испанского не доезжал — тот и собрал 1.4 % CTR.
           + TITLE_CLICK_LAW + "\n"
           + _title_variety_ask(ch)
+          + _desc_variety_ask(ch)
           + (("WHAT WORKS ON THIS CHANNEL'S NICHE — measured on competing "
               "channels, follow this pattern for the titles, it matters more "
               f"than anything else here:\n{formula}\n\n") if formula.strip() else "")
