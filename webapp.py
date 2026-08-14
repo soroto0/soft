@@ -130,6 +130,36 @@ def load_settings() -> dict:
     return {}
 
 
+def _speech_rate(ch: dict | None, p: dict) -> int:
+    """Темп речи канала числом процентов. 0 — обычная скорость.
+
+    Здесь стояло `int((ch or {}).get("rate") or p.get("rate") or 0)`, и оно
+    падало ровно на КАНАЛЕ С ОБЫЧНЫМ ТЕМПОМ. Ноль в Python «пустой», цепочка
+    `or` проскакивала его насквозь и добиралась до p["rate"], а туда
+    channels.apply_to_params кладёт УЖЕ ОТФОРМАТИРОВАННУЮ строку «+0%» — её
+    int() принять не может.
+
+    Замер 2026-08-14: прогон падал через 7 секунд с «invalid literal for
+    int() with base 10: '+0%'», не дойдя даже до сценария. Каналы с ненулевым
+    темпом (-5, -8, -15) работали, потому что до второй ветки не доходили, —
+    поэтому ошибка и дожила до канала, где темп решили не трогать.
+
+    Правило простое: у канала темп либо ЕСТЬ (в том числе ноль), либо его
+    нет вовсе. И строку вида «+0%» разбираем, а не скармливаем int().
+    """
+    if ch is not None and ch.get("rate") is not None:
+        сырое = ch["rate"]
+    else:
+        сырое = p.get("rate", 0)
+    if isinstance(сырое, (int, float)):
+        return int(сырое)
+    txt = str(сырое).strip().replace("%", "").replace("+", "")
+    try:
+        return int(float(txt or 0))
+    except ValueError:
+        return 0
+
+
 class Api:
     def __init__(self):
         self._settings = load_settings()
@@ -2809,7 +2839,7 @@ class Api:
                     # Темп речи канала — иначе заказ на 35 минут при
                     # темпе -15% давал ролик на 46: слова считались для
                     # начитки на нулевом темпе, а читал голос медленнее.
-                    rate=int((ch or {}).get("rate") or p.get("rate") or 0))
+                    rate=_speech_rate(ch, p))
                 self.save_script(text)
                 # Границы глав в словах — единственный момент, когда они
                 # вообще известны. В секунды их переведёт apply_chapters
