@@ -5075,13 +5075,30 @@ THUMB_STYLES = {
         # ZERBRACH DIE BETONSTRUKTUR» — три плотные строки, крупнейшее слово
         # 15 px в ленте, CTR 2,3% при норме старта 5-8%.
         "words":
-            "The headline is a VERDICT, not a description: 2-3 words that "
-            "name the failure itself. 'Fatal miscalculation', 'In 0.4 "
-            "seconds', 'The rivet that held everything' — the way an "
-            "inquiry report words its conclusion. NOT a sentence retelling "
-            "what happened. Flat and factual. Never an exclamation, never a "
-            "number of dead, never a word like SHOCKING or HORROR. At most "
-            "two lines, split with \\n.",
+            # ОДНО КОНКРЕТНОЕ СЛОВО ОБЯЗАТЕЛЬНО. Прежний текст просил
+            # «приговор из 2-3 слов», и живой канал выдал ровно категории:
+            # GEBROCHENER STAHL, DER FALSCHE KLEBER, SCHERKRAFT IM BETON.
+            # Ни числа, ни года, ни материала, ни места — под такой обложкой
+            # может лежать любой из сорока роликов, и зритель это чувствует.
+            # Замер einsturzpunkt за 28 дней: 4 100 показов, CTR 2.4% при
+            # норме 4-6%.
+            #
+            # Канал-образец ниши держит обратное: у победителей заголовок
+            # называет ВЕЩЬ и то, что с ней было не так («They Used
+            # Newspaper Instead of Cement…»). Приговор без предмета — это
+            # рубрика, а не обещание.
+            "The headline is a VERDICT, not a description — but it must "
+            "carry ONE CONCRETE THING the viewer can picture: a material, a "
+            "number, a year, a named part. 'Newspaper in the cement', '0.4 "
+            "seconds', 'One rivet held it', 'Sand instead of gravel'.\\n"
+            "REJECT your own first idea if it is a category rather than a "
+            "fact — 'broken steel', 'the wrong glue', 'shear force' name a "
+            "school subject, not this story, and any of forty videos could "
+            "sit under them.\\n"
+            "Flat and factual, the way an inquiry report words its "
+            "conclusion. Never an exclamation, never a number of dead, "
+            "never a word like SHOCKING or HORROR. At most two lines, "
+            "split with \\n.",
         # ОБЪЕКТ-ГЕРОЙ И КОНТРАСТ. Прежнее правило просило дословно «faded
         # colour, overcast daylight, grain, slight softness» — то есть само
         # заказывало блёклую картинку, и генератор честно её отдавал. Замер
@@ -5093,15 +5110,37 @@ THUMB_STYLES = {
         # Честность ниши при этом не тронута: по-прежнему никаких
         # постановочных людей, лиц в камеру и мнимой хроники бедствия.
         "bg":
-            "ONE object fills the frame and is the whole picture: the "
-            "structural detail that failed — a sheared bolt, a cracked "
-            "weld, a buckled beam, a split cable — photographed close, "
-            "sharp, and large. It must read at 210 px wide, so: one subject, "
-            "no busy scene, nothing small.\n"
+            # РОТАЦИЯ КРУПНОСТИ — главное здесь. Прежний текст требовал
+            # «ОДИН предмет заполняет кадр, снятый близко и крупно» у
+            # КАЖДОГО ролика, и получал ровно это: четыре обложки подряд
+            # вышли одинаковым бурым макро сломанной железки. Замер по
+            # живому каналу einsturzpunkt за 28 дней: 4 100 показов, CTR
+            # 2.4% при норме 4-6%. В ленте четыре ролика читались как один,
+            # уже пролистнутый.
+            #
+            # Канал-образец этой ниши (Fascinating Horror, 1.45 млн) так не
+            # делает: у победителей в кадре СООРУЖЕНИЕ и место после
+            # события, а не фактура материала. Макро у него — редкий приём,
+            # а не единственный.
+            "Vary the SHOT SIZE between videos — this matters more than any "
+            "single choice, because four covers of the same crop read in a "
+            "feed as one video already scrolled past. Pick whichever of "
+            "these the story actually offers, and prefer the one your last "
+            "cover did NOT use:\n"
+            "  - the structure whole, from a distance, still standing or "
+            "already down — the shape a viewer can recognise;\n"
+            "  - the site after the event: rubble, cordons, machinery, the "
+            "gap where something used to be;\n"
+            "  - the failed detail close up (a sheared bolt, a cracked "
+            "weld) — powerful, but only when the object is IDENTIFIABLE, "
+            "not an abstract texture.\n"
+            "Give the frame something that says SCALE: a vehicle, a door, a "
+            "railing, a figure in the distance. Without it a crack in a dam "
+            "and a crack in a kerb look the same.\n"
             "STRONG CONTRAST is required — the subject clearly lighter or "
             "darker than what is behind it, with a dark uncluttered area "
             "where the headline will sit. Avoid an evenly grey frame: flat "
-            "concrete wall to wall measures as unreadable in the feed.\n"
+            "concrete wall to wall measures as unreadable in the feed. "
             "Documentary light, not advertising: worklight, low sun or "
             "overcast is fine, but the frame must not be faded or hazy. No "
             "people posing, no faces to camera, no staged disaster imagery.",
