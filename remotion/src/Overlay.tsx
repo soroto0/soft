@@ -2,7 +2,7 @@ import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import { DISPLAY, TEXT, SERIF } from './fonts';
 import { VARIANTS, DECOR } from './variants/_registry';
-import { anyAlnum, headOf, numPairs, textPairs, redactLines } from './payload';
+import { anyAlnum, headOf, numPairs, textPairs, redactLines, parseAmount, formatAmount } from './payload';
 import type { OverlayProps } from './types';
 
 // тип переехал в types.ts (варианты не могут тянуть его отсюда — вышел бы
@@ -15,14 +15,14 @@ export type { OverlayProps };
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#3a7ca5',
-  accentLight: '#6db3cf',
-  accentRgb: '58,124,165',
-  bannerFrom: '#c4d8e8',
-  bannerTo: '#a8c4d8',
-  bannerText: '#0d1f2e',
-  kickerFrom: '#14212d',
-  kickerTo: '#1e3344',
+  accent: '#3A8FBF',
+  accentLight: '#7EC8E3',
+  accentRgb: '58,143,191',
+  bannerFrom: '#D6E8F0',
+  bannerTo: '#B8D4E0',
+  bannerText: '#0F2535',
+  kickerFrom: '#152A38',
+  kickerTo: '#1E3A4A',
 };
 
 const useExit = (dur: number) => {
@@ -75,11 +75,6 @@ const inkOn = (bg: string): [number, number, number] => {
   // светимости кандидатов: почти чёрный (8,26,30) и чистый белый
   const dark = 0.2126 * 0.00304 + 0.7152 * 0.00961 + 0.0722 * 0.01096;
   return _contrast(b, dark) >= _contrast(b, 1) ? [8, 26, 30] : [255, 255, 255];
-};
-
-const formatCounter = (value: number) => {
-  if (value < 1000) return Math.floor(value).toString();
-  return value.toLocaleString('en-US');
 };
 
 const LowerThird = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
@@ -189,8 +184,11 @@ const Counter = ({ content, exit, enter }: { content: string; exit: number; ente
   // слипшееся «1,200acres». Хвостовой пробел возвращаем единице измерения;
   // там, где его не было («270°F»), ничего не меняется.
   const suffix = match ? (match[2].match(/\s+$/)?.[0] ?? '') + match[3] : '';
-  const rawNumStr = match ? match[2].replace(/[,\s]/g, '') : '0';
-  const targetNum = parseFloat(rawNumStr) || 0;
+  // Разряды разбирает parseAmount: replace(/[,\s]/g) снимал только запятую,
+  // и немецкое «30.000» приходило в parseFloat точкой — тридцать вместо
+  // тридцати тысяч. Замер и правила — в payload.ts.
+  const { value: targetNum, decimals: numDec, group: numGroup } =
+    parseAmount(match ? match[2] : '0');
 
   const currentVal = interpolate(frame, [0, 60], [0, targetNum], {
     easing: Easing.out(Easing.cubic),
@@ -215,7 +213,7 @@ const Counter = ({ content, exit, enter }: { content: string; exit: number; ente
           color: '#ffffff',
           textShadow: `0 0 40px rgba(${THEME.accentRgb},0.3)`
         }}>
-          {prefix}{formatCounter(currentVal)}{suffix}
+          {prefix}{formatAmount(currentVal, numDec, numGroup)}{suffix}
         </div>
         <div style={{
           width: '100px',
@@ -257,8 +255,11 @@ const CounterTag = ({ content, exit, enter }: { content: string; exit: number; e
   // слипшееся «1,200acres». Хвостовой пробел возвращаем единице измерения;
   // там, где его не было («270°F»), ничего не меняется.
   const suffix = match ? (match[2].match(/\s+$/)?.[0] ?? '') + match[3] : '';
-  const rawNumStr = match ? match[2].replace(/[,\s]/g, '') : '0';
-  const targetNum = parseFloat(rawNumStr) || 0;
+  // Разряды разбирает parseAmount: replace(/[,\s]/g) снимал только запятую,
+  // и немецкое «30.000» приходило в parseFloat точкой — тридцать вместо
+  // тридцати тысяч. Замер и правила — в payload.ts.
+  const { value: targetNum, decimals: numDec, group: numGroup } =
+    parseAmount(match ? match[2] : '0');
   const currentVal = interpolate(frame, [0, 40], [0, targetNum], {
     easing: Easing.out(Easing.cubic),
     extrapolateLeft: 'clamp',
@@ -295,7 +296,7 @@ const CounterTag = ({ content, exit, enter }: { content: string; exit: number; e
           color: '#1a1410',
           whiteSpace: 'nowrap'
         }}>
-          {prefix}{formatCounter(currentVal)}{suffix}
+          {prefix}{formatAmount(currentVal, numDec, numGroup)}{suffix}
         </div>
       </div>
     </AbsoluteFill>

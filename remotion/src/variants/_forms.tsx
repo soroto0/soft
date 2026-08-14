@@ -2,7 +2,7 @@ import React from 'react';
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, Easing } from 'remotion';
 import type { VariantProps } from '../types';
 import { LOOKS, formSpec, isFixedLayout } from './_look';
-import { numPairs, textPairs, redactLines } from '../payload';
+import { numPairs, textPairs, redactLines, parseAmount, formatAmount } from '../payload';
 import type { Look, Palette, FormSpec } from './_look';
 
 // ОБЩЕЕ ТЕЛО ВСЕХ КАНАЛЬНЫХ ПЛАШЕК.
@@ -622,16 +622,17 @@ const renderCounter = (c: Ctx) => {
   const pre = m[1];
   const raw = m[2];
   const post = m[3];
-  const target = parseFloat(raw.replace(/[^\d.]/g, '')) || 0;
+  // Разряды и десятичные разбирает parseAmount: раньше здесь стояло
+  // «есть точка — значит дробное», и немецкое «30.000 Zuschauer» уходило в
+  // кадр как «30.0». См. замер в payload.ts.
+  const { value: target, decimals, group } = parseAmount(raw);
   const grow = interpolate(c.frame, [0, Math.max(c.L.build * 2, 18)], [0, 1], {
     easing: Easing.out(Easing.cubic),
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
   const cur = target * grow;
-  const shown = target >= 1000
-    ? Math.floor(cur).toLocaleString('en-US')
-    : (raw.indexOf('.') >= 0 ? cur.toFixed(1) : String(Math.floor(cur)));
+  const shown = formatAmount(cur, decimals, group);
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
       <div style={{ opacity: c.op, ...revealStyle(c.spec.reveal, c.k) }}>
