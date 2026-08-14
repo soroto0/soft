@@ -2844,6 +2844,15 @@ class Api:
                                     keep_punct=bool(
                                         (ch or {}).get("sub_punct", True)))
             self._stop_check()
+            # ФОРМАТ КАДРА — ДО раскадровки, а не после. Кадры заказываются
+            # здесь, и вертикальный ролик обязан получить вертикальные
+            # исходники: обрезать 16:9 до 9:16 нельзя — Veo ставит предмет
+            # в середину широкого кадра, и от него остаётся полоса.
+            core.VIDEO_ASPECT = render.aspect_of(
+                opts.get("resolution", "1080p"))
+            if core.VIDEO_ASPECT != "16:9":
+                self.log(f"[Раскадровка] Формат кадра {core.VIDEO_ASPECT} — "
+                         "кадры заказываются вертикальными")
             self.log("[Цепочка] Шаг 3/4 — стоки по таймлайну…")
             core.auto_storyboard(
                 self._project, self.log,

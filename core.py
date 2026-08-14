@@ -6841,7 +6841,7 @@ def gen_video_from_image(image_path: Path, prompt: str, dest: Path,
         log(f"[Видео-ИИ] Продолжаю сохранённую задачу Veo: {task_id}")
     else:
         task_id = veo_client.image_to_video(full_prompt, Path(image_path),
-                                            mime_type=mime, aspect_ratio="16:9",
+                                            mime_type=mime, aspect_ratio=VIDEO_ASPECT,
                                             api_key=veo_key)
         veo_client.track_task(task_id, dest, "image-to-video")
     try:
@@ -6873,7 +6873,7 @@ def gen_video_multi(prompt: str, images: list[dict], dest: Path,
     if task_id:
         log(f"[Видео-ИИ] Продолжаю сохранённую задачу Veo: {task_id}")
     else:
-        task_id = veo_client.multi_image_to_video(prompt, images, aspect_ratio="16:9",
+        task_id = veo_client.multi_image_to_video(prompt, images, aspect_ratio=VIDEO_ASPECT,
                                                   api_key=veo_key)
         veo_client.track_task(task_id, dest, "multi-image-to-video")
     try:
@@ -6903,7 +6903,7 @@ def gen_video_transition(prompt: str, start_image: Path, end_image: Path,
         log(f"[Видео-ИИ] Продолжаю сохранённую задачу Veo: {task_id}")
     else:
         task_id = veo_client.batch_frame_to_video(prompt, Path(start_image),
-                                                  Path(end_image), aspect_ratio="16:9",
+                                                  Path(end_image), aspect_ratio=VIDEO_ASPECT,
                                                   api_key=veo_key)
         veo_client.track_task(task_id, dest, "batch-frame-to-video")
     try:
@@ -7163,6 +7163,17 @@ def ken_burns(image: Path, dest: Path, duration: float = 8.0, fps: int = 25):
 # ---------- Субтитры ----------
 
 CONSOLE = None  # хук GUI: живой вывод дочерних процессов (страница «Консоль»)
+
+# СООТНОШЕНИЕ СТОРОН ЗАКАЗЫВАЕМЫХ КАДРОВ. Ставится цепочкой перед
+# раскадровкой, читается генераторами видео — у них разрешения в области
+# видимости нет, а класть его в шесть сигнатур ради одной строки дороже,
+# чем одна общая настройка (тем же приёмом здесь сделан CONSOLE).
+#
+# Зачем: для Shorts кадр обязан рождаться вертикальным. Обрезать
+# горизонтальный до 9:16 нельзя — Veo ставит предмет в середину широкого
+# кадра, и при обрезке до вертикали от него остаётся полоса.
+VIDEO_ASPECT = "16:9"
+
 
 
 def _console(msg: str):
@@ -8294,11 +8305,65 @@ def apply_chapters(out_dir, log=print) -> list[tuple[float, str]]:
                     dropped += 1
                     continue
             keep.append(line)
+        # Занятые интервалы: карточка главы не должна лечь ПОВЕРХ чужого
+        # оверлея. Выше выбрасываются только СТАРЫЕ ТИТУЛЬНЫЕ карточки рядом
+        # с границей, а lower3, stamp и прочие никто не проверял — и карточка
+        # вставала ровно в ту же секунду. Замер 2026-08-13 по готовым роликам:
+        # 29 наложений на 1940 оверлеев, и в каждом одна сторона — titlecard
+        # на той же секунде («485.0 lower3» + «485.0 titlecard»). В кадре это
+        # две плашки друг на друге, обе нечитаемы.
+        busy = []
+        for line in keep:
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) < 3:
+                continue
+            # ВОДЯНОЙ ЗНАК ПРОПУСКАЕМ. Он висит весь ролик — строка вида
+            # «00:00:00 | watermark | ... | bottom-right | 1200s», — и попав
+            # в занятые интервалы, он делает конфликтующим КАЖДОЕ место.
+            # Тогда сдвиг упирается в потолок 8 секунд, обрывается, и карточка
+            # встаёт внахлёст, то есть защита выключается целиком. Знак живёт
+            # в углу и никому не мешает.
+            if parts[1].lower() == "watermark":
+                continue
+            try:
+                tc = parts[0] if parts[0].count(":") == 2 else "00:" + parts[0]
+                t0 = srt_to_seconds(tc.replace(".", ","))
+            except Exception:
+                continue
+            # dur_s, а НЕ d: снаружи d — это Path(out_dir), и переменная с тем
+            # же именем затирала бы папку проекта. Ниже идёт `d / "seo.txt"`,
+            # то есть главы в описании молча остались бы выдуманными.
+            dur_s = 4.0
+            if len(parts) > 4:
+                m = re.match(r"([\d.]+)", parts[4])
+                if m:
+                    try:
+                        dur_s = float(m.group(1))
+                    except ValueError:
+                        pass
+            busy.append((t0, t0 + dur_s))
+
+        CARD = 4.0
         for i, (sec, title) in enumerate(times, 1):
+            at = float(sec)
+            # Сдвигаем карточку за конец мешающего оверлея, но не дальше чем
+            # на 8 секунд от границы главы: дальше она перестаёт читаться как
+            # начало раздела. Не влезли — значит место плотно занято, и лучше
+            # поставить встык, чем внахлёст.
+            for _ in range(6):
+                clash = next(((a, b) for a, b in busy
+                              if at < b and a < at + CARD), None)
+                if not clash:
+                    break
+                nxt = clash[1] + 0.3
+                if nxt - sec > 8:
+                    break
+                at = nxt
+            busy.append((at, at + CARD))
             # Вторая часть после «::» — номер главы. Он не переводится, не
             # врёт и работает на любом языке канала.
-            keep.append(f"{seconds_to_srt(sec).replace(',', '.')[:8]} | titlecard | "
-                        f"{title.upper()}::{i:02d} | center | 4s")
+            keep.append(f"{seconds_to_srt(at).replace(',', '.')[:8]} | titlecard | "
+                        f"{title.upper()}::{i:02d} | center | {CARD:.0f}s")
         # Сортируем ПО РАЗОБРАННОМУ ВРЕМЕНИ, а не по строке: в файле уживаются
         # «00:01:32» и «1:32», и по алфавиту второе улетело бы в конец ролика.
         # Строки без тайм-кода (шапка, комментарии) остаются сверху и в

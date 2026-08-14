@@ -285,7 +285,11 @@ def _ffmpeg(args: list[str]) -> tuple[bool, str]:
     import subprocess
     try:
         r = subprocess.run(["ffmpeg", "-v", "error", *args, "-y"],
-                           capture_output=True, timeout=120)
+                           capture_output=True, timeout=120,
+                           # Без флага каждый синтезируемый звук-акцент
+                           # открывал окно консоли, а их по числу плашек.
+                           creationflags=getattr(
+                               subprocess, "CREATE_NO_WINDOW", 0))
         if r.returncode == 0:
             return True, ""
         return False, (r.stderr or b"").decode("utf-8", "replace")[-160:]
