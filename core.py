@@ -2718,8 +2718,89 @@ SHOT_RULES = (
     'Correct: "clear empty night sky"\n'
     "If the sentence denies, doubts or excludes something, film what was "
     "actually there instead — the empty place, the intact object, the "
-    "unmarked snow."
+    "unmarked snow.\n"
+    # НАЗЫВАТЬ САМО СОБЫТИЕ. Замер по einsturzpunkt/2026-08-11_2: 132 кадра,
+    # предмет ролика (Enschede, Grolsch Veste, Twente, трибуна, 2011) назван
+    # в 17 из них — 13%. Остальные 87% это безымянная стройка: «crane lifting
+    # steel beam» трижды, «welder welding steel joint», «hands reviewing
+    # blueprints», а на 167-й секунде АЭРОСЪЁМКА САН-ПАУЛУ в ролике про
+    # стадион в Нидерландах. Девятнадцать минут чужой стройки, поверх
+    # которой читают текст. Ни один запрос по отдельности не был неверным —
+    # неверно было то, что ни один не про это событие.
+    "\nNAME THE ACTUAL PLACE AND OBJECT, NOT ITS CATEGORY. The story is "
+    "about one specific structure in one specific town, and the shot list "
+    "must say so: put the proper name, the town or the country into the "
+    "query wherever the narration is about that structure — 'Enschede "
+    "stadium roof collapse', not 'collapsed steel roof'; 'Dutch football "
+    "stadium stands', not 'empty stadium seats'. A query without the "
+    "specific subject returns footage of somewhere else, and the viewer "
+    "recognises anonymous stock instantly.\n"
+    "NEVER name a place the story does not happen in. A measured failure: "
+    "'sao paulo city aerial view' appeared in a film about a stadium in the "
+    "Netherlands.\n"
+    "DO NOT REPEAT A SHOT. If a crane lifting a beam has already been "
+    "listed, the next crane moment is a different shot: the operator's "
+    "cab, the load swinging, the ground crew watching, the marks the "
+    "outriggers left. Three identical cranes in one film read as one "
+    "picture held for a minute."
 )
+
+
+def story_anchors(script_text: str, limit: int = 12) -> list[str]:
+    """Имена собственные, которыми ролик отличается от любого другого:
+    город, объект, организация. Берём то, что часто повторяется в тексте —
+    выдумывать не из чего, а имя события всегда звучит много раз."""
+    слова = re.findall(r"\b[A-ZÄÖÜÁÉÍÓÚÑ][\wäöüßáéíóúñ-]{3,}", script_text or "")
+    служебные = {"Der", "Die", "Das", "Ein", "Eine", "Und", "Aber", "Doch",
+                 "Als", "Nach", "Vor", "Bei", "Für", "Mit", "Von", "Dem",
+                 "Den", "Des", "Sie", "Diese", "Dieser", "Dieses", "Los",
+                 "Las", "Una", "Del", "Por", "Para", "Que", "Con", "The",
+                 "This", "That", "And", "But", "For", "With", "From"}
+    счёт: dict[str, int] = {}
+    for w in слова:
+        if w in служебные:
+            continue
+        счёт[w] = счёт.get(w, 0) + 1
+    # Одиночное упоминание — это фамилия эксперта из одной фразы, а не имя
+    # события. Держим только то, что повторяется.
+    часто = [w for w, n in счёт.items() if n >= 3]
+    часто.sort(key=lambda w: -счёт[w])
+    return часто[:limit]
+
+
+def shots_on_topic(queries: list[str], script_text: str) -> tuple[int, int]:
+    """Сколько кадров из списка НАЗЫВАЮТ предмет ролика, а не его категорию.
+
+    Замер, из-за которого проверка появилась: einsturzpunkt/2026-08-11_2 —
+    132 кадра, предмет назван в 17, то есть в 13%. Остальные 87% это
+    безымянная стройка, одинаковая для любого ролика канала."""
+    якоря = [a.lower() for a in story_anchors(script_text)]
+    if not якоря:
+        return 0, len(queries)
+    свои = sum(1 for q in queries
+               if any(a in (q or "").lower() for a in якоря))
+    return свои, len(queries)
+
+
+def warn_generic_shots(queries: list[str], script_text: str, log=print,
+                       floor: float = 0.30) -> None:
+    """Сказать вслух, если видеоряд не про это событие."""
+    свои, всего = shots_on_topic(queries, script_text)
+    if not всего:
+        return
+    доля = свои / всего
+    if доля >= floor:
+        log(f"[Агент] Видеоряд назван по событию в {свои} кадрах из "
+            f"{всего} ({доля:.0%}).")
+        return
+    import quality
+    quality.degraded(
+        "Раскадровка", "видеоряд не про это событие, а про стройку вообще",
+        why=f"предмет ролика назван лишь в {свои} кадрах из {всего} "
+            f"({доля:.0%}); остальное подойдёт любому ролику канала",
+        hint="перегенерируй раскадровку — в запросах должны стоять город, "
+             "объект и год самого происшествия, а не «steel beam closeup»",
+        level="заметно" if доля >= floor / 2 else "критично")
 
 
 def smart_queries(beats: list[dict], api_key: str = "", log=print) -> list[str] | None:
@@ -9490,6 +9571,16 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     ensure_ascii=False), encoding="utf-8")
             except OSError:
                 pass    # не сохранили — просто пересочиним в следующий раз
+    # Видеоряд обязан быть ПРО ЭТО СОБЫТИЕ, а не про стройку вообще. Замер
+    # по девяти роликам einsturzpunkt: предмет ролика назван в 0-4% кадров у
+    # шести из девяти. Такой ряд подходит любому ролику канала — и читается
+    # зрителем как сток за секунду.
+    if queries:
+        try:
+            warn_generic_shots(list(queries), script_text, log)
+        except Exception as e:          # проверка не имеет права ронять сборку
+            log(f"[Раскадровка] проверка адресности кадров не прошла: {e}",
+                "warn")
 
     def fetch_video(query, need, dest, line=""):
         """Клип под план из ВСЕХ доступных видео-библиотек сразу.
