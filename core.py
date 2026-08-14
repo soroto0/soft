@@ -2163,7 +2163,27 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
         "homework.\n"
         "- End with three things in order: a call back to the fact from the "
         "opening, one concrete thing to do, and one question answerable in "
-        "a single word in the comments. Never end mid-thought.")
+        "a single word in the comments. Never end mid-thought.\n"
+        # ЛЮДИ. Замер по одиннадцати немецким сценариям, 2400 слов каждый:
+        # упоминаний живых людей 0-10 на текст, медиана 3; В ПЕРВЫЕ 30
+        # СЕКУНД — НОЛЬ в десяти сценариях из одиннадцати; в трёх людей нет
+        # ВООБЩЕ НИ РАЗУ за весь текст. Это документалки о том, как здания
+        # падают на людей, а написаны они про болты и расчётные нагрузки.
+        # Ни одна правка обложки этого не лечит: смотреть нечего, потому
+        # что не про кого.
+        "- SOMEONE MUST BE IN THIS. Within the first 30 seconds name what "
+        "happened to people: how many died, how many were hurt, how many "
+        "were moved out, or — if truly nobody was harmed — say that "
+        "explicitly, because that is itself the surprise. Then keep people "
+        "on screen throughout: who gave the order, who signed it off, who "
+        "refused to, who was standing there when it went. A structure has "
+        "no motive and cannot be wrong on purpose; a person can, and that "
+        "is the whole story. Bolts and loads explain HOW — they are never "
+        "the reason anyone watches.\n"
+        "- Never invent a casualty figure, a name or a quote. If the "
+        "record does not give the number, write what the record does say "
+        "('the report does not state how many were inside') — that "
+        "sentence is honest and it still puts a human in the frame.")
     # ДЛИНА — ПОСЛЕДНИМ СЛОВОМ, и это не перестраховка. Указания канала и
     # формула ниши приходят сюда СВОБОДНЫМ ТЕКСТОМ, и в них живут свои
     # числа: у estoico-es в topic_formula стоит «Target 45 minutes», а в
@@ -2437,10 +2457,69 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
                 break
             marks_out.append({"title": title, "word": seen})
             seen += len(part.split())
+    _warn_no_people(text, lang, log)
     log(f"[Агент] Сценарий готов: {words} слов (~{words // WORDS_PER_MINUTE} мин). "
         "Обязательно вычитай и переработай его перед озвучкой — сырой текст "
         "нейросети это «inauthentic content».")
     return text
+
+
+# Слова, которыми в тексте появляется ЖИВОЙ ЧЕЛОВЕК. Не имена собственные:
+# фамилия комиссии или фирмы человека в кадр не приводит, а имён у нас и
+# так 57 на 1000 слов.
+_PEOPLE_WORDS = {
+    "немецкий": r"tote|toten|todes|getötet|starb|starben|opfer|verletzt|"
+                r"menschen|arbeiter|besucher|bewohner|evakuier|überlebend|"
+                r"familie|witwe|zeuge|augenzeuge|kind|kinder|frau|mann",
+    "испанский": r"muert|herid|víctim|persona|trabajador|vecino|habitante|"
+                 r"evacua|superviviente|familia|viuda|testigo|niñ|mujer|"
+                 r"hombre",
+    "английский": r"died|dead|killed|injur|victim|people|worker|resident|"
+                  r"evacuat|survivor|family|widow|witness|child|children|"
+                  r"woman|man\b",
+}
+
+
+def script_people(text: str, lang: str = "немецкий") -> tuple[int, int, float]:
+    """Сколько раз в сценарии появляется человек: всего, в первые 30 секунд,
+    и на какой секунде впервые. Секунды считаются по темпу начитки."""
+    rx = _PEOPLE_WORDS.get(lang, _PEOPLE_WORDS["английский"])
+    rx = r"\b(?:" + rx + r")\w*"
+    плоско = re.sub(r"\s+", " ", text or "")
+    слова = плоско.split()
+    в_секунду = WORDS_PER_MINUTE / 60.0
+    начало = " ".join(слова[:round(30 * в_секунду)])
+    всего = len(re.findall(rx, плоско, re.I))
+    рано = len(re.findall(rx, начало, re.I))
+    m = re.search(rx, плоско, re.I)
+    когда = (len(плоско[:m.start()].split()) / в_секунду) if m else -1.0
+    return всего, рано, когда
+
+
+def _warn_no_people(text: str, lang: str, log=print) -> None:
+    """Сказать вслух, если в сценарии не с кем сопереживать.
+
+    Замер, из-за которого проверка появилась: одиннадцать немецких
+    сценариев по 2400 слов, упоминаний человека 0-10 на текст (медиана 3),
+    В ПЕРВЫЕ 30 СЕКУНД НОЛЬ У ДЕСЯТИ ИЗ ОДИННАДЦАТИ, а у трёх людей нет
+    вообще ни разу за весь текст. Это ролики о том, как здания падают на
+    людей. Ни одна правка обложки такого не лечит."""
+    всего, рано, когда = script_people(text, lang)
+    if всего == 0:
+        import quality
+        quality.degraded(
+            "Сценарий", "в сценарии нет ни одного живого человека",
+            why="ни погибших, ни пострадавших, ни свидетелей, ни тех, кто "
+                "принимал решения — весь текст про конструкции",
+            hint="перегенерируй сценарий: у катастрофы должны быть люди, "
+                 "иначе смотреть не на кого и досмотров не будет",
+            level="критично")
+        return
+    if рано == 0:
+        log(f"[Агент] ⚠ В первые 30 секунд сценария нет людей — первое "
+            f"упоминание на {когда:.0f}-й секунде, всего за текст {всего}. "
+            "Зритель уходит раньше, чем узнаёт, с кем случилась беда.",
+            "warn")
 
 
 def _parse_query_list(out: str, expect: int) -> list[str]:
