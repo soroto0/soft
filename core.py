@@ -3188,7 +3188,15 @@ def title_click_score(title: str, lang: str = "английский") -> tuple[i
     # нет в коротком списке обычных зачинов языка, — почти всегда имя.
     head = (re.findall(r"[^\W\d_]+", t, re.UNICODE) or [""])[0]
     openers = _TITLE_OPENERS.get(lang, _TITLE_OPENERS["английский"])
-    if head and head[:1].isupper() and head.lower() not in openers:
+    # Слово ЦЕЛИКОМ прописными — это выделение, а не имя: заголовки просят
+    # ставить одно такое слово, и без этой оговорки правило рубило бы само
+    # себя. Замер на 60 живых заголовках всех каналов: ни один не начинается
+    # словом в верхнем регистре, так что поведение сегодня не меняется.
+    # Цена известна и принята: аббревиатура первым словом (NASA, BP) теперь
+    # за имя не считается — сейчас таких заголовков нет ни одного.
+    emphasis = len(head) > 1 and head.isupper()
+    if head and head[:1].isupper() and not emphasis \
+            and head.lower() not in openers:
         miss.append(f"ведёт имя собственное ({head})")
     else:
         n += 1
@@ -3557,7 +3565,22 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
              "Each must open a curiosity gap tied to the actual unresolved "
              "question the script raises — not a summary of the topic.\n")
           + "Put the most concrete, specific words FIRST (the tail gets "
-          "truncated). Forbidden: ALL-CAPS words, 'You won't believe', "
+          "truncated).\n"
+          # Капс раньше был запрещён начисто. Запрет верен ровно наполовину:
+          # ЦЕЛИКОМ прописной заголовок в ленте читается медленнее — глаз
+          # опознаёт слово по силуэту, а капс равняет все силуэты в
+          # прямоугольники, и опознавать становится нечего. Но ОДНО слово
+          # прописными работает наоборот: рядом с обычными оно и есть
+          # единственный силуэт, который выбивается, — и тянет взгляд на
+          # себя. Разрешено одно, и только несущее обещание.
+          + "AT MOST ONE word may be in capitals, and only in two or three "
+          "of the five options — the rest stay in ordinary case. That word "
+          "must be the one carrying the promise (the object, the number, "
+          "the verdict), never a filler like 'THE' or 'WHY'. A title in "
+          "capitals THROUGHOUT is forbidden: in the feed it reads slower, "
+          "not louder, because capitals flatten every word to the same "
+          "rectangle and the eye recognises words by shape.\n"
+          + "Forbidden: 'You won't believe', "
           "'SHOCKING', 'This is why', trailing '...', any promise the script "
           "does not actually keep.\n\n"
           + shape["desc"] +
