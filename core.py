@@ -2218,6 +2218,40 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
         "record does not give the number, write what the record does say "
         "('the report does not state how many were inside') — that "
         "sentence is honest and it still puts a human in the frame.")
+    # ПЕРВЫЕ 30 СЕКУНД. Замер по пятнадцати СОБРАННЫМ сценариям (одиннадцать
+    # einsturzpunkt + четыре fisura-critica; текст очищен strip_cues, темп
+    # взят из words_per_minute: 130 слов/мин немецкий, 154 испанский):
+    #   ИСХОД («чем кончилось» — жертвы, приговор, счёт, снос, закрытие)
+    #     звучит на 58-й секунде по медиане, ПОЗЖЕ 30-й СЕКУНДЫ У 13 ИЗ 15,
+    #     разброс 12...657 с — в одном сценарии исход приходит на 11-й минуте;
+    #   само СОБЫТИЕ («что случилось») — медиана 25 с, позже 30 с у 7 из 15;
+    #   ПЕРВАЯ ФРАЗА — медиана 14 слов, но длиннее 14 слов у 7 из 15 (до 36);
+    #   ПРЕДЛОЖЕНИЙ ДЛИННЕЕ 20 СЛОВ в первые 30 секунд — 22 из 64 (34%), по
+    #     два и больше у 8 сценариев из 15, самое длинное 36 слов.
+    # Из этих чисел и складывается наблюдаемое начало: дата -> описание ->
+    # длинный технический вопрос -> погода и предыстория, а чем всё
+    # кончилось, зритель узнаёт на второй минуте — когда его уже нет.
+    system += (
+        "\n\nTHE FIRST 30 SECONDS — the only part of the video every viewer "
+        "sees. Measured on 15 finished scripts from this pipeline, not style "
+        "advice.\n"
+        "- Say how it ENDED before the 30-second mark: the toll, the "
+        "verdict, the bill, the demolition, the closure, the ban. Not merely "
+        "that something failed — what it cost and how it was settled. "
+        "Measured: our own scripts reach that at second 58 by median, 13 of "
+        "15 miss the 30-second mark, one waits 11 minutes.\n"
+        "- Order the opening: (1) what happened and what it cost, (2) who "
+        "paid for it, (3) only then the question this video answers. Never "
+        "date, then description, then a long technical question, then "
+        "weather and back-story — that is the exact shape we measured, and "
+        "it spends the whole opening before the story starts.\n"
+        "- In the first 30 seconds no sentence runs past 20 words. Measured: "
+        "34% of our opening sentences are longer than that, up to 36 words. "
+        "A 27-word question about bolt tolerances is not a hook — split it, "
+        "or ask it after the viewer knows what is at stake.\n"
+        "- The first 30 seconds carry no weather, no company history, no "
+        "chronology of construction, no list of surnames. Those are earned "
+        "later, once the viewer knows why he should care.")
     # ДЛИНА — ПОСЛЕДНИМ СЛОВОМ, и это не перестраховка. Указания канала и
     # формула ниши приходят сюда СВОБОДНЫМ ТЕКСТОМ, и в них живут свои
     # числа: у estoico-es в topic_formula стоит «Target 45 minutes», а в
@@ -2499,6 +2533,7 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
             marks_out.append({"title": title, "word": seen})
             seen += len(part.split())
     _warn_no_people(text, lang, log)
+    _warn_slow_opening(text, lang, log)
     log(f"[Агент] Сценарий готов: {words} слов (~{words // WORDS_PER_MINUTE} мин). "
         "Обязательно вычитай и переработай его перед озвучкой — сырой текст "
         "нейросети это «inauthentic content».")
@@ -2561,6 +2596,93 @@ def _warn_no_people(text: str, lang: str, log=print) -> None:
             f"упоминание на {когда:.0f}-й секунде, всего за текст {всего}. "
             "Зритель уходит раньше, чем узнаёт, с кем случилась беда.",
             "warn")
+
+
+# Слова, которыми в тексте звучит ИСХОД — не «что-то произошло», а ЧЕМ ВСЁ
+# КОНЧИЛОСЬ: жертвы, приговор, счёт, снос, закрытие. Отдельно от _PEOPLE_WORDS
+# нарочно: «Arbeiter» ставит человека в кадр, но не говорит, чем для него дело
+# кончилось, а именно этого зритель и ждёт первые полминуты.
+_OUTCOME_WORDS = {
+    "немецкий": r"tote|toten|todes|getötet|starb|starben|opfer|verletzt|"
+                r"evakuier|zerstör|totalschaden|millionen|abgerissen|abriss|"
+                r"gesperrt|geschlossen|verurteilt|urteil|schuld|prozess|"
+                r"entschädig",
+    "испанский": r"muert|fallecid|herid|víctim|evacua|destru|millones|"
+                 r"demoli|clausur|cerrad|conden|juicio|culpab|indemniz",
+    "английский": r"died|dead|killed|death|injur|victim|evacuat|destroy|"
+                  r"million|demolish|closed|condemn|verdict|guilty|lawsuit|"
+                  r"compensat",
+}
+
+
+def script_opening(text: str, lang: str = "немецкий") -> tuple[float, int, int, int]:
+    """Как устроены первые 30 секунд сценария.
+
+    Возвращает (секунда, на которой впервые звучит исход; слов в первой
+    фразе; предложений длиннее 20 слов в первые 30 секунд; всего
+    предложений в первых 30 секундах). Секунда -1, если исхода нет вовсе.
+
+    Считаем по ОЗВУЧИВАЕМОМУ тексту (strip_cues), а не по файлу: ремарки
+    вроде «[ARCHIVBILD: ...]» вслух не звучат, но занимают до трети слов
+    первого абзаца — по сырому файлу исход уезжал на 10-15 секунд вперёд
+    от настоящего. Темп берём из words_per_minute(язык): 130 слов/мин на
+    немецком против 154 на испанском — те же слова на этих каналах звучат
+    по-разному, и «первые 30 секунд» это 65 слов против 77."""
+    чистый = strip_cues(text or "")[0]
+    плоско = re.sub(r"\s+", " ", чистый).strip()
+    в_секунду = words_per_minute(lang) / 60.0
+    rx = r"\b(?:" + _OUTCOME_WORDS.get(lang, _OUTCOME_WORDS["английский"]) + r")\w*"
+    m = re.search(rx, плоско, re.I)
+    когда = (len(плоско[:m.start()].split()) / в_секунду) if m else -1.0
+    фразы = _tts_sentences(плоско)
+    первая = len(фразы[0].split()) if фразы else 0
+    предел = round(30 * в_секунду)
+    длинных = всего30 = слов = 0
+    for ф in фразы:
+        if слов >= предел:
+            break
+        всего30 += 1
+        if len(ф.split()) > 20:
+            длинных += 1
+        слов += len(ф.split())
+    return когда, первая, длинных, всего30
+
+
+def _warn_slow_opening(text: str, lang: str, log=print) -> None:
+    """Сказать вслух, если первые 30 секунд построены не тем порядком.
+
+    Замер, из-за которого проверка появилась (пятнадцать собранных
+    сценариев: одиннадцать einsturzpunkt + четыре fisura-critica):
+      исход звучит на 58-й секунде по медиане, ПОЗЖЕ 30-Й СЕКУНДЫ У 13 ИЗ
+        15, разброс 12...657 секунд;
+      первая фраза — медиана 14 слов, но длиннее 14 слов у 7 из 15 (до 36);
+      предложений длиннее 20 слов в первые 30 секунд — 22 из 64 (34%), по
+        два и больше у 8 сценариев из 15.
+    В сумме это и есть наблюдаемое начало «дата -> описание -> длинный
+    технический вопрос -> погода и предыстория»: к моменту, когда зритель
+    узнаёт, чем всё кончилось, он уже ушёл."""
+    когда, первая, длинных, всего30 = script_opening(text, lang)
+    if когда < 0 or когда > 60:
+        import quality
+        quality.degraded(
+            "Сценарий", "в начале ролика не сказано, чем всё кончилось",
+            why=("исхода нет во всём тексте" if когда < 0 else
+                 f"первое упоминание исхода на {когда:.0f}-й секунде, а "
+                 "решают первые 30"),
+            hint="перепиши первый абзац: жертвы, приговор, счёт или снос — "
+                 "в первые 30 секунд, до вопроса и до предыстории",
+            level="заметно")
+    elif когда > 30:
+        log(f"[Агент] ⚠ Исход ролика звучит только на {когда:.0f}-й секунде "
+            "— перенеси его в первые 30. Решают они.", "warn")
+    if первая > 14:
+        log(f"[Агент] ⚠ Первая фраза сценария — {первая} слов вместо 14. "
+            "Она должна укладываться в 5 секунд, иначе зритель уходит "
+            "раньше первой точки.", "warn")
+    if длинных >= 2:
+        log(f"[Агент] ⚠ В первые 30 секунд {длинных} предложений длиннее 20 "
+            f"слов (из {всего30}). Обычно это технический вопрос и абзац "
+            "предыстории — разбей их на короткие.", "warn")
 
 
 def _parse_query_list(out: str, expect: int) -> list[str]:
@@ -2742,7 +2864,44 @@ SHOT_RULES = (
     "listed, the next crane moment is a different shot: the operator's "
     "cab, the load swinging, the ground crew watching, the marks the "
     "outriggers left. Three identical cranes in one film read as one "
-    "picture held for a minute."
+    "picture held for a minute.\n"
+    # ШЕСТЬ СПОСОБОВ СНЯТЬ ОДНО И ТО ЖЕ. Замер по десяти раскадровкам
+    # einsturzpunkt (1382 кадра): 63% попадают в четыре штампа — макро на
+    # сталь/трещину, инженер за столом с чертежами, стройплощадка, план с
+    # воздуха. «closeup» и «document» стоят во всех 10 роликах, «blueprints»
+    # во всех 10, «steel»/«construction»/«paper»/«desk»/«engineer»/«heavy»
+    # в 9 из 10. Внутри ролика 11-25% кадров дословно повторяют уже бывший:
+    # «crane lifting steel beam construction» и «crane lifting steel beam»,
+    # «stadium construction site wide» и «stadium construction site wide
+    # shot». Запретить повтор мало — надо дать, ЧЕМ его заменить.
+    "\nSIX WAYS TO FILM THE SAME THING. When the narration returns to a "
+    "subject you have already shot, do not shoot it again — change the "
+    "APPROACH, and rotate through these so no two visits look alike:\n"
+    "  1. THE DETAIL — one small part instead of the whole: the bolt, the "
+    "seam, the hinge, the serial number stamped in the plate.\n"
+    "  2. THE TRACES — not the thing, what it left: the scrape on the "
+    "asphalt, the dust on the seats, the gap where it stood, the tyre ruts.\n"
+    "  3. THE SCALE — the thing next to a human body or an everyday object, "
+    "so its size is readable: a worker walking past the beam, a hand on the "
+    "weld, a car under the span.\n"
+    "  4. THE PARTICIPANT'S POINT OF VIEW — the frame as someone there saw "
+    "it: from the operator's cab, from the stand, from the street below, "
+    "over the shoulder of the person watching.\n"
+    "  5. BEFORE AND AFTER — the same place intact and the same place "
+    "wrecked; the empty site and the finished structure.\n"
+    "  6. THE SURROUNDINGS — what stands around it and reacts: the "
+    "neighbouring houses, the traffic, the weather on that day, the crowd.\n"
+    "Concretely: the first crane is 'Enschede stadium crane lifting roof "
+    "truss'; the second must not be a crane at all — 'crane operator cab "
+    "hands levers', 'ground crew watching load swing', 'outrigger pads "
+    "pressed into mud'. Never file the same subject twice under a query "
+    "that differs only by a shot-size word (closeup / wide / aerial): "
+    "'cracked pillar closeup' and 'cracked pillar wide' are one shot.\n"
+    "BAN LIST — these words are worn out on this channel and must not carry "
+    "a query on their own: blueprint, blueprints, desk, engineer, document, "
+    "report, paper, reviewing, steel, closeup, aerial, construction, "
+    "massive, heavy. Use at most a couple of them in the whole list, and "
+    "only with a proper name attached."
 )
 
 
@@ -2801,6 +2960,99 @@ def warn_generic_shots(queries: list[str], script_text: str, log=print,
         hint="перегенерируй раскадровку — в запросах должны стоять город, "
              "объект и год самого происшествия, а не «steel beam closeup»",
         level="заметно" if доля >= floor / 2 else "критично")
+
+
+# Слова о РАЗМЕРЕ и РАКУРСЕ кадра. Стоят почти в каждом запросе («closeup»
+# в 219 запросах из 1382, во всех 10 роликах), одинаковы у любых двух планов
+# и потому мешают сравнивать: «cracked pillar closeup» и «cracked beam
+# closeup» похожи не потому, что это один кадр. При сравнении их снимаем.
+_РАКУРС = {"closeup", "close", "up", "macro", "wide", "aerial", "overhead",
+           "slow", "motion", "angle", "low", "high", "detail", "shot", "view",
+           "extreme", "tight", "long"}
+_ПУСТЫЕ = {"a", "an", "the", "of", "in", "on", "at", "with", "and", "to",
+           "from", "for", "over", "under"}
+
+
+def _слова_кадра(query: str) -> set[str]:
+    """Значимые слова запроса: без предлогов и без размера/ракурса кадра."""
+    ws = [w for w in re.findall(r"[a-z0-9]+", (query or "").lower())
+          if w not in _ПУСТЫЕ]
+    свои = {w for w in ws if w not in _РАКУРС}
+    return свои or set(ws)
+
+
+def repeated_shots(queries: list[str], threshold: float = 0.6
+                   ) -> tuple[int, int, list[str]]:
+    """Сколько кадров ПОВТОРЯЮТ уже бывший в этом же ролике.
+
+    Вторая половина той же болезни, что и shots_on_topic(): мало того что
+    видеоряд не про событие — он ещё и один и тот же. Замер по десяти
+    раскадровкам einsturzpunkt (1382 кадра): 63% всех кадров попадают в
+    четыре штампа — макро на сталь/трещину (14-58% ролика), инженер за
+    столом с чертежами (4-25%), стройплощадка (3-59%), общий план с воздуха
+    (2-8%). Восемнадцать слов кочуют из ролика в ролик: closeup и document
+    стоят во всех 10, blueprints во всех 10, steel/construction/paper/desk/
+    engineer/heavy в 9 из 10.
+
+    Похожесть — Жаккар по значимым словам, порог 0.6. Порог выбран замером:
+    при 0.6 ловятся настоящие двойники — «crane lifting steel beam
+    construction» / «crane lifting steel beam» (0.80), «stadium construction
+    site wide» / «stadium construction site wide shot» (1.00), «bent twisted
+    steel beam» / «bent steel beam» (0.75). При 0.5 в улов попадают разные
+    кадры («police tape construction site» и «aerial view construction
+    site»), при 0.75 сквозь сито проходят «crane lifting steel roof» и
+    «crane lifting massive steel roof».
+
+    Возвращает (повторов, всего, примеры) — примеры готовы для показа
+    человеку, чтобы он видел, ЧТО именно задвоилось."""
+    слова = [_слова_кадра(q) for q in (queries or [])]
+    повторов, примеры = 0, []
+    for i in range(1, len(слова)):
+        A = слова[i]
+        if not A:
+            continue
+        for j in range(i):
+            B = слова[j]
+            if not B:
+                continue
+            if len(A & B) / len(A | B) >= threshold:
+                повторов += 1
+                пара = f"«{queries[j]}» ≈ «{queries[i]}»"
+                # один и тот же запрос втроём даёт две одинаковые пары —
+                # человеку это ничего не добавляет
+                if len(примеры) < 3 and пара not in примеры:
+                    примеры.append(пара)
+                break
+    return повторов, len(queries or []), примеры
+
+
+def warn_repeated_shots(queries: list[str], log=print,
+                        ceiling: float = 0.10) -> None:
+    """Сказать вслух, если ролик снят одним кадром, размноженным по таймлайну.
+
+    Потолок 0.10 — не больше одного кадра из десяти вправе повторять уже
+    бывший. Замер на существующих раскадровках einsturzpunkt: 2026-08-10 18%,
+    2026-08-10_2 11%, 2026-08-11 15%, 2026-08-11_2 12%, 2026-08-12 20%,
+    2026-08-12_2 15%, 2026-08-13 18%, 2026-08-13_3 12%, 2026-08-14 25%,
+    2026-08-14_2 25%. То есть за потолок выходят все десять — проверка ловит
+    ровно ту болезнь, ради которой заведена."""
+    повторов, всего, примеры = repeated_shots(queries)
+    if not всего:
+        return
+    доля = повторов / всего
+    if доля <= ceiling:
+        log(f"[Агент] Повторов кадра: {повторов} из {всего} ({доля:.0%}).")
+        return
+    import quality
+    quality.degraded(
+        "Раскадровка", "один и тот же кадр повторяется весь ролик",
+        why=f"{повторов} кадров из {всего} ({доля:.0%}) почти дословно "
+            f"повторяют уже бывший" + (
+                "; например: " + "; ".join(примеры) if примеры else ""),
+        hint="перегенерируй раскадровку — один и тот же предмет снимают "
+             "по-разному: деталь, следы, масштаб рядом с человеком, точка "
+             "зрения участника, до/после",
+        level="заметно" if доля <= ceiling * 2 else "критично")
 
 
 def smart_queries(beats: list[dict], api_key: str = "", log=print) -> list[str] | None:
@@ -3404,6 +3656,150 @@ def title_click_score(title: str, lang: str = "английский") -> tuple[i
     return n, miss
 
 
+# ---------- ПОСТРОЕНИЕ ЗАГОЛОВКА: пять разных, а не одно ----------
+#
+# Закон клика выше говорит, ЧТО обязано быть в заголовке, и молчит о том, КАК
+# это сложить в предложение. Модель складывает самым дешёвым способом — одним
+# и тем же. Замер по живому einsturzpunkt, шесть последних заголовков подряд
+# (core._past_titles), 14.08.2026:
+#
+#   Warum stürzte dieser brandneue Wohnblock ein?
+#   Warum stürzte dieser brandneue Kühlturm ein?
+#   Warum stürzten die Innenbrücken dieses brandneuen Hotels ein?
+#   Warum stürzte dieser brandneue Flughafenterminal ein?
+#   Warum stürzte die Decke dieses brandneuen Tunnels ein
+#   Warum kippte dieser brandneue Wolkenkratzer einfach um?
+#
+# 6 из 6 начинаются словом «Warum», 5 из 6 несут «brandneue». То же на
+# fisura-critica: 4 из 4 — «¿Por qué este … recién inaugurado …?».
+#
+# Причина не в лени модели, а в самом законе: он требует ВОПРОС, а вопрос
+# по-немецки почти всегда начинается с «Warum». То есть закон клика САМ держит
+# трафарет на первом слове. Добавлять седьмое правило бессмысленно — оно даст
+# седьмую одинаковость. Поэтому здесь не правило, а СПИСОК РАВНОПРАВНЫХ
+# ПОСТРОЕНИЙ: промпт обязан написать все пять разными, а отбор ниже не даёт
+# выбрать построение, которым канал уже выходил.
+#
+# Что построений именно несколько, а не одно, видно на эталоне ниши
+# (Fascinating Horror): «Joints Stuffed With Newspaper: The Ronan Point
+# Disaster», «No Crash, but 500 Dead: The Balvano Train Disaster», «Dead on
+# Arrival: The Soyuz 11 Disaster». Впереди конкретная деталь, следом названное
+# событие, и НИ ОДНОГО вопросительного знака. Вопрос тут — одно построение из
+# пяти, а не единственное.
+#
+# «ex» — образцы на языке канала: перенос конструкции, а не слов. Замер уже
+# показывал, что бывает без образца на своём языке (см. TITLE_CLICK_LAW —
+# модель копировала немецкие слова в испанский заголовок).
+TITLE_SHAPES = {
+    "вопрос": {
+        "en": "QUESTION",
+        "ask": "a question the viewer cannot answer from the thumbnail",
+        "ex": {
+            "немецкий": "Warum stürzte dieser brandneue Wolkenkratzer ein?",
+            "испанский": "¿Por qué se hundió este estadio recién inaugurado?",
+            "английский": "Why Did This Brand-New Skyscraper Collapse?",
+        },
+    },
+    "деталь": {
+        "en": "DETAIL FIRST, NAMED EVENT SECOND (split by a colon)",
+        "ask": "one concrete physical detail, a colon, then the named event — "
+               "the detail carries the click, the name carries the search",
+        "ex": {
+            "немецкий": "Zeitungspapier in den Fugen: Der Einsturz von "
+                        "Ronan Point",
+            "испанский": "Periódico en las juntas: el derrumbe de Ronan Point",
+            "английский": "Joints Stuffed With Newspaper: The Ronan Point "
+                          "Disaster",
+        },
+    },
+    "число": {
+        "en": "NUMBER FIRST",
+        "ask": "open on the number itself — a count, a span, a price, a "
+               "measurement; never a bare year",
+        "ex": {
+            "немецкий": "357 Tage vom Richtfest bis zum Einsturz",
+            "испанский": "357 días entre la inauguración y el derrumbe",
+            "английский": "357 Days From Ribbon-Cutting To Collapse",
+        },
+    },
+    "отрицание": {
+        "en": "NEGATION FIRST",
+        "ask": "open on what was NOT there — the absent cause is the paradox, "
+               "and it needs no question mark",
+        "ex": {
+            "немецкий": "Kein Sturm, kein Erdbeben, 114 Tote",
+            "испанский": "Sin tormenta, sin terremoto, 114 muertos",
+            "английский": "No Storm, No Earthquake, 114 Dead",
+        },
+    },
+    "приговор": {
+        "en": "FLAT VERDICT",
+        "ask": "one flat statement of fact with a full stop, no question and "
+               "no colon — the calm sentence reads as a finding, not a pitch",
+        "ex": {
+            "немецкий": "Der Damm hielt genau neun Stunden.",
+            "испанский": "La presa aguantó exactamente nueve horas.",
+            "английский": "The Dam Held For Exactly Nine Hours.",
+        },
+    },
+}
+
+# Отрицания для распознавания построения «отрицание». Списки короткие
+# намеренно — как и все словари выше, это признак наличия конструкции, а не
+# разбор языка.
+_TITLE_NEGATIONS = {
+    "английский": {"no", "not", "nobody", "nothing", "never", "none", "without"},
+    "русский": {"не", "ни", "никто", "ничто", "никогда", "без"},
+    "испанский": {"no", "nadie", "nada", "nunca", "sin", "ni"},
+    "немецкий": {"kein", "keine", "keiner", "keinen", "keinem", "nichts",
+                 "niemand", "nie", "ohne"},
+    "французский": {"pas", "personne", "rien", "jamais", "sans", "aucun",
+                    "aucune", "ni"},
+    "португальский": {"não", "nao", "ninguém", "ninguem", "nada", "nunca",
+                      "sem", "nem"},
+}
+
+
+def title_shape(title: str, lang: str = "английский") -> str:
+    """Каким из TITLE_SHAPES построен заголовок.
+
+    Считает по первому слову и по знакам препинания — грубо и намеренно: нужен
+    не разбор предложения, а ответ на вопрос «этой конструкцией канал уже
+    выходил?». Порядок проверок и есть определение построений; он важен,
+    потому что конструкции пересекаются (в «Kein Erdbeben, 128 Tote: Sampoong»
+    есть и отрицание, и двоеточие — это «деталь», двоеточие сильнее).
+
+    Вопрос ищется ПО СЛОВУ ЦЕЛИКОМ, а не по началу строки, как в
+    title_click_score. Там сравнение по префиксу безобидно, здесь нет:
+    «Wasserpark: …» начинается на «was» и уехал бы в «вопрос», то есть
+    заголовок-деталь считался бы повтором вопросительных. Многословные и
+    незвуковые зачины («por qué», «¿») по-прежнему по префиксу.
+
+    Пустая строка даёт "" — такого построения нет ни в одном списке, и оно
+    ничего не запрещает.
+    """
+    t = " ".join((title or "").split())
+    if not t:
+        return ""
+    low = t.lower()
+    words = re.findall(r"[^\W\d_]+", low, re.UNICODE)
+    head = words[0] if words else ""
+    heads = _TITLE_QUESTION_HEADS.get(lang, _TITLE_QUESTION_HEADS["английский"])
+    multi = [h for h in heads if " " in h or not h.isalpha()]
+    if "?" in t or head in heads or any(low.startswith(h) for h in multi):
+        return "вопрос"
+    # Двоеточие или тире, разделяющие две НЕПУСТЫЕ половины. Дефис только с
+    # пробелами по обе стороны: в «Rust-Proof» и «Charles-de-Gaulle» он часть
+    # слова, а не разделитель.
+    if re.search(r"\S\s*[:—–]\s+\S", t) or re.search(r"\S\s+-\s+\S", t):
+        return "деталь"
+    if re.match(r"^\W*\d", t):
+        return "число"
+    if head in _TITLE_NEGATIONS.get(lang, _TITLE_NEGATIONS["английский"]):
+        return "отрицание"
+    return "приговор"
+
+
 _SEO_SECTIONS = ("TITLES", "DESCRIPTION", "TAGS", "CHAPTERS")
 
 
@@ -3582,27 +3978,55 @@ def _desc_variety_ask(channel: dict | None) -> str:
 
 
 def _title_variety_ask(channel: dict | None) -> str:
-    """Просьба НЕ повторять построение прошлых заголовков.
+    """Требование написать пять заголовков ПЯТЬЮ РАЗНЫМИ построениями.
 
     Одного закона клика мало: модель ставит все четыре его элемента самым
     дешёвым способом и потому одинаково. Замер einsturzpunkt — четыре ролика
     подряд, все 4/4, все вида «Warum … dieser brandneue …?»: 99, 13, 7, 0
-    просмотров. Отбор (rank_titles) штрафует повтор, но выбирает он из того,
-    что модель уже написала: если все пять вариантов под копирку, спасать
-    нечего. Поэтому список прошлых уходит В ЗАПРОС.
+    просмотров; к 14.08 таких стало шесть из шести. Отбор (rank_titles)
+    повтор отбрасывает, но выбирает он из того, что модель уже написала:
+    если все пять вариантов под копирку, спасать нечего. Поэтому список
+    построений и список ИЗРАСХОДОВАННЫХ построений уходят В ЗАПРОС.
+
+    Раньше здесь была просьба «варьируйте конструкцию» с перечислением через
+    запятую в одной строке. Она не сработала ни разу: шесть заголовков подряд
+    после неё — «Warum …». Теперь построения пронумерованы, у каждого образец
+    на языке канала, и сказано, что отбор механически выбросит повтор — то
+    есть просьба подкреплена последствием, а не только тоном.
     """
     past = _past_titles(channel)
-    if not past:
-        return ""
-    return ("\nTHE LAST TITLES ON THIS CHANNEL — the five you write must NOT "
-            "repeat their SHAPE. Same four elements, different sentence:\n"
-            + "\n".join("  - " + p for p in past)
-            + "\nVary the construction ACROSS your five: one question, one "
-              "flat statement, one led by a number or a date, one led by the "
-              "object, one led by the contradiction. A channel whose titles "
-              "all open the same way reads in the feed as one video posted "
-              "many times — measured on this exact channel: four such videos "
-              "in a row scored 99, 13, 7 and 0 views.\n\n")
+    lang = (channel or {}).get("lang") or "английский"
+    used = []
+    for p in past:
+        s = title_shape(p, lang)
+        if s and s not in used:
+            used.append(s)
+    lines = []
+    for i, (key, sh) in enumerate(TITLE_SHAPES.items(), 1):
+        ex = sh["ex"].get(lang) or sh["ex"]["английский"]
+        mark = "  <- USED UP, do not write another one" if key in used else ""
+        lines.append(f"  {i}. {sh['en']} — {sh['ask']}.\n"
+                     f"     like: {ex}{mark}")
+    out = ("\nFIVE SHAPES — write ONE title in each, in this order. The SHAPE "
+           "is the construction of the sentence, not its wording: two titles "
+           "about different buildings that both open with 'Why did this…' are "
+           "the SAME shape and count as one.\n"
+           + "\n".join(lines)
+           + "\nAll five must still obey the click law above — the shape "
+             "changes, the four elements do not.\n")
+    if past:
+        out += ("\nTHE LAST TITLES ON THIS CHANNEL, each with the shape it "
+                "used:\n"
+                + "\n".join(f"  - {p}   [{TITLE_SHAPES.get(title_shape(p, lang), {}).get('en', '?')}]"
+                            for p in past)
+                + "\nThe shapes marked USED UP are spent. A title built in a "
+                  "spent shape will be DISCARDED by the ranker before "
+                  "publication, however good it is otherwise, so a set of "
+                  "five that are all the spent shape wastes the whole "
+                  "generation. Measured on this exact channel: four videos in "
+                  "a row in one shape scored 99, 13, 7 and 0 views, and by the "
+                  "sixth every single title opened with the same word.\n\n")
+    return out
 
 
 def rank_titles(seo_text: str, lang: str = "английский", log=print,
@@ -3647,8 +4071,32 @@ def rank_titles(seo_text: str, lang: str = "английский", log=print,
         # 4/4 с другим построением, и НЕ проигрывает варианту на 3/4 —
         # элементы закона важнее разнообразия.
         same = title_sameness(bare, past_titles or [])
-        scored.append((n - same * SAMENESS_WEIGHT, i, bare, miss, n, same))
-    best = sorted(scored, key=lambda x: (-x[0], x[1]))
+        scored.append((n - same * SAMENESS_WEIGHT, i, bare, miss, n, same,
+                       title_shape(bare, lang)))
+    # ИЗРАСХОДОВАННЫЕ ПОСТРОЕНИЯ. Штрафа за похожесть скелета оказалось мало:
+    # он ловит СЛОВА («Warum … dieser brandneue …»), а построение переживает
+    # смену всех слов. Замер einsturzpunkt на шести прошлых заголовках:
+    # «Wieso hielt dieses nagelneue Dach nur elf Tage?» не совпадает с ними ни
+    # одним значащим словом, похожесть скелета 0.30, штраф 0.45 — и такой
+    # заголовок продолжал выигрывать, оставаясь седьмым вопросом подряд.
+    #
+    # Поэтому построение отбирается ДО оценки, а не вычитается из неё: свежее
+    # построение — первый ключ сортировки, закон клика — второй. Так повтор не
+    # может выиграть, пока в пачке есть хоть один непохожий вариант.
+    #
+    # Оговорка на один элемент закона (n >= лучшего - 1) не косметика: без неё
+    # свежий 1/4 обходил бы вопросительный 4/4, а разница между 4/4 и 1/4
+    # замерена порядками (x16.41 против x0.15) и остаётся главнее
+    # разнообразия. Ровно та же граница, по которой выбран SAMENESS_WEIGHT.
+    used_shapes = {title_shape(p, lang) for p in (past_titles or [])}
+    used_shapes.discard("")
+    best_n = max(x[4] for x in scored)
+
+    def свежее(x) -> int:
+        """0 — построение на канале ещё не выходило, 1 — выходило."""
+        return 0 if (x[6] not in used_shapes and x[4] >= best_n - 1) else 1
+
+    best = sorted(scored, key=lambda x: (свежее(x), -x[0], x[1]))
     top = best[0]
     # top[4] — оценка ПО ЗАКОНУ, top[0] — она же за вычетом штрафа за повтор.
     # В сообщении человеку нужна первая: «3/4» понятно, «2.4/4» нет.
@@ -3672,6 +4120,20 @@ def rank_titles(seo_text: str, lang: str = "английский", log=print,
             f"(похожесть {top[5]:.2f}). На einsturzpunkt четыре таких подряд "
             "дали 99 -> 13 -> 7 -> 0 просмотров: в ленте это читается как "
             "один ролик, выложенный четырежды.", "warn")
+    # Построение — отдельной строкой, потому что человеку надо видеть не
+    # только «какой заголовок», но и «чем эта пачка отличалась от прошлых».
+    if used_shapes:
+        свежих = sum(1 for x in scored if свежее(x) == 0)
+        if свежих:
+            log(f"[SEO] Построение «{top[6]}» на канале ещё не выходило "
+                f"({свежих} из {len(scored)} вариантов с новым построением; "
+                f"израсходованы: {', '.join(sorted(used_shapes))})")
+        else:
+            log(f"[SEO] ⚠ Все {len(scored)} заголовков построены так же, как "
+                f"прошлые ролики ({', '.join(sorted(used_shapes))}) — "
+                "выбирать было не из чего. Перегенерируй SEO: шесть "
+                "заголовков einsturzpunkt подряд начинались одним словом, и "
+                "просмотры шли 99 -> 13 -> 7 -> 0.", "warn")
     ordered = [f"{n + 1}. {bare}" for n, (*_, ) in enumerate(best)
                for bare in (best[n][2],)]
     return "\n".join(lines[:start] + ordered + lines[end:])
@@ -4559,8 +5021,25 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
     VEO_IMAGE_COVER_RESERVE.
     """
     if not _veo_keys():
-        raise RuntimeError("Нет VEO_API_KEY — картинки генерирует только "
-                           "VeoNonStop (.env или «Настройки API»).")
+        # КЛЮЧА НЕТ ВООБЩЕ — это не сбой, а жизнь без подписки, и падать
+        # здесь нельзя: тогда в ролике не будет НИ ОДНОГО сгенерированного
+        # кадра, только сток. А сплошной чужой сток с машинным голосом — это
+        # ровно то, за что режут монетизацию как за переиспользованный
+        # контент.
+        #
+        # Ниже по коду фолбэки на Gemini убраны сознательно: три генератора в
+        # одном ролике дают разнородные кадры, и лучше ПЕРЕЖДАТЬ временный
+        # отказ Veo, чем подменить его чужой эстетикой. Здесь случай другой —
+        # ждать нечего, Veo не вернётся сам. Разнородности тоже не будет:
+        # если ключа нет, ВСЕ кадры ролика придут из Gemini, то есть вид
+        # снова единый.
+        if not api_key:
+            raise RuntimeError(
+                "Нет ни VEO_API_KEY, ни ключа Gemini — сгенерировать кадр "
+                "нечем, план возьмёт сток")
+        log("[Картинка] Ключа VeoNonStop нет — рисую через Gemini "
+            "(единый запасной генератор на весь ролик)")
+        return gemini_image(prompt, dest, api_key, style)
     # Спрашиваем ДО первого запроса. Без этой проверки исчерпанный суточный
     # лимит выяснялся единственным способом — получить отказ, и так на каждом
     # плане: ровно отсюда брались сотни одинаковых 429 в журнале и просьба
@@ -9580,6 +10059,16 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             warn_generic_shots(list(queries), script_text, log)
         except Exception as e:          # проверка не имеет права ронять сборку
             log(f"[Раскадровка] проверка адресности кадров не прошла: {e}",
+                "warn")
+        # ...и вторая половина той же болезни: видеоряд не только не про
+        # событие, он ещё и ОДИН И ТОТ ЖЕ. Замер по десяти роликам канала:
+        # 63% кадров умещаются в четыре штампа, а 11-25% кадров ролика
+        # дословно повторяют уже бывший — «crane lifting steel beam» трижды
+        # в одном ролике.
+        try:
+            warn_repeated_shots(list(queries), log)
+        except Exception as e:          # проверка не имеет права ронять сборку
+            log(f"[Раскадровка] проверка повторов кадров не прошла: {e}",
                 "warn")
 
     def fetch_video(query, need, dest, line=""):
