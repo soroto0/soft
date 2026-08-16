@@ -4535,6 +4535,54 @@ def agnes_image(prompt: str, dest: Path, api_key: str, log=print,
     return dest
 
 
+_МЁРТВЫЕ_КАРТИНОЧНЫЕ: set[str] = set()
+
+
+def gemini_image_any(prompt: str, dest: Path, api_key: str = "",
+                     style: str = "", log=print) -> Path:
+    """Картинка через Gemini с перебором ВСЕХ ключей, а не одного.
+
+    Замер 16.08: ключей Gemini в .env десять, и ключ №1 отвечает на текст
+    «ok», а на картинку — 401 «API keys are not supported». То есть
+    check_llm_keys рапортует «отвечают 10 из 10», а нарисовать этот ключ не
+    может ничего и никогда. Остальные девять в тот момент были в суточном
+    лимите (429).
+
+    До этой правки ветка «жизнь без подписки» в gen_image брала ОДИН ключ и
+    при отказе роняла кадр в сток. В день, когда подписка на VeoNonStop
+    кончится, это значит ролик без единого сгенерированного кадра — ровно то,
+    ради чего запасной путь и писался.
+
+    401/403 — приговор навсегда: ключ запоминается и больше не пробуется в
+    этом прогоне. 429 — суточный лимит, ключ пропускаем, но не хороним."""
+    keys = [k for k in ([api_key] if api_key else []) + _gemini_keys() if k]
+    keys = [k for k in dict.fromkeys(keys) if k not in _МЁРТВЫЕ_КАРТИНОЧНЫЕ]
+    if not keys:
+        raise RuntimeError(
+            "Нет ни одного живого ключа Gemini для картинок"
+            + (f" ({len(_МЁРТВЫЕ_КАРТИНОЧНЫЕ)} признаны негодными)"
+               if _МЁРТВЫЕ_КАРТИНОЧНЫЕ else ""))
+    лимит, последняя = 0, "нет ответа"
+    for n, k in enumerate(keys, 1):
+        try:
+            return gemini_image(prompt, dest, k, style)
+        except Exception as e:
+            s = str(e)
+            последняя = s[:150]
+            if "401" in s or "403" in s or "not supported" in s:
+                _МЁРТВЫЕ_КАРТИНОЧНЫЕ.add(k)
+                # Говорим ОДИН раз на ключ: молчащий негодный ключ занимал
+                # очередь на каждом из 106 кадров ролика.
+                _say(log, f"[Картинка] Ключ Gemini #{n} рисовать не может "
+                          f"(401/403) — исключаю до конца прогона", "warn")
+            elif "429" in s or "RESOURCE_EXHAUSTED" in s or "quota" in s:
+                лимит += 1
+    raise RuntimeError(
+        f"Gemini не нарисовал: перебрано ключей {len(keys)}"
+        + (f", в суточном лимите {лимит}" if лимит else "")
+        + f"; последняя причина — {последняя}")
+
+
 def gemini_image(prompt: str, dest: Path, api_key: str, style: str = "") -> Path:
     """Картинка 16:9 через Gemini (AI Studio или Vertex Express по типу ключа)."""
     import base64
@@ -5203,13 +5251,16 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
         # ждать нечего, Veo не вернётся сам. Разнородности тоже не будет:
         # если ключа нет, ВСЕ кадры ролика придут из Gemini, то есть вид
         # снова единый.
-        if not api_key:
+        if not api_key and not _gemini_keys():
             raise RuntimeError(
                 "Нет ни VEO_API_KEY, ни ключа Gemini — сгенерировать кадр "
                 "нечем, план возьмёт сток")
         log("[Картинка] Ключа VeoNonStop нет — рисую через Gemini "
             "(единый запасной генератор на весь ролик)")
-        return gemini_image(prompt, dest, api_key, style)
+        # Перебор ВСЕХ ключей, а не одного: см. gemini_image_any — среди
+        # десяти ключей один не умеет картинки вовсе, и на нём одном эта
+        # ветка отдавала бы сток на каждом кадре.
+        return gemini_image_any(prompt, dest, api_key, style, log)
     # Спрашиваем ДО первого запроса. Без этой проверки исчерпанный суточный
     # лимит выяснялся единственным способом — получить отказ, и так на каждом
     # плане: ровно отсюда брались сотни одинаковых 429 в журнале и просьба
