@@ -56,10 +56,64 @@
   <div class="timeline">
     <div class="line"></div>
     <div class="tl-row" id="tlRow"></div>
+
+    <!-- Карточка канала внизу меню: канал задаёт язык, голос и стиль всего
+         ролика, поэтому он должен быть виден постоянно, а не в поповере. -->
+    <div class="navfoot">
+      <button class="navuser" onclick="app.toggleChannelPop()">
+        <span class="navuser-ava" id="navAva">—</span>
+        <span class="navuser-txt">
+          <span class="navuser-name" id="navChannel">Канал не выбран</span>
+          <span class="navuser-sub" id="navLang">—</span>
+        </span>
+      </button>
+      <button class="navlink" onclick="app.openGate()">Сменить канал</button>
+      <button class="navlink" onclick="app.openSettings()">⚙ Настройки</button>
+    </div>
   </div>
 
   <div class="content-row">
     <div class="scroll">
+
+      <!-- ============ ДАШБОРД ============ -->
+      <section class="stage" id="stage-dashboard">
+        <div class="stage-head">
+          <h1>Дашборд</h1>
+          <p>Управление проектами видео</p>
+        </div>
+
+        <div class="card">
+          <div class="card-head">Быстрые инструменты</div>
+          <!-- Ярлыки строит app.js из QUICK_TOOLS: каждый ведёт либо на этап,
+               либо прямо в питон — новых функций здесь нет, только короткий
+               путь к тем, что уже были. -->
+          <div class="qt-row" id="quickTools"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">Последние проекты</div>
+          <div class="hint">Полный список — на экране «Проекты» слева.</div>
+          <div class="prows compact" id="dashRows"></div>
+        </div>
+      </section>
+
+      <!-- ============ ПРОЕКТЫ ============ -->
+      <section class="stage" id="stage-projects">
+        <div class="stage-head">
+          <h1>Проекты</h1>
+          <p>Все ролики текущего канала — с темой, языком и готовностью</p>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <span>Проекты <span class="count" id="projectsCount">0</span></span>
+            <div class="spacer"></div>
+            <button class="btn ghost" onclick="bar.folder()">🗀 Папка с видео</button>
+            <button class="btn ghost" onclick="bar.newProject()">＋ Добавить</button>
+          </div>
+          <div class="prows" id="projectRows"></div>
+        </div>
+      </section>
 
       <!-- ============ ПРОЕКТ ============ -->
       <section class="stage" id="stage-project">
@@ -431,7 +485,10 @@
           <div class="card-head">Формат</div>
           <div class="field">
             <label>Разрешение</label>
-            <select id="rRes"><option selected>1080p</option><option>4K</option></select>
+            <select id="rRes">
+              <option selected>1080p</option><option>4K</option>
+              <option value="shorts">вертикаль 9:16 (шортс)</option>
+            </select>
             <label style="min-width:auto">FPS</label>
             <select id="rFps"><option>24</option><option selected>30</option><option>60</option></select>
             <label style="min-width:auto">Качество</label>
@@ -445,6 +502,7 @@
               <option value="custom" selected>как настроено</option>
               <option value="documentary">документальный (минимал)</option>
               <option value="dynamic">динамичный</option>
+              <option value="shorts">шортс (вертикаль, слово в кадре)</option>
             </select>
           </div>
           <div class="field">
@@ -470,6 +528,7 @@
             <select id="rSubStyle">
               <option value="bold_box" selected>жирный (контур+тень)</option>
               <option value="karaoke">караоке (цветное слово в такт речи)</option>
+              <option value="word_pop">по одному слову крупно (для шортсов)</option>
               <option value="pill">плашка</option>
               <option value="yellow_pop">жёлтый viral</option>
               <option value="cyan_pop">голубой неон</option>
@@ -607,6 +666,29 @@
       <span id="nav" style="display:none"></span>
       <span id="stageCards" style="display:none"></span>
     </aside>
+  </div>
+
+  <!-- ================= НИЖНЯЯ ПАНЕЛЬ ================= -->
+  <!-- Главная кнопка закреплена внизу и видна с любого экрана: раньше она
+       жила на первом этапе, и до неё приходилось возвращаться. -->
+  <div class="actionbar">
+    <button class="btn ghost" onclick="bar.newProject()">＋ Новый проект</button>
+    <button class="btn ghost" onclick="bar.preview()">▶ Предпросмотр</button>
+    <div class="spacer"></div>
+    <button class="btn generate" onclick="bar.generate()">⚡ ГЕНЕРИРОВАТЬ ВИДЕО</button>
+  </div>
+
+  <!-- ================= СТРОКА СОСТОЯНИЯ ================= -->
+  <div class="statusbar">
+    <button class="sb-console" onclick="app.toggleDrawer()">
+      <span class="sb-dot"></span> Консоль
+    </button>
+    <span class="sb-sep"></span>
+    <span id="statMem">Память —</span>
+    <span class="sb-sep"></span>
+    <span id="statQueue">Очередь пуста</span>
+    <div class="spacer"></div>
+    <span class="sb-ver" id="statVersion">Контент-фабрика</span>
   </div>
 </div>
 

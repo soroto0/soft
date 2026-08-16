@@ -1683,6 +1683,22 @@ SUB_MARGIN_V = round(SUB_GRID_Y * 0.07)     # 20 -> 75 px на высоте 1080
 # кадра, что и в работающих роликах, вместо 22%.
 SUB_SCALE_DEN = round(SUB_GRID_Y * 16 / 9)          # 512
 
+# Подпись по одному слову (стиль word_pop, build_word_ass). Кегль считается
+# от места, а не от сетки SUB_SIZES: слово в кадре одно, и меркой служит
+# ширина кадра.
+WORD_TARGET_W = 0.72    # какую долю ширины кадра занимает слово
+# Потолок кегля в долях высоты кадра (при «средних»). Сверено с образцом
+# владельца (720x1280): там буква занимает 5.2–7.1% высоты кадра, слово —
+# 29–32% ширины, середина строки на 53–54% высоты. Первая проба давала 4.4%
+# и центр на 62% — подпись сидела ниже и мельче образца.
+WORD_MAX_H = 0.10
+WORD_Y = 0.54           # где середина слова по высоте кадра
+# Средняя ширина ЗАГЛАВНОЙ буквы в долях кегля — с запасом вверх, потому
+# что цена ошибки несимметрична: занизишь — длинное слово уедет за кадр,
+# завысишь — оно просто станет чуть мельче. Замер Impact 1080x1920: слово
+# из 4 букв при кегле 163 заняло 281 px, то есть 0.43 на букву.
+WORD_CHAR_W = 0.50
+
 
 def sub_px_scale(W: int, H: int) -> float:
     """Сколько пикселей в единице сетки субтитров при кадре W x H."""
@@ -1701,7 +1717,7 @@ def sub_grid_size(size: int, W: int, H: int) -> int:
 
 
 def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box",
-                      font: str = "") -> str:
+                      font: str = "", wh: tuple[int, int] = (1920, 1080)) -> str:
     """Красивые субтитры для YouTube. Стили:
       bold_box   — крупный жирный белый, толстая обводка + мягкая тень
                    (универсальный «документальный» вид)
@@ -1721,6 +1737,12 @@ def _subtitles_filter(srt: Path, size: int = 19, style_name: str = "bold_box",
     # им Bold=1 нужен, иначе субтитр на светлом кадре плывёт.
     name = (font or "Segoe UI Black").strip()
     bold = 0 if "Black" in name or "Impact" in name else 1
+    # Размер приходит в единицах сетки 384x288 (см. SUB_GRID_Y): libass
+    # растягивает эту сетку на кадр ПО ВЫСОТЕ, значит на вертикальном кадре
+    # то же число даёт букву в 1.78 раза крупнее при вдвое меньшей ширине.
+    # sub_grid_size пересчитывает число обратно, от ширины. На 16:9 (и на 4K)
+    # множитель ровно единица — ни один пиксель не меняется.
+    size = sub_grid_size(size, wh[0], wh[1])
     common = (f"FontName={name},FontSize={size},Bold={bold},"
               f"Alignment=2,MarginV={SUB_MARGIN_V},MarginL={SUB_MARGIN_X},"
               f"MarginR={SUB_MARGIN_X},Spacing=0.3")
@@ -1915,7 +1937,11 @@ def build_karaoke_ass(srt_path: Path, words_path: Path, dest: Path,
     # 19 — 18 px, то есть вчетверо мельче и с экрана нечитаемо. А караоке —
     # это стиль целого канала (The Home Vault), то есть так выходил КАЖДЫЙ
     # его ролик. Переводим размер и отступы в пиксели по той же сетке.
-    k = H / SUB_GRID_Y
+    # Пиксель на единицу сетки берём от ШИРИНЫ, а не от высоты: место под
+    # строку даёт ширина кадра (см. SUB_SCALE_DEN). На 16:9 и 4K W/512 в
+    # точности равно прежнему H/288 — 3.75 и 7.5, — поэтому у горизонтальных
+    # каналов ни размер, ни обводка, ни тень не сдвигаются ни на пиксель.
+    k = sub_px_scale(W, H)
     ksize = round(size * k)
     kmar_x, kmar_v = round(W * 0.06), round(H * 0.07)
 
@@ -1973,6 +1999,110 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         lines.append(f"Dialogue: 0,{fmt(p_start)},{fmt(p_end)},Karaoke,,"
                      f"0,0,0,,{body}")
 
+    dest.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
+    return dest
+
+
+def build_word_ass(words_path: Path, dest: Path, W: int, H: int,
+                   size: int = 19, font: str = "",
+                   accent: str = "", y_frac: float = WORD_Y) -> Path | None:
+    """Подпись ПО ОДНОМУ СЛОВУ на весь кадр — для вертикали (шортсы).
+
+    Отличие от build_karaoke_ass: там на экране целая фраза, а подсветка
+    бежит по словам. В вертикальном кадре шириной 1080 фраза из шести слов
+    набирается в три строки мелким кеглем — в ленте это нечитаемо, и глаз
+    уходит с картинки. В образцах, по которым мерили (57.6 c, 1080x1920),
+    в кадре всегда РОВНО одно слово высотой около 1/18 кадра.
+
+    Текст и границы берём прямо из voiceover.json (--word_timestamps), а не
+    из voiceover.srt: строки srt уже разбиты по ширине канала, и обратно на
+    слова их пришлось бы токенизировать. Замерено на первой пробе: раскладка
+    по длине слова расходилась с речью на 0.39 c при слове 0.46 c — то есть
+    подпись отставала почти на целое слово. Тайминг только из речи.
+
+    None, если voiceover.json нет или пуст — вызывающий откатывается."""
+    words = load_whisper_words(words_path)
+    if not words:
+        return None
+
+    wfont = (font or "Impact").strip()
+    wbold = 0 if "Black" in wfont or "Impact" in wfont else 1
+    primary = "&H00FFFFFF"
+    outline = "&H00000000"
+    # Кегль здесь НЕ берётся из сетки субтитров, как в остальных стилях.
+    # Сетка рассчитана на строку во всю ширину, и «средние» дали на пробе
+    # букву высотой 61 px при кадре 1920 — одна тридцатая экрана, в ленте
+    # это не читается. Слово одно, значит кегль надо считать от МЕСТА: под
+    # него отдана почти вся ширина кадра. Короткое слово получает крупный
+    # кегль, длинное само ужимается, чтобы не уехать за край (WrapStyle 2
+    # переносов не делает — слово вышло бы за кадр).
+    px, py = round(W / 2), round(H * y_frac)
+    # «крупные/огромные» из настроек канала остаются рычагом, но двигают
+    # потолок, а не сам кегль: 19 — это «средние».
+    hi = WORD_MAX_H * (size / 19.0)
+    fs_max = max(24.0, H * hi)
+
+    header = f"""[Script Info]
+ScriptType: v4.00+
+WrapStyle: 2
+PlayResX: {W}
+PlayResY: {H}
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, \
+OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, \
+ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, \
+MarginR, MarginV, Encoding
+Style: Word,{wfont},{round(fs_max)},{primary},{primary},{outline},\
+&H64000000,{wbold},0,0,0,100,100,0.5,0,1,{fs_max / 20:.1f},\
+{fs_max / 40:.1f},5,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+    def fmt(t: float) -> str:
+        cs = round(t * 100)
+        h, rem = divmod(cs, 360000)
+        m, rem = divmod(rem, 6000)
+        s, cs = divmod(rem, 100)
+        return f"{h:d}:{m:02d}:{s:02d}.{cs:02d}"
+
+    lines = []
+    for i, w in enumerate(words):
+        tok = (w.get("word") or "").strip()
+        tok = tok.strip(" ,.:;!?»«\"'")
+        if not tok:
+            continue
+        # Заглавные — не украшение: при том же кегле прописная буква выше
+        # строчной примерно в полтора раза, то есть слово читается крупнее
+        # без всякой платы за место.
+        tok = tok.upper()
+        st = float(w.get("start", 0.0))
+        # Держим слово до начала следующего, а не до его собственного конца:
+        # между словами Whisper оставляет паузы, и по «end» подпись мигала бы
+        # чёрным кадром без текста на каждом вдохе.
+        nxt = None
+        for nw in words[i + 1:]:
+            if (nw.get("word") or "").strip():
+                nxt = float(nw.get("start", 0.0))
+                break
+        en = nxt if nxt and nxt > st else float(w.get("end", st + 0.25))
+        if en <= st:
+            continue
+        # Кегль под длину слова, чтобы длинное не уехало за край кадра.
+        fs = min(fs_max, W * WORD_TARGET_W / (WORD_CHAR_W * len(tok)))
+        fs = max(24.0, fs)
+        # «Хлопок»: 78% -> 100% за 90 мс. Короче, чем у строки (180 мс), —
+        # слово живёт на экране всего около трети секунды.
+        body = ("{\\pos(%d,%d)\\fs%d\\bord%.1f\\shad%.1f\\fscx78\\fscy78"
+                "\\t(0,90,\\fscx100\\fscy100)}"
+                % (px, py, round(fs), fs / 20, fs / 40)) + _ass_escape(tok)
+        lines.append(f"Dialogue: 0,{fmt(st)},{fmt(en)},Word,,"
+                     f"0,0,0,,{body}")
+    if not lines:
+        return None
     dest.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
     return dest
 
@@ -2284,6 +2414,22 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
         style_name = opts.get("sub_style", "bold_box")
         sub_font = opts.get("sub_font", "")
         sub_filter = None
+        if style_name == "word_pop":
+            words_json = srt.parent / "voiceover.json"
+            ass = build_word_ass(words_json, tmp / "word.ass",
+                                 wh[0], wh[1], size, sub_font)
+            if ass:
+                sub_filter = _ass_filter(ass)
+            else:
+                style_name = "bold_box"   # нет пословных таймкодов — откат
+                import quality
+                quality.degraded(
+                    "Субтитры", "субтитры строкой, а не по одному слову",
+                    why="нет пословных таймкодов: voiceover.json отсутствует "
+                        "или пуст",
+                    hint="переозвучь проект — Whisper должен отдать "
+                         "voiceover.json со словами (--word_timestamps)",
+                    level="заметно")
         if style_name == "karaoke":
             words_json = srt.parent / "voiceover.json"
             ass = build_karaoke_ass(srt, words_json, tmp / "karaoke.ass",
@@ -2304,7 +2450,8 @@ def assemble(group_files: list[Path], audio: Path, srt: Path | None,
                          "voiceover.json со словами (--word_timestamps)",
                     level="заметно")
         if sub_filter is None:
-            sub_filter = _subtitles_filter(srt, size, style_name, sub_font)
+            sub_filter = _subtitles_filter(srt, size, style_name, sub_font,
+                                           wh)
         post.append(sub_filter)
     post += _style_chain(opts, wh)
     # Тот же пересчёт, что и у сегментов: в финал приходят ещё и PNG-секвенции

@@ -15,14 +15,14 @@ export type { OverlayProps };
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#3A8FBF',
-  accentLight: '#7EC8E3',
-  accentRgb: '58,143,191',
-  bannerFrom: '#D6E8F0',
-  bannerTo: '#B8D4E0',
-  bannerText: '#0F2535',
-  kickerFrom: '#152A38',
-  kickerTo: '#1E3A4A',
+  accent: '#2b7cbf',
+  accentLight: '#6db3d9',
+  accentRgb: '43,124,191',
+  bannerFrom: '#c8ddef',
+  bannerTo: '#a5c2d8',
+  bannerText: '#0f1d2e',
+  kickerFrom: '#142233',
+  kickerTo: '#1e3249',
 };
 
 const useExit = (dur: number) => {

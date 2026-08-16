@@ -1627,5 +1627,733 @@
     "quote": "Este hundimiento inducido por la reparación elevó la inclinación total en la cima de la torre a más de 55 centímetros respecto a su eje vertical original.",
     "brief": "A vertical tower profile aligns an ideal plumb baseline against the tilted building axis, dimensioning a 55cm horizontal offset at the roof line.",
     "vision": "ok"
+  },
+  "einsturzpunkt/vertical_load_distribution": {
+    "kind": "vertical_load_distribution",
+    "channel": "einsturzpunkt",
+    "title": "SOLL-ZUSTAND DER GRÜNDUNG",
+    "quote": "Diese Pfeiler sollten die Last des 13-stöckigen Gebäudes eigentlich tief in die tragfähigen Bodenschichten leiten.",
+    "brief": "Schnittzeichnung des Gebäudes mit vertikalen Lastpfeilen, die durch die Pfähle in die untere, dunkler schraffierte Bodenschicht zeigen.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/pile_cross_section": {
+    "kind": "pile_cross_section",
+    "channel": "einsturzpunkt",
+    "title": "SPEZIFIKATION PHC-PFAHL",
+    "quote": "Diese Pfeiler sind keine massiven Betonblöcke, sondern hohle Röhren mit einem Außendurchmesser von 400 Millimetern und einer Wandstärke von lediglich 80 Millimetern.",
+    "brief": "Detaillierter Querschnitt eines Pfahls mit Maßketten für den Durchmesser und die Wandstärke in technischem Grau.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/site_pressure_gradient": {
+    "kind": "site_pressure_gradient",
+    "channel": "einsturzpunkt",
+    "title": "ASYMMETRISCHE BODENBELASTUNG",
+    "quote": "während die zehn Meter hohe Aufschüttung auf der Nordseite und die fünf Meter tiefe Baugrube auf der Südseite wie eine gewaltige, unsichtbare Hebelwirkung.",
+    "brief": "Geländeprofil im Schnitt mit Bemaßung der 10m-Aufschüttung und der 4,6m-Grube sowie einem großen horizontalen Druckvektor.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/soil_fluidization": {
+    "kind": "soil_fluidization",
+    "channel": "einsturzpunkt",
+    "title": "HYDROSTATISCHER BODENDRUCK",
+    "quote": "Der Schlamm unter dem Fundament verhielt sich bei dem einsetzenden Regen wie eine viskose Flüssigkeit, die den seitlichen Druck der Erdmassen fast ungefiltert an die Betonpfeiler weitergab.",
+    "brief": "Schnitt durch die Bodenschichten, in dem sich die Textur der Mittelschicht verändert und Pfeile den lateralen Druck auf die Pfahlreihe visualisieren.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/lateral_soil_displacement": {
+    "kind": "lateral_soil_displacement",
+    "channel": "einsturzpunkt",
+    "title": "LATERALER BODENFLUSS",
+    "quote": "Der enorme Druck des Erdwalls presste den Untergrund horizontal weg. Er floss genau in die Richtung, in der der Widerstand durch die offene Baugrube fehlte.",
+    "brief": "Vektordiagramm, das die Verschiebung der Bodenmasse von der Aufschüttung unter dem Gebäude hindurch zur Grube zeigt.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/structural_vulnerability": {
+    "kind": "structural_vulnerability",
+    "channel": "einsturzpunkt",
+    "title": "BELASTUNGSGRENZEN (SCHERUNG)",
+    "quote": "Sie sind extrem stabil bei vertikalem Druck, aber fragil, sobald eine Kraft von der Seite einwirkt.",
+    "brief": "Vergleich zweier Pfahlsegmente: Eines mit hohem vertikalem Lastpfeil (stabil) und eines mit horizontalem Pfeil und orangefarbenem Bruchpunkt.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/failure_sequence_plan": {
+    "kind": "failure_sequence_plan",
+    "channel": "einsturzpunkt",
+    "title": "SEQUENZIELLES PFAHLVERSAGEN",
+    "quote": "Ein einzelner Pfahl an der Nordseite gab zuerst nach. Das übertrug die Last sofort auf die benachbarten Stützen. Diese Kettenreaktion dauerte weniger als zwei Minuten.",
+    "brief": "Draufsicht auf das Pfahlraster, bei dem sich ein orangefarbener Versagenspunkt wellenartig über die gesamte Fläche ausbreitet.",
+    "vision": "unverified"
+  },
+  "einsturzpunkt/reinforcement_detail": {
+    "kind": "reinforcement_detail",
+    "channel": "einsturzpunkt",
+    "title": "BEWEHRUNGSMANGEL",
+    "quote": "Die Pfähle waren für diesen Untergrund nicht nur zu kurz, sondern ihre metallische Bewehrung war für die aufgetretenen Querkräfte unterdimensioniert.",
+    "brief": "Technische Zeichnung der Stahlarmierung im Beton mit Maßlinien, die den geringen Querschnitt der Stahlstäbe hervorheben.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/pore_water_pressure": {
+    "kind": "pore_water_pressure",
+    "channel": "einsturzpunkt",
+    "title": "ANSTIEG PORENWASSERDRUCK",
+    "quote": "Zusätzlich erhöhte der heftige Regen der vorangegangenen Tage den Porenwasserdruck im Boden massiv.",
+    "brief": "Mikroskopische Ansicht der Bodenmatrix, in der blaue Vektoren zwischen den Partikeln nach außen drücken und die Reibung mindern.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/total_pressure_head": {
+    "kind": "total_pressure_head",
+    "channel": "einsturzpunkt",
+    "title": "GEODETISCHES DRUCKGEFÄLLE",
+    "quote": "Dieser Höhenunterschied von fast 15 Metern erzeugte einen lateralen Druck, der die Belastungsgrenze der Pfähle um das Vielfache überstieg.",
+    "brief": "Zusammenfassendes Diagramm des gesamten Geländes mit einer vertikalen Maßkette von 14,6m und dem resultierenden Gesamtdruckvektor.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/tunnel_cross_section_load": {
+    "kind": "tunnel_cross_section_load",
+    "channel": "einsturzpunkt",
+    "title": "LASTVERTEILUNG DECKENSEGMENTE",
+    "quote": "Zehn massive Stahlbetonplatten stürzten im freien Fall auf den gelben Buick LeSabre herab.",
+    "brief": "Orthogonaler Querschnitt des Tunnels mit Maßlinien für die Plattenbreite und orangefarbenen Lastpfeilen, die das Gewicht von 40 Tonnen auf die Aufhängung verdeutlichen.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/anchor_detail_section": {
+    "kind": "anchor_detail_section",
+    "channel": "einsturzpunkt",
+    "title": "DETAIL: CHEMISCHE VERANKERUNG",
+    "quote": "Diese Bolzen waren nicht durchgebolzt und nicht im Beton verschraubt, sondern mit einer Epoxidharz-Klebestelle in vorgebohrte Löcher eingeklebt.",
+    "brief": "Technische Schnittzeichnung eines Bolzens im Beton; die Epoxidharz-Schicht wird als orangefarbene Kontaktfläche zwischen Stahl und Bohrlochwand hervorgehoben.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/failure_mode_extraction": {
+    "kind": "failure_mode_extraction",
+    "channel": "einsturzpunkt",
+    "title": "VERSAGENSMUSTER: AUSZUG",
+    "quote": "Stattdessen waren die Gewindestangen samt dem umgebenden Epoxidharz glatt aus den Bohrfluchten herausgezogen worden – wie ein Korken aus dem Flaschenhals.",
+    "brief": "Animation eines Bolzens, der sich linear aus der statischen Bohrung nach unten bewegt, während Maßlinien die zunehmende Distanz in Millimetern anzeigen.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/failure_sequence_map": {
+    "kind": "failure_sequence_map",
+    "channel": "einsturzpunkt",
+    "title": "SEQUENZIELLES VERSAGEN",
+    "quote": "Warum versagte die chemische Verankerung genau in dieser Sommernacht auf einer Länge von knapp dreißig Metern schlagartig und zeitgleich an zwanzig Befestigungspunkten",
+    "brief": "Draufsicht auf das Deckenraster des Tunnels; orangefarbene Kreise markieren die 20 Ankerpunkte, die nacheinander in einer Kettenreaktion aufblinken.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/load_path_schematic": {
+    "kind": "load_path_schematic",
+    "channel": "einsturzpunkt",
+    "title": "LASTPFAD-REDUKTION",
+    "quote": "Jede einzelne der zweieinhalb Tonnen schweren Platten hing nun an einem seidenen Faden aus Kunststoff, dessen chemische Bindungen unter dem Gewicht der Interstate 90 langsam nachgaben.",
+    "brief": "Ein technisches Schema zeigt den Kraftfluss von der Betonplatte durch den Bolzen ins Harz; der Lastpfad verengt sich orangefarben auf die kritische Klebeschicht.",
+    "vision": "unverified"
+  },
+  "einsturzpunkt/polymer_chain_sliding": {
+    "kind": "polymer_chain_sliding",
+    "channel": "einsturzpunkt",
+    "title": "MOLEKULARE DEFORMATION",
+    "quote": "In der organischen Chemie dieses speziellen Epoxids führten die Zugkräfte dazu, dass sich die langen Polymerketten langsam entwirrten und aneinander vorbeiglitten.",
+    "brief": "Schematische Darstellung von Polymerketten als technische Linien, die sich unter vertikalen Lastpfeilen linear gegeneinander verschieben.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/hidden_displacement_dimension": {
+    "kind": "hidden_displacement_dimension",
+    "channel": "einsturzpunkt",
+    "title": "VERDECKTE DEFORMATION",
+    "quote": "Spätere Untersuchungen des National Transportation Safety Board ergaben, dass sich einige Bolzen bereits Jahre vor dem Einsturz um mehr als sechs Millimeter aus dem Beton herausgezogen hatten.",
+    "brief": "Schnitt durch die abgehängte Decke; eine orangefarbene Maßkette zeigt den 6mm-Spalt zwischen Ankerkopf und Betonoberfläche, der hinter der Verkleidung liegt.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/fracture_analysis_comparison": {
+    "kind": "fracture_analysis_comparison",
+    "channel": "einsturzpunkt",
+    "title": "MIKROSKOPISCHE BRUCHANALYSE",
+    "quote": "Die Bruchflächen des Harzes wiesen keine spröden Risse auf, sondern zeigten glatte, fließende Deformationen, die an geschmolzenes Wachs erinnerten.",
+    "brief": "Gegenüberstellung zweier Materialgefüge; links ein spröder Bruch (gezackt), rechts die fließende orangefarbene Kontur des Kriechversagens.",
+    "vision": "ok"
+  },
+  "fisura-critica/full_wall_thickness_crack": {
+    "kind": "full_wall_thickness_crack",
+    "channel": "fisura-critica",
+    "title": "SECCIÓN TRANSMURAL DE 100 MM",
+    "quote": "Pero los análisis metalográficos independientes desmintieron a la constructora china al confirmar que las fisuras cruzaban el espesor completo de las placas de acero de cien milímetros.",
+    "brief": "An orthogonal section cut of the 100mm steel shell shows an orange failure line progressing through the entire thickness from inner to outer face.",
+    "vision": "ok"
+  },
+  "fisura-critica/hydraulic_wedge_propagation": {
+    "kind": "hydraulic_wedge_propagation",
+    "channel": "fisura-critica",
+    "title": "EFECTO DE CUÑA HIDRÁULICA",
+    "quote": "Cuando el agua comenzó a circular a una velocidad de 12 metros por segundo, las microfisuras de hidrógeno actuaron como cuñas hidráulicas perfectas.",
+    "brief": "A microscopic cross-section shows 12 m/s water flow vectors forcing into the crack tip, exerting outward hydrostatic force that pries the steel apart.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/rudder_hydrodynamics": {
+    "kind": "rudder_hydrodynamics",
+    "channel": "einsturzpunkt",
+    "title": "STRÖMUNGSVERLUST AM RUDER",
+    "quote": "Tennant versuchte, durch ein sofortiges Gegenmanöver das Schiff aufzurichten, doch das Ruder verlor bei dieser Schräglage bereits seine Wirksamkeit.",
+    "brief": "Schnittzeichnung des Hecks bei 15 Grad Neigung; orangefarbene Strömungslinien zeigen Wirbelbildung und den Abriss des Wasserdrucks am Ruderblatt.",
+    "vision": "unverified"
+  },
+  "einsturzpunkt/water_ingress_point": {
+    "kind": "water_ingress_point",
+    "channel": "einsturzpunkt",
+    "title": "KRITISCHE EINTRITTSÖFFNUNG",
+    "quote": "Das Wasser des Atlantiks stieg an den glatten Bordwänden empor, bis es die offenen Lotsenpforten erreichte, die nur wenige Meter über der Wasserlinie lagen.",
+    "brief": "Orthogonaler Querschnitt auf Höhe von Deck 5; eine orangefarbene Markierung zeigt den Punkt, an dem die Wasserlinie die offene Lotsenpforte schneidet.",
+    "vision": "unverified"
+  },
+  "einsturzpunkt/deck_loading_profile": {
+    "kind": "deck_loading_profile",
+    "channel": "einsturzpunkt",
+    "title": "VERTIKALE LASTVERTEILUNG",
+    "quote": "An diesem Morgen waren die Decks 11, 12 und 13 bis an die Decke mit schweren SUVs gefüllt, während die unteren Decks teilweise leer blieben...",
+    "brief": "Seitenriss des Schiffes mit 13 Ebenen; graue Blöcke symbolisieren die Fahrzeugdichte, wobei die obersten drei Decks orange hervorgehoben sind.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/ballast_tank_error": {
+    "kind": "ballast_tank_error",
+    "channel": "einsturzpunkt",
+    "title": "FEHLMENGE BALLASTWASSER",
+    "quote": "Er ging davon aus, dass die Tanks 1 bis 5 noch immer die gleiche Menge Wasser enthielten wie beim Auslaufen aus dem vorherigen Hafen.",
+    "brief": "Schnitt durch die Bodentanks; eine gestrichelte graue Linie zeigt den angenommenen Füllstand, während die orangefarbene Fläche das tatsächlich fehlende Volumen markiert.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/lashing_stress_analysis": {
+    "kind": "lashing_stress_analysis",
+    "channel": "einsturzpunkt",
+    "title": "VERSAGEN DER SICHERUNG",
+    "quote": "In den Decks 5 und 6 begannen die ersten Verzurrketten unter einer Last zu reißen, für die sie nie ausgelegt waren.",
+    "brief": "Detailzeichnung eines Reifens und der Verzurrkette; orangefarbene Kraftpfeile zeigen die Querbelastung bis zum Bruchpunkt der Kettenglieder.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/metacentric_height_comparison": {
+    "kind": "metacentric_height_comparison",
+    "channel": "einsturzpunkt",
+    "title": "METAZENTRISCHE HÖHE (GM)",
+    "quote": "Der Chief Officer am GALS-System war der festen Überzeugung gewesen, dass das Schiff einen GM-Wert von 1,89 Metern besaß, während die reale Stabilität bei nur 1,20 Metern lag...",
+    "brief": "Technische Bemaßung zwischen Punkt G und M; eine orangefarbene Maßlinie verdeutlicht das Defizit von 0,69 Metern gegenüber der sicheren Berechnung.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/free_surface_effect": {
+    "kind": "free_surface_effect",
+    "channel": "einsturzpunkt",
+    "title": "EFFEKT FREIER OBERFLÄCHEN",
+    "quote": "Da die Ballasttanks nur teilweise gefüllt waren, konnte das Wasser darin bei jeder Bewegung ungehindert von einer Seite zur anderen schießen.",
+    "brief": "Querschnitt eines Tanks; bei Neigung bewegt sich eine orangefarbene Masse schlagartig zur Seite und erzeugt ein zusätzliches Kippmoment.",
+    "vision": "unverified"
+  },
+  "einsturzpunkt/salvage_cutting_plan": {
+    "kind": "salvage_cutting_plan",
+    "channel": "einsturzpunkt",
+    "title": "ZERLEGUNGSSTRATEGIE",
+    "quote": "Das Bergungsunternehmen T&T Salvage entschied sich für eine radikale Lösung: die Zerlegung des Schiffes in acht massive Blöcke direkt im Wasser.",
+    "brief": "Längsriss des auf der Seite liegenden Wracks mit sieben orangefarbenen, vertikalen Schnittlinien, die die Sektionen 1 bis 8 definieren.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/chain_cutting_mechanics": {
+    "kind": "chain_cutting_mechanics",
+    "channel": "einsturzpunkt",
+    "title": "REIBUNGSSCHNITT-VERFAHREN",
+    "quote": "Zwischen den beiden Rümpfen des Katamarans wurde eine zentimeterdicke Kette gespannt, die nicht durch Zähne, sondern durch pure Reibung... den Stahl durchtrennen sollte.",
+    "brief": "Detail-Schnitt der Kette am Schiffsrumpf; orangefarbene Pfeile zeigen die Zugrichtung und die thermische Belastungszone an der Schnittkante.",
+    "vision": "ok"
+  },
+  "fisura-critica/retaining_wall_displacement": {
+    "kind": "retaining_wall_displacement",
+    "channel": "fisura-critica",
+    "title": "DESPLAZAMIENTO DE MURO (EJE Y)",
+    "quote": "los sensores de presión instalados en el muro de contención norte registraron un desplazamiento de dos centímetros",
+    "brief": "A technical profile of the 15-meter concrete wall showing a vertical plumb line in grey and an orange dimension line indicating the 2cm outward tilt caused by hydraulic pressure.",
+    "vision": "ok"
+  },
+  "fisura-critica/soil_piping_erosion": {
+    "kind": "soil_piping_erosion",
+    "channel": "fisura-critica",
+    "title": "FORMACIÓN DE SOCAVONES (PIPING)",
+    "quote": "aceleraron la creación de cavidades vacías debajo del hormigón",
+    "brief": "A section cut of the soil showing water flow lines carrying away fine sand particles, leaving orange-highlighted empty voids (cavities) directly beneath the structural slab.",
+    "vision": "ok"
+  },
+  "fisura-critica/foundation_redesign_comparison": {
+    "kind": "foundation_redesign_comparison",
+    "channel": "fisura-critica",
+    "title": "CAMBIO DE CIMENTACIÓN: PROYECTO VS. OBRA",
+    "quote": "sustituyeron ochenta de esos pilotes profundos por zapatas aisladas apoyadas sobre un terraplén de arena",
+    "brief": "A split-screen engineering plan showing the original 32m deep piles in grey vs. the orange-highlighted shallow footings (zapatas) used in the final construction.",
+    "vision": "ok"
+  },
+  "fisura-critica/pipe_joint_failure": {
+    "kind": "pipe_joint_failure",
+    "channel": "fisura-critica",
+    "title": "FALLO EN JUNTA DE HDPE",
+    "quote": "omitió un detalle crítico en la unión de la tubería de polietileno de alta densidad de 1.200 milímetros",
+    "brief": "A technical detail of a 1200mm pipe joint showing the mechanical seal slipping 15mm, with orange vectors showing water escaping into the surrounding soil.",
+    "vision": "ok"
+  },
+  "fisura-critica/pore_pressure_physics": {
+    "kind": "pore_pressure_physics",
+    "channel": "fisura-critica",
+    "title": "INCREMENTO DE PRESIÓN DE POROS",
+    "quote": "La presión de poros en el suelo aumentó de tal forma que los granos de arena perdieron contacto entre sí",
+    "brief": "A microscopic schematic showing grey sand grains being pushed apart by orange pressure vectors, eliminating the friction required for structural support.",
+    "vision": "ok"
+  },
+  "fisura-critica/wall_geometry_reduction": {
+    "kind": "wall_geometry_reduction",
+    "channel": "fisura-critica",
+    "title": "REDUCCIÓN DE SECCIÓN ESTRUCTURAL",
+    "quote": "muro de gravedad mucho más robusto con cimentaciones profundas, fue sustituido... por una cortina de estacas más delgada",
+    "brief": "An overlay of two section cuts: the thick grey outline of the intended gravity wall vs. the thin orange line of the 'cortina de estacas' actually built.",
+    "vision": "ok"
+  },
+  "fisura-critica/differential_settlement_tilt": {
+    "kind": "differential_settlement_tilt",
+    "channel": "fisura-critica",
+    "title": "ASENTAMIENTO DIFERENCIAL ACUMULADO",
+    "quote": "mientras la tribuna norte se había hundido doce centímetros, la sur permanecía fija",
+    "brief": "A longitudinal elevation of the stadium showing a 12cm vertical drop on the North side, with an orange angle indicator showing the resulting structural tilt.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/load_path_comparison": {
+    "kind": "load_path_comparison",
+    "channel": "einsturzpunkt",
+    "title": "Lastpfadänderung Doppelstange",
+    "quote": "Durch die Teilung der Stange hängte man die untere Brücke nun direkt an die obere Brücke an.",
+    "brief": "A side-by-side orthogonal diagram animates the transition from independent load paths to a serial configuration, doubling the tension force vector acting on the upper beam.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/weld_shear_stress_concentration": {
+    "kind": "weld_shear_stress_concentration",
+    "channel": "einsturzpunkt",
+    "title": "Spannungsüberlagerung Schweissnaht",
+    "quote": "Die punktuelle Belastung an der Schweißnaht des Trägers stieg schlagartig um 100 Prozent an.",
+    "brief": "Downward force arrows scale from 1P to 2P at the washer interface while a signal-orange stress distribution field expands along the longitudinal weld seam of the box beam.",
+    "vision": "ok"
+  },
+  "shorts-proba/wood_cross_section": {
+    "kind": "wood_cross_section",
+    "channel": "shorts-proba",
+    "title": "GRAIN STRUCTURE DAMAGE",
+    "quote": "A four-inch gouge splits the grain. White fibers scream.",
+    "brief": "A side-view cutaway of oak layers where a jagged crack forces the vertical fibers to snap and bend outward.",
+    "vision": "ok"
+  },
+  "shorts-proba/cost_time_comparison": {
+    "kind": "cost_time_comparison",
+    "channel": "shorts-proba",
+    "title": "PRO SERVICE: $200 / 72H",
+    "quote": "Professional refinishing costs two hundred dollars and takes three days.",
+    "brief": "A brick-colored dollar counter rapidly scrolls to 200 next to a simple 3-day calendar icon that fills with a honey-toned hatch pattern.",
+    "vision": "ok"
+  },
+  "shorts-proba/price_label": {
+    "kind": "price_label",
+    "channel": "shorts-proba",
+    "title": "KITCHEN FIX: $2.00",
+    "quote": "But a two-dollar solution is currently sitting in your kitchen.",
+    "brief": "A thick-stroked price tag drops from the top of the frame with a friendly bounce, highlighting the low cost.",
+    "vision": "ok"
+  },
+  "shorts-proba/price_comparison": {
+    "kind": "price_comparison",
+    "channel": "shorts-proba",
+    "title": "COMMERCIAL STICK: $14.00",
+    "quote": "Most people reach for a fourteen-dollar filler stick first.",
+    "brief": "A second price tag appears with a large, hand-drawn 'X' over it to indicate a poor value choice.",
+    "vision": "ok"
+  },
+  "shorts-proba/adhesion_failure_diagram": {
+    "kind": "adhesion_failure_diagram",
+    "channel": "shorts-proba",
+    "title": "SURFACE TENSION GAP",
+    "quote": "It sits on top of the wood like dried plastic.",
+    "brief": "A cross-section shows a thick block of filler resting on the wood surface with a visible gap between the filler and the deep gouge.",
+    "vision": "ok"
+  },
+  "shorts-proba/chemical_makeup_callout": {
+    "kind": "chemical_makeup_callout",
+    "channel": "shorts-proba",
+    "title": "SYNTHETIC COMPOSITION",
+    "quote": "Commercial repair waxes rely on synthetic paraffin and silicone.",
+    "brief": "Labels with arrows point to different colored blobs inside a wax stick, identifying paraffin and silicone in thick, handwritten text.",
+    "vision": "ok"
+  },
+  "shorts-proba/time_lapse_accumulation": {
+    "kind": "time_lapse_accumulation",
+    "channel": "shorts-proba",
+    "title": "48H: DUST ATTRACTION",
+    "quote": "Within forty-eight hours, room dust sticks to the tacky surface.",
+    "brief": "A clock hand spins twice while small brick-colored specks move toward and embed themselves into a honey-colored surface layer.",
+    "vision": "ok"
+  },
+  "shorts-proba/seepage_flow_diagram": {
+    "kind": "seepage_flow_diagram",
+    "channel": "shorts-proba",
+    "title": "LATERAL SILICONE SEEPAGE",
+    "quote": "Worse, silicone seeps sideways into the surrounding factory finish.",
+    "brief": "Horizontal arrows show a red liquid migrating from the center of the scratch into the horizontal layers of the surrounding finish.",
+    "vision": "ok"
+  },
+  "shorts-proba/bonding_rejection_diagram": {
+    "kind": "bonding_rejection_diagram",
+    "channel": "shorts-proba",
+    "title": "FUTURE COAT REJECTION",
+    "quote": "It permanently prevents any future topcoat from bonding.",
+    "brief": "A new layer of finish descends from the top but 'bounces' off the wood grain because of the invisible silicone barrier.",
+    "vision": "ok"
+  },
+  "shorts-proba/failure_rate_chart": {
+    "kind": "failure_rate_chart",
+    "channel": "shorts-proba",
+    "title": "90 DAY FAILURE RATE",
+    "quote": "Eighteen melted the surrounding lacquer within ninety days.",
+    "brief": "A simple bar chart shows 20 units, where 18 bars dissolve into puddles over a 90-day timeline.",
+    "vision": "ok"
+  },
+  "shorts-proba/molecular_comparison": {
+    "kind": "molecular_comparison",
+    "channel": "shorts-proba",
+    "title": "NATURAL OIL PENETRATION",
+    "quote": "The two-dollar walnut contains an entirely different chemistry.",
+    "brief": "Small honey-colored circles (oil) flow smoothly into the deep jagged wood fibers, filling the gaps instead of sitting on top.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/wandstaerke_querschnitt": {
+    "kind": "wandstaerke_querschnitt",
+    "channel": "einsturzpunkt",
+    "title": "Wandstärke im Querschnitt",
+    "quote": "Sie maßen an der dünnsten Stelle gerade einmal dreizehn Zentimeter – proportional dünner als die Schale eines Hühnereis.",
+    "brief": "Ein vertikaler Schnitt durch den 114 Meter hohen Turm fährt auf die Taille heran und blendet Maßlinien für die 128 mm dünne Betonschale ein.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/kraftfluss_hyperboloid": {
+    "kind": "kraftfluss_hyperboloid",
+    "channel": "einsturzpunkt",
+    "title": "Theoretischer Kraftfluss unter Eigenlast",
+    "quote": "Die doppelt gekrümmte hyperbolische Form sollte die nötige Steifigkeit garantieren, indem sie einfallende Kräfte rein über Druckspannungen direkt in das ringförmige Fundament ableitete.",
+    "brief": "Druckvektoren wandern entlang der hyperbolischen Erzeugenden von der Turmspitze schräg nach unten in das ringförmige Fundament.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/statische_lastannahme_cp3": {
+    "kind": "statische_lastannahme_cp3",
+    "channel": "einsturzpunkt",
+    "title": "Lastannahme nach Norm CP3",
+    "quote": "Dieses Regelwerk behandelte Böen als rein statische Flächenlast. Man nahm eine maximale Windgeschwindigkeit von 101 Kilometern pro Stunde an, rechnete den resultierenden Druck auf die Luvseite aus und",
+    "brief": "Horizontale Pfeile für statischen Winddruck drücken gleichförmig auf die Außenwand, während im Schnitt eine einzelne zentrale Bewehrungslage markiert wird.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/zugspannungsversagen_bewehrung": {
+    "kind": "zugspannungsversagen_bewehrung",
+    "channel": "einsturzpunkt",
+    "title": "Zugbruch der Bewehrung",
+    "quote": "An den Abrisskanten zeigte sich stattdessen ein sauberes, glattes Abreißen der Stahlstäbe entlang der horizontalen Achse.",
+    "brief": "Horizontale Zugvektoren dehnen die mittige Stahleinlage, bis die Stäbe an einer signal-orange markierten Bruchlinie glatt abreißen.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/venturi_effekt_anordnung": {
+    "kind": "venturi_effekt_anordnung",
+    "channel": "einsturzpunkt",
+    "title": "Venturi-Effekt im Turmfeld",
+    "quote": "Dieser Venturi-Effekt beschleunigte den Luftstrom lokal massiv und erzeugte extreme Unterdruckzonen auf den Leeseiten der vorderen Türme.",
+    "brief": "In der Draufsicht strömen Windvektoren zwischen den Turmpaaren hindurch, werden im Engpass beschleunigt und erzeugen leeseitige Unterdruckfelder.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/aerodynamisches_buffeting": {
+    "kind": "aerodynamisches_buffeting",
+    "channel": "einsturzpunkt",
+    "title": "Periodische Wirbelschleppen und Buffeting",
+    "quote": "Diese Wirbelschleppen trafen periodisch auf die dahinterstehenden Türme der zweiten Reihe.",
+    "brief": "Wirbel lösen sich alternierend von der vorderen Turmreihe ab und prallen als oszillierende Lastimpulse auf die Hülle der zweiten Reihe.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/bewehrungsvergleich_schnitt": {
+    "kind": "bewehrungsvergleich_schnitt",
+    "channel": "einsturzpunkt",
+    "title": "Soll-Ist-Vergleich der Bewehrungslagen",
+    "quote": "Man ersetzte das robuste, zweilagige Geflecht durch eine einzige, mittig angeordnete Schicht aus Stahl.",
+    "brief": "Ein Schnittdetail zeigt links die geplante zweilagige Bewehrung und blendet rechts die reduzierte einlagige Mittellage mit Maßangaben ein.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/windlast_faktor_drei": {
+    "kind": "windlast_faktor_drei",
+    "channel": "einsturzpunkt",
+    "title": "Windlastvergleich Berechnung vs Realität",
+    "quote": "Das Ergebnis war eine bittere Überraschung: Die berechneten Windlasten, die bei der Konstruktion als Grundlage dienten, waren um den Faktor drei zu niedrig angesetzt worden.",
+    "brief": "Ein stahlgrauer Auslegungslastpfeil wird maßstäblich auf die dreifache Länge verlängert, um die im Windkanal ermittelte Spitzenlast darzustellen.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/kaermansche_wirbelstrasse": {
+    "kind": "kaermansche_wirbelstrasse",
+    "channel": "einsturzpunkt",
+    "title": "Kármánsche Wirbelstraße im Raster",
+    "quote": "Dieser Effekt, bekannt als Kármánsche Wirbelstraße, war für die Berechnungen der damaligen Zeit schlichtweg nicht vorgesehen.",
+    "brief": "Hinter den Zylindern im Grundriss bilden sich gegenläufig rotierende Wirbelpaare, die wechselseitige Querkraftvektoren auf benachbarte Schalen ausüben.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/soil_stratigraphy_section": {
+    "kind": "soil_stratigraphy_section",
+    "channel": "einsturzpunkt",
+    "title": "Geologische Bodenstratigraphie",
+    "quote": "Die oberste Erdschicht auf der Baustelle bestand aus einer labilen Mischung aus feinem Sand und weichem, wassergesättigtem Schluff.",
+    "brief": "Ein vertikaler Schnitt zeigt die Schichtung des Bodens mit technischen Maßlinien und Schraffuren für Sand und wassergesättigten Schluff.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/soil_lateral_flow_vectors": {
+    "kind": "soil_lateral_flow_vectors",
+    "channel": "einsturzpunkt",
+    "title": "Laterale Bodenverschiebung",
+    "quote": "Der wassergesättigte Schlamm unter dem Fundament geriet unter diesen asymmetrischen Kräften in Bewegung.",
+    "brief": "Ein Querschnitt unter dem Fundament zeigt Bodenpartikel als technische Vektorpfeile, die von der Druckseite zur Entlastungsseite fließen.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/phc_pile_technical_section": {
+    "kind": "phc_pile_technical_section",
+    "channel": "einsturzpunkt",
+    "title": "Querschnitt PHC-Hohlpfahl",
+    "quote": "Im Inneren der Betonwandung von nur 95 Millimetern Dicke verliefen vorgespannte Stahldrähte, die den Pfahl unter eine permanente Druckspannung setzten.",
+    "brief": "Ein technischer Kreisschnitt des 400mm-Pfahls zeigt die 95mm Wandstärke und die Position der 9mm Spanndrähte mit Maßketten.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/axial_vs_shear_stress": {
+    "kind": "axial_vs_shear_stress",
+    "channel": "einsturzpunkt",
+    "title": "Mechanisches Belastungsprofil",
+    "quote": "Drückt man senkrecht von oben darauf, widerstehen sie enormen Kräften; wirkt jedoch eine seitliche Kraft auf die Mitte des Stabs, bricht das Material ohne Vorwarnung spröde durch.",
+    "brief": "Zwei Vergleichsdiagramme zeigen die hohe vertikale Traglast gegenüber dem spröden Versagen bei horizontaler Scherkraft mit orangefarbenem Bruchpunkt.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/interface_connection_detail": {
+    "kind": "interface_connection_detail",
+    "channel": "einsturzpunkt",
+    "title": "Schnittstelle Pfahlkopf-Fundament",
+    "quote": "Die Stahlarmierung der Pfähle war nicht starr mit der darüber liegenden Bodenplatte des Gebäudes vergossen worden.",
+    "brief": "Ein technisches Detail zeigt die fehlende mechanische Verzahnung zwischen der Bewehrung des Pfahls und der Fundamentplatte.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/mud_pressure_wedge": {
+    "kind": "mud_pressure_wedge",
+    "channel": "einsturzpunkt",
+    "title": "Dynamischer Erddruckkeil",
+    "quote": "Als die zehn Meter hohe Erddeponie auf der Nordseite zu wandern begann, drückte sie eine gigantische Keilwelle aus Schlamm vor sich her.",
+    "brief": "Ein Schnittbild zeigt die keilförmige Druckverteilung des Schlamms, die sich horizontal gegen die oberen zwei Meter der Pfähle presst.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/failure_plane_elevation": {
+    "kind": "failure_plane_elevation",
+    "channel": "einsturzpunkt",
+    "title": "Horizontale Bruchebene",
+    "quote": "Über hundertsechzig Pfähle brachen in einer Tiefe von knapp zwei Metern unter der Bodenplatte fast exakt horizontal ab.",
+    "brief": "Ein Aufriss zeigt die exakte horizontale Linie 2,0m unter der Erdoberfläche, an der alle Pfähle simultan orange markiert versagen.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/elevation_section": {
+    "kind": "elevation_section",
+    "channel": "einsturzpunkt",
+    "title": "HÖHENLAGE DER LECKAGE",
+    "quote": "Der Wasseraustritt lag auf der rechten Kanalseite, etwa fünfzehn Meter unterhalb der Dammkrone.",
+    "brief": "An orthogonal section of the dam shows a vertical dimension line from the crest down to the 15-meter mark, where a signal-orange arrow indicates the leak's origin.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/pore_pressure_map": {
+    "kind": "pore_pressure_map",
+    "channel": "einsturzpunkt",
+    "title": "PORENWASSERDRUCK IM KERN",
+    "quote": "Der Wasserdruck im Inneren des Damms war so hoch, dass die Erdmassen weich wie Wackelpudding wurden.",
+    "brief": "A technical grid overlay of the dam core shows internal pressure vectors (arrows) increasing in size and density, with the failure zone highlighted in signal-orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/hydrostatic_load_diagram": {
+    "kind": "hydrostatic_load_diagram",
+    "channel": "einsturzpunkt",
+    "title": "HYDROSTATISCHE LASTVERTEILUNG",
+    "quote": "Der hydrostatische Druck auf den Dammkern war auf dem absoluten Maximum.",
+    "brief": "An orthogonal projection showing a triangular load distribution of arrows pressing against the dam face, reaching their longest length at the base.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/geographic_velocity_map": {
+    "kind": "geographic_velocity_map",
+    "channel": "einsturzpunkt",
+    "title": "AUSBREITUNGSGESCHWINDIGKEIT",
+    "quote": "Die Flutwelle raste mit einer Geschwindigkeit von fast vierzig Kilometern pro Stunde flussabwärts.",
+    "brief": "A slate-grey topographic map shows the canyon with a thick orange vector arrow indicating the flood path and a '40 km/h' callout.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/grouting_process_diagram": {
+    "kind": "grouting_process_diagram",
+    "channel": "einsturzpunkt",
+    "title": "FUNKTIONSPRINZIP INJEKTIONSSCHLEIER",
+    "quote": "Bei diesem Verfahren wird flüssiger Zement unter hohem Druck in die Bohrlöcher gepresst, um die Spalten im Fels künstlich zu versiegeln.",
+    "brief": "Vertical lines represent boreholes with radial arrows showing the spread of cement into the grey rock fissures to create a theoretical barrier.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/subsurface_anomaly_section": {
+    "kind": "subsurface_anomaly_section",
+    "channel": "einsturzpunkt",
+    "title": "GEOLOGISCHE ANOMALIE",
+    "quote": "Sie hatten eine gigantische Höhle im Rhyolith angebohrt, die auf keiner der ursprünglichen geologischen Karten verzeichnet war.",
+    "brief": "A section cut shows the drill string descending and suddenly dropping into a large, irregular void within the slate-grey rock layers.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/volume_comparison_chart": {
+    "kind": "volume_comparison_chart",
+    "channel": "einsturzpunkt",
+    "title": "ZEMENTVERBRAUCH (IST VS. SOLL)",
+    "quote": "Insgesamt flossen über 570.000 Sack Zement in das Fundament – doppelt so viel wie ursprünglich kalkuliert.",
+    "brief": "Two vertical bars with technical hatch patterns compare the planned volume against the actual volume, with the excess highlighted in signal-orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/interface_failure_section": {
+    "kind": "interface_failure_section",
+    "channel": "einsturzpunkt",
+    "title": "KONTAKTZONE KERN-FUNDAMENT",
+    "quote": "Die Geologen wiesen darauf hin, dass der Löss direkt an den ungeschützten, rissigen Rhyolith stieß.",
+    "brief": "A section cut shows the vertical boundary between the hatched loess core and the fissured rhyolith, with a callout leader pointing to the 'Gefahrenzone'.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/grout_curtain_gap": {
+    "kind": "grout_curtain_gap",
+    "channel": "einsturzpunkt",
+    "title": "DEFEKTER INJEKTIONSSCHLEIER",
+    "quote": "An der rechten Flanke blieb eine Lücke von fast 20 Metern, durch die das Wasser des Stausees ungehindert in das Innere des Damms schießen konnte.",
+    "brief": "An orthogonal plan view of the grout curtain shows a 20m gap in the sequence of injection points, marked with a signal-orange dimension line.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/retrogressive_erosion_sequence": {
+    "kind": "retrogressive_erosion_sequence",
+    "channel": "einsturzpunkt",
+    "title": "RÜCKSCHREITENDE EROSION",
+    "quote": "Es entsteht ein Hohlraum, der sich wie ein Krebsgeschwür von der Luftseite zur Wasserseite zurückfrisst.",
+    "brief": "A time-lapse diagram shows the orange void growing horizontally from the downstream face toward the reservoir side of the dam.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/sensor_bypass_diagram": {
+    "kind": "sensor_bypass_diagram",
+    "channel": "einsturzpunkt",
+    "title": "PLATZIERUNG DER MESSINSTRUMENTE",
+    "quote": "Die Piezometer im Dammkörper zeigten keine ungewöhnlichen Druckanstiege an.",
+    "brief": "A cross-section shows the location of piezometers (dots) and the water flow path (orange) moving through a different zone, bypassing the sensors entirely.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/stress_redirection_diagram": {
+    "kind": "stress_redirection_diagram",
+    "channel": "einsturzpunkt",
+    "title": "STATISCHE LASTUMLAGERUNG",
+    "quote": "Die interne Erosion hatte die Geometrie des Kerns so weit verändert, dass die Lasten nicht mehr in das Fundament, sondern ins Leere abgeleitet wurden.",
+    "brief": "Structural load arrows originally pointing down are shown bending around the internal orange cavity, indicating a loss of support.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/daily_increment_diagram": {
+    "kind": "daily_increment_diagram",
+    "channel": "einsturzpunkt",
+    "title": "TÄGLICHER PEGELZUWACHS",
+    "quote": "Im Mai 1976 kletterte das Wasser nicht mehr um den vorgeschriebenen Fuß pro Tag, sondern um zwei, zeitweise sogar um vier Fuß.",
+    "brief": "An elevation view of the dam face with dimension lines showing the 1-foot safety increment versus the 4-foot actual increment in orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/unmonitored_zone_section": {
+    "kind": "unmonitored_zone_section",
+    "channel": "einsturzpunkt",
+    "title": "UNÜBERWACHTE FUNDAMENTZONE",
+    "quote": "Es gab keine belastbaren Echtzeitdaten darüber, wie das zerklüftete Rhyolith-Gestein des Fundaments auf den plötzlichen, enormen hydrostatischen Druck reagierte.",
+    "brief": "A section cut shows the dam and the rock below; the rock zone is shaded slate-grey with a callout 'Keine Sensorik' and an orange question mark.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/curtain_layout_plan": {
+    "kind": "curtain_layout_plan",
+    "channel": "einsturzpunkt",
+    "title": "ANORDNUNG INJEKTIONSSCHLEIER",
+    "quote": "Der Kern des Versagens lag im sogenannten Injektionsschleier, einer Barriere aus hunderten Tonnen Zementmilch...",
+    "brief": "A technical plan view showing three parallel rows of injection holes forming the 'Grout Curtain' beneath the dam's footprint.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/hydrostatic_pressure_distribution": {
+    "kind": "hydrostatic_pressure_distribution",
+    "channel": "einsturzpunkt",
+    "title": "HYDROSTATISCHER DRUCKVERLAUF",
+    "quote": "Der hydrostatische Druck auf den Dammkern war auf dem absoluten Maximum.",
+    "brief": "A technical section cut showing a growing triangular pressure diagram on the upstream wall, with the peak load arrow at the base of the core flashing in signal orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/wave_front_propagation_map": {
+    "kind": "wave_front_propagation_map",
+    "channel": "einsturzpunkt",
+    "title": "AUSBREITUNGSGESCHWINDIGKEIT DER FLUTWELLE",
+    "quote": "Die Flutwelle raste mit einer Geschwindigkeit von fast vierzig Kilometern pro Stunde flussabwärts.",
+    "brief": "An orthogonal topographic map projection where a grey wave front advances along the canyon floor, with an orange marker indicating the initial breach site.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/rock_fracture_schematic": {
+    "kind": "rock_fracture_schematic",
+    "channel": "einsturzpunkt",
+    "title": "KLÜFTUNG IM RHYOLITH-GESTEIN",
+    "quote": "Es war Rhyolith, ein vulkanisches Gestein, das durch extrem schnelle Abkühlung von Lava entsteht.",
+    "brief": "A detailed rock matrix cross-section with thin grey dimension lines showing cooling cracks, with one critical 0.5-meter-wide fissure highlighted in signal orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/grout_injection_mechanism": {
+    "kind": "grout_injection_mechanism",
+    "channel": "einsturzpunkt",
+    "title": "ZEMENTINJEKTION (GROUTING)",
+    "quote": "Bei diesem Verfahren wird flüssiger Zement unter hohem Druck in die Bohrlöcher gepresst, um die Spalten im Fels künstlich zu versiegeln.",
+    "brief": "An orthogonal view of a drill hole where grey pressure lines expand outward into rock joints, leaving one vital fissure unpenetrated and highlighted in orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/grout_volume_comparison": {
+    "kind": "grout_volume_comparison",
+    "channel": "einsturzpunkt",
+    "title": "ZEMENTVERBRAUCH (IST VS. SOLL)",
+    "quote": "Insgesamt flossen über 570.000 Sack Zement in das Fundament – doppelt so viel wie ursprünglich kalkuliert.",
+    "brief": "A bar chart with slate-grey columns comparing the planned grout volume to the actual volume, with the excess 285,000 bags highlighted in signal orange.",
+    "vision": "unverified"
+  },
+  "einsturzpunkt/interface_erosion_microscope": {
+    "kind": "interface_erosion_microscope",
+    "channel": "einsturzpunkt",
+    "title": "EROSION AN DER KONTAKTERDE",
+    "quote": "Wenn Wasser durch die unbehandelten Spalten im Fels sickerte, würde es den feinen Lössboden wie Sand durch ein Sieb herausholen.",
+    "brief": "A micro-section of the silt-rock boundary where grey silt particles are drawn down into a rock fissure, with the eroding interface highlighted in orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/silt_liquefaction_mechanics": {
+    "kind": "silt_liquefaction_mechanics",
+    "channel": "einsturzpunkt",
+    "title": "KOHÄSIONSVERLUST IM LÖSS",
+    "quote": "Sobald Wasser mit einer kritischen Geschwindigkeit hindurchströmt, lösen sich die Bindungskräfte zwischen den Partikeln sofort auf.",
+    "brief": "A particle-grid diagram where grey cohesion vectors between circles break and particles accelerate along flow lines, with the failure zone highlighted in orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/grout_curtain_layout": {
+    "kind": "grout_curtain_layout",
+    "channel": "einsturzpunkt",
+    "title": "DREIREIHIGER ZEMENTSCHLEIER",
+    "quote": "Arbeiter hatten über 3.300 Kubikmeter Zementmilch in den Untergrund gepresst, um jede Spalte zu versiegeln.",
+    "brief": "An isometric layout of three parallel rows of grout boreholes, with a glaring 20-meter gap in the right flank highlighted in signal orange.",
+    "vision": "unverified"
+  },
+  "einsturzpunkt/grout_curtain_gap_profile": {
+    "kind": "grout_curtain_gap_profile",
+    "channel": "einsturzpunkt",
+    "title": "FEHLSTELLE IM ZEMENTSCHLEIER",
+    "quote": "An der rechten Flanke blieb eine Lücke von fast 20 Metern, durch die das Wasser des Stausees ungehindert in das Innere des Damms schießen konnte.",
+    "brief": "A longitudinal profile showing the grout curtain depth with a grey fill, except for a 20-meter unpenetrated zone marked by orange dimension lines.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/pore_pressure_lag_section": {
+    "kind": "pore_pressure_lag_section",
+    "channel": "einsturzpunkt",
+    "title": "PORENWASSERDRUCK-STABILISIERUNG",
+    "quote": "Die Sicherheitsvorschriften sahen vor, dass der Wasserspiegel pro Tag um nicht mehr als einen Fuß, also etwa dreißig Zentimeter, steigen durfte, damit sich das Porenwasser im Dammkern stabilisieren ko",
+    "brief": "A cross-section showing a lagging phreatic line rising slowly against a rapidly rising reservoir level, with the high-pressure gradient zone highlighted in orange.",
+    "vision": "ok"
+  },
+  "einsturzpunkt/piezometer_blind_spot": {
+    "kind": "piezometer_blind_spot",
+    "channel": "einsturzpunkt",
+    "title": "SENSORKALIBRIERUNG UND MESSLÜCKEN",
+    "quote": "Während der Wasserspiegel in Rekordtempo stieg, waren die wichtigsten Überwachungsinstrumente des Damms, die Piezometer zur Messung des Porendrucks im Inneren der Struktur, noch gar nicht vollständig ",
+    "brief": "A schematic section cut showing inactive/unconnected piezometer nodes as grey circles, with the active piping channel passing through a blind spot highlighted in orange.",
+    "vision": "unverified"
   }
 }

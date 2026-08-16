@@ -11,15 +11,32 @@ const esc = (s) => String(s == null ? "" : s)
 
 // Этапы = лента наверху. id совпадает с id секции (stage-<id>), name — то,
 // как этап называется в state.checks с бэкенда (для галочек «готово»).
+// group — заголовок раздела в боковом меню. Разделов ровно два, и это не
+// украшение: «Главное» — то, куда возвращаются между роликами, «Этапы» —
+// путь одного ролика. Смешивать их в один список значило заставлять искать
+// «Проекты» между «Озвучкой» и «Субтитрами».
 const STAGES = [
-  { id: "project",  label: "Проект",     icon: "◉", check: null },
-  { id: "script",   label: "Сценарий",   icon: "✎", check: "Сценарий" },
-  { id: "voice",    label: "Озвучка",    icon: "🎙", check: "Озвучка" },
-  { id: "subs",     label: "Субтитры",   icon: "💬", check: "Субтитры" },
-  { id: "media",    label: "Раскадровка", icon: "▦", check: "Раскадровка" },
-  { id: "overlays", label: "Оверлеи",    icon: "✦", check: "Оверлеи" },
-  { id: "render",   label: "Рендер",     icon: "▶", check: "Рендер" },
-  { id: "export",   label: "Экспорт",    icon: "⤓", check: "Premiere" },
+  { id: "dashboard", label: "Дашборд",   icon: "▤", check: null, group: "Главное" },
+  { id: "projects",  label: "Проекты",   icon: "🗂", check: null, group: "Главное" },
+  { id: "project",  label: "Проект",     icon: "◉", check: null, group: "Этапы" },
+  { id: "script",   label: "Сценарий",   icon: "✎", check: "Сценарий", group: "Этапы" },
+  { id: "voice",    label: "Озвучка",    icon: "🎙", check: "Озвучка", group: "Этапы" },
+  { id: "subs",     label: "Субтитры",   icon: "💬", check: "Субтитры", group: "Этапы" },
+  { id: "media",    label: "Раскадровка", icon: "▦", check: "Раскадровка", group: "Этапы" },
+  { id: "overlays", label: "Оверлеи",    icon: "✦", check: "Оверлеи", group: "Этапы" },
+  { id: "render",   label: "Рендер",     icon: "▶", check: "Рендер", group: "Этапы" },
+  { id: "export",   label: "Экспорт",    icon: "⤓", check: "Premiere", group: "Этапы" },
+];
+
+// Ярлыки на дашборде. Каждый ведёт либо на этап, либо прямо в питон —
+// выдуманных кнопок здесь нет, всё это уже работало и раньше, просто
+// лежало на четвёртом экране.
+const QUICK_TOOLS = [
+  { icon: "✎",  title: "Сценарий",  sub: "Черновик по теме",     stage: "script" },
+  { icon: "🎙", title: "Озвучка",   sub: "Синтез голоса",        stage: "voice" },
+  { icon: "💬", title: "Субтитры",  sub: "По своей же озвучке",  stage: "subs" },
+  { icon: "🖼", title: "Превью",    sub: "Обложки для ролика",   call: "make_thumbnails" },
+  { icon: "🔍", title: "SEO",       sub: "Заголовок и теги",     call: "seo" },
 ];
 
 // Edge TTS — голос должен звучать на языке сценария, иначе английская
@@ -229,7 +246,15 @@ function renderCards() {
 
   const row = $("tlRow");
   row.innerHTML = "";
+  let lastGroup = "";
   for (const s of STAGES) {
+    if (s.group && s.group !== lastGroup) {
+      lastGroup = s.group;
+      const h = document.createElement("div");
+      h.className = "nav-group";
+      h.textContent = s.group;
+      row.appendChild(h);
+    }
     const b = document.createElement("button");
     b.className = "tl-node" + (done(s) ? " done" : "") + (s.id === curStage ? " active" : "");
     b.dataset.stage = s.id;
@@ -386,6 +411,18 @@ const app = {
       av.style.background = c ? chColor(c, i) : "rgba(0,0,0,.2)";
     }
     if ($("sideChannel")) $("sideChannel").textContent = c ? (c.name || c.id) : "без канала";
+    // Та же карточка канала, но в подвале бокового меню — она видна всегда,
+    // а верхний аватар прячется, когда окно узкое.
+    if ($("navAva")) {
+      $("navAva").textContent = c ? chLetter(c) : "—";
+      $("navAva").style.background = c ? chColor(c, i) : "rgba(255,255,255,.12)";
+    }
+    if ($("navChannel")) $("navChannel").textContent = c ? (c.name || c.id) : "Канал не выбран";
+    if ($("navLang")) {
+      $("navLang").textContent = c
+        ? [c.lang, c.minutes ? c.minutes + " мин" : ""].filter(Boolean).join(" · ")
+        : "язык и голос берутся отсюда";
+    }
     // Списки «Язык/Жанр/Стиль» общие на все каналы, а канал их ЗАДАЁТ
     // (webapp: apply_to_params). Пока списки показывали своё, они попросту
     // врали, а кнопки отдельных шагов уходили с чужим значением — испанский
@@ -529,6 +566,20 @@ const app = {
       set("rGrain", true); set("rBloom", true); set("rLeak", true);
       set("rChromab", true); set("rFlicker", true);
       addLog("Пресет «динамичный»: жёлтые субтитры, быстрый монтаж, эффекты", "dim");
+    } else if (p === "shorts") {        // вертикаль: слово в кадре, быстрый план
+      // Шортс это не «тот же ролик, только узкий»: в кадре 1080 строка
+      // субтитров набирается в три ряда мелким кеглем и в ленте не
+      // читается, а план в 4 секунды на вертикали смотрится стоячим.
+      // Поэтому пресет трогает и разрешение, и субтитры разом — по
+      // отдельности их выставляли неправильно.
+      $("rRes").value = "shorts";
+      $("rSubStyle").value = "word_pop"; $("rSubSize").value = "средние";
+      $("rInt").value = "сильная";
+      set("rSubs", true);               // без подписей формат не работает
+      set("rLetterbox", false);         // чёрные полосы съедают вертикаль
+      set("rVignette", false);
+      addLog("Пресет «шортс»: вертикаль 9:16, подпись по одному слову, "
+             + "план ~1.5 с, субтитры включены", "dim");
     }
   },
   pickMusic: () => rpc("pick_music").then(p => { if (p) $("musicPath").value = p; }),
@@ -715,3 +766,147 @@ document.addEventListener("click", (e) => {
 });
 
 setInterval(() => rpc("noop"), 3600 * 1000);          // держим мост живым
+
+/* =====================================================================
+   ДАШБОРД, СПИСОК ПРОЕКТОВ И СТРОКА СОСТОЯНИЯ
+
+   Добавлено поверх прежнего экрана: логика конвейера не тронута, все
+   кнопки ведут в те же rpc, что и раньше. Новое здесь только одно —
+   проекты и состояние машины видно сразу, а не после трёх переходов.
+   ===================================================================== */
+
+/* ---------- Ярлыки инструментов ---------- */
+
+function renderQuickTools() {
+  const box = $("quickTools");
+  if (!box || box.dataset.built) return;      // ярлыки статичны — строим один раз
+  box.innerHTML = "";
+  for (const t of QUICK_TOOLS) {
+    const b = document.createElement("button");
+    b.className = "qt";
+    b.onclick = () => (t.stage ? showStage(t.stage) : rpc(t.call));
+    b.innerHTML = `<span class="qt-ico">${t.icon}</span>
+                   <span class="qt-title">${t.title}</span>
+                   <span class="qt-sub">${t.sub}</span>`;
+    box.appendChild(b);
+  }
+  box.dataset.built = "1";
+}
+
+/* ---------- Список проектов ---------- */
+
+let projectsCache = [];
+
+async function renderProjects() {
+  const box = $("projectRows");
+  if (!box) return;
+  const rows = (await rpc("projects_list")) || [];
+  projectsCache = rows;
+
+  const counter = $("projectsCount");
+  if (counter) counter.textContent = rows.length;
+
+  if (!rows.length) {
+    box.innerHTML = `<div class="empty">Проектов пока нет.
+      Нажмите «Новый проект» внизу — он ляжет в папку текущего канала.</div>`;
+    return;
+  }
+
+  box.innerHTML = "";
+  rows.forEach((p, i) => {
+    const el = document.createElement("div");
+    el.className = "prow" + (p.current ? " current" : "");
+
+    // Чипы показывают то, чем проекты РЕАЛЬНО отличаются друг от друга:
+    // язык и голос приходят из профиля канала, длительность — оттуда же.
+    const chips = [];
+    if (p.lang) chips.push(`<span class="chip">🌐 ${p.lang}</span>`);
+    if (p.minutes) chips.push(`<span class="chip">⏱ ${p.minutes} мин</span>`);
+    if (p.voice) chips.push(`<span class="chip">🎙 ${p.voice}</span>`);
+    if (p.channel_name) chips.push(`<span class="chip">📺 ${p.channel_name}</span>`);
+    if (p.size_mb) chips.push(`<span class="chip ok">▶ ${p.size_mb} МБ</span>`);
+
+    el.innerHTML = `
+      <div class="pnum">${i + 1}</div>
+      <div class="pbody">
+        <div class="ptitle">${p.topic ? esc(p.topic) : "<i>Нет темы</i>"}</div>
+        <div class="pchips">${chips.join("")}</div>
+      </div>
+      <div class="pprog" title="Пройдено этапов">${p.done}/${p.total}</div>
+      <div class="pacts">
+        <button class="iconbtn" title="Открыть проект">↗</button>
+        <button class="iconbtn" title="Папка на диске">🗀</button>
+        <button class="iconbtn danger" title="Удалить">🗑</button>
+      </div>`;
+
+    const [openBtn, folderBtn, delBtn] = el.querySelectorAll(".pacts button");
+    openBtn.onclick = async () => { await rpc("set_project", p.path); refresh(); showStage("project"); };
+    folderBtn.onclick = () => rpc("open_folder", p.path);
+    delBtn.onclick = async () => {
+      // Проект — это часы работы и гигабайты на диске; спрашиваем всегда.
+      if (!confirm(`Удалить проект «${p.topic || p.name}» со всеми файлами?`)) return;
+      await rpc("delete_project", p.path);
+      renderProjects();
+    };
+    box.appendChild(el);
+  });
+
+  // Дашборд показывает те же строки, но только четыре свежих: он для
+  // «что у меня в работе», а не для управления списком.
+  const dash = $("dashRows");
+  if (dash) {
+    dash.innerHTML = "";
+    rows.slice(0, 4).forEach((p) => {
+      const d = document.createElement("div");
+      d.className = "prow slim" + (p.current ? " current" : "");
+      d.innerHTML = `
+        <div class="pbody">
+          <div class="ptitle">${p.topic ? esc(p.topic) : "<i>Нет темы</i>"}</div>
+          <div class="pchips">
+            ${p.lang ? `<span class="chip">🌐 ${esc(p.lang)}</span>` : ""}
+            ${p.size_mb ? `<span class="chip ok">▶ ${p.size_mb} МБ</span>` : ""}
+          </div>
+        </div>
+        <div class="pprog">${p.done}/${p.total}</div>`;
+      d.onclick = async () => { await rpc("set_project", p.path); refresh(); showStage("project"); };
+      dash.appendChild(d);
+    });
+  }
+}
+
+/* ---------- Строка состояния ---------- */
+
+async function refreshStats() {
+  const st = await rpc("system_stats");
+  if (!st) return;
+  const mem = $("statMem"), q = $("statQueue");
+  if (mem && st.mem_total) mem.textContent = `Память ${st.mem_used} / ${st.mem_total} ГБ`;
+  if (q) q.textContent = st.queue ? `Очередь: ${st.queue}` : "Очередь пуста";
+}
+
+/* ---------- Нижняя панель ---------- */
+
+const bar = {
+  newProject() {
+    const name = prompt("Название проекта:");
+    if (name) rpc("new_project", name).then(() => { refresh(); renderProjects(); });
+  },
+  preview() { rpc("open_result"); },
+  generate() { rpc("generate_all", app.genParams()); },
+  folder() { rpc("open_project_folder"); },
+};
+window.bar = bar;
+
+/* ---------- Подключение к жизненному циклу ---------- */
+
+// Дашборд и проекты обновляем при заходе на них, а не по таймеру: чтение
+// meta.json полусотни папок на каждом тике — это диск на ровном месте.
+const _showStage = showStage;
+showStage = function (id) {
+  _showStage(id);
+  if (id === "dashboard") { renderQuickTools(); renderProjects(); }
+  if (id === "projects") renderProjects();
+};
+
+setInterval(refreshStats, 5000);
+setTimeout(() => { refreshStats(); renderQuickTools(); }, 800);

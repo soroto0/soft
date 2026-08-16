@@ -942,6 +942,137 @@ def quarantined() -> dict:
             if v.get("verdict") == VISION_BAD and k not in BUILTIN_SCENES}
 
 
+def repair_fade(code: str, component: str) -> tuple[str, bool]:
+    """Дописать забытое домножение на p.enter * p.exit.
+
+    Правило про фейд в промпте расписано подробнее всех остальных, с готовой
+    строкой для копирования, — и всё равно оно самое нарушаемое: замер прогона
+    2026-08-14 дал 11 отказов из 22 именно по нему, то есть половину. Прогон
+    отдал 2 сцены из 8 вместо ожидаемых шести.
+
+    Это НЕ брак сцены: рисунок, движение и композиция могут быть отличными,
+    а забыта одна строчка. Выбрасывать такую работу и жечь три вызова модели
+    ради механической мелочи — расточительство. Чиним сами.
+
+    Способ намеренно тупой и потому надёжный: тело модели переименовываем и
+    оборачиваем в AbsoluteFill с нужной прозрачностью. Не правим её JSX
+    изнутри — там можно сломать что угодно, а обёртка снаружи безопасна.
+    """
+    if "p.enter" in code and "p.exit" in code:
+        return code, False
+    marker = f"export const {component}: React.FC<SceneProps> = "
+    if marker not in code:
+        return code, False           # непривычная форма — пусть решает гейт
+    body = f"{component}Body"
+    out = code.replace(marker, f"const {body}: React.FC<SceneProps> = ", 1)
+    # AbsoluteFill может быть не импортирован, если сцена рисует один <svg>
+    # Импорт AbsoluteFill мог отсутствовать: сцена могла рисовать
+    # только <svg>, а обёртке он нужен.
+    if not re.search(r"import \{[^}]*AbsoluteFill", out):
+        out = re.sub(r"(import \{)([^}]*)(\} from 'remotion';)",
+                     lambda m: m.group(1) + m.group(2).rstrip() +
+                     (", AbsoluteFill" if "AbsoluteFill" not in m.group(2)
+                      else "") + " " + m.group(3),
+                     out, count=1)
+    out += f"""
+
+// Обёртка дописана автоматически: модель забыла домножить прозрачность на
+// p.enter * p.exit, и без этого сцена моргнула бы на склейке с соседними
+// планами. Сам рисунок не тронут.
+export const {component}: React.FC<SceneProps> = (p) => (
+  <AbsoluteFill style={{{{ opacity: p.enter * p.exit }}}}>
+    <{body} {{...p}} />
+  </AbsoluteFill>
+);
+"""
+    return out, True
+
+
+# «Объявлено, но не используется» — это НЕ ошибка типов, это строгость
+# tsconfig (noUnusedLocals). Сцена с лишней переменной рисуется ровно так же.
+_МУСОРНЫЕ_КОДЫ = ("TS6133", "TS6192", "TS6196", "TS6198", "TS6205")
+_МУСОР = re.compile(
+    r"\((\d+),\d+\):\s*error\s+(TS6\d{3}):\s*'([^']+)'"
+    r"|\((\d+),\d+\):\s*error\s+(TS6198):\s*All destructured")
+
+
+def unused_names(out: str, kind: str) -> list[tuple[int, str]]:
+    """(строка, имя) для жалоб «объявлено, но не читается» ПО ЭТОЙ сцене."""
+    имена = []
+    for line in (out or "").splitlines():
+        if f"{kind}.tsx(" not in line or "error TS6" not in line:
+            continue
+        m = re.search(r"\((\d+),\d+\):\s*error\s+(TS6\d{3}):\s*'([^']+)'",
+                      line)
+        if m and m.group(2) in _МУСОРНЫЕ_КОДЫ:
+            имена.append((int(m.group(1)), m.group(3)))
+    return имена
+
+
+def only_unused(out: str, kind: str) -> bool:
+    """Все ли жалобы типизации — про неиспользуемые объявления.
+
+    Если среди них есть хоть одна настоящая (незакрытый тег, оборванная
+    строка, несуществующее свойство Easing) — чинить нечего, сцену отвергаем
+    как и раньше. Замер по журналу: настоящих ошибок втрое больше мусорных
+    (TS17008 178, TS1005 124 против TS6133 48), так что ворота нужны."""
+    ошибки = [l for l in (out or "").splitlines() if ": error TS" in l]
+    if not ошибки:
+        return False
+    for l in ошибки:
+        m = re.search(r"error (TS\d+):", l)
+        if not m or m.group(1) not in _МУСОРНЫЕ_КОДЫ:
+            return False
+    return True
+
+
+def repair_unused(code: str, out: str, kind: str) -> tuple[str, bool]:
+    """Убрать объявления, на которые ругается noUnusedLocals.
+
+    Та же мысль, что и в repair_fade: механическую мелочь чиним, а не жжём на
+    ней три вызова модели. Замер прогона 2026-08-14_2: из 14 отказов 9 —
+    типизация, и по журналу за всю историю 48 из них про неиспользуемые
+    объявления. При этом сцена с лишней переменной рисуется ровно так же:
+    volumen_vergleich и geographische_ausbreitung отвергались ТРИЖДЫ каждая,
+    то есть модель по такой подсказке не исправляется.
+
+    Правится три формы, все однострочные и потому безопасные: строка импорта,
+    простое `const X = ...;` и одно имя внутри деструктуризации. Всё
+    остальное оставляем как есть — вызывающий всё равно перепроверяет
+    типизацию и отвергает сцену, если починка не помогла."""
+    имена = unused_names(out, kind)
+    if not имена:
+        return code, False
+    строки = code.splitlines()
+    менял = False
+    # с конца, чтобы удаление строки не сдвигало номера остальных
+    for n, имя in sorted(имена, reverse=True):
+        if not 1 <= n <= len(строки):
+            continue
+        s = строки[n - 1]
+        нов = None
+        if re.match(r"\s*import\b", s):
+            # один спецификатор из фигурных скобок; опустела — вон всю строку
+            без = re.sub(rf"\b{re.escape(имя)}\b\s*,?\s*", "", s, count=1)
+            без = re.sub(r",\s*\}", " }", без)
+            нов = "" if re.search(r"\{\s*\}", без) else без
+        elif re.match(rf"\s*(?:const|let|var)\s+{re.escape(имя)}\s*=", s):
+            нов = ""
+        elif re.search(r"\{[^{}]*\}", s) and re.search(
+                rf"\b{re.escape(имя)}\b", s):
+            без = re.sub(rf"\b{re.escape(имя)}\b\s*,?\s*", "", s, count=1)
+            без = re.sub(r",\s*\}", " }", без)
+            нов = "" if re.search(r"\{\s*\}\s*=", без) else без
+        if нов is None:
+            continue
+        менял = True
+        if нов.strip():
+            строки[n - 1] = нов
+        else:
+            строки.pop(n - 1)
+    return ("\n".join(строки) + "\n") if менял else code, менял
+
+
 def accept(kind: str, code: str, title: str, dur: float, log=print,
            subject: str = "", api_key: str = "",
            report: dict | None = None) -> list[str]:
@@ -954,6 +1085,13 @@ def accept(kind: str, code: str, title: str, dur: float, log=print,
     вызовов (селф-тест зовёт accept без него).
     """
     component = _component_name(kind)
+    # Механическую мелочь чиним, а не отвергаем. Забытое домножение на
+    # p.enter/p.exit — половина всех отказов (замер 2026-08-14: 11 из 22), и
+    # при этом сам рисунок сцены к нему отношения не имеет. Отказ здесь стоил
+    # трёх вызовов модели и потерянной сцены на ровном месте.
+    code, fixed = repair_fade(code, component)
+    if fixed:
+        log(f"[Сцены] {kind}: дописал фейд (p.enter/p.exit) — модель забыла")
     path = SCENES_DIR / f"{kind}.tsx"
     SCENES_DIR.mkdir(parents=True, exist_ok=True)
     path.write_text(code, encoding="utf-8")
@@ -962,6 +1100,20 @@ def accept(kind: str, code: str, title: str, dur: float, log=print,
     bad = check_static(code)
     if not bad:
         ok, out = typecheck()
+        # Мусорную строгость чиним сами и перепроверяем. Если починка не
+        # помогла — возвращаем исходный файл и жалуемся ИСХОДНЫМ текстом:
+        # он и уйдёт в подсказку следующей попытке.
+        if not ok and only_unused(out, kind):
+            лечёный, менял = repair_unused(code, out, kind)
+            if менял:
+                path.write_text(лечёный, encoding="utf-8")
+                ok2, out2 = typecheck()
+                if ok2:
+                    code, ok = лечёный, True
+                    log(f"[Сцены] {kind}: убрал неиспользуемые объявления — "
+                        "модель оставила лишнее, рисунку это не мешает")
+                else:
+                    path.write_text(code, encoding="utf-8")
         if not ok:
             bad.append(f"не проходит типизацию проекта: {out.strip()[:300]}")
     if not bad:

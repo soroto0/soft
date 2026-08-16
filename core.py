@@ -2981,6 +2981,29 @@ def _слова_кадра(query: str) -> set[str]:
     return свои or set(ws)
 
 
+def _repeat_pairs(queries: list[str], threshold: float = 0.6
+                  ) -> list[tuple[int, int]]:
+    """Пары «кадр — кого он повторяет», общее сито для проверки и для починки.
+
+    Вынесено отдельно, потому что счётчик повторов и переписывание двойников
+    обязаны считать двойника ОДИНАКОВО. Разойдись они на полшага — приёмка
+    ругалась бы на кадры, которых починка не касалась, и наоборот."""
+    слова = [_слова_кадра(q) for q in (queries or [])]
+    пары: list[tuple[int, int]] = []
+    for i in range(1, len(слова)):
+        A = слова[i]
+        if not A:
+            continue
+        for j in range(i):
+            B = слова[j]
+            if not B:
+                continue
+            if len(A & B) / len(A | B) >= threshold:
+                пары.append((i, j))
+                break
+    return пары
+
+
 def repeated_shots(queries: list[str], threshold: float = 0.6
                    ) -> tuple[int, int, list[str]]:
     """Сколько кадров ПОВТОРЯЮТ уже бывший в этом же ролике.
@@ -3005,25 +3028,15 @@ def repeated_shots(queries: list[str], threshold: float = 0.6
 
     Возвращает (повторов, всего, примеры) — примеры готовы для показа
     человеку, чтобы он видел, ЧТО именно задвоилось."""
-    слова = [_слова_кадра(q) for q in (queries or [])]
-    повторов, примеры = 0, []
-    for i in range(1, len(слова)):
-        A = слова[i]
-        if not A:
-            continue
-        for j in range(i):
-            B = слова[j]
-            if not B:
-                continue
-            if len(A & B) / len(A | B) >= threshold:
-                повторов += 1
-                пара = f"«{queries[j]}» ≈ «{queries[i]}»"
-                # один и тот же запрос втроём даёт две одинаковые пары —
-                # человеку это ничего не добавляет
-                if len(примеры) < 3 and пара not in примеры:
-                    примеры.append(пара)
-                break
-    return повторов, len(queries or []), примеры
+    пары = _repeat_pairs(queries, threshold)
+    примеры = []
+    for i, j in пары:
+        пара = f"«{queries[j]}» ≈ «{queries[i]}»"
+        # один и тот же запрос втроём даёт две одинаковые пары —
+        # человеку это ничего не добавляет
+        if len(примеры) < 3 and пара not in примеры:
+            примеры.append(пара)
+    return len(пары), len(queries or []), примеры
 
 
 def warn_repeated_shots(queries: list[str], log=print,
@@ -3053,6 +3066,120 @@ def warn_repeated_shots(queries: list[str], log=print,
              "по-разному: деталь, следы, масштаб рядом с человеком, точка "
              "зрения участника, до/после",
         level="заметно" if доля <= ceiling * 2 else "критично")
+
+
+# Ракурсы для замены двойника. Тот же предмет, другая работа камеры — список
+# повторяет подсказку, которую приёмка уже давала человеку словами «деталь,
+# следы, масштаб рядом с человеком, точка зрения участника, до/после».
+_РАКУРСЫ_ЗАМЕНЫ = ("a detail of it, close",
+                   "the traces or damage it left",
+                   "its size next to a person or a car",
+                   "what a participant standing there sees",
+                   "the same place wide, from a distance",
+                   "it from above",
+                   "the hands working on it")
+
+
+def vary_repeated_shots(queries: list[str], beats: list[dict],
+                        api_key: str = "", log=print,
+                        threshold: float = 0.6) -> list[str]:
+    """Переписать кадры-двойники на ДРУГОЙ ракурс того же предмета.
+
+    До сих пор повторы только считались вслух (warn_repeated_shots), а в ролик
+    уходили как есть. В 2026-08-14_2 три плана подряд несли один запрос
+    «modern apartment building exterior», и генератор нарисовал по нему три
+    почти одинаковых кадра — на 7-й и 9-й секунде виден один и тот же дом.
+    Зритель читает такое как зависшее видео, причём в первые десять секунд.
+
+    Предмет остаётся прежним, меняется ракурс: деталь, следы, масштаб рядом с
+    человеком, взгляд участника, то же место издалека. Замена принимается,
+    только если сама не повторяет уже принятые запросы — иначе остаётся
+    исходная: кадр-двойник всё же лучше дырки в монтаже.
+
+    Возвращает список той же длины, что и queries; при любой ошибке — исходный,
+    потому что ронять сборку из-за косметики нельзя."""
+    qs = [str(q or "") for q in (queries or [])]
+    было = len(_repeat_pairs(qs, threshold))
+    if not было:
+        log("[Раскадровка] Кадров-двойников нет — переписывать нечего")
+        return qs
+    заменено = 0
+    # Два круга, а не один. Замер на 2026-08-14_2 (32 двойника из 127): за
+    # один круг переписывалось 14, оставалось 18 — потому что замена, севшая
+    # на другую замену из того же круга, отбраковывалась и на её месте
+    # оставался ИСХОДНЫЙ двойник, то есть заведомо худший вариант. Второй
+    # круг видит уже принятые замены и обходит их.
+    for _круг in range(2):
+        пары = _repeat_pairs(qs, threshold)
+        if not пары:
+            break
+        # Принятыми считаем всё, что двойником НЕ признано: именно с ними и
+        # не должна совпасть замена.
+        двойники = {i for i, _ in пары}
+        принято = [_слова_кадра(q)
+                   for k, q in enumerate(qs) if k not in двойники]
+
+        def свободен(q: str, _принято=принято) -> bool:
+            A = _слова_кадра(q)
+            if not A:
+                return False
+            return all(not B or len(A & B) / len(A | B) < threshold
+                       for B in _принято)
+
+        заменено += _перепиши_двойников(qs, пары, beats, свободен, принято,
+                                        api_key, log)
+    осталось = len(_repeat_pairs(qs, threshold))
+    log(f"[Раскадровка] Кадров-двойников было {было}, переписано "
+        f"{заменено}, осталось {осталось}")
+    return qs
+
+
+def _перепиши_двойников(qs, пары, beats, свободен, принято, api_key, log) -> int:
+    """Один круг переписывания: батчами по 12, возвращает число замен."""
+    заменено = 0
+    for start in range(0, len(пары), 12):
+        chunk = пары[start:start + 12]
+        строки = []
+        for n, (i, j) in enumerate(chunk, 1):
+            текст = ""
+            if i < len(beats or []):
+                текст = str((beats[i] or {}).get("text", ""))[:220]
+            строки.append(
+                f"{n}. REPEATS: «{qs[j]}»\n   NARRATION: {текст}")
+        messages = [
+            {"role": "system", "content":
+             "You are a documentary shot-lister fixing a cut where the same "
+             "shot plays twice."},
+            {"role": "user", "content":
+             (f"{len(chunk)} shots in this film repeat an earlier shot "
+              "word-for-word. Replace each with a DIFFERENT ANGLE ON THE SAME "
+              "SUBJECT — do not change the subject, change what the camera "
+              "does with it.\n\nPick a different one for each:\n"
+              + "\n".join(f"  - {a}" for a in _РАКУРСЫ_ЗАМЕНЫ)
+              + "\n\n" + SHOT_RULES
+              + "\n\nEach replacement is 2-5 English words naming something a "
+                "camera can photograph. It must NOT be a reworded copy of the "
+                "line it repeats.\n\nAlready used in this film, do not "
+                "duplicate any of them:\n"
+              + "\n".join(f"  {q}" for q in dict.fromkeys(qs) if q)
+              + f"\n\nReply with ONLY a JSON array of {len(chunk)} strings, "
+                "in order.\n\n" + "\n".join(строки))},
+        ]
+        try:
+            out = llm_chat(messages, api_key, 0.9, 1200)
+            новые = _parse_query_list(out, len(chunk))
+        except Exception as e:
+            log(f"[Раскадровка] двойники {start + 1}-{start + len(chunk)} "
+                f"не переписаны: {str(e)[:90]}", "warn")
+            continue
+        for n, (i, _j) in enumerate(chunk):
+            новый = (новые[n] if n < len(новые) else "").strip()
+            if not новый or not свободен(новый):
+                continue        # замена сама двойник — оставляем как было
+            qs[i] = новый
+            принято.append(_слова_кадра(новый))
+            заменено += 1
+    return заменено
 
 
 def smart_queries(beats: list[dict], api_key: str = "", log=print) -> list[str] | None:
@@ -3578,7 +3705,8 @@ _TITLE_OPENERS = {
 }
 
 
-def title_click_score(title: str, lang: str = "английский") -> tuple[int, list[str]]:
+def title_click_score(title: str, lang: str = "английский",
+                      anchors: list[str] | None = None) -> tuple[int, list[str]]:
     """Сколько из четырёх элементов ЗАКОНА КЛИКА есть в заголовке.
 
     Считает механически и заведомо грубо: наличие вопроса, указательного,
@@ -3594,11 +3722,28 @@ def title_click_score(title: str, lang: str = "английский") -> tuple[i
     low = t.lower()
     miss = []
     n = 0
+    # ВОПРОС ИЛИ ИМЯ СОБЫТИЯ. Раньше засчитывался только вопрос — и канал
+    # выпускал одни вопросы: замер по пяти последним заголовкам einsturzpunkt
+    # дал 80% вопросительных, тогда как в верхе немецкой выдачи ниши (40
+    # роликов, разбор 16.08) их 2%. Формула сама себя и загоняла в угол.
+    #
+    # Замена не «убрать вопрос», а расширить, как это уже сделано с третьим
+    # элементом (новизна ИЛИ число). Имя события работает тем же способом:
+    # обещает конкретику, которой у соседей нет. Верх ниши держится именно на
+    # нём — «Frankfurt Hauptbahnhof ICE Unfall», «Stuttgart 21», «Das
+    # seltsamste Gebäude in New York».
+    #
+    # Замер, ради которого это писалось: в 4 заголовках einsturzpunkt из 5
+    # НЕТ НИ ОДНОГО имени собственного из собственного же сценария, хотя
+    # сценарий называет их десятки раз — Ferrybridge, Golden (Ray), Havens.
+    # Это известные катастрофы, их ищут по именам, а мы ставили «dieser
+    # brandneue Autotransporter».
     heads = _TITLE_QUESTION_HEADS.get(lang, _TITLE_QUESTION_HEADS["английский"])
-    if "?" in t or any(low.startswith(h) for h in heads):
+    именован = any(a and a.lower() in low for a in (anchors or []))
+    if "?" in t or any(low.startswith(h) for h in heads) or именован:
         n += 1
     else:
-        miss.append("не вопрос")
+        miss.append("не вопрос и не названо имя события")
     words = re.findall(r"[^\W\d_]+", low, re.UNICODE)
     dem = _TITLE_DEMONSTRATIVES.get(lang, _TITLE_DEMONSTRATIVES["английский"])
     if any(w in dem for w in words):
@@ -3627,10 +3772,17 @@ def title_click_score(title: str, lang: str = "английский") -> tuple[i
              or any(w.startswith(p) for w in words
                     for p in new if " " not in p))
     конкретно = any(not (1000 <= x <= 2100) for x in числа)
-    if свежо or конкретно:
+    # Имя события — сильнейшая форма ровно того же обещания. «Ferrybridge»
+    # или «Frankfurt Hauptbahnhof» говорит зрителю, ЧТО он увидит, точнее
+    # любого «новенький»: слово новизны у нас стоит в 4 заголовках из 5 и
+    # именно поэтому уже ничего не обещает, а имя не повторяется никогда.
+    #
+    # Оговорка про год снимается только вместе с именем: «1965» само по себе
+    # по-прежнему не в счёт, но «Ferrybridge 1965» — это адрес события.
+    if свежо or конкретно or именован:
         n += 1
     else:
-        miss.append("нет ни парадокса новизны, ни конкретного числа")
+        miss.append("нет ни парадокса новизны, ни числа, ни имени события")
     # Имя собственное ПЕРВЫМ СЛОВОМ — ровно тот способ провалиться, который
     # замерен: испанский ролик начинался с «Diderot», немецкий клон брал
     # названия происшествий и держал медиану 105.
@@ -4030,7 +4182,8 @@ def _title_variety_ask(channel: dict | None) -> str:
 
 
 def rank_titles(seo_text: str, lang: str = "английский", log=print,
-                past_titles: list[str] | None = None) -> str:
+                past_titles: list[str] | None = None,
+                anchors: list[str] | None = None) -> str:
     """Поставить первым тот заголовок, который лучше отвечает закону клика.
 
     Первым уходит НЕ «первый попавшийся»: yt_upload.parse_seo берёт из
@@ -4063,7 +4216,7 @@ def rank_titles(seo_text: str, lang: str = "английский", log=print,
     scored = []
     for i, ln in items:
         bare = re.sub(r"^\s*(?:\d+[.)]|[-*•])\s*", "", ln).strip().strip("*_")
-        n, miss = title_click_score(bare, lang)
+        n, miss = title_click_score(bare, lang, anchors)
         # ШТРАФ ЗА ПОВТОР ПОСТРОЕНИЯ. Без него отбор всегда выбирал самый
         # шаблонный вариант — см. title_sameness, там замер на четырёх
         # роликах подряд. Штраф дробный и не превышает единицы: заголовок,
@@ -4213,10 +4366,22 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
               f"than anything else here:\n{formula}\n\n") if formula.strip() else "")
           + "TITLES: 5 options, each under 60 characters so nothing is cut off "
           "on mobile. Every one of the five must name a LARGE OBJECT the "
-          "viewer can picture from the words alone, and at least three of the "
-          "five must also carry the demonstrative ('this ...'). Do not open a "
-          "title with a proper name unless a stranger scrolling past would "
-          "recognise it instantly.\n"
+          "viewer can picture from the words alone, and at least two of the "
+          "five must also carry the demonstrative ('this ...').\n"
+          # Замер 16.08: в 4 наших заголовках из 5 нет НИ ОДНОГО имени
+          # собственного из собственного же сценария, хотя сценарий называет
+          # их десятки раз — Ferrybridge, Golden Ray, Havens Steel. Это
+          # известные катастрофы, их ищут по именам. В верхе немецкой выдачи
+          # ниши (40 роликов) имя стоит почти всегда: «Frankfurt Hauptbahnhof
+          # ICE Unfall», «Stuttgart 21», «Das seltsamste Gebäude in New York».
+          "AT LEAST TWO of the five must name the actual event: the place, "
+          "the structure's real name, the ship, the company or the year, "
+          "taken from the script itself and spelled exactly as the script "
+          "spells it. A title that says 'this brand-new building' where the "
+          "script says 'Ferrybridge' throws away the one word a viewer could "
+          "recognise or search for.\n"
+          "Do not OPEN a title with a proper name unless a stranger scrolling "
+          "past would recognise it instantly — mid-title it is always safe.\n"
           + ("The SHAPE of the title must copy the winning pattern above — "
              "that pattern was measured, it beat its own channel many times "
              "over, and it outranks every other instruction here. If the "
@@ -4288,7 +4453,12 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
         # Прошлые заголовки канала — чтобы отбор штрафовал повтор
         # ПОСТРОЕНИЯ. Замер einsturzpunkt: четыре ролика подряд по 4/4,
         # все «Warum … dieser brandneue …?», просмотры 99 -> 13 -> 7 -> 0.
-        out = rank_titles(seo_clean(out), lang, log, _past_titles(ch))
+        # Якоря сценария — чтобы отбор ценил заголовок, НАЗЫВАЮЩИЙ событие.
+        # Замер 16.08: в 4 наших заголовках из 5 нет ни одного имени из
+        # собственного сценария (Ferrybridge, Golden, Havens), а в верхе
+        # немецкой выдачи ниши имя стоит почти всегда.
+        out = rank_titles(seo_clean(out), lang, log, _past_titles(ch),
+                          story_anchors(script_text))
     except Exception as e:
         # Перестановка — улучшение, а не обязанность: сломаться на ней и
         # потерять готовое SEO было бы хуже, чем оставить порядок модели.
@@ -5813,6 +5983,23 @@ THUMB_STYLES = {
             "carry ONE CONCRETE THING the viewer can picture: a material, a "
             "number, a year, a named part. 'Newspaper in the cement', '0.4 "
             "seconds', 'One rivet held it', 'Sand instead of gravel'.\\n"
+            # Замер 16.08 по трём живым обложкам: стояло «BRUCH WIE KREIDE» и
+            # «HOHLE BETONPFAEHLE» — материал вместо события, хотя сценарий
+            # того же ролика называет имя десятки раз (Ferrybridge, Golden
+            # Ray, Havens Steel). Правило разрешало материал, и модель брала
+            # самое дешёвое. То же, что чинилось в заголовке ролика
+            # (title_click_score), — обложка отставала на шаг.
+            #
+            # Места это не стоит: thumb_feed_report на макете harsh даёт
+            # «FERRYBRIDGE|1965», «GOLDEN RAY|4200 AUTOS» и «HAVENS STEEL|
+            # ZWEI STANGEN» на ПОЛНОМ кегле 15.8 px — ровно столько же, что и
+            # нынешнее «BRUCH WIE|KREIDE».
+            "WHEN THE SCRIPT NAMES THE EVENT — a place, a ship, a structure, "
+            "a company — that name goes on the cover, on a line of its own, "
+            "spelled exactly as the script spells it. Two short lines beat "
+            "one long line: the name above, the fact below. A cover that "
+            "says only what the concrete did would fit any video on this "
+            "channel, and that is the one thing a feed punishes hardest.\\n"
             "REJECT your own first idea if it is a category rather than a "
             "fact — 'broken steel', 'the wrong glue', 'shear force' name a "
             "school subject, not this story, and any of forty videos could "
@@ -5863,6 +6050,22 @@ THUMB_STYLES = {
             "darker than what is behind it, with a dark uncluttered area "
             "where the headline will sit. Avoid an evenly grey frame: flat "
             "concrete wall to wall measures as unreadable in the feed. "
+            # «Avoid grey» стояло здесь и раньше — и не работало: замер трёх
+            # обложек einsturzpunkt/2026-08-14_2 от 16.08 дал насыщенность
+            # 3.8, 3.9 и 4.6, то есть почти чёрно-белые картинки. Запрет без
+            # требования модель считает выполненным всегда.
+            #
+            # Вытянуть это потом фильтром НЕЛЬЗЯ, проверено там же: подъём
+            # насыщенности до 43 красит серый бетон в бурый и пачкает белый
+            # текст в персиковый, читаемость падает. Цвет обязан быть В
+            # КАДРЕ, поэтому просим предметом, а не настройкой.
+            "ONE SATURATED COLOUR IS REQUIRED IN THE FRAME, and it must be "
+            "something that genuinely belongs on such a site: a yellow "
+            "helmet or excavator, an orange hi-vis vest, red-and-white "
+            "barrier tape, a blue tarpaulin, a warning sign. Name it "
+            "explicitly in the prompt and place it away from the headline. "
+            "A frame of grey concrete against grey sky is the measured way "
+            "to become an invisible rectangle in a feed of colour. "
             "Documentary light, not advertising: worklight, low sun or "
             "overcast is fine, but the frame must not be faded or hazy. No "
             "people posing, no faces to camera, no staged disaster imagery.",
@@ -6463,6 +6666,17 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
               "px on the viewer's screen and is not read at all. A line "
               "over the limit gets the concept thrown away.\n"
               "- it is NOT the video title — it is the hook ON the image\n"
+              # Замер 16.08 на живой обложке einsturzpunkt/2026-08-14_2: на
+              # картинке стояло «HOHLE BETONPFAEHLE» вместо BETONPFÄHLE.
+              # Умляут потерялся не в вёрстке — overlays.txt того же ролика
+              # содержит «PFÄHLE» правильно, — а в ответе модели: про родное
+              # написание её никто не просил, и она подстраховалась латиницей.
+              # Носителю такое видно мгновенно и читается как самоделка.
+              "- spell it the way the language is actually written: keep "
+              "umlauts, accents and ß (Ä Ö Ü ß, á é í ó ú, ñ). Never "
+              "transliterate them into AE/OE/UE/SS or drop them — the font "
+              "has these glyphs, and a native reader spots the substitute "
+              "instantly.\n"
               # Тот же закон, что и у заголовка ролика (TITLE_CLICK_LAW), и
               # по той же причине: на карточке в ленте текст и картинка
               # читаются вместе, и если самое крупное слово — незнакомое
@@ -7141,10 +7355,33 @@ def _mood_degraded(why: str, fallback: str):
         why=why, level="заметно")
 
 
+def music_license_ok(track: Path) -> bool:
+    """Годится ли трек для МОНЕТИЗИРУЕМОГО ролика.
+
+    Рядом с каждым скачанным треком лежит <имя>.license.txt — его пишут
+    archive_music/openverse_music/jamendo_download. Нет файла — значит трек
+    положен руками, и решение по нему уже принял владелец: такие пропускаем,
+    иначе своя купленная музыка молча перестала бы играть."""
+    lic = track.with_suffix(".license.txt")
+    if not lic.exists():
+        return True
+    try:
+        t = lic.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return True
+    m = re.search(r"license:\s*(\S+)", t)
+    return _cc_license_ok(m.group(1) if m else "")
+
+
 def pick_music_by_mood(music_dir: Path, mood: str) -> Path:
     """Трек по настроению: сначала подпапка music_dir/<mood>/, иначе файлы
     со словом mood в имени. Библиотеку наполняй сам (YouTube Audio Library,
-    Pixabay Music — скачай треки руками, у них нет публичного API)."""
+    Pixabay Music — скачай треки руками, у них нет публичного API).
+
+    Из выбора выкидываются NC/ND: фильтр на скачивании чинит только БУДУЩЕЕ,
+    а на диске к 16.08 уже лежали 39 таких треков из 42 — они и попадали в
+    ролики. Проверять надо в точке выбора, иначе починка не доезжает до
+    того, что реально звучит."""
     music_dir = Path(music_dir)
     sub = music_dir / mood
     cands = []
@@ -7154,7 +7391,15 @@ def pick_music_by_mood(music_dir: Path, mood: str) -> Path:
         cands = [p for p in music_dir.rglob("*")
                  if p.suffix.lower() in MUSIC_EXTS
                  and mood.lower() in p.stem.lower()]
+    total = len(cands)
+    cands = [p for p in cands if music_license_ok(p)]
     if not cands:
+        if total:
+            raise FileNotFoundError(
+                f"Настроение «{mood}»: все {total} треков с лицензией NC "
+                "(некоммерческая) или ND (без переработки) — в "
+                "монетизируемый ролик их нельзя. Пере-наполни библиотеку: "
+                "фильтр источников исправлен, новые скачаются пригодными.")
         raise FileNotFoundError(
             f"Нет треков настроения «{mood}»: создай папку {sub} и положи "
             f"туда mp3, либо добавь «{mood}» в имя файла.")
@@ -7177,12 +7422,29 @@ JAMENDO_MOOD_TAGS = {
 }
 
 
-def _jamendo_license_ok(ccurl: str) -> bool:
+def _cc_license_ok(ccurl: str) -> bool:
     """Отсекает NC (некоммерческая) и ND (без производных) лицензии — на
     монетизированном канале нужен именно "-by" / "-by-sa" / cc0, иначе есть
-    риск жалобы по лицензии, даже если трек формально бесплатный."""
+    риск жалобы по лицензии, даже если трек формально бесплатный.
+
+    Раньше называлась _jamendo_license_ok и висела ТОЛЬКО на Jamendo, хотя
+    источников музыки три. Internet Archive искал по
+    licenseurl:(*creativecommons*) — то есть по ЛЮБОЙ Creative Commons,
+    вместе с NC и ND, — и именно оттуда набралась библиотека: замер 16.08
+    показал 38 некоммерческих треков из 42, из них 33 ещё и ND (запрет на
+    переработку, а подмешивание в ролик — она и есть). Проверка общая на
+    все три источника, иначе дыра затыкается в одном и открыта в другом."""
     u = (ccurl or "").lower()
-    if "publicdomain" in u or "/zero/" in u:
+    # PDM (publicdomain/mark) — НЕ лицензия, а утверждение загрузившего, что
+    # вещь вышла из-под охраны; правообладатель его не давал. На Архиве метка
+    # часто неверна: живая проверка 16.08 вытащила под ней 37-минутный
+    # олимпийский материал — то есть ровно то, по чему прилетает Content ID.
+    # Цена отказа мала: в выдаче на четыре настроения было 100 BY/BY-SA и
+    # 16 CC0 против 8 PDM. CC0 (publicdomain/zero) — другое дело, это явный
+    # письменный отказ от прав самим автором.
+    if "/mark/" in u:
+        return False
+    if "/zero/" in u:
         return True
     return "-nc" not in u and "/nc" not in u and "-nd" not in u and "/nd" not in u
 
@@ -7214,7 +7476,7 @@ def jamendo_search(mood: str, client_id: str, count: int = 5) -> list[dict]:
     for t in data.get("results", []):
         if not t.get("audio"):
             continue
-        if not _jamendo_license_ok(t.get("license_ccurl", "")):
+        if not _cc_license_ok(t.get("license_ccurl", "")):
             continue
         out.append({"id": t["id"], "name": t.get("name", "untitled"),
                     "artist": t.get("artist_name", "unknown"),
@@ -7284,7 +7546,15 @@ def archive_music(mood: str, dest_dir: Path, log=print,
     q = ARCHIVE_MOOD_Q.get(mood, f"{mood} ambient")
     r = requests.get(
         "https://archive.org/advancedsearch.php",
-        params={"q": f"mediatype:(audio) AND licenseurl:(*creativecommons*) "
+        # Лицензию просим В САМОМ ЗАПРОСЕ, а не отсеиваем потом. Прежний
+        # licenseurl:(*creativecommons*) брал любую CC, и под «tense» все 12
+        # найденных оказывались NC/ND — источник отсеивался в ноль и нагрузка
+        # уходила на Openverse, который лимитирован без ключа. С явными
+        # лицензиями тот же запрос отдаёт 4 трека, и все 4 пригодны.
+        # Косая черта в Lucene экранируется, отсюда \/.
+        params={"q": r"mediatype:(audio) AND (licenseurl:(*licenses\/by\/*) "
+                     r"OR licenseurl:(*licenses\/by-sa\/*) "
+                     r"OR licenseurl:(*publicdomain\/zero*)) "
                      f"AND {q}",
                 "fl[]": ["identifier", "title", "licenseurl", "creator"],
                 "rows": 12, "output": "json"},
@@ -7292,8 +7562,19 @@ def archive_music(mood: str, dest_dir: Path, log=print,
     if r.status_code != 200:
         raise RuntimeError(f"Internet Archive: поиск {r.status_code}")
     docs = (r.json().get("response") or {}).get("docs") or []
+    # Запрос просит любую Creative Commons, а нам годится не любая: NC — это
+    # прямой запрет на монетизированный ролик, ND — запрет на переработку.
+    # Фильтруем ПОСЛЕ поиска, а не в запросе: у Archive licenseurl лежит
+    # свободной строкой, и сузить его синтаксисом поиска надёжно нельзя.
+    total = len(docs)
+    docs = [d for d in docs if _cc_license_ok(str(d.get("licenseurl") or ""))]
+    if total and len(docs) < total:
+        log(f"[Архив] Отсеяно {total - len(docs)} из {total}: "
+            "некоммерческая (NC) или запрещающая переработку (ND) лицензия")
     if not docs:
-        raise RuntimeError(f"Internet Archive: ничего под «{mood}»")
+        raise RuntimeError(
+            f"Internet Archive: под «{mood}» нашлось {total} треков, но все "
+            "с лицензией NC/ND — в монетизируемый ролик их нельзя")
     random.shuffle(docs)   # иначе все ролики канала получат один и тот же трек
     last = "нет подходящих файлов"
     for it in docs[:6]:
@@ -9380,13 +9661,35 @@ def cold_open_of(palette: str = "") -> tuple[float, float]:
     return COLD_OPEN.get((palette or "").strip().lower(), (0.0, 0.0))
 
 
-def beat_of(palette: str = "") -> tuple[float, float]:
+# ТЕМП ВЕРТИКАЛЬНОГО РОЛИКА. Вертикаль — не короткая версия горизонтального,
+# а другой продукт, и темп там задаёт не палитра канала, а сам формат.
+#
+# Замер 14.08 на собранном shorts_proba: план 3.8 c. Палитра канала «warm»,
+# оттуда и берётся 4.0 — то есть шорт нарезался как двадцатиминутная
+# документалка. Образец, который прислал владелец («Абсолютный Кинотеатр»,
+# 57.6 c): 38 склеек, план 1.52 c. Второй образец (33.3 c): 30 склеек, план
+# 1.11 c.
+#
+# 1.5 — середина между ними, с разбросом 0.35: ровный метроном читается
+# мертво (проверено на своей же сборке), у образца длины планов гуляют от
+# 0.37 до 5.3 при медиане 1.3.
+BEAT_VERTICAL = (1.5, 0.35)
+
+
+def beat_of(palette: str = "", resolution: str = "") -> tuple[float, float]:
     """(длина плана, разброс) по палитре канала.
 
     Отдельной функцией — чтобы её можно было замерить, не запуская
     раскадровку: это ровно тот же приём, что sound_palette_of и
     overlays.density_floor.
+
+    У ВЕРТИКАЛИ палитра не спрашивается вовсе: там темп — свойство формата,
+    а не почерка канала. Иначе шорт наследует нарезку документалки, что и
+    случилось с shorts_proba (план 3.8 c вместо полутора).
     """
+    import render as _r
+    if resolution and _r.is_vertical(resolution):
+        return BEAT_VERTICAL
     return BEAT_SECS.get((palette or "").strip().lower(), BEAT_SECS_DEFAULT)
 
 
@@ -10044,6 +10347,16 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         else:
             log("[Раскадровка] Составляю умные запросы по смыслу текста (LLM)...")
             queries = smart_queries(beats, agnes_key, log)
+            # Двойников чиним ЗДЕСЬ — до того, как по запросу что-то скачано
+            # или нарисовано, и до записи в кэш, чтобы повторный прогон взял
+            # уже исправленные запросы, а имена файлов не разъехались.
+            if queries:
+                try:
+                    queries = vary_repeated_shots(list(queries), beats,
+                                                  agnes_key, log)
+                except Exception as e:   # косметика не вправе ронять сборку
+                    log(f"[Раскадровка] переписать двойников не вышло: {e}",
+                        "warn")
             try:
                 qfile.write_text(json.dumps(
                     {"fingerprint": fp, "queries": queries},

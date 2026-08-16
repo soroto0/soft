@@ -70,8 +70,11 @@ DEFAULTS = {
     # Цена — время и лимиты Veo, поэтому величина на канал, а не общая.
     "ai_ratio": 0.85,
     # Субтитры — тоже часть почерка канала, а не общая настройка:
-    #   sub_style — bold_box | pill | karaoke | yellow_pop | cyan_pop |
-    #               red_alert | thin_clean | top
+    #   sub_style — bold_box | pill | karaoke | word_pop | yellow_pop |
+    #               cyan_pop | red_alert | thin_clean | top
+    #               word_pop — по одному слову во весь кадр, для вертикали:
+    #               в кадре 1080 фраза набирается в три строки мелким кеглем
+    #               и в ленте не читается
     #   sub_size  — мелкие | средние | крупные | огромные
     #   sub_width — символов в строке (узкая строка читается быстрее, но
     #               чаще перескакивает; 42 — обычный компромисс)

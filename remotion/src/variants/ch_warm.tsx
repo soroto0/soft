@@ -25,3 +25,19 @@ export const ChWarm06: React.FC<VariantProps> = (p) => <Formed p={p} palette="wa
 export const ChWarm07: React.FC<VariantProps> = (p) => <Formed p={p} palette="warm" n={7} />;
 
 export const ChWarm08: React.FC<VariantProps> = (p) => <Formed p={p} palette="warm" n={8} />;
+
+export const ChWarm09: React.FC<VariantProps> = (p) => <Formed p={p} palette="warm" n={9} />;
+
+export const ChWarm10: React.FC<VariantProps> = (p) => <Formed p={p} palette="warm" n={10} />;
+
+export const ChWarm11: React.FC<VariantProps> = (p) => <Formed p={p} palette="warm" n={11} />;
+
+export const ChWarm12: React.FC<VariantProps> = (p) => <Formed p={p} palette="warm" n={12} />;
+
+export const ChWarm13: React.FC<VariantProps> = (p) => <Formed p={p} palette="warm" n={13} />;
+
+export const ChWarm14: React.FC<VariantProps> = (p) => <Formed p={p} palette="warm" n={14} />;
+
+export const ChWarm15: React.FC<VariantProps> = (p) => <Formed p={p} palette="warm" n={15} />;
+
+export const ChWarm16: React.FC<VariantProps> = (p) => <Formed p={p} palette="warm" n={16} />;

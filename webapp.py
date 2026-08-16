@@ -677,6 +677,111 @@ class Api:
             "subs": subs,
         }
 
+    def projects_list(self, limit: int = 60):
+        """Полный список проектов канала — для панели «Проекты».
+
+        Почему отдельный метод, а не расширение get_state. Тот зовётся на
+        каждый тик опроса и обязан оставаться дешёвым; он и отдаёт всего
+        восемь строк для боковой мини-ленты. Здесь же читается meta.json
+        каждого проекта и профиль канала — на полусотне папок это заметно,
+        и делать это несколько раз в секунду незачем.
+        """
+        out = []
+        try:
+            root = self._projects_root()
+            cand = channels_mod.channel_projects(root)
+            if channels_mod.is_project_dir(root) and root not in cand:
+                cand.insert(0, root)
+        except OSError:
+            return out
+
+        # Профили каналов читаем один раз на весь список, а не на проект.
+        try:
+            profiles = {c.get("id"): c for c in channels_mod.load()}
+        except Exception:
+            profiles = {}
+
+        for p in cand[:limit]:
+            meta = {}
+            try:
+                mp = p / "meta.json"
+                if mp.exists():
+                    meta = json.loads(mp.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                pass
+
+            prof = profiles.get(meta.get("channel")) or {}
+            checks = self._checks(p)
+            final = p / "output_final.mp4"
+
+            size_mb = 0
+            try:
+                if final.exists():
+                    size_mb = round(final.stat().st_size / 1048576)
+            except OSError:
+                pass
+
+            out.append({
+                "name": p.name,
+                "path": str(p),
+                # Тема — это и есть человеческое имя проекта. Пока её нет,
+                # честнее показать «Нет темы», чем имя папки с датой.
+                "topic": (meta.get("topic") or "").strip(),
+                "channel": meta.get("channel", ""),
+                "channel_name": prof.get("name", ""),
+                "lang": prof.get("lang", ""),
+                "voice": prof.get("voice", ""),
+                "minutes": prof.get("minutes", ""),
+                "done": sum(checks.values()),
+                "total": len(checks),
+                "ready": bool(checks.get("Рендер")),
+                "size_mb": size_mb,
+                "current": p == self._project,
+            })
+        return out
+
+    def system_stats(self):
+        """Строка состояния: память и очередь.
+
+        Память берём через ctypes, а не psutil: лишняя зависимость ради
+        двух чисел в подвале окна покупателю не нужна, а на Windows этот
+        вызов есть всегда.
+        """
+        used = total = 0.0
+        try:
+            import ctypes
+
+            class MemStatus(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong),
+                            ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong),
+                            ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong),
+                            ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong),
+                            ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+            st = MemStatus()
+            st.dwLength = ctypes.sizeof(MemStatus)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st))
+            gb = 1073741824
+            total = round(st.ullTotalPhys / gb, 1)
+            used = round((st.ullTotalPhys - st.ullAvailPhys) / gb, 1)
+        except Exception:
+            pass
+
+        queue = 0
+        try:
+            import veo_client
+            veo_client.configure_task_store(self._project)
+            queue = len(veo_client.pending_tasks())
+        except Exception:
+            pass
+
+        return {"mem_used": used, "mem_total": total, "queue": queue,
+                "busy": bool(getattr(self, "_busy", False))}
+
     def noop(self):
         return True
 
@@ -2406,7 +2511,8 @@ class Api:
 
     # ---------- одна кнопка ----------
     def _sync_beat_to_intensity(self, beat: float, intensity: str,
-                                palette: str = "") -> float:
+                                palette: str = "",
+                                resolution: str = "") -> float:
         """Раскадровка качает по одному материалу на `beat` секунд, а рендер
         режет кадры по своей интенсивности (напр. «документальная 5с» —
         смена каждые ~5с) — если интенсивность режет чаще, чем раскадровка
@@ -2425,7 +2531,14 @@ class Api:
         канала не доехала бы ни разу, ровно как это уже было с шириной
         строки субтитров.
         """
-        pal_beat, _ = core.beat_of(palette)
+        # У ВЕРТИКАЛИ темп задаёт формат, а не палитра: шорт с палитрой
+        # «warm» наследовал 4 c на план и выходил нарезанным как
+        # документалка (замер shorts_proba 14.08 — план 3.8 c при полутора
+        # у образцов). Поэтому вертикаль отвечает первой и безусловно.
+        pal_beat, _ = core.beat_of(palette, resolution)
+        import render as _r
+        if resolution and _r.is_vertical(resolution):
+            return pal_beat
         if (palette or "").strip().lower() in core.BEAT_SECS:
             return pal_beat
         cfg = render.cuts_of(palette, intensity)
@@ -2754,8 +2867,15 @@ class Api:
             self.save_overlays(ov_in)
         beat = self._sync_beat_to_intensity(float(p.get("beat", 6)),
                                             opts.get("intensity", "средняя"),
-                                            opts.get("palette", ""))
-        if (opts.get("palette", "") or "").strip().lower() in core.BEAT_SECS:
+                                            opts.get("palette", ""),
+                                            opts.get("resolution", ""))
+        import render as _rr
+        if _rr.is_vertical(opts.get("resolution", "")):
+            self.log(f"[Раскадровка] Вертикаль: план {beat:g} c — темп задаёт "
+                     "ФОРМАТ, а не палитра канала. У образцов Shorts план "
+                     "1.1-1.5 c; при палитре «warm» шорт наследовал 4 c и "
+                     "нарезался как документалка.")
+        elif (opts.get("palette", "") or "").strip().lower() in core.BEAT_SECS:
             self.log(f"[Раскадровка] Длина плана {beat:g} c — из почерка "
                      f"канала «{opts.get('palette')}» (core.BEAT_SECS), а не "
                      f"из поля «{float(p.get('beat', 6)):g} c»: как часто "
@@ -3563,7 +3683,28 @@ class Api:
         threading.Thread(target=job, daemon=True).start()
 
 
+def _sync_library_background():
+    """Подтянуть свежие плашки и сцены, пока покупатель открывает окно.
+
+    Молча: не обновилась библиотека — работаем на той, что есть. Ронять
+    запуск из-за необязательного обновления нельзя.
+    """
+    def job():
+        try:
+            import license_client
+            _changed, msg = license_client.sync_library()
+            print(f"[Библиотека] {msg}", flush=True)
+        except Exception as e:
+            print(f"[Библиотека] обновление пропущено: {e}", flush=True)
+    threading.Thread(target=job, daemon=True).start()
+
+
 def main():
+    import license_gate
+    if not license_gate.ensure_licensed(f"{APP_TITLE} — активация"):
+        return
+    _sync_library_background()
+
     api = Api()
     win = webview.create_window(
         APP_TITLE, url=str(BASE / "ui" / "index.html"), js_api=api,
