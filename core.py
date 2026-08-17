@@ -2235,11 +2235,34 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
         "\n\nTHE FIRST 30 SECONDS — the only part of the video every viewer "
         "sees. Measured on 15 finished scripts from this pipeline, not style "
         "advice.\n"
-        "- Say how it ENDED before the 30-second mark: the toll, the "
-        "verdict, the bill, the demolition, the closure, the ban. Not merely "
-        "that something failed — what it cost and how it was settled. "
-        "Measured: our own scripts reach that at second 58 by median, 13 of "
-        "15 miss the 30-second mark, one waits 11 minutes.\n"
+        "- Say the COST before the 30-second mark: the toll, the bill, the "
+        "demolition, the closure. Not merely that something failed — what it "
+        "cost. Measured: our own scripts reach that at second 58 by median, "
+        "13 of 15 miss the 30-second mark, one waits 11 minutes.\n"
+        # РАЗВОДКА ДВУХ ПРАВИЛ, которые до сих пор спорили. Выше по промпту
+        # стоит «WITHHOLD THE BEST: front-loading it leaves no reason to
+        # stay», а здесь требовалось выложить ещё и приговор с причиной — и
+        # модель разрешала спор в пользу конкретного требования.
+        #
+        # Замер 17.08 на живом ролике про Тетон: к 30-й секунде сказано
+        # ВСЁ — протекло, рухнуло за два часа, одиннадцать погибших, ущерб
+        # 400 миллионов. Дальше семнадцать минут смотреть незачем, вопрос
+        # не задан ни одного. Средняя длительность просмотра по каналу 3:54
+        # при длине 18 минут.
+        #
+        # Разделение простое и именно так устроена документалка: ЦЕНА
+        # известна сразу (она и есть ставка), ПРИЧИНА придержана (она и есть
+        # ролик).
+        "- But NEVER give the cause in the opening. The cost is the stakes "
+        "and belongs at the start; the reason it happened is what the video "
+        "is for, and it belongs in the final third. A viewer who knows both "
+        "by second 30 has no question left and leaves — measured on this "
+        "channel.\n"
+        "- The opening ENDS on the question, not on a fact. After the cost "
+        "is stated, the last thing the viewer hears before the title is what "
+        "nobody could explain: the thing that was checked and passed, the "
+        "part that was new, the warning that arrived and was filed. Leave it "
+        "hanging.\n"
         "- Order the opening: (1) what happened and what it cost, (2) who "
         "paid for it, (3) only then the question this video answers. Never "
         "date, then description, then a long technical question, then "
@@ -2648,6 +2671,24 @@ def script_opening(text: str, lang: str = "немецкий") -> tuple[float, in
     return когда, первая, длинных, всего30
 
 
+def script_open_loop(text: str, lang: str = "немецкий") -> bool:
+    """Задан ли в первые 30 секунд вопрос, ради которого стоит остаться.
+
+    Мерка грубая — вопросительный знак в озвучиваемом тексте, — и грубость
+    тут осознанная: открытую петлю в общем виде машиной не опознать, а вот
+    её ПОЛНОЕ отсутствие видно наверняка. Ложных «всё хорошо» она не даёт:
+    вопрос без знака вопроса в немецком и испанском не пишут.
+
+    Замер 17.08 на роликах einsturzpunkt: вопроса в первые 30 секунд нет ни
+    в одном. При этом к 30-й секунде уже сказаны и жертвы, и ущерб, и срок
+    обрушения — то есть петля не просто не открыта, а закрыта. Средняя
+    длительность просмотра по каналу 3:54 при длине 18 минут."""
+    чистый = strip_cues(text or "")[0]
+    плоско = re.sub(r"\s+", " ", чистый).strip()
+    предел = round(30 * words_per_minute(lang) / 60.0)
+    return "?" in " ".join(плоско.split()[:предел])
+
+
 def _warn_slow_opening(text: str, lang: str, log=print) -> None:
     """Сказать вслух, если первые 30 секунд построены не тем порядком.
 
@@ -2675,6 +2716,23 @@ def _warn_slow_opening(text: str, lang: str, log=print) -> None:
     elif когда > 30:
         log(f"[Агент] ⚠ Исход ролика звучит только на {когда:.0f}-й секунде "
             "— перенеси его в первые 30. Решают они.", "warn")
+    # ОТКРЫТАЯ ПЕТЛЯ. Правило про неё стоит в промпте с самого начала
+    # («OPEN LOOP … do NOT answer it until the final third»), и до сих пор
+    # никто не проверял, доехало ли оно. Не доехало ни разу: вопроса в
+    # первые 30 секунд нет ни в одном сценарии канала, зато цена, причина и
+    # развязка сказаны все сразу. Смотреть дальше незачем — отсюда и 3:54
+    # средней длительности при восемнадцати минутах.
+    if not script_open_loop(text, lang):
+        import quality
+        quality.degraded(
+            "Сценарий", "в первые 30 секунд не задан вопрос — смотреть "
+            "дальше незачем",
+            why="вопросительного знака в первых 30 секундах нет вовсе, а "
+                "цена и развязка уже названы",
+            hint="цена — сразу (это ставка), причина — в последней трети "
+                 "(это и есть ролик). Начало обязано кончаться тем, чего "
+                 "никто не смог объяснить, а не фактом",
+            level="критично")
     if первая > 14:
         log(f"[Агент] ⚠ Первая фраза сценария — {первая} слов вместо 14. "
             "Она должна укладываться в 5 секунд, иначе зритель уходит "
@@ -9274,7 +9332,8 @@ def srt_to_seconds(t: str) -> float:
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
-def chapter_times(marks: list[dict], srt_path) -> list[tuple[float, str]]:
+def chapter_times(marks: list[dict], srt_path,
+                  script_words: int = 0) -> list[tuple[float, str]]:
     """Границы глав В СЕКУНДАХ — по субтитрам, а не по фантазии модели.
 
     marks приходит из gen_script: «глава такая-то начинается на N-м слове
@@ -9297,8 +9356,20 @@ def chapter_times(marks: list[dict], srt_path) -> list[tuple[float, str]]:
     for beg, _end, txt in rows:
         starts.append((total, srt_to_seconds(beg)))
         total += len(txt.split())
-    script_words = max(marks[-1]["word"] + 1, 1)
-    scale = total / script_words if script_words else 1.0
+    # ЗНАМЕНАТЕЛЬ — ДЛИНА ВСЕГО СЦЕНАРИЯ, А НЕ НОМЕР ПОСЛЕДНЕЙ ГЛАВЫ.
+    # Здесь стояло marks[-1]["word"] + 1, и это давало ошибку по построению,
+    # а не изредка: последняя метка делилась почти сама на себя, значит
+    # ВСЕГДА попадала на последнее слово субтитров, значит ВСЕГДА срезалась
+    # правилом «не ближе 30 с до конца». Замер 17.08 по двум роликам:
+    # einsturzpunkt 14.08 — масштаб 1.152 вместо 0.972, последняя глава
+    # уезжала на слово 2197 из 2198 (верно — 1854); 14.08_2 — 1.202 вместо
+    # 0.973, слово 1773 из 1774 (верно — 1435). В описание из шести глав
+    # доезжало пять, из четырёх — три, а ОСТАЛЬНЫЕ тайм-коды при этом были
+    # сдвинуты вперёд на 18%: зритель жал главу и попадал не туда.
+    sw = int(script_words or 0)
+    if sw <= 0:                       # не передали — старое поведение как запас
+        sw = max(marks[-1]["word"] + 1, 1)
+    scale = total / sw if sw else 1.0
     out: list[tuple[float, str]] = []
     for m in marks:
         want = m["word"] * scale
@@ -9378,7 +9449,17 @@ def apply_chapters(out_dir, log=print) -> list[tuple[float, str]]:
         marks = json.loads(marks_f.read_text("utf-8"))
     except Exception:
         return []
-    times = chapter_times(marks, srt)
+    # Длину сценария берём из самого script.txt: номера слов в chapters.json
+    # отсчитаны по нему же, значит и знаменатель масштаба должен быть его.
+    script_f = d / "script.txt"
+    words_total = 0
+    if script_f.exists():
+        try:
+            words_total = len(script_f.read_text(
+                encoding="utf-8", errors="replace").split())
+        except OSError:
+            words_total = 0
+    times = chapter_times(marks, srt, words_total)
     if not times:
         log("[Главы] Границы глав посчитать не удалось — оглавление "
             "оставляю как есть.", "warn")
