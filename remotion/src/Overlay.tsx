@@ -1,5 +1,5 @@
 import React from 'react';
-import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import { AbsoluteFill, Img, interpolate, spring, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import { DISPLAY, TEXT, SERIF } from './fonts';
 import { VARIANTS, DECOR } from './variants/_registry';
 import { anyAlnum, headOf, numPairs, textPairs, redactLines, parseAmount, formatAmount } from './payload';
@@ -15,14 +15,14 @@ export type { OverlayProps };
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#2b7cbf',
-  accentLight: '#6db3d9',
-  accentRgb: '43,124,191',
-  bannerFrom: '#c8ddef',
-  bannerTo: '#a5c2d8',
-  bannerText: '#0f1d2e',
-  kickerFrom: '#142233',
-  kickerTo: '#1e3249',
+  accent: '#3a8fbf',
+  accentLight: '#7ec8e3',
+  accentRgb: '58,143,191',
+  bannerFrom: '#c8dce8',
+  bannerTo: '#a8c4d8',
+  bannerText: '#14212e',
+  kickerFrom: '#1e3a4f',
+  kickerTo: '#2a4f68',
 };
 
 const useExit = (dur: number) => {
@@ -730,6 +730,87 @@ const Collage = ({ items, exit, enter }: { items: { label: string; img: string }
   );
 };
 
+// ---------- ПЛАКАТНАЯ КАРТОЧКА ----------
+//
+// Зачем заведён этот тип. Замер готового ролика 17.08: в первые 30 секунд
+// СТОИТ 10 планов по 2.5-4.2 с, а приёмка видит две склейки — и она права.
+// Десять планов подряд показывают бурую воду, землю и камни, то есть зритель
+// смотрит на один непрерывный серый кадр, сколько его ни режь. Там же:
+// предмет ролика назван в 0 кадрах из 104.
+//
+// Плакатная карточка — единственная врезка, которая в таком потоке ГАРАНТИРОВАННО
+// читается как смена картинки: сплошная заливка, огромный шрифт, жёсткий цвет.
+// Приёмы взяты с образца владельца (кинетическая типографика): шрифт, обрезанный
+// краем кадра, толстая смещённая тень-выдавливание, акцентная полоса.
+//
+// Палитры — свои для канала, а не зелёный образца: копировать чужой цвет
+// значит копировать чужое лицо.
+const POSTER_PALETTES: Record<string, { ink: string; paper: string; accent: string }> = {
+  alarm:     { ink: '#0a0b0d', paper: '#efeae3', accent: '#c8431f' },
+  blueprint: { ink: '#0d1b2a', paper: '#e8eef3', accent: '#2f6f9f' },
+  hazard:    { ink: '#141414', paper: '#f2e9d8', accent: '#e8a317' },
+  night:     { ink: '#f0f2f4', paper: '#111417', accent: '#d94f2b' },
+};
+
+const Poster = ({
+  content, exit, enter, palette,
+}: { content: string; exit: number; enter: number; palette?: string }) => {
+  const frame = useCurrentFrame();
+  const { width, fps } = useVideoConfig();
+  // «Заголовок::подпись», как у titlecard — форма содержимого общая, чтобы
+  // расстановщик оверлеев не учил новый формат.
+  const [head, sub] = content.split('::');
+  const words = (head ?? '').trim();
+  if (!words) return <AbsoluteFill />;
+
+  const pal = POSTER_PALETTES[palette ?? 'alarm'] ?? POSTER_PALETTES.alarm;
+  // Кегль по длине строки, как в TitleCard: немецкие составные слова пробелов
+  // не содержат и на фиксированном кегле уезжают за край.
+  const size = Math.max(46, Math.min(200, (width * 0.92) / Math.max(6, words.length) / 0.62));
+  const s = spring({ frame, fps, config: { damping: 12, mass: 0.7, stiffness: 150 } });
+  const bar = interpolate(frame, [0, 14], [0, 1], {
+    easing: Easing.out(Easing.cubic), extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const subOp = interpolate(frame, [18, 34], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  }) * enter * exit;
+  // тень-выдавливание: слоями, как в образце
+  const depth = Array.from({ length: 12 }, (_, i) => `${i + 1}px ${i + 1}px 0 ${pal.ink}`).join(',');
+
+  return (
+    <AbsoluteFill
+      style={{
+        background: pal.paper,
+        opacity: enter * exit,
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      <AbsoluteFill style={{ justifyContent: 'center' }}>
+        <div style={{
+          height: size * 0.78, background: pal.accent,
+          transform: `scaleX(${bar})`, transformOrigin: 'left',
+        }} />
+      </AbsoluteFill>
+      <div style={{ position: 'relative', textAlign: 'center', padding: '0 3%' }}>
+        <div style={{
+          fontFamily: DISPLAY, fontWeight: 700, fontSize: size, lineHeight: 0.92,
+          color: pal.paper, textShadow: depth, letterSpacing: -1,
+          transform: `translateY(${(1 - s) * 40}px) scale(${0.86 + s * 0.14})`,
+          whiteSpace: 'nowrap',
+        }}>{words}</div>
+        {sub ? (
+          <div style={{
+            fontFamily: TEXT, fontSize: Math.max(20, size * 0.2), color: pal.ink,
+            marginTop: size * 0.14, opacity: subOp,
+          }}>{sub.trim()}</div>
+        ) : null}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 const TitleCard = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
   const frame = useCurrentFrame();
   const { width } = useVideoConfig();
@@ -1202,6 +1283,8 @@ const OverlayCore: React.FC<OverlayProps> = (p) => {
       return <Collage items={p.items ?? []} exit={exit} enter={enter} />;
     case 'titlecard':
       return <TitleCard content={p.content} exit={exit} enter={enter} />;
+    case 'poster':
+      return <Poster content={p.content} exit={exit} enter={enter} palette={p.palette} />;
     case 'kinetic':
       return <Kinetic content={p.content} exit={exit} />;
     case 'highlight':

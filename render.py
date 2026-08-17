@@ -338,6 +338,9 @@ SFX_FOR_TYPE = {
     "kinetic": "whoosh", "quote": "whoosh", "gallery": "whoosh",
     "stamp": "pop", "redact": "pop", "marker": "pop",
     "highlight": "pop",
+    # Плакат заливает ВЕСЬ кадр — это самая крупная смена картинки во всём
+    # ролике, и без удара она выглядит немой. Звук тот же, что у titlecard.
+    "poster": "whoosh",
 }
 
 
