@@ -1848,6 +1848,207 @@ def _probe_agnes(key: str) -> tuple[str, str]:
     return state, why
 
 
+def _first_key(raw: str) -> str:
+    """Поля Pexels и Pixabay — многострочные: там держат несколько ключей и
+    перебирают их при исчерпании квоты (KeyRotator). Проверяем ПЕРВЫЙ: проба
+    отвечает на вопрос «ключ вообще рабочий», а не «сколько их осталось»."""
+    for line in (raw or "").replace(",", "\n").splitlines():
+        line = line.strip()
+        if line:
+            return line
+    return ""
+
+
+def _probe_pexels(key: str) -> tuple[str, str]:
+    import requests
+    try:
+        r = requests.get("https://api.pexels.com/v1/search",
+                         headers={"Authorization": _first_key(key)},
+                         params={"query": "city", "per_page": 1},
+                         timeout=KEY_PROBE_TIMEOUT)
+    except Exception as e:
+        return "не спросил", _redact(e)
+    return _probe_verdict(r.status_code, r.text)
+
+
+def _probe_pixabay(key: str) -> tuple[str, str]:
+    import requests
+    try:
+        # per_page меньше 3 Pixabay отвергает как ошибку запроса — и проба
+        # рапортовала бы «мёртв» на исправном ключе.
+        r = requests.get("https://pixabay.com/api/",
+                         params={"key": _first_key(key), "q": "city", "per_page": 3},
+                         timeout=KEY_PROBE_TIMEOUT)
+    except Exception as e:
+        return "не спросил", _redact(e)
+    return _probe_verdict(r.status_code, r.text)
+
+
+def _probe_veo(key: str) -> tuple[str, str]:
+    """Спрашиваем счёт аккаунта: это самый дешёвый запрос сервиса, он не
+    ставит задач и не тратит ни картинок, ни видео."""
+    import requests
+    base = os.getenv("VEO_BASE_URL", "https://veononstop.org/api/v1").rstrip("/")
+    try:
+        # Заголовок именно X-API-Key: на Bearer сервис отвечает 401 «API key
+        # required», и проба обвиняла бы исправный ключ (поймано замером).
+        r = requests.get(f"{base}/account/info",
+                         headers={"X-API-Key": key.strip()},
+                         timeout=KEY_PROBE_TIMEOUT)
+    except Exception as e:
+        return "не спросил", _redact(e)
+    return _probe_verdict(r.status_code, r.text)
+
+
+def _probe_jamendo(key: str) -> tuple[str, str]:
+    import requests
+    try:
+        r = requests.get("https://api.jamendo.com/v3.0/tracks/",
+                         params={"client_id": key.strip(), "format": "json", "limit": 1},
+                         timeout=KEY_PROBE_TIMEOUT)
+    except Exception as e:
+        return "не спросил", _redact(e)
+    state, why = _probe_verdict(r.status_code, r.text)
+    # Jamendo на неверный client_id отвечает 200 и кладёт отказ В ТЕЛО ответа.
+    # Без этой проверки битый ключ считался бы живым — ровно та тихая беда,
+    # ради которой проверка ключей вообще существует.
+    if state == "ok":
+        # Отказ лежит В ТЕЛЕ при коде 200 — берём объяснение самого сервиса,
+        # оно точнее любого нашего пересказа («Invalid Client Id», «превышен
+        # лимит» и т.п.).
+        try:
+            head = (r.json() or {}).get("headers") or {}
+        except Exception:
+            head = {}
+        if head.get("code") not in (0, None):
+            msg = str(head.get("error_message") or "").strip()
+            return "мёртв", msg or f"код {head.get('code')}"
+    return state, why
+
+
+def _probe_youtube(key: str) -> tuple[str, str]:
+    import requests
+    try:
+        r = requests.get("https://www.googleapis.com/youtube/v3/search",
+                         params={"part": "snippet", "q": "test", "maxResults": 1,
+                                 "type": "video", "key": key.strip()},
+                         timeout=KEY_PROBE_TIMEOUT)
+    except Exception as e:
+        return "не спросил", _redact(e)
+    return _probe_verdict(r.status_code, r.text)
+
+
+# ---------------------------------------------------------------------------
+# РЕЕСТР КЛЮЧЕЙ. Одна таблица, из которой живут и мастер первого запуска, и
+# «Настройки API», и проверка ключей.
+#
+# Зачем он появился. Названия ключей в интерфейсе говорили покупателю неправду:
+# платный VeoNonStop был подписан «основной», а бесплатный Gemini — «запасной
+# для текста». Человек, открывший программу впервые, читал это как «сначала
+# купи подписку» и уходил — хотя первый ролик делается на двух БЕСПЛАТНЫХ
+# ключах. Цена такой подписи — несостоявшаяся продажа, поэтому формулировки
+# лежат теперь в коде рядом с проверкой, а не в разметке, где их правят на
+# глазок.
+#
+# role:  обязательный   — без него первого ролика не будет
+#        желательный    — ролик выйдет, но заметно беднее
+#        необязательный — удобство, подключается когда угодно
+# ---------------------------------------------------------------------------
+
+KEY_SPECS = [
+    {
+        "id": "gemini_key", "env": "GEMINI_API_KEY", "title": "Gemini",
+        "role": "обязательный", "money": "бесплатно",
+        "gives": "сценарий, описания кадров, тексты плашек, SEO и ИИ-картинки",
+        "without": "ролик не из чего собрать — это единственный по-настоящему "
+                   "обязательный ключ",
+        "where": "https://aistudio.google.com/apikey",
+        "howlong": "около двух минут, нужен только аккаунт Google, карта не нужна",
+    },
+    {
+        "id": "pexels_keys", "env": "PEXELS_API_KEY", "title": "Pexels",
+        "role": "обязательный", "money": "бесплатно",
+        "gives": "видеоряд: съёмка под каждую сцену",
+        "without": "кадры брать неоткуда — останутся только ИИ-картинки или "
+                   "своя папка с видео",
+        "where": "https://www.pexels.com/api/",
+        "howlong": "около двух минут, ключ выдаётся сразу после регистрации",
+    },
+    {
+        "id": "pixabay_keys", "env": "PIXABAY_API_KEY", "title": "Pixabay",
+        "role": "желательный", "money": "бесплатно",
+        "gives": "второй источник съёмки — там находится то, чего нет у Pexels",
+        "without": "видеоряд однообразнее, но ролик соберётся",
+        "where": "https://pixabay.com/api/docs/",
+        "howlong": "около двух минут",
+    },
+    {
+        "id": "jamendo_key", "env": "JAMENDO_CLIENT_ID", "title": "Jamendo",
+        "role": "желательный", "money": "бесплатно",
+        "gives": "подбор фоновой музыки под настроение ролика",
+        "without": "музыку придётся класть своей папкой либо ролик выйдет без неё",
+        "where": "https://devportal.jamendo.com",
+        "howlong": "около трёх минут, нужен Client ID",
+    },
+    {
+        "id": "veo_key", "env": "VEO_API_KEY", "title": "VeoNonStop",
+        "role": "необязательный", "money": "платный",
+        "gives": "генерация собственного видео нейросетью вместо стоковой съёмки",
+        "without": "ролики собираются из стока и ИИ-картинок — так они и "
+                   "делались до появления этого сервиса",
+        "where": "https://veononstop.org",
+        "howlong": "платная подписка, подключать имеет смысл позже",
+    },
+    {
+        "id": "agnes_key", "env": "AGNES_API_KEY", "title": "Agnes",
+        "role": "необязательный", "money": "платный",
+        "gives": "запасной путь для текстов, если дневная квота Gemini кончилась",
+        "without": "при исчерпании квоты Gemini придётся подождать до утра",
+        "where": "https://agnes-ai.com",
+        "howlong": "платный, нужен только при потоке роликов",
+    },
+    {
+        "id": "youtube_key", "env": "YOUTUBE_API_KEY", "title": "YouTube Data API",
+        "role": "необязательный", "money": "бесплатно",
+        "gives": "разбор ниши перед роликом: что уже собирает просмотры",
+        "without": "тему ролика задаёшь сам",
+        "where": "https://console.cloud.google.com/apis/credentials",
+        "howlong": "около десяти минут, через консоль Google Cloud",
+    },
+]
+
+REQUIRED_KEYS = [s["id"] for s in KEY_SPECS if s["role"] == "обязательный"]
+
+_PROBES = {
+    "gemini_key": _probe_gemini,
+    "agnes_key": _probe_agnes,
+    "pexels_keys": _probe_pexels,
+    "pixabay_keys": _probe_pixabay,
+    "veo_key": _probe_veo,
+    "jamendo_key": _probe_jamendo,
+    "youtube_key": _probe_youtube,
+}
+
+
+def probe_key(key_id: str, value: str) -> tuple[str, str]:
+    """Живая проверка ОДНОГО ключа: («ok» | «лимит» | «мёртв» | «не спросил»
+    | «пусто», короткая причина) — тот же словарь состояний, что у прочих проб.
+
+    Пустое значение — отдельное состояние, а не отказ: у необязательного ключа
+    пустота нормальна, и красить её в «мёртв» значит пугать человека на ровном
+    месте в первую же минуту знакомства с программой.
+    """
+    if not (value or "").strip():
+        return "пусто", ""
+    fn = _PROBES.get(key_id)
+    if not fn:
+        return "не спросил", f"нечем проверять: {key_id}"
+    try:
+        return fn(value)
+    except Exception as e:
+        return "не спросил", _redact(e)
+
+
 def _say(log, msg: str, cls: str = "warn") -> None:
     """Журнал приложения понимает уровень вторым параметром, а в core
     передают и обычный print, и однопараметрные лямбды — падать из-за
@@ -4328,9 +4529,9 @@ def rank_titles(seo_text: str, lang: str = "английский", log=print,
     # что канал начал писать под копирку.
     if top[5] >= 0.5:
         log(f"[SEO] ⚠ Заголовок построен так же, как прошлые ролики канала "
-            f"(похожесть {top[5]:.2f}). На einsturzpunkt четыре таких подряд "
-            "дали 99 -> 13 -> 7 -> 0 просмотров: в ленте это читается как "
-            "один ролик, выложенный четырежды.", "warn")
+            f"(похожесть {top[5]:.2f}). Замер: четыре таких подряд дали "
+            "99 -> 13 -> 7 -> 0 просмотров — в ленте это читается как один "
+            "ролик, выложенный четырежды.", "warn")
     # Построение — отдельной строкой, потому что человеку надо видеть не
     # только «какой заголовок», но и «чем эта пачка отличалась от прошлых».
     if used_shapes:
@@ -4342,8 +4543,8 @@ def rank_titles(seo_text: str, lang: str = "английский", log=print,
         else:
             log(f"[SEO] ⚠ Все {len(scored)} заголовков построены так же, как "
                 f"прошлые ролики ({', '.join(sorted(used_shapes))}) — "
-                "выбирать было не из чего. Перегенерируй SEO: шесть "
-                "заголовков einsturzpunkt подряд начинались одним словом, и "
+                "выбирать было не из чего. Перегенерируй SEO: замер — "
+                "шесть заголовков подряд начинались одним словом, и "
                 "просмотры шли 99 -> 13 -> 7 -> 0.", "warn")
     ordered = [f"{n + 1}. {bare}" for n, (*_, ) in enumerate(best)
                for bare in (best[n][2],)]
@@ -5105,7 +5306,9 @@ def veo_key_now() -> str:
     Если отведены все — возвращаем тот, чей отвод кончится раньше: ждать
     его осмысленнее, чем заведомо мёртвый.
     """
-    keys = _veo_keys()
+    # Похороненные ключи из ротации исключены: возвращать их «за неимением
+    # лучшего» значит ходить в заведомый 401 на каждом кадре.
+    keys = veo_live_keys() or _veo_keys()
     if not keys:
         return ""
     now = time.time()
@@ -5128,6 +5331,93 @@ def veo_bench_key(key: str, log=print) -> bool:
             f"({len(free)} из {len(keys)} свободны)")
         return True
     return False
+
+
+# Ключи, ОТКАЗАВШИЕ НАСОВСЕМ (истёк, отозван, не авторизован). Отдельно от
+# _VEO_KEY_BENCH: тот про «занят, вернись через час», а здесь возврата не
+# будет — ключ не оживёт сам ни через час, ни к утру.
+_VEO_KEY_DEAD: set[str] = set()
+
+
+def _veo_key_dead(err: Exception) -> bool:
+    """Ключ мёртв насовсем, а не «занят» и не «лёг сервис».
+
+    Различать обязательно, потому что лечится ровно наоборот: занятый ключ
+    надо ПЕРЕЖДАТЬ, мёртвый — БРОСИТЬ. Замер 24.08.2026 на истёкшей подписке:
+    на каждый запрос приходит 401 {"success": false, "error": "API key has
+    expired"} — и так на всё, включая /account/info.
+
+    Что было без этой проверки: 401 не попадал ни в «лимит» (429), ни в
+    «простой» (503), считался разовой ошибкой, повторялся VEO_IMAGE_ATTEMPTS
+    раз и уводил план на сток. То есть при ИСТЁКШЕМ ключе ролик выходил
+    целиком из чужого стока — хуже, чем если бы ключа не было вовсе: без
+    ключа gen_image рисует всё через Gemini единым видом.
+    """
+    m = str(err).lower()
+    said = ("expired" in m or "unauthorized" in m or "not authorized" in m
+            or "invalid api key" in m)
+    # 401 — это отказ в подлинности, другого смысла у него нет: хороним сразу.
+    # А 403 бывает и «этой модели нет на твоём тарифе» — по нему хоронить весь
+    # ключ значит увести ВЕСЬ ролик на запасной генератор из-за одной модели.
+    # Поэтому 403 хоронит, только если сервер прямо сказал про ключ.
+    if getattr(err, "status", 0) == 401:
+        return True
+    if getattr(err, "status", 0) == 403:
+        return said
+    return ("401" in m and said) or ("403" in m and said)
+
+
+def veo_live_keys() -> list[str]:
+    """Ключи, которые ещё имеет смысл пробовать в этом прогоне."""
+    return [k for k in _veo_keys() if k not in _VEO_KEY_DEAD]
+
+
+def veo_kill_key(key: str, log=print) -> bool:
+    """Похоронить отказавший ключ. True — есть на что переключиться."""
+    if key and key not in _VEO_KEY_DEAD:
+        _VEO_KEY_DEAD.add(key)
+        log("[Картинка] Ключ VeoNonStop не работает (истёк или отозван) — "
+            "больше к нему не обращаюсь")
+    return bool(veo_live_keys())
+
+
+# Жив ли VeoNonStop в ЭТОМ прогоне. None — ещё не спрашивали.
+_VEO_READY: bool | None = None
+
+
+def veo_ready(log=print) -> bool:
+    """Один живой вопрос сервису за прогон: работает ли ключ вообще.
+
+    Нужен ПЛАНИРОВЩИКУ, а не генератору. Раскадровка решает, сколько планов
+    пойдёт живым ИИ-видео, ДО первого обращения к Veo — и на истёкшей
+    подписке спокойно назначала 88 таких планов, потому что «ключ в .env
+    вписан». Узнать правду стоит один запрос и полторы секунды (замер
+    24.08.2026: /account/info отвечает 401 за 1.6 с), а цена незнания —
+    часы прогона и 88 заведомо провальных запросов.
+
+    Ответ кэшируется на прогон и сбрасывается вместе с остальным состоянием
+    (reset_veo_limit).
+    """
+    global _VEO_READY
+    if _VEO_READY is not None:
+        return _VEO_READY
+    if not veo_live_keys():
+        _VEO_READY = False
+        return False
+    try:
+        import veo_client
+        veo_client.account_info(veo_key_now())
+        _VEO_READY = True
+    except Exception as e:                                # noqa: BLE001
+        if _veo_key_dead(e):
+            veo_kill_key(veo_key_now(), log)
+            _VEO_READY = False
+        else:
+            # Сеть моргнула или сервис занят — это НЕ повод объявлять ключ
+            # мёртвым и перекраивать план ролика. Считаем живым: ошибётся
+            # в эту сторону дешевле.
+            _VEO_READY = True
+    return _VEO_READY
 
 
 def _veo_is_outage(msg: str) -> bool:
@@ -5252,9 +5542,18 @@ def reset_veo_limit() -> None:
     и ушёл бы на сток с первого же кадра, даже если лимит давно отпустил."""
     global _VEO_LIMIT_UNTIL, _VEO_LIMIT_SPENT, _VEO_LIMIT_SINCE
     global _QUOTA_CACHE, _QUOTA_AT, _QUOTA_SAID
+    global _FALLBACK_GEN, _VEO_READY
     _VEO_LIMIT_UNTIL = 0.0
     _VEO_LIMIT_SPENT = 0.0
     _VEO_LIMIT_SINCE = 0.0
+    # Похороненные ключи и выбранный запасной генератор — тоже «на этот
+    # прогон». Ключ мог быть продлён, квота Gemini обнуляется в полночь: без
+    # сброса приложение, однажды ушедшее на Agnes, оставалось бы на ней до
+    # перезапуска, даже когда основной путь давно ожил. Цена сброса — один
+    # неудачный запрос в начале прогона.
+    _VEO_KEY_DEAD.clear()
+    _FALLBACK_GEN = ""
+    _VEO_READY = None
     # Остаток картинок — тоже «на этот ролик»: за предыдущий его потратили, и
     # начинать следующий с цифрой часовой давности значит планировать по
     # выдумке. Заодно строка про остаток снова прозвучит вслух.
@@ -5284,6 +5583,70 @@ def _veo_mark_down(log=print, why: str = "") -> None:
     _VEO_DOWN_UNTIL = time.time() + VEO_DOWN_S
 
 
+# Каким запасным генератором рисуем ролик, когда VeoNonStop недоступен.
+# Выбирается ОДИН РАЗ на прогон и дальше не меняется: три генератора в одном
+# ролике дают визуально разнородные кадры, а канал должен выглядеть одним
+# фильмом. Пусто — ещё не выбирали.
+_FALLBACK_GEN = ""
+
+
+def _fallback_image(prompt: str, dest: Path, api_key: str = "",
+                    style: str = "", log=print) -> Path:
+    """Кадр без VeoNonStop: сначала Gemini, если он не может — Agnes.
+
+    ЗАЧЕМ ВТОРОЙ ЗАПАСНОЙ. Раньше здесь стоял только Gemini, и это молча
+    считалось достаточным. Замер 24.08.2026 на настоящих ключах: из десяти
+    ключей Gemini один не умеет картинки (401/403), остальные девять
+    отвечают 429 «You exceeded your current quota» — то есть запасного
+    генератора не было ВООБЩЕ, и весь ролик уходил в чужой сток. Agnes на
+    тех же данных сработал: 4.5 МБ за 59 с со второго ключа (первый отдал
+    503). Ключи Agnes уже лежат в .env и уже используются для проверки
+    кадров — новых заводить не нужно.
+
+    Выбранный генератор запоминается на прогон, чтобы кадры одного ролика
+    не пришли из двух разных рисовалок. Но запомненный — это ПРЕДПОЧТЕНИЕ, а
+    не единственный: проверено подделкой отказа 24.08.2026 — когда список
+    состоял из одного запомненного и тот умирал посреди прогона, Agnes не
+    спрашивали ВООБЩЕ, кадр уходил в сток, а в тексте ошибки при этом
+    значилось «Gemini и Agnes тоже». Единый вид ролика стоит дорого, но не
+    дороже, чем половина планов чужим стоком.
+    """
+    global _FALLBACK_GEN
+    order = ["gemini", "agnes"]
+    if _FALLBACK_GEN in order:
+        order = [_FALLBACK_GEN] + [g for g in order if g != _FALLBACK_GEN]
+    last = None
+    for gen in order:
+        if gen == "gemini":
+            if not (api_key or _gemini_keys()):
+                continue
+            try:
+                out = gemini_image_any(prompt, dest, api_key, style, log)
+                _FALLBACK_GEN = "gemini"
+                return out
+            except Exception as e:                       # noqa: BLE001
+                last = e
+                log("[Картинка] Gemini картинку не дал — пробую Agnes")
+                _FALLBACK_GEN = ""      # выбор снят: этот больше не первый
+                continue
+        if gen == "agnes":
+            keys = _agnes_keys()
+            if not keys:
+                continue
+            for i, k in enumerate(keys, 1):
+                try:
+                    out = agnes_image(prompt, dest, k, log, style)
+                    _FALLBACK_GEN = "agnes"
+                    return out
+                except Exception as e:                   # noqa: BLE001
+                    last = e
+                    log(f"[Картинка] Agnes, ключ {i}/{len(keys)}: "
+                        f"{str(e)[:120]}")
+    raise RuntimeError(
+        "Нечем нарисовать кадр: VeoNonStop недоступен, запасные тоже "
+        f"({last}). План возьмёт сток")
+
+
 def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
               style: str = "", wait_on_limit: bool = True,
               purpose: str = "frame") -> Path:
@@ -5296,8 +5659,9 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
     "polish" (косметическая перегенерация, отключается первой). См.
     VEO_IMAGE_COVER_RESERVE.
     """
-    if not _veo_keys():
-        # КЛЮЧА НЕТ ВООБЩЕ — это не сбой, а жизнь без подписки, и падать
+    if not veo_live_keys():
+        # КЛЮЧА НЕТ ВООБЩЕ (или он уже похоронен как истёкший в этом же
+        # прогоне) — это не сбой, а жизнь без подписки, и падать
         # здесь нельзя: тогда в ролике не будет НИ ОДНОГО сгенерированного
         # кадра, только сток. А сплошной чужой сток с машинным голосом — это
         # ровно то, за что режут монетизацию как за переиспользованный
@@ -5309,16 +5673,16 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
         # ждать нечего, Veo не вернётся сам. Разнородности тоже не будет:
         # если ключа нет, ВСЕ кадры ролика придут из Gemini, то есть вид
         # снова единый.
-        if not api_key and not _gemini_keys():
+        if not api_key and not _gemini_keys() and not _agnes_keys():
             raise RuntimeError(
-                "Нет ни VEO_API_KEY, ни ключа Gemini — сгенерировать кадр "
-                "нечем, план возьмёт сток")
-        log("[Картинка] Ключа VeoNonStop нет — рисую через Gemini "
-            "(единый запасной генератор на весь ролик)")
+                "Нет ни VEO_API_KEY, ни ключа Gemini, ни ключа Agnes — "
+                "сгенерировать кадр нечем, план возьмёт сток")
+        log("[Картинка] Рабочего ключа VeoNonStop нет — рисую запасным "
+            "генератором (один и тот же на весь ролик)")
         # Перебор ВСЕХ ключей, а не одного: см. gemini_image_any — среди
         # десяти ключей один не умеет картинки вовсе, и на нём одном эта
         # ветка отдавала бы сток на каждом кадре.
-        return gemini_image_any(prompt, dest, api_key, style, log)
+        return _fallback_image(prompt, dest, api_key, style, log)
     # Спрашиваем ДО первого запроса. Без этой проверки исчерпанный суточный
     # лимит выяснялся единственным способом — получить отказ, и так на каждом
     # плане: ровно отсюда брались сотни одинаковых 429 в журнале и просьба
@@ -5345,6 +5709,7 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
     while True:
         _stop_check()      # пережидание лимита не должно переживать «Стоп»
         limited_all = True
+        key_died = False
         # Ключ берём АКТУАЛЬНЫЙ на каждой попытке: упёршийся в лимит уже
         # отведён, и мы автоматически работаем следующим.
         veo_key = veo_key_now()
@@ -5358,11 +5723,32 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
                 if _veo_is_outage(str(e)):
                     _veo_mark_down(log)
                     raise
+                if _veo_key_dead(e):
+                    if not veo_key:
+                        # Ключа на руках нет, хоронить нечего — а без этой
+                        # проверки veo_kill_key("") вернул бы «есть живые» и
+                        # цикл крутился бы вечно.
+                        break
+                    # Ждать нечего и повторять нечего. Если живых ключей не
+                    # осталось — весь остаток ролика рисует Gemini, и вид
+                    # у кадров снова единый (тот же довод, что и в ветке
+                    # «ключа нет вовсе» выше).
+                    if not veo_kill_key(veo_key, log):
+                        log("[Картинка] Перехожу на запасной генератор "
+                            "до конца прогона")
+                        return _fallback_image(prompt, dest, api_key,
+                                               style, log)
+                    key_died = True
+                    break
                 if not _veo_is_account_limit(e):
                     limited_all = False
                     break          # настоящая ошибка — модель ни при чём
                 log(f"[Картинка] Модель {model}: лимит исчерпан — пробую "
                     "следующую")
+        if key_died:
+            # Ключ похоронен, а живые остались: сразу пробуем следующим, без
+            # паузы и без траты попытки — этот отказ не про занятость.
+            continue
         if not limited_all:
             # обычная ошибка: короткая пауза и повтор, как раньше
             attempt += 1
@@ -7762,7 +8148,17 @@ def openverse_music(mood: str, dest_dir: Path, log=print,
             try:
                 r = requests.get("https://api.openverse.org/v1/audio/",
                                  params={"q": q, "license_type": "commercial",
-                                         "page_size": 40},
+                                         # 20 — ПОТОЛОК страницы для запроса
+                                         # без ключа. При 40 Openverse отвечает
+                                         # 401 «page_size may not exceed 20 for
+                                         # anonymous requests», то есть третий
+                                         # источник музыки был мёртв целиком —
+                                         # и не по лимиту запросов, а по этой
+                                         # одной цифре. Замер 24.08.2026:
+                                         # 40 -> 401 на каждый запрос,
+                                         # 20 -> 200 и 240 найденных треков
+                                         # на «dark ambient».
+                                         "page_size": 20},
                                  headers={"User-Agent": "ContentFactory/1.0"},
                                  timeout=60)
             except Exception as e:
@@ -8103,6 +8499,13 @@ def gen_video(prompt: str, dest: Path, log=print,
                 return veo_video(prompt, dest, veo_key, log)
             except Exception as e:
                 last = e
+                if _veo_key_dead(e):
+                    # Тот же довод, что и у картинок: ждать нечего, ключ сам
+                    # не оживёт. Без этого КАЖДЫЙ план ролика начинался бы с
+                    # заведомо провального запроса к мёртвому ключу.
+                    if veo_kill_key(veo_key, log):
+                        continue       # есть ещё ключи — работаем следующим
+                    break
                 if not _veo_is_account_limit(e) or _veo_is_outage(str(e)):
                     break              # настоящая ошибка — Veo тут не поможет
                 # Сначала соседний ключ (лимит считается на аккаунт), и только
@@ -9612,9 +10015,74 @@ def extract_keywords(text: str, n: int = 3) -> str:
     return " ".join(sorted(top, key=order.index))
 
 
-RANDOM_VOICES = ["en-US-GuyNeural", "en-US-ChristopherNeural",
-                 "en-US-EricNeural", "en-US-AndrewNeural", "en-US-BrianNeural",
-                 "en-US-JennyNeural", "en-US-AriaNeural", "en-US-MichelleNeural"]
+# Голоса «Разнообразия» — ПО ЯЗЫКАМ. Здесь стоял один список из восьми
+# en-US-*, и project_style тянул из него жребий, не глядя на язык ролика:
+# испанский сценарий озвучивался английским голосом молча, без единой строки
+# в журнале. Ловилось это только на слух в готовом файле.
+#
+# Правило: разнообразие меняет голос ВНУТРИ языка, а не поперёк него.
+# Языка нет в списке — голос не трогаем вовсе (см. project_style).
+RANDOM_VOICES_BY_LANG = {
+    "en": ["en-US-GuyNeural", "en-US-ChristopherNeural",
+           "en-US-EricNeural", "en-US-AndrewNeural", "en-US-BrianNeural",
+           "en-US-JennyNeural", "en-US-AriaNeural", "en-US-MichelleNeural"],
+    "ru": ["ru-RU-DmitryNeural", "ru-RU-SvetlanaNeural"],
+    "es": ["es-ES-AlvaroNeural", "es-ES-ElviraNeural",
+           "es-MX-JorgeNeural", "es-MX-DaliaNeural"],
+    # Страны с отдельными голосами - отдельными ключами. Общий "es" остаётся
+    # для случая, когда страна неизвестна (голоса нет, есть только язык).
+    "es-ES": ["es-ES-AlvaroNeural", "es-ES-ElviraNeural",
+              "es-ES-XimenaNeural"],
+    "es-MX": ["es-MX-JorgeNeural", "es-MX-DaliaNeural"],
+    "es-AR": ["es-AR-TomasNeural", "es-AR-ElenaNeural"],
+    "pt-BR": ["pt-BR-AntonioNeural", "pt-BR-FranciscaNeural"],
+    "pt-PT": ["pt-PT-DuarteNeural", "pt-PT-RaquelNeural"],
+    "en-GB": ["en-GB-RyanNeural", "en-GB-SoniaNeural",
+              "en-GB-ThomasNeural"],
+    "de": ["de-DE-ConradNeural", "de-DE-KatjaNeural",
+           "de-DE-KillianNeural", "de-DE-AmalaNeural"],
+    # Швейцария отдельно от Германии. Без этого канал для Швейцарии звучал
+    # бы голосом канала для Германии: код языка у них общий, «de».
+    "de-CH": ["de-CH-JanNeural", "de-CH-LeniNeural"],
+    "de-AT": ["de-AT-JonasNeural", "de-AT-IngridNeural"],
+    "fr": ["fr-FR-HenriNeural", "fr-FR-DeniseNeural"],
+    "pt": ["pt-BR-AntonioNeural", "pt-BR-FranciscaNeural"],
+    "it": ["it-IT-DiegoNeural", "it-IT-ElsaNeural"],
+}
+# Прежнее имя оставлено: на него смотрит старый код и внешние скрипты.
+RANDOM_VOICES = RANDOM_VOICES_BY_LANG["en"]
+
+
+# Как в интерфейсе называют языки. Нужно, когда голос НЕ ЗАДАН: у канала
+# может стоять язык и пустой голос - так было у канала для Швейцарии, и
+# разнообразие уводило его в английский, потому что язык никто не смотрел.
+LANG_CODES = {
+    "русский": "ru", "английский": "en", "испанский": "es",
+    "немецкий": "de", "французский": "fr", "португальский": "pt",
+    "итальянский": "it",
+}
+
+
+def voices_for_voice(voice: str) -> list:
+    """Голоса той же СТРАНЫ, что и переданный; иначе — того же языка.
+
+    Страна важна не меньше языка: de-CH и de-DE - один язык, но канал для
+    Швейцарии не должен заговорить голосом канала для Германии.
+    """
+    v = (voice or "").strip()
+    if not v:
+        return []
+    parts = v.split("-")
+    locale = "-".join(parts[:2]) if len(parts) >= 2 else ""
+    if locale in RANDOM_VOICES_BY_LANG:
+        return RANDOM_VOICES_BY_LANG[locale]
+    return RANDOM_VOICES_BY_LANG.get(parts[0].lower(), [])
+
+
+def voices_for_lang(lang: str) -> list:
+    """Голоса по названию языка из интерфейса. Пусто — язык незнаком."""
+    return RANDOM_VOICES_BY_LANG.get(
+        LANG_CODES.get((lang or "").strip().lower(), ""), [])
 
 
 # Атмосфера — тоже признак канала, а не общая настройка. Вероятности, а не
@@ -9637,7 +10105,8 @@ ATMOSPHERE_DEFAULT = {"bloom": 0.5, "light_leak": 0.4,
                       "dust": 0.35, "flicker": 0.25}
 
 
-def project_style(project_dir, palette: str = "") -> dict:
+def project_style(project_dir, palette: str = "", voice: str = "",
+                  lang: str = "") -> dict:
     """«Почерк» проекта — детерминированно от его пути: разные проекты дают
     разные голос/темп/субтитры/цветокор/интенсивность. Против шаблонности
     (YouTube «inauthentic content»): ролики канала не похожи друг на друга,
@@ -9653,7 +10122,14 @@ def project_style(project_dir, palette: str = "") -> dict:
     r = random.Random(zlib.crc32(str(Path(project_dir).resolve()).encode()))
     atm = ATMOSPHERE.get((palette or "").strip().lower(), ATMOSPHERE_DEFAULT)
     return {
-        "voice": r.choice(RANDOM_VOICES),
+        # Голос выбирается ВНУТРИ языка текущего голоса. Незнакомый язык -
+        # оставляем как есть: лучше без разнообразия, чем испанский ролик,
+        # заговоривший по-английски.
+        # Порядок: голос задан -> его страна/язык; голоса нет -> язык канала;
+        # нет и языка -> прежний английский список. Средняя ступень и была
+        # дырой: канал с языком и пустым голосом уходил в английский.
+        "voice": r.choice(voices_for_voice(voice) or voices_for_lang(lang)
+                          or ([voice] if voice else RANDOM_VOICES)),
         "rate": r.choice([-8, -5, -3, 0, 0, 3, 5]),
         # Субтитры больше НЕ рандомные — жёлтый/голубой/красный "viral"-вид
         # слишком жирный и кричащий (жалоба: "слишком жирный, внешнее
@@ -10714,7 +11190,23 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     except ValueError:
         video_ratio = float(default_ratio)
     video_ratio = min(1.0, max(0.0, video_ratio))
-    if video_ratio >= 0.999:
+    # ЖИВОГО ВИДЕО НЕ БЫВАЕТ БЕЗ КЛЮЧА, и заказывать его «на всякий случай»
+    # дороже всего именно временем. Замер 29.08: подписка кончилась
+    # (VeoNonStop 401 «API key has expired»), конвейер это видит и к сервису
+    # больше не обращается — а план всё равно строился как «Все 112 планов —
+    # живое видео Veo (VEO_VIDEO_RATIO=1)», после чего КАЖДЫЙ такой план
+    # сначала ждал отказа и только потом уходил на запасной путь. Журнал того
+    # же прогона называет цену прямо: «94 ИИ-планов пойдут запасным
+    # генератором — это примерно 1.4 ч только на них».
+    #
+    # Ворота стоят здесь, а не глубже, потому что план решает ВСЁ: тип плана
+    # определяет и число запросов, и то, чего мы ждём впустую.
+    if not veo_live_keys():
+        plan_kinds = ["photo"] * len(beats)
+        log(f"[Раскадровка] Рабочего ключа VeoNonStop нет — все "
+            f"{len(beats)} планов сразу идут фото/схемами. Живое видео не "
+            "заказываю: без ключа это только ожидание отказа на каждом кадре")
+    elif video_ratio >= 0.999:
         plan_kinds = ["video"] * len(beats)
         log(f"[Раскадровка] Все {len(beats)} планов — живое видео Veo "
             "(VEO_VIDEO_RATIO=1)")
@@ -10745,6 +11237,36 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                          for j in range(n_ai)}
         log(f"[Раскадровка] Режим MIXED: {len(ai_indices)}/{len(beats)} "
             f"планов ({ai_ratio:.0%}) будут ИИ-кадрами, равномерно по ролику")
+
+    # ЧЕСТНАЯ ЦЕНА ПРОГОНА БЕЗ VeoNonStop. План выше составляется по
+    # настройкам канала и НЕ знает, жив ли ключ. Молча менять почерк канала
+    # нельзя (это решение владельца), но и промолчать про «сегодня это
+    # займёт лишний час» значит соврать: человек ушёл бы спать в уверенности,
+    # что ролик будет к утру.
+    #
+    # ЦИФРЫ — ПО СТЕННЫМ ЧАСАМ, А НЕ ПО ОДИНОЧНОМУ ЗАПРОСУ. Первая версия
+    # этого расчёта брала 98 с за клип (замер одиночной генерации) и пугала
+    # цифрой «2.4 часа». Оба генератора работают в НЕСКОЛЬКО ПОТОКОВ, и
+    # считать надо пропускную способность:
+    #   Veo   — 96 клипов в час (подсчёт по журналу 22.08.2026: 363 клипа за
+    #           сутки, самый плотный час — 96, четыре задачи разом);
+    #   Agnes — 65 клипов в час (замер 24.08.2026: 2 клипа из 4 потоков за
+    #           111 с, два ключа ответили 503 за 8-9 с)
+    #           и 409 КАРТИНОК в час (4 кадра 2624x1472 из 4 потоков за 35 с).
+    # Отсюда 55 с на клип и 9 с на кадр по стенным часам. Картинки на
+    # запасном генераторе, вопреки ожиданию, НЕ узкое место: одиночный замер
+    # давал 118 с и врал втринадцатеро — параллель решает всё.
+    if not veo_ready(log):
+        ai_planned = (len(beats) if visual_mode == "ai" else len(ai_indices))
+        if ai_planned:
+            secs = sum(55 if plan_kinds[i] == "video" else 9
+                       for i in (range(len(beats)) if visual_mode == "ai"
+                                 else sorted(ai_indices)))
+            log(f"[Раскадровка] ВНИМАНИЕ: рабочего ключа VeoNonStop нет, "
+                f"{ai_planned} ИИ-планов пойдут запасным генератором — это "
+                f"примерно {secs / 3600:.1f} ч только на них. Хочешь быстрее "
+                f"— убавь долю ИИ-кадров или поставь VEO_VIDEO_RATIO=0, "
+                f"остальное возьмётся со стоков за секунды", "warn")
 
     # СЦЕНЫ: планы, которые нарисуются целиком вместо съёмки. Модель читает
     # сценарий и сама решает, где съёмка бессильна — «вес перешёл на три
@@ -10883,23 +11405,39 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                         gen_image(query, jpg, gemini_key, log, visual_style)
                     clip = sdir / f"beat_{i:03d}_{safe}_ai_kb.mp4"
                     animated = clip.exists()   # уже мог подготовить префетч
-                    if (not animated and os.getenv("VEO_API_KEY", "").strip()
+                    # ПРОВЕРЯЕМ РАБОЧИЙ ключ, а не просто вписанный. Раньше
+                    # здесь стояло os.getenv("VEO_API_KEY") — то есть «в .env
+                    # что-то написано». На истёкшей подписке это означает, что
+                    # КАЖДЫЙ ИИ-кадр ролика идёт в мёртвый сервис за 401: в
+                    # прогоне 24.08 таких кадров было 88, и на каждый ложилась
+                    # строка «кадр не ожил» в сводке деградаций — сводка
+                    # переставала показывать настоящие беды.
+                    if (not animated and veo_live_keys()
                             and _env_switch("VEO_ANIMATE_PHOTOS", True)):
                         try:
                             gen_video_from_image(jpg, query, clip, log=log,
                                                  style=visual_style)
                             animated = True
                         except Exception as e:
-                            log(f"[Раскадровка] План {i}: image-to-video не "
-                                f"вышел ({_redact(e)}) — Ken Burns")
-                            import quality
-                            quality.degraded(
-                                "Раскадровка", "кадр не ожил: вместо движения "
-                                "в сцене — простой зум по неподвижной картинке",
-                                why=f"image-to-video не отработал "
-                                    f"({e.__class__.__name__})",
-                                hint="проверь остаток квоты VeoNonStop",
-                                level="заметно")
+                            if _veo_key_dead(e):
+                                # Хороним ключ — следующие планы уже не пойдут
+                                # сюда вовсе, а сразу возьмут Ken Burns.
+                                veo_kill_key(veo_key_now(), log)
+                                log(f"[Раскадровка] План {i}: оживление "
+                                    "кадров выключено до конца прогона — "
+                                    "ключ VeoNonStop мёртв, будет Ken Burns")
+                            else:
+                                log(f"[Раскадровка] План {i}: image-to-video "
+                                    f"не вышел ({_redact(e)}) — Ken Burns")
+                                import quality
+                                quality.degraded(
+                                    "Раскадровка", "кадр не ожил: вместо "
+                                    "движения в сцене — простой зум по "
+                                    "неподвижной картинке",
+                                    why=f"image-to-video не отработал "
+                                        f"({e.__class__.__name__})",
+                                    hint="проверь остаток квоты VeoNonStop",
+                                    level="заметно")
                     if animated:
                         src_dur = audio_duration(clip) or need
                     else:
