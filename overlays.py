@@ -11,7 +11,7 @@ bars (растущие бары), timeline (полоска с датами), com
     timecode | тип | контент | позиция | длительность
     00:01:23 | popup | images/suspect1.jpg | top-right | 5s
     00:02:10 | lower3 | Portland Airport, 1971 | bottom | 4s
-    00:03:45 | callout | The rear stairs | point:70,60 | 3s
+    00:03:45 | callout | The rear stairs | point:50,46 | 3s
     00:05:00 | counter | $200,000 | center | 3s
     00:06:00 | bars | Found:30,Missing:70 | center | 4s
     00:07:00 | timeline | 1971:Hijacking,1980:Money found | bottom | 5s
@@ -215,6 +215,45 @@ def find_overlaps(items: list[dict], tol: float = 0.2) -> list[tuple]:
     return bad
 
 
+# Полноэкранные типы: под ними другой плашке места нет физически.
+FULLSCREEN_TYPES = ("titlecard", "poster", "quote")
+
+
+def spread_overlaps(items: list[dict], log=print) -> int:
+    """РАЗВЕСТИ налезающие плашки по времени. Возвращает число сдвинутых.
+
+    Раньше здесь было только предупреждение: софт видел наложение и всё
+    равно рисовал две плашки поверх друг друга. Замер по журналу 30.08:
+    46 таких предупреждений, и картина одна и та же — titlecard (заголовок
+    на весь кадр), а через две секунды поверх него banner или lower3.
+
+    Двигаем ВТОРУЮ, а не первую: первая уже привязана к своей фразе, и
+    сдвиг назад увёл бы её от того, о чём в этот момент говорят. Полноэкранную
+    не двигаем никогда — она и есть та, под которую подстраиваются.
+    """
+    if not items:
+        return 0
+    порядок = sorted(items, key=lambda x: float(x.get("t") or 0))
+    сдвинуто = 0
+    for i, b in enumerate(порядок):
+        for a in порядок[:i]:
+            ta, da = float(a.get("t") or 0), float(a.get("dur") or 0)
+            tb = float(b.get("t") or 0)
+            if tb >= ta + da:
+                continue                      # уже не пересекаются
+            # Двигаем ту, что НЕ полноэкранная. Если полноэкранны обе —
+            # двигаем всё равно вторую: две карточки разом хуже сдвига.
+            if b["type"] in FULLSCREEN_TYPES and a["type"] not in FULLSCREEN_TYPES:
+                a["t"] = round(tb + float(b.get("dur") or 0) + 0.4, 2)
+            else:
+                b["t"] = round(ta + da + 0.4, 2)
+            сдвинуто += 1
+    if сдвинуто:
+        log(f"[Оверлеи] Разведено налезающих плашек: {сдвинуто} — "
+            "две плашки разом в кадре не появятся")
+    return сдвинуто
+
+
 def warn_overlaps(items: list[dict], log=print) -> int:
     """Сказать вслух, если плашки налезают. Возвращает их число."""
     bad = find_overlaps(items)
@@ -256,6 +295,10 @@ def parse_overlays(text: str) -> list[dict]:
                          # marker — фразу закрашивают маркером слово за словом,
                          # gallery — карточки с фото уходят вглубь кадра
                          "kinetic", "highlight", "quote", "stamp", "redact",
+                         # poster заводился в OVL_POS, OVL_WORDS и SFX_FOR_TYPE,
+                         # но СЮДА вписать забыли — и разбор молча выбрасывал
+                         # каждую его строку. В ролик он не попал бы ни разу.
+                         "poster",
                          "marker", "gallery"):
             continue
         if (not has_payload(parts[2])
@@ -732,6 +775,46 @@ def _remotion_bundle(log=print) -> Path:
     return build
 
 
+_PALETTE_CACHE: dict[str, str] = {}
+
+
+def project_palette(out_dir) -> str:
+    """Почерк канала этого проекта: «harsh» / «warm» / «contemplative» — то же
+    поле channels.json/"palette", по которому выбираются склейки, обложка и
+    звук. Пусто, если канал не опознан.
+
+    Читаем ЗДЕСЬ, а не принимаем параметром, потому что оверлеи собираются и
+    в обход render.py (переcборка одной плашки, приёмка), а палитра карточки
+    не должна зависеть от того, каким путём пришли: пропущенный параметр —
+    ровно та поломка, из-за которой props.palette не доезжал до Overlay.tsx
+    вообще никогда."""
+    key = str(Path(out_dir).resolve())
+    if key in _PALETTE_CACHE:
+        return _PALETTE_CACHE[key]
+    pal = ""
+    try:
+        meta = json.loads((Path(out_dir) / "meta.json")
+                          .read_text(encoding="utf-8"))
+        cid = str(meta.get("channel") or "").strip()
+    except Exception:
+        cid = ""
+    if not cid:
+        # meta.json нет (старый проект, ручная папка) — канал по имени папки,
+        # в которой лежит проект: channels.projects_dir кладёт их в BASE/id.
+        cid = Path(out_dir).resolve().parent.name
+    try:
+        chans = json.loads((Path(__file__).parent / "channels.json")
+                           .read_text(encoding="utf-8"))
+        for ch in (chans if isinstance(chans, list) else []):
+            if str(ch.get("id") or "").strip() == cid:
+                pal = str(ch.get("palette") or "").strip().lower()
+                break
+    except Exception:
+        pal = ""
+    _PALETTE_CACHE[key] = pal
+    return pal
+
+
 def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
                      out_dir: Path, log=print, variant: str | None = None,
                      frame_range: str | None = None):
@@ -748,6 +831,17 @@ def _render_remotion(item: dict, W: int, H: int, fps: int, dest_dir: Path,
     props = {"type": item["type"], "content": item["content"],
              "pos": item["pos"], "dur": item["dur"], "fps": fps,
              "width": W, "height": H, "img": ""}
+    # ПОЧЕРК КАНАЛА В PROPS. Единственное место, где props для композиции
+    # Overlay собираются, и палитры здесь не было вовсе: Overlay.tsx честно
+    # читал p.palette, а приходил undefined — плакатная карточка всех каналов
+    # выходила одной и той же. Пустую не шлём: у карточки свой запасной вид.
+    pal = project_palette(out_dir)
+    if pal:
+        props["palette"] = pal
+    # Подложка под голый текст. Ставится не всегда, а только когда замер
+    # сказал, что фон светлый — см. фон_под_оверлеем и ГОЛЫЙ_ТЕКСТ.
+    if item.get("scrim"):
+        props["scrim"] = True
     if variant:
         props["variant"] = variant
 
@@ -1126,6 +1220,149 @@ def _render_hyperframes(item: dict, W: int, H: int, fps: int, dest_dir: Path,
             os.replace(f, dest_dir / f.name)
         scaled.rmdir()
     return W, H
+
+
+# ---------- Куда показывает выноска ----------
+
+# Точка выноски НЕ ВЫДУМЫВАЕТСЯ. До этого она приходила из расстановщика
+# готовым числом («point:70,40» у всех callout подряд, «point:62,45» у всех
+# highlight — 14 и 5 строк в одном ролике estoico-es/2026-08-26), а
+# расстановщик кадра не видел: он читает только текст реплики. Проверено
+# глазами на семи выносках того ролика — кружок садился в пустое небо (23-я и
+# 90-я секунды), в размытую стену (58-я, предмет слева), на пустой стол (353-я,
+# кошелёк слева). Предмет почти всегда в середине кадра, а указка уходила
+# вправо в фон.
+#
+# Теперь точка берётся ИЗ КАДРА, который в этот момент на экране: кадр
+# вынимается из клипа (timeline.json), приводится к геометрии ролика тем же
+# scale+crop, что и в рендере, и в нём ищется самое «густое» место — там, где
+# больше всего перепадов яркости. Кадра не нашли — точка не выдумывается, а
+# берётся середина (FOCUS_FALLBACK): по замеру владельца предмет почти всегда
+# там, и это худший случай, а не средний.
+FOCUS_FALLBACK = (50.0, 46.0)
+# Куда выноске нельзя: низ кадра — субтитры, плашки lower3 и подпись сцены;
+# верх — banner и stamp; самые края — там не поместится сам текстовый блок.
+FOCUS_CLAMP_X = (20.0, 80.0)
+FOCUS_CLAMP_Y = (22.0, 72.0)
+_FOCUS_CACHE: dict = {}
+
+
+def _timeline_clip(out_dir, t: float):
+    """Какой клип на экране в момент t. -> (файл, смещение внутри клипа)."""
+    try:
+        rows = json.loads((Path(out_dir) / "timeline.json")
+                          .read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    for sc in rows if isinstance(rows, list) else []:
+        try:
+            a, b = float(sc.get("start", 0)), float(sc.get("end", 0))
+        except (TypeError, ValueError):
+            continue
+        if a <= t < b and sc.get("file"):
+            f = Path(str(sc["file"]))
+            if not f.exists():          # проект переносили — ищем рядом
+                f = Path(out_dir) / "storyboard" / f.name
+            if not f.exists():
+                return None
+            # Внутрь клипа, но не в самый его конец: последний кадр
+            # ffmpeg по -ss иногда уже не отдаёт.
+            off = max(0.0, min(t - a, float(sc.get("src_duration", b - a)) - 0.2))
+            return f, off
+    return None
+
+
+def frame_focus_point(out_dir, t: float, W: int, H: int,
+                      tmp: Path | None = None) -> tuple[float, float]:
+    """Куда в кадре смотреть на секунде t — в процентах ширины и высоты
+    ГОТОВОГО кадра ролика. Не получилось измерить — FOCUS_FALLBACK."""
+    key = (str(out_dir), round(float(t), 2), W, H)
+    if key in _FOCUS_CACHE:
+        return _FOCUS_CACHE[key]
+    pt = FOCUS_FALLBACK
+    clip = _timeline_clip(out_dir, t)
+    if clip:
+        f, off = clip
+        work = Path(tmp or Path(out_dir) / "render_tmp")
+        work.mkdir(parents=True, exist_ok=True)
+        png = work / "focus_probe.png"
+        # Тот же scale+crop, что и в рендере сегмента: иначе на вертикальном
+        # канале измеренный x — это доля ИСХОДНОГО кадра, из которого в ролик
+        # попадает меньше трети ширины, и точка уезжает за край.
+        vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase,"
+              f"crop={W}:{H},scale=192:-2")
+        r = run_tree(["ffmpeg", "-y", "-ss", f"{off:.3f}", "-i", str(f),
+                      "-frames:v", "1", "-vf", vf, str(png)], 60)
+        if r.returncode == 0 and png.exists():
+            got = _focus_of_png(png)
+            if got:
+                pt = got
+        png.unlink(missing_ok=True)
+    _FOCUS_CACHE[key] = pt
+    return pt
+
+
+def _focus_of_png(png: Path) -> tuple[float, float] | None:
+    """Где в кадре предмет. Мера — спектральный остаток (Hou & Zhang): из
+    логарифма спектра вычитается его же сглаженная копия, и обратное
+    преобразование даёт карту НЕОБЫЧНОГО в кадре.
+
+    Почему не просто перепады яркости. Их больше всего там, где мелкий узор:
+    листва, кирпич, шум плёнки, — то есть ровно в фоне. Первая проба так и
+    считала, и на семи выносках подряд точка садилась в текстуру стены рядом
+    с гладким предметом. Спектральный остаток повторяющийся узор гасит: он
+    предсказуем и потому в «остатке» его нет.
+
+    Сверху — окно допустимого (низ кадра занят субтитрами и плашками) и
+    мягкий уклон к середине: замер владельца по семи кадрам — предмет почти
+    всегда в центре."""
+    try:
+        import numpy as np
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        im = Image.open(png).convert("L").resize((96, 54), Image.BILINEAR)
+        a = np.asarray(im, dtype=float)
+    except Exception:
+        return None
+    F = np.fft.fft2(a)
+    amp = np.log(np.abs(F) + 1e-8)
+    # сглаживание 3x3 без scipy: среднее девяти сдвигов по кольцу
+    sm = sum(np.roll(np.roll(amp, dy, 0), dx, 1)
+             for dy in (-1, 0, 1) for dx in (-1, 0, 1)) / 9.0
+    sal = np.abs(np.fft.ifft2(np.exp((amp - sm) + 1j * np.angle(F)))) ** 2
+    # размываем карту: одиночный пик — это блик, а не предмет
+    for _ in range(3):
+        sal = sum(np.roll(np.roll(sal, dy, 0), dx, 1)
+                  for dy in (-1, 0, 1) for dx in (-1, 0, 1)) / 9.0
+    gh, gw = 14, 24
+    hh, ww = sal.shape[0] // gh, sal.shape[1] // gw
+    if hh < 1 or ww < 1:
+        return None
+    cells = sal[:gh * hh, :gw * ww].reshape(gh, hh, gw, ww).mean(axis=(1, 3))
+    yy = (np.arange(gh) + 0.5) / gh
+    xx = (np.arange(gw) + 0.5) / gw
+    # окно допустимого + мягкий уклон к середине
+    ok = ((xx >= FOCUS_CLAMP_X[0] / 100) & (xx <= FOCUS_CLAMP_X[1] / 100))[None, :] \
+        & ((yy >= FOCUS_CLAMP_Y[0] / 100) & (yy <= FOCUS_CLAMP_Y[1] / 100))[:, None]
+    bias = np.exp(-(((xx - 0.5) / 0.42) ** 2))[None, :] * \
+        np.exp(-(((yy - 0.46) / 0.42) ** 2))[:, None]
+    w = cells * ok * bias
+    if w.max() <= 0:
+        return None
+    # не одна клетка-победитель, а центр тяжести всех сильных: на одиночной
+    # клетке точка прыгала на случайный блик
+    w = np.where(w >= 0.65 * w.max(), w, 0.0)
+    x = float((w.sum(axis=0) * xx).sum() / w.sum()) * 100
+    y = float((w.sum(axis=1) * yy).sum() / w.sum()) * 100
+    x = min(max(x, FOCUS_CLAMP_X[0]), FOCUS_CLAMP_X[1])
+    y = min(max(y, FOCUS_CLAMP_Y[0]), FOCUS_CLAMP_Y[1])
+    return round(x, 1), round(y, 1)
+
+
+# Типы, чья точка обязана считаться по кадру, а не приходить из расстановщика.
+FOCUS_TYPES = ("callout", "highlight")
 
 
 # ---------- Позиция и сборка ----------
@@ -1841,9 +2078,28 @@ def _variant_options(out_dir, kind: str) -> tuple[str, ...]:
     # Порог 3 — чтобы тип не остался с парой видов и не начал повторяться
     # внутри ролика. Ниже порога встроенные виды остаются как страховка, и у
     # проекта вне каналов (ch пустой) всё работает как раньше.
-    if ch and len(lib) >= 3:
-        return lib
-    return base + lib
+    # Отсев ПО ДВИЖКАМ, а не общим счётом. Здесь стояло
+    # `if ch and len(lib) >= 3: return lib` — и канал, накопивший три своих
+    # РЕМОУШНОВЫХ вида, терял заодно и встроенные HyperFrames, которых у него
+    # своих нет вовсе. Замер на живых каналах: у fisura-critica 8 своих видов,
+    # все одного семейства ch_harsh, и ни одного HyperFrames — движок исчез из
+    # роликов целиком. Выходило наоборот замыслу: чем больше канал растёт, тем
+    # беднее его оформление.
+    #
+    # Теперь общие виды движка выбрасываются, только когда у канала есть три
+    # СВОИХ на этом же движке. Разведение каналов сохраняется, а движок,
+    # которым канал ещё не обзавёлся, продолжает работать.
+    if not ch:
+        return base + lib
+
+    def _engine_of(name: str) -> str:
+        return "hyperframes" if name.startswith("hyperframes") else "remotion"
+
+    own = {}
+    for v in lib:
+        own.setdefault(_engine_of(v), []).append(v)
+    keep = tuple(b for b in base if len(own.get(_engine_of(b), ())) < 3)
+    return keep + lib
 
 
 # ---------- Переиспользование готовых секвенций между прогонами ----------
@@ -2006,6 +2262,81 @@ def _stamp_frames(dest: Path, sig: str, geom: tuple, engine: str) -> None:
                           # но не ролик
 
 
+# Типы, которые кладут ГОЛЫЙ ТЕКСТ поверх видеоряда, без своей подложки.
+# Список получен прямым замером, а не чтением кода: каждый тип отрисован с
+# прозрачностью, и посчитана доля плотных пикселей (alpha>200). У banner
+# 8.7% — это настоящая плашка; у остальных 0.2-1.2%, то есть буквы и линии.
+# Читаемость таких целиком зависит от того, что под ними.
+ГОЛЫЙ_ТЕКСТ = {"lower3", "callout", "counter", "highlight", "stamp",
+               "marker", "redact", "kinetic", "quote"}
+
+# Ярче этого светлый текст на фоне уже не читается. Порог из замера полос под
+# надписями: ниже 110 белый уверенно читается, выше — сливается.
+СВЕТЛЫЙ_ФОН = 110.0
+
+
+def _полоса(pos: str) -> tuple[float, float]:
+    """Где по высоте кадра лежит оверлей этой позиции (доли высоты)."""
+    if pos.startswith("point:"):
+        try:
+            y = float(pos.split(":")[1].split(",")[1]) / 100
+        except (IndexError, ValueError):
+            y = 0.5
+        return max(0.0, y - 0.08), min(1.0, y + 0.08)
+    return {"top": (0.05, 0.25), "bottom": (0.72, 0.92)}.get(pos, (0.38, 0.62))
+
+
+def фон_под_оверлеем(out_dir: Path, t: float, pos: str) -> float | None:
+    """Яркость видеоряда там, куда ляжет оверлей. None — измерить не вышло.
+
+    Зачем: замер готового ролика einsturzpunkt/2026-08-30_3 — 125 оверлеев,
+    из них 97 голым текстом, и 40 из них (каждый третий оверлей ролика) стоят
+    на светлом фоне светлым же текстом. Глазами проверено на двух: «ERMITTLER
+    VOR EINEM RÄTSEL» белым по светлому бетону не читается.
+
+    Смотрим не готовый файл (его ещё нет), а клип плана из timeline.json,
+    который в этот момент на экране.
+    """
+    try:
+        tl = json.loads((Path(out_dir) / "timeline.json").read_text(
+            encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    shots = tl if isinstance(tl, list) else (tl.get("shots") or [])
+    клип = смещение = None
+    for s in shots:
+        try:
+            a, b = float(s.get("start", 0)), float(s.get("end", 0))
+        except (TypeError, ValueError):
+            continue
+        if a <= t < b and s.get("file"):
+            клип, смещение = s["file"], max(0.0, t - a)
+            break
+    if not клип or not Path(клип).exists():
+        return None
+    кадр = Path(out_dir) / f"_ovlbg_{int(t * 1000)}.jpg"
+    try:
+        r = run_tree(["ffmpeg", "-y", "-v", "error",
+                      "-ss", f"{смещение:.2f}", "-i", str(клип),
+                      "-frames:v", "1", "-vf", "scale=480:-1", str(кадр)], 30)
+        if r.returncode != 0 or not кадр.exists():
+            return None
+        from PIL import Image
+        im = Image.open(кадр).convert("L")
+        W_, H_ = im.size
+        y0, y1 = _полоса(pos)
+        px = list(im.crop((0, int(H_ * y0), W_, int(H_ * y1)))
+                  .resize((160, 40)).getdata())
+        return sum(px) / len(px)
+    except Exception:
+        return None
+    finally:
+        try:
+            кадр.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                    log=print) -> list[dict]:
     """Читает overlays.txt проекта, рендерит секвенции.
@@ -2019,6 +2350,23 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
             "единой плашки", "warn")
         return []
     items = parse_overlays(src.read_text(encoding="utf-8"))
+    # ПОДЛОЖКА ПОД СВЕТЛЫМ ФОНОМ. Замер готового ролика 2026-08-30_3: 125
+    # оверлеев, 97 из них голым текстом, и 40 стоят светлым текстом на светлом
+    # фоне — каждый третий оверлей ролика. Глазами подтверждено на двух.
+    # Здесь каждый такой получает подложку: цвет фона мы не выбираем, а вот
+    # затемнить под буквами можем всегда.
+    светлых = 0
+    for it in items:
+        if it.get("type") not in ГОЛЫЙ_ТЕКСТ:
+            continue
+        яркость = фон_под_оверлеем(out_dir, float(it.get("t", 0) or 0),
+                                   str(it.get("pos", "center")))
+        if яркость is not None and яркость >= СВЕТЛЫЙ_ФОН:
+            it["scrim"] = True
+            светлых += 1
+    if светлых:
+        log(f"[Оверлеи] Подложка под {светлых} из {len(items)} плашек: под "
+            "ними светлый кадр, светлый текст на нём не читается")
     if not items:
         log("[Оверлеи] overlays.txt есть, но ни одной строки не "
             "разобралось — ролик соберётся без плашек", "warn")
@@ -2028,6 +2376,10 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
     # пересмотрев готовый ролик глазами. Не чиним молча — говорим вслух:
     # налезают обычно карточки глав, а их место осмысленно, и решать, что
     # важнее, должен человек.
+    # Сначала РАЗВОДИМ, потом сообщаем об оставшемся: предупреждение без
+    # действия — это ровно то, на что жаловался владелец («много ошибок
+    # из-за многослойности»).
+    spread_overlaps(items, log)
     warn_overlaps(items, log)
     engine = overlay_engine()
     # Реестр мог устареть: вариант удалили руками, а импорт на него остался —
@@ -2037,8 +2389,35 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
         log(f"[Оверлеи] Реестр вариантов был неактуален — пересобран ({n})")
     # по варианту на КАЖДЫЙ встреченный тип: у banner/lower3/counter в жребии
     # участвуют и ручные виды, у остальных — только накопленные ИИ (если есть)
-    picked = {kind: _pick_variant(out_dir, kind)
-              for kind in {it["type"] for it in items}}
+    # ГЛАВНЫЙ вид каждого типа выбирается С ОГЛЯДКОЙ НА СОСЕДЕЙ. Раньше
+    # каждый тип тянул жребий независимо, и типы садились на один дизайн:
+    # замер на живом ролике 22.08 — 16 типов плашек, а разных дизайнов
+    # выбрано 7; callout, compare, kinetic и quote все four взяли ch_harsh_12.
+    # Со стороны это и есть «плашки одинаковые».
+    #
+    # Причина не в жребии, а в библиотеке: уникальных дизайнов у канала 13,
+    # и один файл обслуживает много типов (9 из 13 доступны более чем
+    # четырём). Пока тип выбирает вслепую, столкновения неизбежны.
+    #
+    # Занятое другим типом берём только если своего свободного не осталось.
+    need = sorted({it["type"] for it in items})
+    picked, taken = {}, set()
+    for kind in need:
+        first = _pick_variant(out_dir, kind)
+        if first not in taken:
+            picked[kind] = first
+            taken.add(first)
+            continue
+        opts = list(_variant_options(out_dir, kind))
+        free = [o for o in opts if o not in taken]
+        if free:
+            # Тот же приём, что и в _project_variant: выбор постоянен для
+            # этого ролика, а не случаен на каждый прогон.
+            free.sort()
+            picked[kind] = free[_project_seed(out_dir, kind) % len(free)]
+            taken.add(picked[kind])
+        else:
+            picked[kind] = first
     # Одного варианта на тип на весь ролик мало: в 20-минутном ролике
     # набирается под полтора десятка lower3, и все они выходили одним
     # дизайном — зритель видит шаблон. Держим ВЕСЬ доступный набор на тип и
@@ -2090,7 +2469,10 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                 raise FileNotFoundError(f"нет картинки {it['content']}")
             return render_popup(img, it["dur"], fps, W, H, dest)
         if it["type"] == "callout":
-            point = (70.0, 55.0)
+            # Запасная точка — середина кадра (FOCUS_FALLBACK), а не «70,55»:
+            # сюда попадают только выноски, у которых кадр измерить не вышло,
+            # и уводить их вправо в фон незачем.
+            point = FOCUS_FALLBACK
             m = re.search(r"point:([\d.]+),([\d.]+)", it["pos"])
             if m:
                 point = (float(m.group(1)), float(m.group(2)))
@@ -2135,6 +2517,22 @@ def build_overlays(out_dir: Path, W: int, H: int, fps: int, tmp: Path,
                 wheel_pos[it["type"]] += 1
             else:
                 lib_pick = picked.get(it["type"], "")
+            # ТОЧКА ВЫНОСКИ — ПО КАДРУ, а не по фантазии расстановщика.
+            # Считается ДО отпечатка: pos входит в _overlay_sig, значит
+            # съехавшая точка сама заставит перерисовать секвенцию, а
+            # неизменившаяся — не заставит.
+            if it["type"] in FOCUS_TYPES:
+                # Не в самое начало показа: на стыке планов там ещё предыдущий
+                # кадр, а кружок должен указывать на тот, поверх которого
+                # висит.
+                fx, fy = frame_focus_point(out_dir, float(it["t"]) + 0.25,
+                                           W, H, Path(tmp))
+                was = it.get("pos", "")
+                it["pos"] = f"point:{fx:g},{fy:g}"
+                if was != it["pos"]:
+                    mm, ss = divmod(int(it["t"]), 60)
+                    log(f"[Оверлеи] {mm:02d}:{ss:02d} {it['type']}: точка "
+                        f"{was or '—'} -> {it['pos']} (по кадру)")
             # Секвенция с прошлого прогона: один оверлей — это ~14 секунд
             # Remotion, и на сотне оверлеев перезапуск ролика стоил 25 минут
             # заново (замер 2026-08-04: четыре перезапуска одного видео —
@@ -2445,13 +2843,14 @@ def _phrase_candidate(t: float, text: str, manifest: list):
         return 3, f"{tc} | lower3 | {mw.group(0).title()} | bottom | 4s"
 
     if text.strip().endswith("?"):
-        return 4, f"{tc} | callout | {text.strip()[:60]} | point:70,40 | 3s"
+        return 4, f"{tc} | callout | {text.strip()[:60]} | point:50,46 | 3s"
     return None
 
 
 def suggest_overlays_auto(rows: list, manifest: list, out_dir,
                           log=print, min_gap: float = 5.0,
-                          watermark: str = "", palette: str = "") -> str:
+                          watermark: str = "", palette: str = "",
+                          lang: str = "") -> str:
     """Полный автомат: авторасстановка + автоподбор картинок для popup.
     Реальных людей (два слова с заглавных — похоже на имя) ищем ТОЛЬКО в
     Wikimedia Commons: ИИ-генерация лиц реальных людей сознательно не
@@ -2483,7 +2882,7 @@ def suggest_overlays_auto(rows: list, manifest: list, out_dir,
     draft = None
     if gemini_key:
         draft = suggest_overlays_llm(rows, gemini_key, log, min_gap,
-                                     palette=palette)
+                                     palette=palette, lang=lang)
     if not draft:
         if gemini_key:
             # Громко и с причиной. Раньше эта подмена проходила рядовой
@@ -2651,10 +3050,17 @@ def suggest_overlays(rows: list, manifest: list, min_gap: float = 8.0,
 # в ещё один баннер. Отсюда 20% баннеров и ноль инфографики в abyss.
 # Добавляешь новый вид оверлея — впиши его СЮДА, иначе он не появится в
 # роликах никогда, сколько ни описывай его в промпте.
+# У callout и highlight точка здесь — только заглушка, середина кадра. Живое
+# значение приходит из самого кадра (frame_focus_point, вызов в build_overlays)
+# и переписывает эту строку перед отрисовкой. Раньше на её месте стояли
+# «point:70,40» и «point:62,45» — одни и те же числа на весь ролик, и кружок
+# садился в пустое небо: расстановщик кадра не видит, придумывать точку ему
+# нечем. Если правишь эти числа — помни, что они работают лишь там, куда
+# frame_focus_point не дотянулся (нет timeline.json, клип не открылся).
 OVL_POS = {"titlecard": "center", "banner": "top", "lower3": "bottom",
-           "compare": "center", "callout": "point:70,40", "collage": "center",
+           "compare": "center", "callout": "point:50,46", "collage": "center",
            "kinetic": "center", "quote": "center", "stamp": "top",
-           "redact": "center", "highlight": "point:62,45", "marker": "center",
+           "redact": "center", "highlight": "point:50,46", "marker": "center",
            "gallery": "center", "counter": "center", "bars": "center",
            "timeline": "center", "popup": "top-right",
            # infographic забыли вписать при заведении типа — ровно та ошибка,
@@ -2898,10 +3304,10 @@ TYPE_MIX = {
 # типов — на 20-минутном home-vault добор давал десятки строк.
 TOPUP_CYCLE = {
     "harsh": [("stamp", "top", 5), ("lower3", "bottom", 4),
-              ("callout", "point:70,40", 7), ("banner", "top", 9),
-              ("highlight", "point:62,45", 6)],
+              ("callout", "point:50,46", 7), ("banner", "top", 9),
+              ("highlight", "point:50,46", 6)],
     "warm": [("banner", "top", 9), ("lower3", "bottom", 4),
-             ("marker", "center", 8), ("callout", "point:70,40", 7),
+             ("marker", "center", 8), ("callout", "point:50,46", 7),
              ("kinetic", "center", 6)],
     "contemplative": [("marker", "center", 8), ("kinetic", "center", 6),
                       ("lower3", "bottom", 4), ("quote", "center", 12),
@@ -3045,8 +3451,8 @@ def _topup_overlays(lines: list, rows: list, min_gap: float,
     # как шаблон — ровно та претензия, из-за которой всё это и затевалось
     cycle = TOPUP_CYCLE.get((palette or "").strip().lower()) or [
         ("banner", "top", 9), ("lower3", "bottom", 4),
-        ("callout", "point:70,40", 7), ("kinetic", "center", 6),
-        ("marker", "center", 5), ("highlight", "point:62,45", 6)]
+        ("callout", "point:50,46", 7), ("kinetic", "center", 6),
+        ("marker", "center", 5), ("highlight", "point:50,46", 6)]
     ki = 0
     added = []
     # Идём НЕ подряд от начала, а с шагом по всему таймлайну: жадный проход
@@ -3151,7 +3557,7 @@ def _retention_note(t0: float, span: float, whole: float) -> str:
 def _ask_span(chunk: list, api_key: str, log, min_gap: float,
               attempts: int, depth: int = 0,
               whole: float | None = None,
-              palette: str = "") -> tuple[str, int]:
+              palette: str = "", lang: str = "") -> tuple[str, int]:
     """Спросить план на кусок и, если вышло ЖИДКО, переспросить половинами.
 
     Это и есть то, чего софту не хватало. Раньше он спрашивал один раз и,
@@ -3174,7 +3580,7 @@ def _ask_span(chunk: list, api_key: str, log, min_gap: float,
     got = suggest_overlays_llm(chunk, api_key, log, min_gap,
                                target=None, attempts=attempts,
                                allow_windows=False, whole=whole,
-                               palette=palette)
+                               palette=palette, lang=lang)
     span = srt_to_seconds(chunk[-1][1]) - srt_to_seconds(chunk[0][0])
     # Планка нарочно скромная — вдвое ниже рабочей плотности. Задача не
     # выжать максимум, а поймать провал: кусок, где вместо десятка моментов
@@ -3220,7 +3626,8 @@ def _ask_span(chunk: list, api_key: str, log, min_gap: float,
         if len(half) < 2:
             continue
         sub, more = _ask_span(half, api_key, log, min_gap, attempts,
-                              depth + 1, whole=whole, palette=palette)
+                              depth + 1, whole=whole, palette=palette,
+                              lang=lang)
         retried += more
         if sub:
             out.append(sub)
@@ -3232,12 +3639,27 @@ def _ask_span(chunk: list, api_key: str, log, min_gap: float,
     return merged, retried
 
 
+# Язык в интерфейсе назван по-русски («испанский»), а указание модели
+# читается лучше на английском: «Write every overlay text in Spanish»
+# однозначнее, чем то же слово кириллицей. Незнакомый язык отдаём как есть —
+# хуже от этого не будет, а молчать про язык нельзя.
+_LANG_EN = {
+    "русский": "Russian", "английский": "English", "испанский": "Spanish",
+    "немецкий": "German", "французский": "French",
+    "португальский": "Portuguese", "итальянский": "Italian",
+}
+
+
+def _lang_en(lang: str) -> str:
+    return _LANG_EN.get((lang or "").strip().lower(), (lang or "").strip())
+
+
 def suggest_overlays_llm(rows: list, api_key: str, log=print,
                          min_gap: float = 8.0, target: int | None = None,
                          attempts: int = 3,
                          allow_windows: bool = True,
                          whole: float | None = None,
-                         palette: str = "") -> str | None:
+                         palette: str = "", lang: str = "") -> str | None:
     """ОСНОВНОЙ путь расстановки оверлеев (не только фолбэк): LLM понимает
     смысл текста целиком, поэтому расставляет оверлеи ПЛОТНЕЕ и умнее, чем
     голый regex (который зависит от явных денег/дат/имён/вопросов в тексте
@@ -3279,7 +3701,8 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                 continue
             asked += 1
             got, retried = _ask_span(chunk, api_key, log, min_gap,
-                                     attempts, whole=span, palette=palette)
+                                     attempts, whole=span, palette=palette,
+                                     lang=lang)
             thin += retried
             if got:
                 parts.append(got)
@@ -3342,7 +3765,17 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
                   "You are a motion-graphics editor choosing on-screen "
                   "overlays for a documentary — varied types throughout the "
                   "ENTIRE video, not the same one repeated, and not "
-                  "clustered only at the start."},
+                  "clustered only at the start."
+                  # ЯЗЫК ПЛАШЕК. Указания языка тут не было вовсе, и модель
+                  # отвечала по-английски на любой ролик. Замер по выпущенному
+                  # испанскому ролику 26.08: 110 подписей из 136 английские
+                  # при испанской озвучке и испанском SEO. Зритель на второй
+                  # секунде видит чужой язык поверх родной речи.
+                  + (f" Write EVERY overlay text in {_lang_en(lang)}, "
+                     "the language of "
+                     "the narration — never in English unless the narration "
+                     "itself is English. Proper names stay as they are."
+                     if lang else "")},
                  {"role": "user", "content":
                   f"Pick AT LEAST {n} moments — this is a hard minimum, not "
                   "a suggestion, under-shooting it is a wrong answer — "
@@ -3575,7 +4008,7 @@ def suggest_overlays_llm(rows: list, api_key: str, log=print,
             accepted_times.append(t)
             tc = f"{int(t // 3600):02d}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
             pos = {"banner": "top", "lower3": "bottom",
-                  "callout": "point:70,40"}[otype]
+                  "callout": "point:50,46"}[otype]
             timed_lines.append((t, f"{tc} | {otype} | {content} | {pos} | 4s"))
         if len(timed_lines) > before:
             log(f"[Оверлеи] LLM дал только {before} (нужно от {min_required}) "
@@ -3603,7 +4036,7 @@ def suggest_overlays_local(rows: list, min_gap: float = 8.0,
     n = max(3, min(target, round(total / max(min_gap, 8))))
     step = max(len(rows) // n, 1)
     POS = {"banner": "top", "lower3": "bottom", "compare": "center",
-          "callout": "point:75,32"}
+          "callout": "point:50,46"}
     # Комбинации на один момент — до 3 несовпадающих по месту типов сразу
     combos = [["banner"], ["lower3", "callout"], ["banner", "lower3"],
              ["compare"], ["banner", "lower3", "callout"]]

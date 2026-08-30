@@ -15,14 +15,14 @@ export type { OverlayProps };
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#3a8fbf',
-  accentLight: '#7ec8e3',
-  accentRgb: '58,143,191',
-  bannerFrom: '#c8dce8',
-  bannerTo: '#a8c4d8',
-  bannerText: '#14212e',
-  kickerFrom: '#1e3a4f',
-  kickerTo: '#2a4f68',
+  accent: '#4a8b8c',
+  accentLight: '#7fb5b6',
+  accentRgb: '74,139,140',
+  bannerFrom: '#c8d8d6',
+  bannerTo: '#a8beb8',
+  bannerText: '#1e3533',
+  kickerFrom: '#1a2e30',
+  kickerTo: '#253d3e',
 };
 
 const useExit = (dur: number) => {
@@ -745,11 +745,26 @@ const Collage = ({ items, exit, enter }: { items: { label: string; img: string }
 //
 // Палитры — свои для канала, а не зелёный образца: копировать чужой цвет
 // значит копировать чужое лицо.
+// ПАЛИТРЫ ПЛАКАТНОЙ КАРТОЧКИ. Ключи первой половины — почерк КАНАЛА, то самое
+// поле channels.json/"palette", по которому render.PALETTES выбирает склейки, а
+// core — обложку и звук. Раньше здесь лежали только выдуманные имена (alarm,
+// blueprint, hazard, night), а props.palette приходит из профиля канала и
+// принимает значения harsh / warm / contemplative — пересечения не было НИ
+// ОДНОГО, и любая карточка любого канала падала в запасной alarm. То есть поле
+// работало вхолостую, даже когда его начали передавать.
+//
+// Вторая половина — прежние имена. Оставлены синонимами: на них может ссылаться
+// расстановщик оверлеев и накопленные варианты, и терять их незачем.
 const POSTER_PALETTES: Record<string, { ink: string; paper: string; accent: string }> = {
-  alarm:     { ink: '#0a0b0d', paper: '#efeae3', accent: '#c8431f' },
-  blueprint: { ink: '#0d1b2a', paper: '#e8eef3', accent: '#2f6f9f' },
-  hazard:    { ink: '#141414', paper: '#f2e9d8', accent: '#e8a317' },
-  night:     { ink: '#f0f2f4', paper: '#111417', accent: '#d94f2b' },
+  // почерк каналов (channels.json/palette)
+  harsh:         { ink: '#0a0b0d', paper: '#efeae3', accent: '#4a8b8c' },
+  warm:          { ink: '#241a10', paper: '#f4e7cd', accent: '#4a8b8c' },
+  contemplative: { ink: '#f0f2f4', paper: '#141a22', accent: '#4a8b8c' },
+  // прежние имена карточки
+  alarm:     { ink: '#0a0b0d', paper: '#efeae3', accent: '#4a8b8c' },
+  blueprint: { ink: '#0d1b2a', paper: '#e8eef3', accent: '#4a8b8c' },
+  hazard:    { ink: '#141414', paper: '#f2e9d8', accent: '#4a8b8c' },
+  night:     { ink: '#f0f2f4', paper: '#111417', accent: '#4a8b8c' },
 };
 
 const Poster = ({
@@ -763,7 +778,11 @@ const Poster = ({
   const words = (head ?? '').trim();
   if (!words) return <AbsoluteFill />;
 
-  const pal = POSTER_PALETTES[palette ?? 'alarm'] ?? POSTER_PALETTES.alarm;
+  // Приводим к нижнему регистру и обрезаем пробелы: почерк канала правится
+  // руками в профиле, и «Harsh » с большой буквы не должен ронять карточку в
+  // чужую палитру молча.
+  const pal = POSTER_PALETTES[(palette ?? '').trim().toLowerCase()]
+    ?? POSTER_PALETTES.alarm;
   // Кегль по длине строки, как в TitleCard: немецкие составные слова пробелов
   // не содержат и на фиксированном кегле уезжают за край.
   const size = Math.max(46, Math.min(200, (width * 0.92) / Math.max(6, words.length) / 0.62));
@@ -1375,6 +1394,40 @@ const hasPayload = (p: OverlayProps): boolean => {
   }
 };
 
+// ПОДЛОЖКА ПОД ГОЛЫМ ТЕКСТОМ.
+//
+// Замер готового ролика einsturzpunkt/2026-08-30_3: 125 оверлеев, 97 из них
+// кладут ГОЛЫЙ текст поверх видеоряда (доля плотных пикселей 0.2-1.2% против
+// 8.7% у banner, у которого плашка настоящая), и 43 таких попадают на светлый
+// кадр. Глазами подтверждено: «ERMITTLER VOR EINEM RÄTSEL» белым по светлому
+// бетону не читается.
+//
+// Цвет кадра под оверлеем мы не выбираем, но затемнить ровно ту полосу, где
+// лежат буквы, можем всегда. Флаг ставит питонова часть ПО ЗАМЕРУ кадра
+// (overlays.фон_под_оверлеем), а не «на всякий случай»: лишняя вуаль на
+// тёмном кадре только грязнит картинку.
+const Scrim: React.FC<{pos: string; enter: number; exit: number}> = ({pos, enter, exit}) => {
+  const band = (() => {
+    if (pos.startsWith('point:')) {
+      const y = Number(pos.split(':')[1]?.split(',')[1] ?? 50);
+      return {top: `${Math.max(0, y - 10)}%`, height: '20%'};
+    }
+    if (pos === 'top') return {top: '2%', height: '24%'};
+    if (pos === 'bottom') return {top: '70%', height: '26%'};
+    return {top: '34%', height: '32%'};
+  })();
+  return (
+    <AbsoluteFill style={{opacity: enter * exit}}>
+      <div style={{
+        position: 'absolute', left: 0, right: 0, top: band.top, height: band.height,
+        background:
+          'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.58) 22%, ' +
+          'rgba(0,0,0,0.58) 78%, rgba(0,0,0,0) 100%)',
+      }} />
+    </AbsoluteFill>
+  );
+};
+
 export const Overlay: React.FC<OverlayProps> = (p) => {
   // Декоративный слой ищем ОТДЕЛЬНО от заменяющих вариантов: у DECOR та же
   // ключевая схема "тип/вариант", но найденный здесь компонент не отменяет
@@ -1386,10 +1439,18 @@ export const Overlay: React.FC<OverlayProps> = (p) => {
   // перед ними, даже когда рисовать нечего.
   if (!hasPayload(p)) return <AbsoluteFill />;
   const Decor = p.variant ? DECOR[`${p.type}/${p.variant}`] : undefined;
-  if (!Decor) return <OverlayCore {...p} />;
+  if (!Decor) {
+    return p.scrim ? (
+      <AbsoluteFill>
+        <Scrim pos={p.pos} enter={enter} exit={exit} />
+        <OverlayCore {...p} />
+      </AbsoluteFill>
+    ) : <OverlayCore {...p} />;
+  }
   const core = { ...p, variant: undefined };
   return (
     <AbsoluteFill>
+      {p.scrim ? <Scrim pos={p.pos} enter={enter} exit={exit} /> : null}
       <Decor {...p} exit={exit} enter={enter} />
       <OverlayCore {...core} />
     </AbsoluteFill>
