@@ -172,7 +172,7 @@ def _local_prompt_chat(messages: list[dict], temperature: float,
     return content
 
 # для извлечения ключевых слов из текста плана (авто-раскадровка)
-STOPWORDS = frozenset("""
+STOPWORDS = frozenset(("""
 a an the and or but if then than that this these those there here is are was
 were be been being am do does did done doing have has had having will would
 shall should can could may might must of in on at by for with without from to
@@ -191,7 +191,30 @@ see sees seeing saw seen look looks looking looked want wants wanted like
 likes liked really actually basically literally kind sort lot lots bit quite
 rather much many well back new old good bad big small long short high low
 right wrong first last next part parts every around another
-""".split())
+"""
+# Служебные слова ЧУЖИХ языков. Список был только английским, и на испанском
+# или немецком тексте в запрос к генератору кадров уезжали предлоги и
+# артикли: «ese huracán que», «die schlitzwand gab». Картинку по такому не
+# подобрать, а именно этот путь — запасной, по нему уходит каждый кадр, для
+# которого модель не дала осмысленного описания.
+                      + """
+el la los las un una unos unas y o pero si de del al en con por para sin sobre
+que quien cuyo como cuando donde su sus mi mis tu tus lo ese esa eso este esta
+esto aquel aquella ser estar hay muy mas más ya no ni tambien también entre
+hacia hasta desde ante bajo tras durante segun según
+der die das den dem des ein eine einer einem einen und oder aber wenn dann als
+dass von zu zur zum in im an am auf aus bei mit nach seit vor uber über unter
+zwischen ist sind war waren sein haben hat hatte wird werden wurde man sich
+nicht auch nur noch schon sehr diese dieser dieses jener welche
+doch jede jeder jedes bereits dabei damit dazu dann eben etwa sogar
+wieder immer alle allen aller solche solchen ohne gegen durch
+и в на с по для от до из за под над при о об у же ли бы не ни как что чтобы
+это этот эта эти тот та те был была было были быть есть его её их наш ваш
+le la les un une des du de et ou mais si dans sur pour par avec sans sous
+que qui dont ce cette ces son ses leur leurs est sont etre être avoir
+o os as um uma uns umas e ou mas se em no na nos nas do da dos das ao aos
+il lo gli le un uno una e o ma se di da in con su per tra fra che chi non
+""").split())
 
 
 # ---------- Утилиты ----------
@@ -427,7 +450,13 @@ VOICE_LOUDNORM = "loudnorm=I=-16:TP=-1.5:LRA=11"     # стандарт гром
 # «поднимем громкость до -14, как у YouTube», увидел, что для этого канала
 # это уже проверено и отвергнуто замером.
 # harsh не измеряли — он остаётся на общем значении.
-LOUDNESS_LUFS = {"warm": -14.0, "contemplative": -16.0}
+# wildlife держим на −14, хотя образец @Extremwelt намерен −16.4: YouTube
+# тихие ролики не поднимает, и в ленте рядом с чужими −14 наш звучал бы
+# глуше на 2.4 дБ ни за что. Правило владельца: −14 LUFS ±1.
+LOUDNESS_LUFS = {"warm": -14.0, "contemplative": -16.0, "wildlife": -14.0,
+                 # -14, как требует проект. Умолчание -16 давало ролик тише
+                 # соседей в ленте на 2 дБ: замер 26.08 — -16.2 LUFS.
+                 "harsh": -14.0}
 LOUDNESS_LUFS_DEFAULT = -16.0
 
 
@@ -440,7 +469,29 @@ VOICE_TONE = (
     "equalizer=f=110:t=q:w=1:g=2.5,"                  # тепло/глубина низов
     "equalizer=f=6500:t=q:w=2:g=-3,"                  # де-эссер (мягче «с»)
     "acompressor=threshold=-20dB:ratio=4:attack=6:release=180:makeup=3,"
-    "equalizer=f=3000:t=q:w=2:g=2")                   # presence — разборчивость
+    "equalizer=f=3000:t=q:w=2:g=2,"                   # presence — разборчивость
+    # ВОЗДУХ ВЫШЕ СРЕЗА. Edge TTS отдаёт 24 кГц, и спектр обрывается стеной
+    # ровно на 12 кГц: замер 30.08 на de-DE-ConradNeural даёт 10-12 кГц −41 дБ,
+    # 12-14 кГц −68.9 дБ, выше −100 дБ, то есть пусто по построению. Отсюда
+    # «телефонный», неприятный звук, который не лечится никаким эквалайзером:
+    # поднимать нечего. aexciter не поднимает, а СИНТЕЗИРУЕТ гармоники из
+    # полосы под срезом — единственный способ вернуть верх.
+    #
+    # Доза подобрана замером, а не на слух (6 вариантов):
+    #   сейчас          12-20 кГц 0.231%   центроид 2804 Гц
+    #   amount=0.8      0.467%             2753 Гц
+    #   amount=1.2      0.658%             2886 Гц
+    #   amount=1.8      0.957%             3344 Гц   <- взято
+    #   amount=4        3.513%             5927 Гц   <- уже свист, отвергнуто
+    # Потолок — центроид 3500 Гц: выше речь звучит не «дороже», а резче.
+    #
+    # ОТВЕРГНУТО тем же замером: короткая комната (aecho) не изменила ничего
+    # (8-12 кГц 12.65% против 12.64%, центроид 2802 против 2804), а вместе с
+    # экситером ломала звук в кашу (центроид 121 Гц, I −19.5 LUFS). Мягкая
+    # компрессия с LRA=14 динамику не вернула: crest factor стоит на 12.1 дБ
+    # при любых настройках — плоскость заложена в самом синтезаторе, а
+    # loudnorm умеет сужать разброс, но не расширять.
+    "aexciter=amount=1.8:drive=7:blend=0:freq=6500:ceil=15000")
 
 
 def voice_chain(enhance: bool = True, sample_rate: int = 0,
@@ -718,6 +769,48 @@ _TTS_TRIM = ("silenceremove=start_periods=1:start_duration=0:"
              "start_threshold=-50dB:detection=peak,areverse,"
              "silenceremove=start_periods=1:start_duration=0:"
              "start_threshold=-50dB:detection=peak,areverse")
+
+
+
+_WHISPER_DEV_CACHE: str = ""
+
+
+def _whisper_device(exe: str) -> str:
+    """cuda или cpu — спрашиваем у Python, которым запускается whisper.
+
+    Почему не проверить свой torch: в venv программы он собран без CUDA
+    (2.13.0+cpu), а whisper живёт в системном Python с 2.5.1+cu121. Свой
+    ответ был бы ложно отрицательным, и видеокарта простаивала бы всегда.
+
+    Почему вообще осторожничаем: на старых картах (GT 730, Kepler)
+    современный PyTorch рушит ДРАЙВЕР, а не Python — системный журнал
+    Windows 03.08: nvcuda64.dll, 0xc0000409, и потеря ролика после восьми
+    минут работы. Поэтому мало «CUDA доступна» — карта должна быть
+    поддерживаемой, а это torch и говорит сам через capability.
+    """
+    global _WHISPER_DEV_CACHE
+    if _WHISPER_DEV_CACHE:
+        return _WHISPER_DEV_CACHE
+    dev = "cpu"
+    try:
+        py = Path(exe).with_name("python.exe")
+        if not py.exists():                      # whisper.EXE лежит в Scripts
+            py = Path(exe).parent.parent / "python.exe"
+        if py.exists():
+            code = ("import torch,sys;"
+                    "ok=torch.cuda.is_available();"
+                    "cap=torch.cuda.get_device_capability(0) if ok else (0,0);"
+                    # 3.7 и ниже — Kepler и старше: те самые карты, на
+                    # которых рушится драйвер. Порог 5.0 берём с запасом.
+                    "sys.stdout.write('cuda' if ok and cap[0]>=5 else 'cpu')")
+            r = _run_child([str(py), "-c", code], timeout=60)
+            out = (getattr(r, "stdout", "") or "").strip()
+            if out == "cuda":
+                dev = "cuda"
+    except Exception:
+        dev = "cpu"          # не смогли спросить — идём безопасным путём
+    _WHISPER_DEV_CACHE = dev
+    return dev
 
 
 def tts_edge(text: str, voice: str, out_dir: Path, log, rate: int = 0,
@@ -1013,6 +1106,9 @@ def _collect_tracks(music_path) -> list[Path]:
     return tracks
 
 
+СТЕРЕО = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+
+
 def add_music(voice_mp3: Path, music_path, log, gain_db: int = -14) -> Path:
     """Подмешивает музыку под озвучку с автопригушением под голосом (sidechain).
     music_path — файл, папка, список файлов или многострочный/через | список.
@@ -1022,9 +1118,24 @@ def add_music(voice_mp3: Path, music_path, log, gain_db: int = -14) -> Path:
     if not voice_mp3.exists():
         raise FileNotFoundError(f"Нет озвучки: {voice_mp3}")
     tracks = _collect_tracks(music_path)
+    # ОТБОР ПО ЛИЦЕНЗИИ ЗДЕСЬ, А НЕ ТОЛЬКО У ТОГО, КТО ЗОВЁТ. Фильтр стоял
+    # выше по течению (см. music_license_ok в подборе трека по настроению),
+    # но add_music принимает ЛЮБУЮ папку и раньше клал в ролик всё подряд.
+    # 01.09 я сам передал сюда «music_library/tense» напрямую, и в
+    # двухминутный ролик ушли 6 треков из 7 без пригодной лицензии. За такое
+    # снимают монетизацию, и проверка обязана стоять в последней точке,
+    # через которую музыка попадает в файл.
+    негодные = [t for t in tracks if not music_license_ok(t)]
+    tracks = [t for t in tracks if music_license_ok(t)]
+    if негодные:
+        log(f"[Музыка] Отброшено {len(негодные)} трек(ов) без пригодной "
+            f"лицензии: {', '.join(t.name[:34] for t in негодные[:4])}"
+            + (" и другие" if len(негодные) > 4 else ""))
     if not tracks:
         raise FileNotFoundError(
-            f"Нет аудио-треков ({', '.join(sorted(MUSIC_EXTS))})")
+            "Ни одного трека с пригодной лицензией"
+            + (f" (отброшено {len(негодные)})" if негодные else
+               f" ({', '.join(sorted(MUSIC_EXTS))})"))
     random.shuffle(tracks)
 
     dest = voice_mp3.with_name("voiceover_music.mp3")
@@ -1053,14 +1164,41 @@ def add_music(voice_mp3: Path, music_path, log, gain_db: int = -14) -> Path:
         music_lbl = "[loopmus]"
         fades = "_PRE_" + fades
 
+    # ПРИГЛУШЕНИЕ ПОД ГОЛОС: threshold 0.06 и ratio 5, а не 0.02 и 12.
+    #
+    # Прежние числа давили музыку в ноль. Замер на выпущенном ролике 30.08
+    # (отрезок 60-90 с, речь идёт): голос -15.5 дБ, музыка в остатке
+    # -38.4 дБ — то есть на 23 дБ ниже речи, физически не слышно. В журнале
+    # при этом стояло «Трек: ..., громкость -7 dB», и владелец сказал прямо:
+    # «фоновой музыки нет вообще во всех каналах».
+    #
+    # Порог 0.02 срабатывал на любом звуке речи, включая придыхание, а
+    # сжатие 12:1 — это уже не приглушение, а вырезание. Документальная
+    # подложка должна стоять на 12-16 дБ ниже голоса: слышно, но не спорит.
+    # СТЕРЕО НА КАЖДОМ ВХОДЕ. amix берёт раскладку каналов у ПЕРВОГО входа,
+    # а первый здесь — голос от Edge TTS, и он моно. Из-за этого весь микс
+    # схлопывался в один канал, и стереообраз музыки пропадал целиком:
+    # замер готового ролика 01.09 показал channels=1 у 14-минутного
+    # einsturzpunkt. Голос при этом остаётся по центру — это правильно для
+    # диктора, — а ширину даёт музыка.
+    #
+    # Голос расщепляем надвое (asplit): один экземпляр идёт ключом в
+    # sidechaincompress, второй — в микс. Без расщепления ffmpeg ругается,
+    # потому что выход фильтра нельзя подключить к двум входам.
+    голос = f"[0:a]{СТЕРЕО},asplit=2[v1][v2];"
+    сжатие = ("sidechaincompress=threshold=0.06:ratio=5:"
+              "attack=25:release=700[duck];")
     if len(tracks) == 1:
-        fc = (f"[1:a]volume={gain_db}dB,{fades}[m];"
-              "[m][0:a]sidechaincompress=threshold=0.02:ratio=12:attack=25:release=700[duck];"
-              "[0:a][duck]amix=inputs=2:duration=first:normalize=0[mix]")
+        fc = (голос
+              + f"[1:a]{СТЕРЕО},volume={gain_db}dB,{fades}[m];"
+              + "[m][v1]" + сжатие
+              + "[v2][duck]amix=inputs=2:duration=first:normalize=0[mix]")
     else:
-        fc = (pre + f"{music_lbl}volume={gain_db}dB,{fades.replace('_PRE_','')}[m];"
-              "[m][0:a]sidechaincompress=threshold=0.02:ratio=12:attack=25:release=700[duck];"
-              "[0:a][duck]amix=inputs=2:duration=first:normalize=0[mix]")
+        fc = (голос + pre
+              + f"{music_lbl}{СТЕРЕО},volume={gain_db}dB,"
+              + f"{fades.replace('_PRE_','')}[m];"
+              + "[m][v1]" + сжатие
+              + "[v2][duck]amix=inputs=2:duration=first:normalize=0[mix]")
 
     # -ar задан явно, а не оставлен на усмотрение amix: тот берёт частоту
     # ПЕРВОГО входа, а первый вход — голос. Стоит голосу оказаться на 24 кГц
@@ -1345,6 +1483,37 @@ def _gemini_endpoints(model: str, key: str) -> list[str]:
     return eps
 
 
+class CutText(str):
+    """Ответ модели, ОБОРВАННЫЙ лимитом токенов, а не досказанный до конца.
+
+    Это обычная строка (все старые вызывающие работают как работали), но с
+    пометкой `why`. Пометка нужна потому, что обрыв и ошибка модели выглядят
+    для вызывающего ОДИНАКОВО: у сцен обрыв приходил как «TS17008: JSX
+    element has no corresponding closing tag» или «TS1005: '}' expected» —
+    то есть как ошибка типизации, и следующая попытка получала подсказку
+    «почини незакрытый тег» вместо единственно верной «уложись короче».
+    Замер живого прогона 29.08: hydrostatic_pressure_vectors отвергнута
+    трижды подряд (TS17008, TS1005, TS1005) и потеряна навсегда.
+
+    Пустой ответ при finish_reason=length уже ловился отдельно и внятно; а
+    вот НЕПУСТОЙ, но обрубленный текст возвращался молча, как годный."""
+    why = ""
+
+
+def mark_cut(text: str, why: str) -> CutText:
+    out = CutText(text)
+    out.why = why
+    return out
+
+
+def was_cut(text) -> str:
+    """Причина обрыва ответа модели или '' — ответ пришёл целиком.
+
+    Работает и на обычной строке (вернёт ''), поэтому вызывать можно на
+    любом результате llm_chat без проверок типа."""
+    return getattr(text, "why", "") if isinstance(text, str) else ""
+
+
 def gemini_chat(messages: list[dict], api_key: str,
                 temperature: float = 0.7, max_tokens: int = 4096) -> str:
     import requests
@@ -1368,7 +1537,16 @@ def gemini_chat(messages: list[dict], api_key: str,
     # ноль живых ключей из десяти, а у gemini-flash-latest в ту же минуту
     # восемь живых.
     for model in _gemini_text_models():
+        # Потолок партии проверяем и ЗДЕСЬ, а не только в llm_chat: там
+        # он смотрится один раз на ключ, а внутри одного ключа лежат
+        # 4 модели по 2 адреса с таймаутом 60 c — 480 c сверх потолка.
+        if _budget_expired():
+            last = "потолок времени на партию исчерпан"
+            break
         for url in _gemini_endpoints(model, api_key):
+            if _budget_expired():
+                last = "потолок времени на партию исчерпан"
+                break
             # try вокруг запроса — как в gemini_vision. Без него сетевой сбой
             # на ПЕРВОМ эндпоинте уносил всю функцию, и второй (запасной!)
             # даже не пробовался. Реальный случай из журнала: у ключа AQ.
@@ -1377,7 +1555,7 @@ def gemini_chat(messages: list[dict], api_key: str,
             # ответить.
             try:
                 r = requests.post(url, params={"key": api_key}, json=body,
-                                  timeout=300)
+                                  timeout=_budget_timeout(LLM_HTTP_TIMEOUT))
             except Exception as e:
                 last = _redact(e)
                 continue
@@ -1398,6 +1576,16 @@ def gemini_chat(messages: list[dict], api_key: str,
             parts = (cands[0].get("content") or {}).get("parts") if cands else []
             text = "".join(p.get("text", "") for p in parts or []).strip()
             if text:
+                # НЕПУСТОЙ ответ с finishReason=MAX_TOKENS — это обрубок, а не
+                # результат. Раньше он возвращался молча наравне с целым, и
+                # вызывающий узнавал об обрыве только от компилятора, в виде
+                # «незакрытый тег» (см. CutText).
+                fin = str((cands[0].get("finishReason") or "")).upper()
+                if fin in ("MAX_TOKENS", "LENGTH"):
+                    return mark_cut(
+                        text, f"{model}: finishReason={fin}, ответ упёрся в "
+                              f"maxOutputTokens={max_tokens} "
+                              f"(получено {len(text)} символов)")
                 return text
             # Причину пустоты называем вслух: MAX_TOKENS («размышления» съели
             # весь бюджет), SAFETY/RECITATION (фильтр), blockReason (отклонён
@@ -1647,7 +1835,7 @@ def agnes_chat(messages: list[dict], api_key: str,
                       headers={"Authorization": f"Bearer {api_key}"},
                       json={"model": AGNES_MODEL, "messages": messages,
                             "temperature": temperature, "max_tokens": max_tokens},
-                      timeout=300)
+                      timeout=_budget_timeout(LLM_HTTP_TIMEOUT))
     if r.status_code != 200:
         raise RuntimeError(f"Agnes API {r.status_code}: {r.text[:300]}")
     data = r.json()
@@ -1677,6 +1865,13 @@ def agnes_chat(messages: list[dict], api_key: str,
                 + " (не фильтр контента: подними лимит)")
         raise RuntimeError(f"Agnes: пустой ответ (finish_reason={fin}; "
                            "похоже на фильтр контента)")
+    # Ответ НЕ пустой, но упёрся в потолок — такой же обрубок, как у Gemini
+    # выше. Молча отдавать его вызывающему нельзя: он не отличит обрыв от
+    # кривого кода и потратит попытку на починку того, чего нет.
+    if str(choice.get("finish_reason") or "") == "length":
+        return mark_cut(text, f"Agnes: finish_reason=length, ответ упёрся в "
+                              f"max_tokens={max_tokens} "
+                              f"(получено {len(text)} символов)")
     return text
 
 
@@ -1700,6 +1895,111 @@ def _gemini_keys() -> list[str]:
 
 LLM_RETRY_ATTEMPTS = 3
 LLM_RETRY_BACKOFF = 15        # секунд, умножается на номер попытки
+# ТАЙМАУТ ОДНОГО ТЕКСТОВОГО ВЫЗОВА и ПОТОЛОК НА ВЕСЬ ПЕРЕБОР.
+#
+# Замер ночи 31.08: автопилот встал на канале «Tiefenzeit» в 02:23 и не
+# сдвинулся до 11:33 — девять часов, один ролик за ночь вместо трёх.
+# Сторож тишины увидел зависание через 45 минут и 506 раз подряд, раз в
+# минуту, писал «Останавливаю Автопилот» — но остановить не мог.
+#
+# Считаем худший случай прежних настроек: таймаут одного HTTP был 300 с,
+# ключей Gemini десять, ключей Agnes шесть, и весь перебор повторялся
+# LLM_RETRY_ATTEMPTS раз. Даже при одной модели и одном адресе это
+# (10 + 6) × 300 c × 3 = 4 часа НА ОДИН запрос темы. Хуже того,
+# requests.post не прерывается ни флагом отмены, ни stop_render — поток
+# сидит в сокете, и «Стоп» ему не виден.
+#
+# 60 секунд: текстовый ответ приходит за единицы секунд, за минуту не
+# ответил — ключ или сеть мертвы, ждать дальше бессмысленно.
+# 360 секунд на весь перебор: после этого llm_chat сдаётся с внятной
+# ошибкой, вызывающий уходит на запасной путь, а ночь идёт дальше.
+LLM_HTTP_TIMEOUT = 60
+LLM_TOTAL_DEADLINE = 360
+
+# ПОТОЛОК НА ОДНУ ПАРТИЮ ПЛАНОВ (умные запросы, ИИ-промпты, переписывание
+# двойников).
+#
+# LLM_TOTAL_DEADLINE выше сторожит ОДИН вызов llm_chat, и этого мало сразу по
+# двум причинам: вызов повторяется LLM_RETRY_ATTEMPTS раз по всем ключам, а
+# сам потолок проверяется ПЕРЕД походом в сеть — уже начатый gemini_chat
+# успевает перебрать 4 модели по 2 адреса с таймаутом 60 c, то есть 480 c
+# сверх потолка.
+#
+# Замер 02.09 (einsturzpunkt, выбранная суточная квота Gemini): партия из 20
+# планов падала 26 минут, следующая столько же, потом шаг замолчал на 74
+# минуты и был убит сторожем тишины. За 8.5 часов автопилот отдал только
+# сценарий, озвучку и субтитры. Воспроизведено на стенде (10 ключей Gemini +
+# 6 Agnes, каждый отвечает 429 через 3 c): 190 c на партию, 3 попытки по 16
+# ключей.
+#
+# Замер ЗДОРОВЫХ прогонов по app.log за 31.08-01.09: весь шаг (8 партий по 20
+# планов) укладывается в 37-198 c, то есть 5-25 c на партию. 90 секунд —
+# вчетверо больше худшей здоровой партии, вдвое меньше стендовой (190 c) и в
+# семнадцать раз меньше настоящей 02.09 (1569 c).
+LLM_BATCH_DEADLINE = 90
+
+# Две просроченные партии подряд значат, что квота мертва не на секунду, а
+# насовсем: остальные партии дадут те же 90 c каждая (8 партий = 12 минут
+# впустую). Уходим на ключевые слова целиком.
+LLM_BATCH_GIVE_UP = 2
+
+# Кооперативный потолок времени, общий для всей лестницы повторов внутри
+# одной партии. Свой у каждого потока: автопилот гоняет каналы параллельно,
+# и общий бюджет одного канала обрывал бы работу соседнего.
+_LLM_BUDGET = threading.local()
+
+
+def _budget_left() -> float | None:
+    """Сколько секунд осталось у текущего бюджета; None — бюджета нет."""
+    until = getattr(_LLM_BUDGET, "until", None)
+    if until is None:
+        return None
+    return until - time.monotonic()
+
+
+def _budget_expired() -> bool:
+    left = _budget_left()
+    return left is not None and left <= 0
+
+
+def _budget_timeout(default: float) -> float:
+    """Таймаут HTTP, урезанный остатком бюджета: ждать ответа дольше, чем
+    живёт партия, бессмысленно — его уже никто не примет."""
+    left = _budget_left()
+    if left is None:
+        return default
+    return max(1.0, min(default, left))
+
+
+def _run_with_budget(fn, seconds: float):
+    """Вызвать fn() с ЖЁСТКИМ потолком по часам.
+
+    Одной кооперативной проверки мало: requests.post не прерывается ничем —
+    ни флагом «Стоп», ни истёкшим бюджетом, — поток сидит в сокете, а DNS на
+    Windows умеет висеть дольше собственного таймаута. Поэтому работа уходит
+    в отдельный поток, а этот ждёт ровно seconds и бросает TimeoutError.
+    Брошенный поток демонический: бюджет свернёт его лестницу на ближайшей
+    проверке, и он умрёт сам, ничего не записав — результат уже не нужен.
+    """
+    box: dict = {}
+
+    def run():
+        _LLM_BUDGET.until = time.monotonic() + seconds
+        try:
+            box["ok"] = fn()
+        except BaseException as e:      # отдаём вызывающему как есть
+            box["err"] = e
+        finally:
+            _LLM_BUDGET.until = None
+
+    t = threading.Thread(target=run, daemon=True, name="llm-budget")
+    t.start()
+    t.join(seconds)
+    if t.is_alive():
+        raise TimeoutError(f"потолок {seconds:.0f} c на партию исчерпан")
+    if "err" in box:
+        raise box["err"]
+    return box.get("ok", "")
 
 
 def llm_chat(messages: list[dict], api_key: str = "",
@@ -1725,9 +2025,24 @@ def llm_chat(messages: list[dict], api_key: str = "",
         raise RuntimeError("Нет ключей для текстов: задай GEMINI_API_KEY или "
                            "AGNES_API_KEY (.env или «Настройки API»).")
     errors = []
+    # ДЕДЛАЙН НА ВЕСЬ ПЕРЕБОР. Без него шестнадцать ключей по 300 c в три
+    # захода складывались в четыре часа молчания — ровно то, из-за чего
+    # ночь 31.08 дала один ролик вместо трёх (см. LLM_TOTAL_DEADLINE).
+    # monotonic, а не time(): у time() на Windows разрешение ~15 мс, и
+    # два соседних замера давали ОДНО значение — проверка «прошло ли
+    # время» не срабатывала вовсе (поймано на опыте с нулевым потолком).
+    _started = time.monotonic()
     for attempt in range(1, LLM_RETRY_ATTEMPTS + 1):
         errors = []
         for i, key in _live_first(gem_keys, GEMINI_TEXT_MODEL):
+            # «Стоп» между ключами: внутри requests его не видно, поток
+            # сидит в сокете и флага не замечает.
+            _stop_check()
+            if (time.monotonic() - _started >= LLM_TOTAL_DEADLINE
+                    or _budget_expired()):
+                errors.append("превышен потолок ожидания "
+                              f"{LLM_TOTAL_DEADLINE} c")
+                break
             try:
                 return gemini_chat(messages, key, temperature, max_tokens)
             except Exception as e:
@@ -1738,16 +2053,26 @@ def llm_chat(messages: list[dict], api_key: str = "",
         # одном порядке и без отвода: выбранный собирал отказ первым на
         # КАЖДОМ вызове — та же трата впустую, что чинилась у Gemini.
         for i, key in _live_first(agn_keys, "agnes"):
+            _stop_check()
+            if (time.monotonic() - _started >= LLM_TOTAL_DEADLINE
+                    or _budget_expired()):
+                errors.append("превышен потолок ожидания "
+                              f"{LLM_TOTAL_DEADLINE} c")
+                break
             try:
                 return agnes_chat(messages, key, temperature, max_tokens)
             except Exception as e:
                 if _is_rate_limit(str(e)):
                     _cool_down(key, "agnes", str(e))
                 errors.append(f"Agnes #{i}: {e}")
-        if attempt == LLM_RETRY_ATTEMPTS or not any(
-                _is_transient(x) for x in errors):
+        if (attempt == LLM_RETRY_ATTEMPTS
+                or time.monotonic() - _started >= LLM_TOTAL_DEADLINE
+                or _budget_expired()
+                or not any(_is_transient(x) for x in errors)):
             break
-        _sleep_cancel(LLM_RETRY_BACKOFF * attempt)
+        # Пауза не длиннее остатка бюджета партии: иначе поток спит уже
+        # просроченным, и минута ожидания тратится в пустоту.
+        _sleep_cancel(_budget_timeout(LLM_RETRY_BACKOFF * attempt))
     raise RuntimeError(_redact("; ".join(errors)))
 
 
@@ -2226,12 +2551,19 @@ SCRIPT_BASE = (
     "held 32%. Same channel, same length, same voice — the difference was "
     "the opening.\n"
     "  So: name a PERSON, a PLACE and a MOMENT in the first sentence, and "
-    "make something in it already wrong. 'At 6:00 AM on 13 December 1994, "
-    "shift operator Ronald LeBlanc wrote forty-two pounds per square inch in "
-    "green ink on the log sheet' — a reader knows within eight words where "
-    "they are and that the number will matter. Never spend the first "
-    "sentence on context, background or a general statement about the world; "
-    "there is no sentence cheaper to cut and none more expensive to keep.\n"
+    "make something in it already wrong. A reader must know within "
+    "eight words where they are and that the number will matter. Never "
+    "spend the first sentence on context or background; there is no "
+    "sentence cheaper to cut and none more expensive to keep.\n"
+    "  DO NOT BEGIN THE SENTENCE WITH THE DATE. Lead with the person "
+    "or the action and let the date follow inside the sentence. "
+    "Measured 01.09.2026 across this owner's four channels: 14 of 16 "
+    "scripts open with the same two words, Am in German and El in "
+    "Spanish, each followed by a date. Every video therefore sounds "
+    "identical for its first three seconds, which is exactly the "
+    "window where a third of the viewers leave. A date is a fact, not "
+    "a hook: put the fact second, after a human being doing "
+    "something.\n"
     "- OPEN LOOP. Within the first 30 seconds raise ONE concrete question "
     "the viewer now needs answered — something missing, withheld, "
     "unexplained or contradictory. Do NOT answer it until the final third; "
@@ -2691,6 +3023,34 @@ def gen_script(topic: str, minutes: int, api_key: str = "", log=print,
             "ИИ не сгенерировал ни одной главы (все ответы пустые — "
             "возможно, фильтр контента на этой теме). Попробуй ещё раз "
             "или переформулируй тему.")
+    # ОТКРЫТИЕ ПРОВЕРЯЕМ И ПЕРЕПИСЫВАЕМ ЗДЕСЬ, до расчёта длины и до границ
+    # глав. Правила первых 30 секунд стоят в промпте с самого начала, и
+    # модель их нарушает через раз: журнал печатал «первая фраза 25 слов
+    # вместо 14», «исход на 33-й секунде», «2 предложения длиннее 20 слов» —
+    # и ролик всё равно уходил в производство. По живым данным YouTube это
+    # обвал удержания на 20-й секунде: минус 22% зрителей, половина ушла к
+    # 60-й. Переписываем ТОЛЬКО первую минуту первой главы: остальной текст
+    # уже посчитан по длине, разбит на главы и обрезан.
+    #
+    # Порядок важен: правка меняет длину первой главы, а границы глав ниже
+    # считаются по parts — сделай это после, и все тайм-коды уедут на разницу.
+    голова, беды = _rewrite_opening(parts[0], lang, topic, system, api_key,
+                                    log, stop_check=_stop_check)
+    if голова != parts[0]:
+        parts[0] = голова
+        text = "\n\n".join(parts)
+    if беды:
+        # НЕ рядовая строка журнала: предупреждение о плохом открытии тонуло
+        # среди сотен строк, приёмка его видела и пропускала ролик дальше.
+        import quality
+        quality.degraded(
+            "Сценарий", "первые 30 секунд написаны так, что зритель уходит",
+            why="после трёх переспросов осталось: "
+                + "; ".join(b["текст"] for b in беды),
+            hint="перепиши начало руками до озвучки: первая фраза до 14 слов "
+                 "с датой или числом, цена — в первые 30 секунд, причина — в "
+                 "последней трети, а кончается открытие вопросом",
+            level="критично")
     words = len(text.split())
     # заказанная длительность — это и минимум (retry выше), и максимум:
     # модель нередко расходится и сильно перевыполняет план, особенно
@@ -2890,6 +3250,214 @@ def script_open_loop(text: str, lang: str = "немецкий") -> bool:
     return "?" in " ".join(плоско.split()[:предел])
 
 
+# ПРИЧИНА, ВЫЛОЖЕННАЯ В ОТКРЫТИИ. В промпте это правило стоит отдельным
+# абзацем («NEVER give the cause in the opening»): цена — это ставка и
+# звучит сразу, причина — это и есть ролик и придержана до последней трети.
+# Ищем не союз («weil», «porque» — они держат любую придаточную фразу и
+# дали бы срабатывание на каждом тексте), а СЛОВА РАЗБОРА: причина, вина,
+# ошибка расчёта, конструктивный дефект. Ими открытие объясняет случившееся
+# — и вопрос у зрителя кончается.
+_CAUSE_WORDS = {
+    "немецкий": r"ursache|ursächlich|zurückzuführen|verursacht|"
+                r"konstruktionsfehler|planungsfehler|berechnungsfehler|"
+                r"baumangel|materialfehler|schuld war|versagensursache",
+    "испанский": r"la causa|las causas|causó|causaron|se debió|error de "
+                 r"cálculo|error de diseño|fallo de diseño|defecto de "
+                 r"construcción|vicio oculto|la razón por la que",
+    "английский": r"the cause|root cause|caused by|was due to|design flaw|"
+                  r"calculation error|construction defect|the reason why|"
+                  r"to blame",
+}
+
+
+def script_opening_cause(text: str, lang: str = "немецкий") -> str:
+    """Слово разбора, прозвучавшее в первые 30 секунд, или пустая строка.
+
+    Отдельная мерка от script_opening: та смотрит, названа ли ЦЕНА (её
+    ждут), эта — не названа ли ПРИЧИНА (её ждать должны до конца ролика)."""
+    чистый = strip_cues(text or "")[0]
+    плоско = re.sub(r"\s+", " ", чистый).strip()
+    предел = round(30 * words_per_minute(lang) / 60.0)
+    окно = " ".join(плоско.split()[:предел])
+    rx = _CAUSE_WORDS.get(lang, _CAUSE_WORDS["английский"])
+    m = re.search(rx, окно, re.I)
+    return m.group(0) if m else ""
+
+
+def opening_faults(text: str, lang: str = "немецкий") -> list[dict]:
+    """Чем именно испорчено открытие. Пустой список — открытие годное.
+
+    ОДНА мерка на три места: на неё ругается журнал, ею же переспрос
+    объясняет модели, что переписать, и ею же выносится приговор в
+    quality.degraded. Пока их было три разных, переспроса не было вовсе, а
+    приёмка печатала предупреждение и пропускала ролик дальше.
+
+    Каждый пункт: «код» — чтобы сверять попытки между собой; «текст» — как
+    это звучит в журнале, с цифрами; «ask» — та же претензия по-английски,
+    дословно тем же языком, что и промпт, чтобы уйти модели без перевода.
+    """
+    когда, первая, длинных, всего30 = script_opening(text, lang)
+    предел = round(30 * words_per_minute(lang) / 60.0)
+    причина = script_opening_cause(text, lang)
+    bad: list[dict] = []
+    if первая > 14:
+        bad.append({
+            "код": "первая_фраза",
+            "текст": f"первая фраза — {первая} слов вместо 14",
+            "ask": (f"The first sentence is {первая} words long. It must be "
+                    "14 words or fewer and must contain a date, a number or "
+                    "a place. It has to land inside 5 seconds."),
+        })
+    if длинных >= 2:
+        bad.append({
+            "код": "длинные",
+            "текст": (f"{длинных} предложений из {всего30} в первые 30 "
+                      "секунд длиннее 20 слов"),
+            "ask": (f"{длинных} of the first {всего30} sentences run longer "
+                    "than 20 words. Break every one of them up: no sentence "
+                    "in the first 30 seconds may exceed 20 words, and at "
+                    "least two of them must be five words or fewer."),
+        })
+    if когда < 0 or когда > 30:
+        bad.append({
+            "код": "исход",
+            "текст": ("исход не назван вовсе" if когда < 0 else
+                      f"исход звучит только на {когда:.0f}-й секунде"),
+            "ask": ("The opening never says what it cost." if когда < 0 else
+                    f"The cost is first named only at second {когда:.0f}.")
+                   + (f" State it inside the first {предел} words of "
+                      "narration: how many died, how many were hurt, how "
+                      "many were moved out, the bill, the verdict or the "
+                      "demolition — and if truly nobody was harmed, say that "
+                      "outright, because that is itself the surprise."),
+        })
+    if not script_open_loop(text, lang):
+        bad.append({
+            "код": "петля",
+            "текст": "в первые 30 секунд не задан ни один вопрос",
+            "ask": ("There is no question mark anywhere in the first 30 "
+                    "seconds. Ask ONE concrete unanswered question — written "
+                    "as a question, with a question mark — that this video "
+                    "answers only in its final third. Do not answer it here "
+                    "and do not hint at the answer. The question mark has to "
+                    f"fall inside the first {предел} words of the fragment: "
+                    "the viewer decides there, not a minute later."),
+        })
+    if причина:
+        bad.append({
+            "код": "причина",
+            "текст": f"причина выложена уже в открытии («{причина}»)",
+            "ask": (f"The opening already explains the cause — it says "
+                    f"\"{причина}\". Cut that out: the cost is the stakes and "
+                    "belongs at the start, the reason it happened is what the "
+                    "video is for and belongs in the final third. A viewer "
+                    "who knows both by second 30 has no question left."),
+        })
+    return bad
+
+
+def _opening_slice(text: str, lang: str, seconds: float = 60.0) -> str:
+    """Кусок сценария, который отдаём на переписывание: целые предложения от
+    начала до ~seconds секунд звучания.
+
+    Берём ШИРЕ тридцати секунд нарочно. Исход по медиане звучит на 58-й
+    секунде — попадись модели ровно тридцать, ей пришлось бы выдумывать
+    жертвы и счёт, которых в куске нет, вместо того чтобы поднять их выше.
+    Режем по СЫРОМУ тексту (ремарки в скобках остаются на своих местах,
+    иначе шов не сойдётся), а меряем по озвучиваемому."""
+    цель = round(seconds * words_per_minute(lang) / 60.0)
+    for m in re.finditer(r"[.!?…][\"»”')\]]*(?:\s|$)", text or ""):
+        if len(strip_cues(text[:m.end()])[0].split()) >= цель:
+            return text[:m.end()].rstrip()
+    return text or ""
+
+
+def _clean_reply(out: str) -> str:
+    """Ответ модели -> голый текст: снять markdown-обёртку и вводную фразу
+    вида «Here is the rewritten opening:», которую модель приписывает через
+    раз. В сценарий она уехала бы вслух."""
+    s = (out or "").strip()
+    s = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", s).strip()
+    s = re.sub(r"^(?:here(?:'s| is)|below is|sure[,!.]?)[^\n:]{0,80}:\s*",
+               "", s, flags=re.I).strip()
+    return s
+
+
+def _rewrite_opening(text: str, lang: str, topic: str, system: str,
+                     api_key: str, log=print, *, chat=None, tries: int = 3,
+                     stop_check=None) -> tuple[str, list[dict]]:
+    """Переписать ТОЛЬКО открытие, если оно нарушает правила первых 30 секунд.
+
+    Возвращает (текст, оставшиеся нарушения). Переписывается кусок в ~60
+    секунд звучания от начала, остальной сценарий не трогается вовсе: он уже
+    прошёл расчёт длины, разбивку на главы и обрезку, и полная перегенерация
+    стоит минут и денег. Попыток не больше трёх — держим лучшую из
+    полученных, а не последнюю.
+
+    Зачем вообще: правила открытия написаны в промпте с самого начала,
+    проверка их честно печатала, и ролик всё равно уходил в производство —
+    обвал удержания на 20-й секунде, минус 22% зрителей."""
+    беды = opening_faults(text, lang)
+    if not беды:
+        return text, []
+    chat = chat or llm_chat
+    lang_name = LANGS.get(lang, "English")
+    предел = round(30 * words_per_minute(lang) / 60.0)
+    кусок = _opening_slice(text, lang)
+    слов = max(1, len(кусок.split()))
+    лучший, лучшие = text, беды
+    for попытка in range(1, max(1, int(tries)) + 1):
+        if stop_check:
+            stop_check()
+        log(f"[Агент] Открытие нарушает правила первых 30 секунд "
+            f"({'; '.join(b['текст'] for b in лучшие)}) — прошу переписать "
+            f"только его (попытка {попытка}/{tries})...", "warn")
+        ask = (
+            f"Video about: {topic}.\n"
+            f"Below is the OPENING of a finished {lang_name} script — the "
+            "first minute of narration. The rest of the script is already "
+            "written, timed and cut, and you must not touch it.\n\n"
+            "Rewrite THIS FRAGMENT ONLY. It breaks the rules of the first 30 "
+            "seconds:\n"
+            + "\n".join(f"{i}. {b['ask']}" for i, b in enumerate(лучшие, 1))
+            + f"\n\nAll of that is measured on the first {предел} words of "
+            "your rewrite — those words ARE the first 30 seconds, and the "
+            "fragment carries on after them.\n"
+            "Keep every fact, name, number and stage direction in "
+            "square brackets that the fragment already contains — you are "
+            "re-ordering and re-cutting sentences, not inventing events. "
+            f"Write it in {lang_name}, in about {слов} words (between "
+            f"{round(слов * 0.8)} and {round(слов * 1.2)}), so the rest of "
+            "the script still fits. The last sentence must lead into what "
+            "comes after it. Output ONLY the rewritten narration — no "
+            "heading, no explanation, no quotation marks around it.\n\n"
+            f"OPENING TO REWRITE:\n{кусок}")
+        try:
+            новый = _clean_reply(chat(
+                [{"role": "system", "content": system},
+                 {"role": "user", "content": ask}],
+                api_key, 0.7, min(max(слов * 10, 4000), 12000)))
+        except Exception as e:                    # сеть, квота, отказ провайдера
+            log(f"[Агент] Переспрос по открытию сорвался: {e}", "warn")
+            break
+        доля = len(новый.split()) / слов
+        if not новый or доля < 0.5 or доля > 1.7:
+            # обрубок или пересказ всего ролика — такой шов рвёт длину,
+            # ради которой сценарий и считали
+            log(f"[Агент] Ответ на переспрос не годится: "
+                f"{len(новый.split())} слов вместо ~{слов}", "warn")
+            continue
+        кандидат = новый + text[len(кусок):]
+        свежие = opening_faults(кандидат, lang)
+        if len(свежие) < len(лучшие):
+            лучший, лучшие = кандидат, свежие
+        if not свежие:
+            log(f"[Агент] Открытие переписано с попытки {попытка}: "
+                "правила первых 30 секунд выполнены")
+            return лучший, []
+    return лучший, лучшие
+
+
 def _warn_slow_opening(text: str, lang: str, log=print) -> None:
     """Сказать вслух, если первые 30 секунд построены не тем порядком.
 
@@ -2959,16 +3527,35 @@ def _parse_query_list(out: str, expect: int) -> list[str]:
         return [p.strip() for p in parts]
     lines = []                                    # 3) построчно
     for ln in out.splitlines():
-        ln = re.sub(r'^[\s\-\*\d.)\]\[",]+', "", ln.strip())
-        ln = ln.strip().strip('",').strip()
-        if ln and not ln.startswith("```") and len(ln) < 60:
+        ln = ln.strip()
+        if ln.startswith("```"):
+            continue
+        # ЕСЛИ В СТРОКЕ ЕСТЬ КАВЫЧКИ — запрос внутри них, остальное болтовня
+        # модели. Замер по выпущенному ролику 26.08: десять запросов из 140
+        # ушли в генератор кадров ЦЕЛИКОМ вместе с обёрткой —
+        #     : "paul klee angelus novus" - perfect.
+        #     : "1940 paris street sandbags" - perfect.
+        # Двоеточие в начале не срезалось (его не было в наборе символов), а
+        # хвост « - perfect.» не срезался вовсе.
+        q = re.search(r'"([^"]{3,80})"', ln)
+        if q:
+            ln = q.group(1).strip()
+        else:
+            # Двоеточие добавлено в набор: с него начиналась вся обёртка.
+            ln = re.sub(r'^[\s\-\*\d.)\]\[",:]+', "", ln)
+            # Хвостовая оценка модели: « - perfect.», « — ok», « - good».
+            ln = re.sub(r'\s*[-—]\s*\w{1,12}\.?\s*$', "", ln)
+            ln = ln.strip().strip('",').strip()
+        if ln and len(ln) < 60:
             lines.append(ln)
     return lines
 
 
 def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
                        system: str, instruction: str, temperature: float,
-                       max_tokens: int, label: str) -> list[str] | None:
+                       max_tokens: int, label: str,
+                       batch_deadline: float = LLM_BATCH_DEADLINE
+                       ) -> list[str] | None:
     """Общий батчинг LLM-промптов «один план -> одна строка». Идёт порциями
     по batch_size (один запрос на все планы разом рвёт JSON посередине по
     лимиту токенов). Возвращает список длиной len(beats), где пустая строка
@@ -2979,6 +3566,18 @@ def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
         return None
     result = [""] * n
     got = 0
+    просрочено_подряд = 0
+
+    def _ask(msgs):
+        """Один поход к LLM с ЖЁСТКИМ потолком по часам на всю лестницу
+        повторов внутри. Без потолка ключи перебираются LLM_RETRY_ATTEMPTS
+        раз по всем шестнадцати, и на выбранной квоте одна партия стоила
+        26 минут (замер 02.09), а весь шаг — 8.5 часов и ноль роликов."""
+        if not batch_deadline:
+            return llm_chat(msgs, api_key, temperature, max_tokens)
+        return _run_with_budget(
+            lambda: llm_chat(msgs, api_key, temperature, max_tokens),
+            batch_deadline)
     effective_batch = min(batch_size, 5) if _env_switch("LOCAL_PROMPT_MODE", False) else batch_size
     for start in range(0, n, effective_batch):
         # На границе батча ничего не записано, кроме result в памяти: обрыв
@@ -3007,6 +3606,7 @@ def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
             {"role": "user", "content":
              instruction.format(n=len(chunk)) + "\n\n" + numbered + ctx},
         ]
+        _начало_партии = time.monotonic()
         try:
             if _env_switch("LOCAL_PROMPT_MODE", False):
                 # Маленькой CPU-модели не даём огромные батчи: так она даёт
@@ -3016,7 +3616,7 @@ def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
                 log(f"[Локальный ИИ] {label}, планы {start + 1}-"
                     f"{start + len(chunk)}: черновик готов")
             else:
-                out = llm_chat(messages, api_key, temperature, max_tokens)
+                out = _ask(messages)
             qs = _parse_query_list(out, len(chunk))
             for j in range(len(chunk)):
                 if j < len(qs) and qs[j]:
@@ -3025,7 +3625,7 @@ def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
         except Exception as e:
             if _env_switch("LOCAL_PROMPT_MODE", False) and api_key:
                 try:
-                    out = llm_chat(messages, api_key, temperature, max_tokens)
+                    out = _ask(messages)
                     qs = _parse_query_list(out, len(chunk))
                     for j in range(len(chunk)):
                         if j < len(qs) and qs[j]:
@@ -3036,8 +3636,29 @@ def _llm_batch_prompts(beats: list[dict], api_key: str, log, *, batch_size: int,
                     continue
                 except Exception:
                     pass
+            # Не «isinstance TimeoutError»: кооперативный бюджет внутри
+            # llm_chat обычно срабатывает на доли секунды РАНЬШЕ жёсткого
+            # потолка, и наружу выходит обычный RuntimeError. Считаем по
+            # часам: партия, сжёгшая почти весь бюджет, — просрочка.
+            _прошло = time.monotonic() - _начало_партии
+            _просрочка = bool(batch_deadline) and (
+                isinstance(e, TimeoutError) or _прошло >= batch_deadline * 0.9)
             log(f"[Агент] {label}, планы {start + 1}-{start + len(chunk)}: "
-                f"{e.__class__.__name__} — эти уйдут на ключевые слова.")
+                + (f"не уложились в потолок {batch_deadline:.0f} c "
+                   f"(сгорело {_прошло:.0f} c)"
+                   if _просрочка else e.__class__.__name__)
+                + " — эти уйдут на ключевые слова.")
+            # Партия, сгоревшая по времени, — это не «не повезло», это
+            # мёртвая квота: следующая сгорит так же. Восемь партий по
+            # 90 c = 12 минут молчания на пустом месте.
+            просрочено_подряд = просрочено_подряд + 1 if _просрочка else 0
+            if просрочено_подряд >= LLM_BATCH_GIVE_UP:
+                log(f"[Агент] {label}: {просрочено_подряд} партии подряд "
+                    f"не уложились в {batch_deadline:.0f} c — модель "
+                    "молчит (обычно выбрана суточная квота). Остальные "
+                    "планы беру по ключевым словам, ролик собирается "
+                    "дальше.")
+                break
     import quality
     if got == 0:
         # то же, что случилось с оверлеями: основной путь молча уступил
@@ -3164,6 +3785,58 @@ SHOT_RULES = (
 )
 
 
+# ЗАПРЕТ ПЕРВОЙ ОЧЕВИДНОЙ АССОЦИАЦИИ. Правила выше следят, чтобы запрос был
+# ВЕРНЫМ; этот блок — чтобы он был НЕ СКУЧНЫМ. Замер по готовому ролику
+# einsturzpunkt/2026-09-01_2: запросы совпадают с текстом почти везде, но
+# берётся самое лобовое. Голос: «обрушение унесло жизнь рабочего» — запрос
+# «ambulance lights night city street». Формально верно, смотреть нечего:
+# скорая бывает в любом ролике про любую смерть. Рядом там же «Shanghai
+# skyline calm sunny day» и «deep muddy pit edge» — обёртки, а не предметы.
+ANTI_OBVIOUS = (
+    "\nDO NOT FILM THE FIRST THING THE SENTENCE MAKES YOU THINK OF. The "
+    "obvious association is the shot every other channel already used, and "
+    "the viewer has seen it a thousand times. Measured failures from this "
+    "channel's finished films:\n"
+    '  "the collapse cost a worker his life" -> "ambulance lights night city '
+    'street". Every death anywhere gets an ambulance; this one tells us '
+    'nothing about THIS collapse. Correct: the thing that killed him — '
+    '"bent scaffold clamp on asphalt", "helmet under concrete dust".\n'
+    '  "work started on the site" -> "construction site crane". Correct: '
+    'the object that started it — "site permit stamped signed", "surveyor '
+    'peg driven into raw ground".\n'
+    '  "the city was calm that morning" -> "city skyline sunny day". '
+    'Correct: something in reach — "milk bottles on a doorstep", "parked '
+    'delivery van door open".\n'
+    "\nASK ONE QUESTION FOR EVERY FRAGMENT: what OBJECT was physically "
+    "present at THIS event, at THIS moment, that would not be present at "
+    "any other? Film that object, never the category it belongs to. Nearly "
+    "every good answer is one of four:\n"
+    "  THE PART — the piece of the structure itself: the weld, the bearing, "
+    "the bolt, the corroded pipe elbow, the anchor plate, the snapped "
+    "cable end.\n"
+    "  THE TRACE — what the event physically left: the crack, the scorch "
+    "mark, the dent in the rail, the dust line on a windowsill, the ruts "
+    "the wheels cut.\n"
+    "  THE PAPER — the record that proves it: the inspection sheet, the "
+    "signed logbook page, the pressure chart on the recorder drum, the "
+    "warning letter, the court file.\n"
+    "  THE BELONGING — the human object left where it fell: the boot, the "
+    "glove, the lunchbox, the badge, the radio, the tool on the floor.\n"
+    "\nEVERY QUERY MUST NAME SOMETHING HANDLEABLE — a thing a person could "
+    "pick up, touch, or stand right beside. A query that names only a "
+    "place, a mood, a service or an event is a WRONG ANSWER.\n"
+    "BANNED WRAPPERS — these carry no information and must never stand as "
+    "a query, alone or with one word bolted on: 'city street at night', "
+    "'construction site', 'emergency', 'emergency services', 'accident "
+    "scene', 'disaster', 'aftermath', 'rescue workers', 'firefighters', "
+    "'ambulance', 'police lights', 'skyline', 'aerial view of the city', "
+    "'people walking', 'crowd', 'industrial plant', 'factory', 'safety "
+    "equipment'. If the fragment really is about the rescue, name what is "
+    "in their hands instead: 'firefighter hose coupling brass', not "
+    "'firefighters'.\n"
+)
+
+
 def story_anchors(script_text: str, limit: int = 12) -> list[str]:
     """Имена собственные, которыми ролик отличается от любого другого:
     город, объект, организация. Берём то, что часто повторяется в тексте —
@@ -3182,6 +3855,40 @@ def story_anchors(script_text: str, limit: int = 12) -> list[str]:
     # Одиночное упоминание — это фамилия эксперта из одной фразы, а не имя
     # события. Держим только то, что повторяется.
     часто = [w for w, n in счёт.items() if n >= 3]
+
+    # НЕМЕЦКИЙ ЛОМАЕТ ОТБОР ПО ЗАГЛАВНОЙ. Там с заглавной пишется КАЖДОЕ
+    # существительное, поэтому в якоря шли обычные слова. Замер по живому
+    # сценарию 30.08: «Last, Stadion, Konstruktion, Dach, Ingenieure,
+    # Struktur, Tonnen, Stäbe» — ни одного имени события. Велеть модели
+    # вставлять «Dach» в каждый запрос значит сделать кадры ХУЖЕ.
+    #
+    # Различаем по длине и составу: имя собственное в немецком — это
+    # длинное сложное слово (Schraudenbachtalbrücke, Nordsüdstadtbahn),
+    # или слово с цифрой либо дефисом (A7, Los-Süd), или год. Короткое
+    # существительное — почти всегда нарицательное.
+    # Немецкий определяем по служебным словам: они одни и те же в любом
+    # тексте и с заглавной не пишутся, поэтому в якоря не попадают.
+    низ = " " + (script_text or "").lower()[:4000] + " "
+    немецкий = sum(низ.count(" " + w + " ") for w in
+                   ("der", "die", "das", "und", "den", "dem", "des",
+                    "ist", "nicht", "eine")) >= 12
+
+    def именное(w: str) -> bool:
+        if any(c.isdigit() for c in w) or "-" in w:
+            return True
+        if немецкий:
+            # В немецком с заглавной пишется КАЖДОЕ существительное, поэтому
+            # короткое слово ничего не различает. Имя события там — длинное
+            # сложное: Schraudenbachtalbrücke, Nordsüdstadtbahn, Waidmarkt.
+            return len(w) >= 11
+        # В испанском, английском и русском заглавная сама по себе признак:
+        # Oppenheimer, Portbou, Riga.
+        return len(w) >= 4
+
+    отобранные = [w for w in часто if именное(w)]
+    # Если строгий отбор не оставил ничего — отдаём как было: пустой список
+    # хуже неточного, привязка тогда просто не включится.
+    часто = отобранные or часто
     часто.sort(key=lambda w: -счёт[w])
     return часто[:limit]
 
@@ -3425,7 +4132,12 @@ def _перепиши_двойников(qs, пары, beats, свободен, 
                 "in order.\n\n" + "\n".join(строки))},
         ]
         try:
-            out = llm_chat(messages, api_key, 0.9, 1200)
+            # Тот же потолок, что и у умных запросов: переписывание
+            # двойников идёт ПОСЛЕ них, тем же мёртвым ключом, и без
+            # потолка добавляло к зависанию свои минуты.
+            out = _run_with_budget(
+                lambda: llm_chat(messages, api_key, 0.9, 1200),
+                LLM_BATCH_DEADLINE)
             новые = _parse_query_list(out, len(chunk))
         except Exception as e:
             log(f"[Раскадровка] двойники {start + 1}-{start + len(chunk)} "
@@ -3441,9 +4153,33 @@ def _перепиши_двойников(qs, пары, beats, свободен, 
     return заменено
 
 
-def smart_queries(beats: list[dict], api_key: str = "", log=print) -> list[str] | None:
+def smart_queries(beats: list[dict], api_key: str = "", log=print,
+                  script_text: str = "") -> list[str] | None:
     """Поисковые запросы для стока по смыслу текста каждого плана (LLM),
-    батчами по 20 — короткая фраза под сток-поиск (2-5 слов)."""
+    батчами по 20 — короткая фраза под сток-поиск (2-5 слов).
+
+    script_text — ВЕСЬ сценарий, чтобы вытащить из него имена события
+    (story_anchors) и передать их модели. Без этого она видит только свой
+    кусок текста, а в куске имени собственного обычно нет: фраза «Die Wand
+    gab nach» даёт запрос «concrete wall failing», который подойдёт любому
+    ролику канала. Замер приёмки 30.08: предмет ролика назван в 12 кадрах
+    из 148 — это 8%, остальные 92% безымянная стройка.
+    """
+    anchors = (story_anchors(script_text) if script_text else [])[:10]
+    # Не больше десяти: длинный список модель начинает вставлять механически
+    # в каждый запрос, и кадры делаются одинаковыми с другой стороны.
+    привязка = ""
+    if anchors:
+        привязка = (
+            "\n\nTHIS FILM IS ABOUT ONE SPECIFIC EVENT. These names come "
+            "from the narration itself and are its subject:\n  "
+            + ", ".join(anchors)
+            + "\nWhenever a fragment refers to that subject — the place, the "
+              "structure, the object, the year — PUT THE NAME IN THE QUERY: "
+              "'Schraudenbachtalbruecke scaffolding', not 'bridge "
+              "scaffolding'. A query that would fit any other film on this "
+              "channel is a WRONG ANSWER. Generic shots are allowed only "
+              "where the fragment genuinely describes something general.\n")
     return _llm_batch_prompts(
         beats, api_key, log, batch_size=20,
         system=("You are a documentary shot-lister. You never describe ideas "
@@ -3459,8 +4195,10 @@ def smart_queries(beats: list[dict], api_key: str = "", log=print) -> list[str] 
             "Measured example: fragment 12 ended '...why leave your' and "
             "fragment 13 began 'food supplies untouched?' — one question "
             "split in half, and each half alone gives a wrong shot.\n\n"
-            + SHOT_RULES +
-            "\n\nEach query is 2-5 English words: a concrete subject, plus a "
+            + SHOT_RULES
+            + ANTI_OBVIOUS
+            + привязка +
+            "\nEach query is 2-5 English words: a concrete subject, plus a "
             "setting or shot size (closeup, overhead, slow motion) where it "
             "helps.\n"
             "Reply with a JSON array of exactly {n} strings, no markdown, "
@@ -4237,6 +4975,16 @@ def seo_clean(seo_text: str) -> str:
             if line.strip():
                 continue
         out.append(line)
+    # ВСЁ ДО ПЕРВОГО РАЗДЕЛА — В МУСОР. Модель любит предварять ответ
+    # вежливой строкой: замер 30.08 — «Hier sind die optimierten Metadaten
+    # für das Video über den Megalodon…» у двух каналов из четырёх. В файл
+    # это попадало целиком, и человек, копирующий seo.txt на YouTube, тащил
+    # её с собой. Первый раздел по построению всегда TITLES, так что
+    # отрезать до него безопасно.
+    for n, ln in enumerate(out):
+        if ln.strip().rstrip(":").upper() in _SEO_SECTIONS:
+            out = out[n:]
+            break
     return "\n".join(out)
 
 
@@ -4579,6 +5327,9 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
     tone = TONES.get(ch.get("tone", ""), "")
     avoid = (ch.get("avoid") or "").strip()
     name = (ch.get("name") or "").strip()
+    core_tags = ", ".join(
+        t.strip() for t in (ch.get("seo_core_tags") or "").split(",")
+        if t.strip())
     log("[Агент] Генерирую названия, описание, теги и главы"
         + (f" — под канал «{name}»" if name else "") + "...")
     lang_name = LANGS.get(lang, "English")
@@ -4670,7 +5421,17 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
           + "Forbidden: 'You won't believe', "
           "'SHOCKING', 'This is why', trailing '...', any promise the script "
           "does not actually keep.\n\n"
-          + shape["desc"] +
+          + shape["desc"]
+          # Две вещи, которых у нас в описании не было вовсе, а у образца
+          # ниши они стоят в КАЖДОМ из восьми замеренных роликов.
+          + "\nThe FIRST paragraph must end by naming who this video is "
+          "for — 'for anyone interested in X, Y and Z' — with three real "
+          "subject areas of this channel. That sentence is how the "
+          "recommender learns which audience to show it to, and we had no "
+          "such sentence at all.\n"
+          "The SECOND paragraph must be 2-3 QUESTIONS the video answers, "
+          "written the way a person would type them into search. Not a "
+          "summary: questions, with question marks.\n" +
           # «no links» стояло сплошным запретом и рубило вместе с рекламой
           # ссылку на первоисточник — а для документального канала это
           # ровно та строка, что отделяет его от машинной поделки. Запрет
@@ -4679,7 +5440,35 @@ def gen_seo(script_text: str, api_key: str = "", log=print,
           "affiliate links, no links to other channels — the only permitted "
           "link is to the official investigation report itself, and only if "
           "the script states its address.\n\n"
+          # НЕ СОЧИНЯТЬ АДРЕС. Замер 30.08 на tiefenzeit: модель выдала
+          # palaeo-electronica.org/content/2022/3647-megalodon-body-proportions
+          # — домен настоящий, номер статьи 3647 настоящий, ссылка даже
+          # отдаёт 200 после редиректа, но ведёт на работу об ископаемых
+          # амфибиях, а не о пропорциях мегалодона. Это худший вид выдумки:
+          # она выглядит проверенной. Правило «только если адрес есть в
+          # сценарии» уже стояло и не помогло — нужен явный запрет СОБИРАТЬ
+          # адрес из правдоподобных кусков.
+          " Never construct a URL. If the script does not contain the exact "
+          "address character for character, write the source in words "
+          "instead — journal, authors, year — and give no link at all. A "
+          "plausible-looking address assembled from a real domain and a "
+          "guessed path is worse than no source: it reads as verified."
           + shape["tags"] + "\n"
+          # ЯДРО ТЕГОВ КАНАЛА. Замер образца ниши: 6-7 тегов из десяти
+          # ОДИНАКОВЫ во всех его роликах, и это то, чем ролики канала
+          # связываются между собой — без общего ядра YouTube не видит их
+          # одной серией и не подставляет их друг другу в рекомендации.
+          # У нас ядра не было ни у одного канала: SEO_SHAPES просит
+          # 15 разрозненных предметных терминов, разных в каждом ролике.
+          + (f"\nThese EXACT tags must appear in the tag list, spelled "
+             f"exactly like this, and they come FIRST:\n{core_tags}\n"
+             "They are this channel's permanent core — every video carries "
+             "them, that is what ties the channel together for the "
+             "recommender. After them add 3-4 tags built on the MAIN SUBJECT "
+             "of THIS video: the subject alone, and the subject combined "
+             "with the words this niche uses for a documentary. Ten to "
+             "twelve tags in total, not fifteen.\n"
+             if core_tags else "")
           + chapters_note
           + (f"\nTHIS CHANNEL REFUSES TO DO THIS — it applies to the titles, "
              f"the description and the tags exactly as it applies to the "
@@ -4755,16 +5544,88 @@ VISUAL_STYLES = {
     # «кинематографичный» — то есть объявленный стиль канала не влиял ни на
     # один кадр и ни на один фон обложки. Ошибка тихая: строка в channels.json
     # выглядит рабочей настройкой.
+    # «muted desaturated color» отсюда УБРАНО. Эта строка дописывалась к
+    # каждому кадру канала, то есть вялость заказывалась ещё на генерации, а
+    # цветокор потом воевал с собственным же заказом. Замер выпущенного
+    # estoico-es/2026-08-26 (616 кадров): медианная насыщенность 17.9%,
+    # 86% кадров ниже 24%. Документальность держится светом, зерном и
+    # утилитарной рамкой — а не выключенным цветом; «true-to-life colour»
+    # просит естественный цвет, а не рекламную яркость.
     "документальный архив": "Archival documentary photograph, neutral "
-        "overcast or worklight, muted desaturated color, fine grain, "
-        "utilitarian framing as if shot for a report, no text or watermarks.",
+        "overcast or worklight, true-to-life colour with clear separation "
+        "between materials, strong tonal range from deep shadow to bright "
+        "highlight, fine grain, utilitarian framing as if shot for a report, "
+        "no text or watermarks.",
 }
 
 
-def _image_prompt(prompt: str, style: str = "") -> str:
-    """Промпт для генерации: описание сцены + единый стиль проекта."""
+# УСЛОВИЯ СЪЁМКИ — то, чем один ролик канала отличается от другого.
+#
+# Зачем. Стиль канала («документальный архив») дописывался к КАЖДОМУ кадру
+# дословно одной и той же строкой, и от ролика к ролику она тоже не менялась.
+# Монтаж крутится жребием, цветокор берётся из 25, плашки из 13 — а стиль
+# картинки не крутился вообще. Отсюда и «все ролики однотипные»: 118 кадров
+# одной эстетики, и так в каждом выпуске.
+#
+# Условие НЕ СПОРИТ со стилем канала, а уточняет его: свет, погода, время
+# суток, точка съёмки. Архивная документалка остаётся архивной документалкой,
+# но один выпуск снят в плоский пасмурный день, другой — под низким зимним
+# солнцем, третий — на ночном рабочем свете. Внутри одного ролика условие
+# ОДНО: единство кадра — признак сделанной вещи, а не бедности.
+SHOT_CONDITIONS = [
+    "flat overcast daylight, no visible sun",
+    "low winter sun raking across surfaces, long shadows",
+    "grey daylight just after rain, wet reflective surfaces",
+    "harsh sodium worklight at night, deep surrounding darkness",
+    "thin fog softening the far distance",
+    # было «light bleached and flat» — прямой заказ вялого кадра, та же
+    # болезнь, что и «muted desaturated color» выше
+    "bright hazy midday, high sun, hard compact shadows",
+    "blue hour before sunrise, cold ambient light",
+    "dusty air with light shafts through gaps",
+    "heavy cloud with one bright break in it",
+    "late afternoon side light, warm on one side only",
+]
+
+
+def _project_of(path) -> Path | None:
+    """Папка проекта по пути файла внутри неё: ищем meta.json вверх по дереву.
+
+    Так условие съёмки не приходится тащить параметром через шесть вызовов —
+    а у каждого из них путь назначения и так есть.
+    """
+    try:
+        p = Path(path).resolve()
+    except (OSError, TypeError):
+        return None
+    for d in [p] + list(p.parents)[:4]:
+        try:
+            if d.is_dir() and (d / "meta.json").exists():
+                return d
+        except OSError:
+            pass
+    return None
+
+
+def shot_condition(project_dir) -> str:
+    """Условие съёмки этого ролика — постоянное для проекта, разное у разных.
+
+    Тот же приём, что у project_style: детерминированно от пути. Один проект
+    всегда рендерится одинаково (пересборка даёт тот же ролик), а соседний
+    выпуск канала снят при другом свете.
+    """
+    import zlib
+    if not project_dir:
+        return ""
+    key = str(Path(project_dir).resolve()).encode("utf-8")
+    return SHOT_CONDITIONS[zlib.crc32(key) % len(SHOT_CONDITIONS)]
+
+
+def _image_prompt(prompt: str, style: str = "", dest=None) -> str:
+    """Промпт для генерации: описание сцены + стиль канала + условие ролика."""
     style_text = VISUAL_STYLES.get(style, "") or IMAGE_STYLE
-    return f"{prompt}. {style_text}"
+    cond = shot_condition(_project_of(dest)) if dest else ""
+    return f"{prompt}. {style_text}" + (f" {cond}." if cond else "")
 
 
 def agnes_image(prompt: str, dest: Path, api_key: str, log=print,
@@ -4776,7 +5637,7 @@ def agnes_image(prompt: str, dest: Path, api_key: str, log=print,
     r = requests.post(f"{AGNES_BASE_URL}/images/generations",
                       headers={"Authorization": f"Bearer {api_key}"},
                       json={"model": AGNES_IMAGE_MODEL,
-                            "prompt": _image_prompt(prompt, style),
+                            "prompt": _image_prompt(prompt, style, dest),
                             "size": "2K", "ratio": "16:9",
                             "extra_body": {"response_format": "url"}},
                       timeout=360)
@@ -4836,6 +5697,28 @@ def gemini_image_any(prompt: str, dest: Path, api_key: str = "",
                           f"(401/403) — исключаю до конца прогона", "warn")
             elif "429" in s or "RESOURCE_EXHAUSTED" in s or "quota" in s:
                 лимит += 1
+                # ПЕРЕБИРАТЬ ОСТАЛЬНЫЕ КЛЮЧИ БЕССМЫСЛЕННО. Квота Gemini
+                # считается на пару «проект + модель», а не на ключ: ключи
+                # одного проекта делят её. Если трое подряд ответили «квота
+                # исчерпана», четвёртый ответит так же.
+                #
+                # Цена этого перебора измерена по журналу 29.08: между
+                # планами 61 и 62 прошло 23 минуты БЕЗ ЕДИНОЙ СТРОКИ, между
+                # 81 и 82 — 16 минут. Десять ключей, у каждого свой набор
+                # адресов, таймаут запроса 120 с — вот и получаются
+                # десятки минут молчания на один кадр, после которых всё
+                # равно идёт запасной генератор.
+                if лимит >= 3:
+                    _say(log, f"[Картинка] Квота Gemini выбрана "
+                              f"({лимит} ключа подряд) — не перебираю "
+                              f"остальные {len(keys) - n}, беру запасной "
+                              "генератор", "warn")
+                    break
+            # ТИШИНУ РВЁМ. Перебор шёл молча, и со стороны это выглядело
+            # зависанием приложения на двадцать минут.
+            if n % 3 == 0 and n < len(keys):
+                _say(log, f"[Картинка] Gemini: перебрал {n} ключей из "
+                          f"{len(keys)}, продолжаю", "dim")
     raise RuntimeError(
         f"Gemini не нарисовал: перебрано ключей {len(keys)}"
         + (f", в суточном лимите {лимит}" if лимит else "")
@@ -4847,7 +5730,7 @@ def gemini_image(prompt: str, dest: Path, api_key: str, style: str = "") -> Path
     import base64
     import requests
     body = {
-        "contents": [{"parts": [{"text": _image_prompt(prompt, style)}]}],
+        "contents": [{"parts": [{"text": _image_prompt(prompt, style, dest)}]}],
         "generationConfig": {"responseModalities": ["IMAGE"],
                              "imageConfig": {"aspectRatio": "16:9"}},
     }
@@ -4921,7 +5804,7 @@ def veo_image(prompt: str, dest: Path, api_key: str, log=print,
         upscale = os.getenv("VEO_UPSCALE", "1").strip().lower() not in (
             "0", "false", "no", "off")
     kw = {"model_key": model_key} if model_key else {}
-    data = veo_client.banana_generate(_image_prompt(prompt, style),
+    data = veo_client.banana_generate(_image_prompt(prompt, style, dest),
                                       api_key=api_key, **kw)
     media = data.get("media") or []
     if not media:
@@ -5121,6 +6004,17 @@ def image_quota(force: bool = False) -> dict:
     now = time.time()
     if not force and _QUOTA_CACHE and now - _QUOTA_AT < VEO_QUOTA_TTL_S:
         return _QUOTA_CACHE
+    # БЕЗ КЛЮЧА К СЕРВИСУ НЕ ХОДИМ. Раньше запрос уходил с пустым ключом,
+    # возвращался 401, и в журнале появлялась строка «Остаток картинок на
+    # сегодня неизвестен: сервис не ответил про лимит (VeoNonStop 401: API key
+    # has expired)» — на каждом прогоне, при полностью отключённом Veo. Это
+    # не сбой: подписки просто нет, и лимит спрашивать не у кого.
+    if not _veo_keys():
+        q = {"limit": None, "used": None, "remaining": None,
+             "unlimited": False, "resets_in_s": None, "exact": False,
+             "why": "VeoNonStop не подключён — лимит картинок не применяется"}
+        _QUOTA_CACHE, _QUOTA_AT = q, now
+        return q
     try:
         import veo_client
         q = veo_client.image_quota(api_key=veo_key_now())
@@ -5298,6 +6192,10 @@ def _veo_keys() -> list[str]:
 # Ключ, упёршийся в лимит, откладываем и берём следующий. Время отвода —
 # то же окно, что и у ожидания: раньше него он всё равно не оживёт.
 _VEO_KEY_BENCH: dict[str, float] = {}
+
+# Сказали ли уже, что VeoNonStop не подключён. Без флага строка печаталась на
+# каждый кадр ролика.
+_VEO_ABSENT_SAID = False
 
 
 def veo_key_now() -> str:
@@ -5542,7 +6440,7 @@ def reset_veo_limit() -> None:
     и ушёл бы на сток с первого же кадра, даже если лимит давно отпустил."""
     global _VEO_LIMIT_UNTIL, _VEO_LIMIT_SPENT, _VEO_LIMIT_SINCE
     global _QUOTA_CACHE, _QUOTA_AT, _QUOTA_SAID
-    global _FALLBACK_GEN, _VEO_READY
+    global _FALLBACK_GEN, _VEO_READY, _VEO_ABSENT_SAID
     _VEO_LIMIT_UNTIL = 0.0
     _VEO_LIMIT_SPENT = 0.0
     _VEO_LIMIT_SINCE = 0.0
@@ -5552,6 +6450,7 @@ def reset_veo_limit() -> None:
     # перезапуска, даже когда основной путь давно ожил. Цена сброса — один
     # неудачный запрос в начале прогона.
     _VEO_KEY_DEAD.clear()
+    _VEO_ABSENT_SAID = False       # сказать про отсутствие Veo снова, но один раз
     _FALLBACK_GEN = ""
     _VEO_READY = None
     # Остаток картинок — тоже «на этот ролик»: за предыдущий его потратили, и
@@ -5612,11 +6511,27 @@ def _fallback_image(prompt: str, dest: Path, api_key: str = "",
     дороже, чем половина планов чужим стоком.
     """
     global _FALLBACK_GEN
+    # ПРЕДЕЛ ВРЕМЕНИ НА ОДИН КАДР. Без него один кадр съедал весь запас
+    # сторожа: таймаут запроса к Agnes — 360 с, ключей шесть, плюс ключи
+    # Gemini до них. Ночь на 01.09: три канала встали в 01:31 ровно на
+    # строке «план уйдёт на ИИ», не написали больше ни строки, и в 05:48
+    # «Автопилот» оборвал все три — 0 роликов из 3, пять часов впустую.
+    #
+    # Восемь минут выбраны по замеру: удачный кадр приходит за 40 секунд
+    # (Agnes, 4.9 МБ), то есть запас двенадцатикратный. Сторож ждёт 45
+    # минут — кадр обязан сдаться заметно раньше, чтобы план успел уйти
+    # на сток, а ролик собрался.
+    ПРЕДЕЛ_КАДРА = 8 * 60
+    _начало = time.monotonic()
     order = ["gemini", "agnes"]
     if _FALLBACK_GEN in order:
         order = [_FALLBACK_GEN] + [g for g in order if g != _FALLBACK_GEN]
     last = None
     for gen in order:
+        if time.monotonic() - _начало > ПРЕДЕЛ_КАДРА:
+            log(f"[Картинка] Бросаю кадр: {ПРЕДЕЛ_КАДРА // 60} мин на одну "
+                f"картинку истекли — план уйдёт на сток, ролик не встанет")
+            break
         if gen == "gemini":
             if not (api_key or _gemini_keys()):
                 continue
@@ -5634,6 +6549,10 @@ def _fallback_image(prompt: str, dest: Path, api_key: str = "",
             if not keys:
                 continue
             for i, k in enumerate(keys, 1):
+                if time.monotonic() - _начало > ПРЕДЕЛ_КАДРА:
+                    log(f"[Картинка] Бросаю кадр на ключе {i}/{len(keys)}: "
+                        f"{ПРЕДЕЛ_КАДРА // 60} мин истекли")
+                    break
                 try:
                     out = agnes_image(prompt, dest, k, log, style)
                     _FALLBACK_GEN = "agnes"
@@ -5677,8 +6596,15 @@ def gen_image(prompt: str, dest: Path, api_key: str = "", log=print,
             raise RuntimeError(
                 "Нет ни VEO_API_KEY, ни ключа Gemini, ни ключа Agnes — "
                 "сгенерировать кадр нечем, план возьмёт сток")
-        log("[Картинка] Рабочего ключа VeoNonStop нет — рисую запасным "
-            "генератором (один и тот же на весь ролик)")
+        # ОДИН РАЗ НА ПРОГОН. Строка обещала «один и тот же на весь ролик»,
+        # а печаталась на КАЖДЫЙ кадр: в живом прогоне 29.08 — около
+        # шестидесяти одинаковых строк подряд, среди которых терялись
+        # настоящие беды. Флаг снимается в reset_veo_limit (начало задачи).
+        global _VEO_ABSENT_SAID
+        if not _VEO_ABSENT_SAID:
+            _VEO_ABSENT_SAID = True
+            log("[Картинка] VeoNonStop не подключён — весь ролик рисует "
+                "запасной генератор. Это штатный режим, не сбой.")
         # Перебор ВСЕХ ключей, а не одного: см. gemini_image_any — среди
         # десяти ключей один не умеет картинки вовсе, и на нём одном эта
         # ветка отдавала бы сток на каждом кадре.
@@ -6114,6 +7040,20 @@ def find_twin_shots(project_dir: Path, api_key: str = "", log=print,
     if len(beats) < 2:
         return []
     twins = []
+    # ОБЩИЙ ПРЕДЕЛ ПО ВРЕМЕНИ НА ВСЮ СВЕРКУ. Без него шаг переживал сторожа
+    # пайплайна и убивал канал. Арифметика ночи 31.08: vision_chat делает
+    # 4 попытки, HTTP-таймаут 180 с на провайдера, паузы 20/40/60 — то есть
+    # худший случай ОДНОЙ пары это 120 + 180*2*4 = 1560 с, двадцать шесть
+    # минут. Четыре сборки разом выбрали лимит зрения у обоих провайдеров,
+    # сверка ушла в лестницу повторов, канал 45 минут не писал ни строки —
+    # и «Автопилот» счёл шаг зависшим и оборвал ночь: 0 роликов из 4.
+    #
+    # Порог 20 минут выбран под сторожа: он ждёт 45, и шаг обязан сдаться
+    # заметно раньше. Недосверенные пары не беда — это проверка качества,
+    # а не сборка; лучше проверить половину, чем потерять ролик целиком.
+    ПРЕДЕЛ_СЕК = 20 * 60
+    _начало = time.monotonic()
+    _оборвано = 0
     with tempfile.TemporaryDirectory() as tmp:
         def _shot(b, name):
             f = Path(b.get("file", ""))
@@ -6121,8 +7061,14 @@ def find_twin_shots(project_dir: Path, api_key: str = "", log=print,
                 return None
             dest = Path(tmp) / f"{name}.jpg"
             try:
+                # ВЫСОТА ЗАДАНА, ШИРИНА СВОБОДНА. Стояло scale=420:-2 —
+                # ширина фиксировалась, а высота выводилась из пропорции: у
+                # кадра 16:9 выходило 420x236, у 2048x1080 — 420x222. Дальше
+                # hstack склеивает только РАВНЫЕ ПО ВЫСОТЕ картинки и падал
+                # на каждой такой паре, а проверка на повторяющиеся планы
+                # молча не работала весь прогон 31.08.
                 _run_child(["ffmpeg", "-y", "-ss", "1.0", "-i", str(f),
-                            "-frames:v", "1", "-vf", "scale=420:-2",
+                            "-frames:v", "1", "-vf", "scale=-2:240,setsar=1",
                             "-q:v", "6", str(dest)], timeout=60, check=True)
             except Exception:
                 return None
@@ -6130,6 +7076,13 @@ def find_twin_shots(project_dir: Path, api_key: str = "", log=print,
 
         for i in range(1, len(beats), max(1, every)):
             if CANCEL.is_set():
+                break
+            if time.monotonic() - _начало > ПРЕДЕЛ_СЕК:
+                _оборвано = len(range(i, len(beats), max(1, every)))
+                log(f"[Кадры] Сверка соседей остановлена по времени: "
+                    f"{ПРЕДЕЛ_СЕК // 60} мин истекли, {_оборвано} пар "
+                    f"осталось непроверенными. Обычно это значит, что зрение "
+                    f"упёрлось в лимит — параллельных сборок слишком много.")
                 break
             a, b = _shot(beats[i - 1], "a"), _shot(beats[i], "b")
             if not (a and b):
@@ -6139,8 +7092,17 @@ def find_twin_shots(project_dir: Path, api_key: str = "", log=print,
             # вызова этого не дают — у зрения нет памяти между запросами.
             pair = Path(tmp) / "pair.jpg"
             try:
+                # ОБА КАДРА К ОДНОЙ ВЫСОТЕ. hstack склеивает только картинки
+                # равной высоты. Кадры в ролике идут трёх размеров — 1280x720,
+                # 1920x1080 и 2048x1080 (замер 01.09 по estoico-es), и после
+                # уменьшения по ширине высоты расходились. Страховка на случай
+                # чужих картинок: основное лечение — фиксированная высота в
+                # _shot выше.
                 _run_child(["ffmpeg", "-y", "-i", str(a), "-i", str(b),
-                            "-filter_complex", "[0][1]hstack=inputs=2",
+                            "-filter_complex",
+                            "[0]scale=-2:240,setsar=1[a];"
+                            "[1]scale=-2:240,setsar=1[b];"
+                            "[a][b]hstack=inputs=2",
                             "-q:v", "6", str(pair)], timeout=60, check=True)
                 out = vision_chat(
                     "Two shots from the same documentary, side by side: the "
@@ -6167,7 +7129,17 @@ def find_twin_shots(project_dir: Path, api_key: str = "", log=print,
                                   "what": str(data.get("what", ""))[:60],
                                   "query": beats[i].get("query", "")})
             except Exception as e:
-                log(f"[Кадры] пара {i}/{i + 1} не сверена: {str(e)[:70]}")
+                # ПРИЧИНА, А НЕ НАЧАЛО КОМАНДЫ. Стояло str(e)[:70], и у
+                # CalledProcessError это первые семьдесят букв командной
+                # строки ffmpeg — то есть путь во временную папку и ничего
+                # больше. Сотни таких строк за ночь, и ни одной причины.
+                причина = getattr(e, "stderr", "") or ""
+                if isinstance(причина, bytes):
+                    причина = причина.decode("utf-8", "replace")
+                хвост = " | ".join(
+                    l.strip() for l in причина.strip().splitlines()[-3:]
+                    if l.strip()) or f"{type(e).__name__}: {e}"
+                log(f"[Кадры] пара {i}/{i + 1} не сверена: {хвост[:220]}")
     if twins:
         log(f"[Кадры] Соседних планов, которые видны как один и тот же "
             f"кадр: {len(twins)}")
@@ -6256,7 +7228,21 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
         # НЕ ИМЕЕТ кадра под конкретную фразу («термоудар в трубе» никто не
         # снимал), и поиск отдаёт то, что случайно совпало по слову. Кадр,
         # сгенерированный по описанию, соответствует тексту по построению.
-        if prefer_ai and os.getenv("VEO_API_KEY", "").strip():
+        # ЗАМОК СНЯТ. Стояло `os.getenv("VEO_API_KEY")` — то есть лекарство
+        # включалось только при подписке на VeoNonStop. Ключа нет с августа,
+        # поэтому ИИ-путь не срабатывал НИ РАЗУ, и каждый забракованный план
+        # уходил в стоковый поиск. Стоки не знают слова
+        # «Schraudenbachtalbruecke» и отдают что попало: замер ролика 01.09
+        # показал планировку американского дома под рассказ о несущей балке
+        # моста и офисное совещание под «бетонные планы 2012 года».
+        #
+        # gen_image умеет рисовать и БЕЗ Veo — через Gemini и Agnes, это
+        # прописано в нём самом и проверено 01.09: кадр 4.4 МБ за 56 с.
+        # Поэтому спрашиваем не про один ключ, а про любой работающий
+        # генератор.
+        есть_чем_рисовать = bool(veo_live_keys() or _gemini_keys()
+                                 or _agnes_keys())
+        if prefer_ai and есть_чем_рисовать:
             try:
                 jpg = dest.with_suffix(".ai.jpg")
                 # wait_on_limit=False: это полировка уже готового ролика.
@@ -6300,7 +7286,10 @@ def refix_storyboard(project_dir: Path, bad: list[dict], log=print,
                                       used, 1, log) if hits else []
                 if picked:
                     vv = (picked[0].get("videos") or {})
-                    f = vv.get("medium") or vv.get("large") or vv.get("small")
+                    # СНАЧАЛА large: у Pixabay medium это 1280x720, ниже нашего кадра.
+                    # Владелец 02.09: «качество фото убогое, минимум 1080».
+                    # Мы сами заказывали худший из доступных файлов.
+                    f = vv.get("large") or vv.get("medium") or vv.get("small")
                     link = (f or {}).get("url")
             if link is None:
                 log(f"[Кадры] план {rec['i'] + 1}: по «{q}» ничего не нашлось")
@@ -6635,6 +7624,56 @@ THUMB_STYLES = {
     #     (комната, лампа, рукописи, собор), у провалов — вырезанные бюсты
     #     на чёрной пустоте.
     # Текст занимает один угол, остальное отдано сцене.
+    # ЖИВОЕ (tiefenzeit). Замер восьми обложек @Extremwelt 30.08.2026, из них
+    # четыре взлетевшие (T-Rex 330к, косатка 233к, «после динозавров» 142к,
+    # божья коровка 91к). Общее у всех восьми:
+    #   - существо занимает от половины до двух третей кадра, морда или глаз
+    #     в упор, пасть открыта; это РЕНДЕР, а не фотография;
+    #   - фон почти чёрный или один глубокий цвет (синяя вода, красный закат),
+    #     тяжёлая виньетка, свет контровой;
+    #   - текст 1-3 слова в строке, максимум две строки, ПРОПИСНЫМИ, и лежит
+    #     он в СВОБОДНОЙ половине кадра — никогда поверх морды;
+    #   - два цвета текста: белый и красный на ключевом слове (STIRB…,
+    #     TIEFSEE, LÖWEN). Красного всегда меньше, чем белого;
+    #   - повторяющийся мотив: красный глаз или красное свечение за силуэтом.
+    # Ни стрелок, ни плашек, ни рамок, ни лент — ничего этого у них нет.
+    "wildlife": {
+        "words": (
+            "The headline is ONE to THREE words per line, at most TWO lines "
+            "separated by \n. It is a THREAT or a REVERSAL about the animal, "
+            "never a description of it: 'STIRB…', 'WIR LAGEN FALSCH', "
+            "'GRÖSSER ALS LÖWEN', 'DIE GIGANTEN DER TIEFSEE'.\n"
+            "Name the animal ONLY when the picture alone would not identify "
+            "it — a lone eye or a silhouette needs the name, an open jaw does "
+            "not.\n"
+            "Exactly ONE word carries the accent colour, and it is the word "
+            "that hurts: the verb, the superlative, or the place. Everything "
+            "else stays white.\n"
+            "No question marks. No exclamation marks except after a single "
+            "one-word line. Never a whole sentence."
+        ),
+        "bg": (
+            "ONE animal, nothing else. Fill half to two thirds of the frame "
+            "with it, and leave the other side genuinely empty — that empty "
+            "side is where the text goes, so it must be dark and quiet.\n"
+            "Vary the SHOT between videos, this matters more than any other "
+            "choice: an eye filling the frame; an open jaw from below; a head "
+            "in three-quarter turn; a full silhouette against a coloured sky. "
+            "Four covers of the same shot size kill the channel.\n"
+            "Light it from BEHIND or from one hard side, so the animal reads "
+            "as a rim-lit shape out of darkness. Background is near-black, or "
+            "a single deep colour — abyssal blue, storm grey, red sunset.\n"
+            "Heavy vignette. No sky detail, no scenery, no second creature, "
+            "no people, no props, no text drawn into the image itself.\n"
+            "Photoreal creature rendering, wet skin, visible scale and tooth "
+            "detail, cinematic. It must look like a frame from an expensive "
+            "documentary, not like an illustration."
+        ),
+        "case": "upper",
+        "layouts": ("left", "bottom"),
+        "parts": ("focus",),
+        "sub_ask": "",
+    },
     "contemplative": {
         "words":
             "The headline is TWO lines separated by \\n. Line 1 is the "
@@ -7403,6 +8442,67 @@ def gen_thumbnail_ideas(script_text: str, api_key: str = "", log=print,
         return []
 
 
+def _clean_topic(raw: str) -> str:
+    """Тема без разметки, списков и примечаний модели.
+
+    Тема пишется в used_topics и уходит обратно в промпт как «это уже было»,
+    а ещё становится заголовком ролика. Здесь бралось `" ".join(out.split())`
+    — то есть ответ модели целиком. Замер по живому channels.json: из 46
+    записанных тем 25 (54%) — мусор:
+        'C Plaza / Shopping Mall.** * Topic: **Algo Centre Mall.** * Topic: ...'
+        'Warum explodierte diese brandneue Gas-Pipeline? (Bellingham is 1999,
+         not brand new). * Warum ...'
+        'brandnew dam failing immediately): * Object: Staudamm (dam) * ...'
+    Модель отвечала списком кандидатов или добавляла своё замечание, и всё это
+    оседало в профиле канала.
+    """
+    t = " ".join((raw or "").split()).strip()
+    if not t:
+        return ""
+    # Разметка списков и заголовков.
+    t = t.replace("**", "").replace("__", "")
+    t = re.sub(r"^[\s*\-#>\d.)]+", "", t)
+    # «Topic: …» — модель подписала поле; берём то, что после последнего.
+    if "Topic:" in t:
+        t = t.split("Topic:")[-1].strip()
+    # Перечисление вариантов — берём первый.
+    t = re.split(r"\s+\*\s+|\s+•\s+", t)[0].strip()
+    # Первое законченное предложение: темы канала — это вопрос или фраза.
+    m = re.search(r"^(.{8,110}?[?!.])(\s|$)", t)
+    if m:
+        t = m.group(1).strip()
+    # Замечание модели в скобках в КОНЦЕ: «(Bellingham is 1999, not brand new)».
+    t = re.sub(r"\s*\([^()]{0,80}\)\s*$", "", t).strip()
+    t = t.strip().strip('"«»').strip()
+    # РАБОЧИЕ ЗАМЕТКИ МОДЕЛИ. В живом channels.json осели строки вида
+    # 'brandnew dam failing immediately): * Object: Staudamm (dam)' и
+    # 'Ocean Ranger / Sleipner A oil rig / Deepwater Horizon / ...' — это
+    # черновик рассуждения и перечень кандидатов, а не тема ролика.
+    low = t.lower()
+    if any(w in low for w in ("object:", "formula:", "):", "topic ")):
+        return ""
+    # ЧЕРНОВИК РАССУЖДЕНИЯ ПО-АНГЛИЙСКИ. Замер 02.09 на einsturzpunkt: из 10
+    # тем одна пришла обрывком «KTE OHNE KATASTROPHE (Domain 7) since it's the
+    # live competitor's main ground and hasn». Формула ниши стала длинной и с
+    # заголовками разделов — модель начала цитировать её вслух. Ни один канал
+    # здесь не англоязычный, так что служебные английские связки в теме — это
+    # всегда обрывок рассуждения, а не тема.
+    if any(w in low for w in ("domain ", "family a", "family b", "since it",
+                              "because it", "axis ", "i'll ", "let's ",
+                              "we should", "this one ")):
+        return ""
+    # Перечень через косую черту: три и больше — список, а не тема.
+    if t.count("/") >= 2:
+        return ""
+    # Начало с маленькой буквы = обрывок середины фразы.
+    if t[:1].islower():
+        return ""
+    # Хвост длиной с абзац — не тема.
+    if len(t) > 110:
+        return ""
+    return t
+
+
 def gen_topic(channel: dict, api_key: str = "", log=print) -> str:
     """Тема очередного ролика по ФОРМУЛЕ НИШИ канала.
 
@@ -7437,7 +8537,7 @@ def gen_topic(channel: dict, api_key: str = "", log=print) -> str:
               "channel's language, no quotes, no explanation, no title "
               "formatting."}],
             api_key, 1.0, 800)
-        topic = " ".join((out or "").split()).strip().strip('"«»')
+        topic = _clean_topic(out)
         if 8 < len(topic) < 160:
             return topic
         log(f"[Тема] Ответ не похож на тему ({len(topic)} симв.) — пропускаю")
@@ -8391,7 +9491,7 @@ def gen_video_from_image(image_path: Path, prompt: str, dest: Path,
     mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
            "webp": "image/webp"}.get(Path(image_path).suffix.lower().lstrip("."),
                                      "image/jpeg")
-    full_prompt = _image_prompt(prompt, style) + " Subtle cinematic motion."
+    full_prompt = _image_prompt(prompt, style, dest) + " Subtle cinematic motion."
     log(f"[Видео-ИИ] VeoNonStop image-to-video: «{prompt[:60]}» (1-3 мин)...")
     task_id = veo_client.pending_task(dest, "image-to-video")
     if task_id:
@@ -8705,14 +9805,19 @@ def ken_burns(image: Path, dest: Path, duration: float = 8.0, fps: int = 25):
     """Превращает картинку в видеоклип с медленным движением камеры
     (случайно: наезд, отъезд, панорама влево/вправо). 1920x1080, без звука."""
     frames = max(int(duration * fps), 2)
-    z_rate = 0.15 / frames  # итоговый зум ~1.15
+    # НАЕЗД УБРАН ПО ПРОСЬБЕ ВЛАДЕЛЬЦА 02.09.2026. Было 0.15 (зум до 1.15)
+    # на каждом плане, случайным направлением. В готовом ролике это читается
+    # как единственный приём: «просто эффект приближения». Оставлен дрейф
+    # 1.2%, незаметный глазу, — чтобы кадр не выглядел мёртвым стоп-кадром,
+    # но и не воспринимался как наложенное движение.
+    KEN_BURNS_DRIFT = 0.012
+    z_rate = KEN_BURNS_DRIFT / frames
     center = "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
     y_mid = "y='ih/2-(ih/zoom/2)'"
+    _z = 1.0 + KEN_BURNS_DRIFT
     variants = [
-        f"z='min(zoom+{z_rate:.6f},1.15)':{center}",                       # наезд
-        f"z='if(lte(on,1),1.15,max(zoom-{z_rate:.6f},1.0))':{center}",     # отъезд
-        f"z=1.15:x='(iw-iw/zoom)*on/{frames - 1}':{y_mid}",                # пан вправо
-        f"z=1.15:x='(iw-iw/zoom)*(1-on/{frames - 1})':{y_mid}",            # пан влево
+        f"z='min(zoom+{z_rate:.6f},{_z:.4f})':{center}",                   # дрейф вперёд
+        f"z='if(lte(on,1),{_z:.4f},max(zoom-{z_rate:.6f},1.0))':{center}", # дрейф назад
     ]
     vf = (f"scale=3840:-2:flags=lanczos,"
           f"zoompan={random.choice(variants)}:d={frames}:s=1920x1080:fps={fps},"
@@ -8738,6 +9843,20 @@ CONSOLE = None  # хук GUI: живой вывод дочерних проце�
 # кадра, и при обрезке до вертикали от него остаётся полоса.
 VIDEO_ASPECT = "16:9"
 
+
+def scene_frame() -> tuple[int, int]:
+    """Кадр (ширина, высота), в котором рисуются нарисованные сцены.
+
+    Читается из VIDEO_ASPECT по той же причине, по какой оттуда читают
+    генераторы видео: разрешение ролика в область видимости раскадровки не
+    доезжает, а формат — доезжает, его ставит цепочка перед вызовом.
+
+    Пиксели берём базовые (1080-ю сторону), а не 4K: сцена — векторная
+    графика, её всё равно приводит к кадру ffmpeg, и лишние 4x пикселей
+    стоят минуты рендера. Важно тут ТОЛЬКО соотношение сторон: горизонтальную
+    сцену на вертикальном канале центральный crop режет до 31.6% ширины.
+    """
+    return (1080, 1920) if VIDEO_ASPECT == "9:16" else (1920, 1080)
 
 
 def _console(msg: str):
@@ -8803,7 +9922,16 @@ def transcribe_whisper(audio_path: Path, model: str, out_dir: Path, log,
     #
     # Снимать можно на машине с поддерживаемой картой (ноутбук с RTX 4050),
     # и тогда — с проверкой на настоящем прогоне: WHISPER_DEVICE=cuda.
-    dev = os.getenv("WHISPER_DEVICE", "cpu").strip() or "cpu"
+    # ЗАМЕР 31.08 НА ЭТОЙ МАШИНЕ (RTX 4050, файл 15.4 мин, модель tiny):
+    #   процессор  247 с (3.7x от длины звука)
+    #   видеокарта 128 с (7.2x) — ВДВОЕ быстрее, реплик поровну (203 и 203)
+    # Поэтому «cpu» больше не зашит: спрашиваем у того самого Python, каким
+    # запускается whisper, есть ли у него рабочая CUDA. У нашего venv торч
+    # собран без CUDA, а у whisper-Python — с ней, так что спрашивать надо
+    # именно его, иначе ответ будет ложно отрицательным.
+    dev = (os.getenv("WHISPER_DEVICE", "") or "").strip().lower()
+    if not dev:
+        dev = _whisper_device(exe)
     if dev:
         cmd += ["--device", dev]
     _console("[whisper] $ " + " ".join(cmd))
@@ -10001,9 +11129,60 @@ def seconds_to_srt(sec: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
+# Отказы и извинения моделей, приходящие ВМЕСТО запроса. Замер по живому
+# прогону 29.08: план 41 ушёл в генератор строкой «An error occurred. Please
+# try again.» и был отрисован как кадр ролика.
+_QUERY_JUNK = (
+    "an error occurred", "please try again", "i cannot", "i can't",
+    "i'm sorry", "im sorry", "as an ai", "unable to", "no result",
+    "not available", "try again later", "rate limit", "quota",
+)
+
+
+def query_ok(q: str) -> bool:
+    """Годится ли строка как запрос картинки.
+
+    Три беды, пойманные на живых роликах:
+      1) отказ модели («An error occurred…») — отрисовывался как кадр;
+      2) огрызок в одно-два служебных слова («or», «die der das») — по нему
+         сток отдаёт что угодно, а Wikimedia отвечает 429;
+      3) строка из ОДНИХ служебных слов: смысла в ней нет ни на одном языке.
+    """
+    t = (q or "").strip()
+    if len(t) < 6:
+        return False
+    low = t.lower()
+    if any(j in low for j in _QUERY_JUNK):
+        return False
+    words = [w for w in re.findall(r"[^\W\d_][\w'-]*", low, re.UNICODE)]
+    if not words:
+        return False
+    # Одно слово — не повод браковать: «gerüst», «temporäre» вполне ищутся.
+    # А вот «or» из живого прогона 29.08 — нет. Порог по длине, а не по счёту:
+    # отбрасывать однословные целиком значило бы падать на prev_query, то есть
+    # ПОВТОРЯТЬ прошлый кадр, а повтор кадра хуже слабого запроса.
+    if len(words) < 2 and len(words[0]) < 5:
+        return False
+    if all(w in STOPWORDS for w in words):
+        return False
+    return True
+
+
 def extract_keywords(text: str, n: int = 3) -> str:
-    """Ключевые слова для поиска стока: частые не-стоп-слова из текста плана."""
-    words = re.findall(r"[a-zA-Z][a-zA-Z'-]{2,}", text.lower())
+    """Ключевые слова для поиска стока: частые не-стоп-слова из текста плана.
+
+    БУКВА — ЛЮБАЯ, а не только ASCII. Здесь стояло [a-zA-Z][a-zA-Z'-]{2,}, и
+    на любом языке кроме английского слово ОБРЫВАЛОСЬ на первой же букве с
+    диакритикой, оставляя огрызок:
+        «ese huracán que llamamos progreso» -> «ese hurac que»
+        «el ángel de la historia»           -> «ngel historia»
+        «para el filósofo»                  -> «para fil sofo»
+    Огрызки уходили прямо в генератор кадров. Замер по выпущенному испанскому
+    ролику 26.08: 18 запросов из 140 (13% хронометража) — такой мусор, и по
+    слову «hurac» генератор выдал ураган над современным пригородом с
+    пальмами под текст о метафоре Беньямина.
+    """
+    words = re.findall(r"[^\W\d_][\w'-]{2,}", text.lower(), re.UNICODE)
     freq, order = {}, []
     for w in words:
         if w in STOPWORDS:
@@ -10216,7 +11395,12 @@ def _whole_sentences(sents: list[str], s_sent: list[int],
 #     канала среднее у образца и у нас и так совпадает, чинить надо характер.
 # Ставить сюда «9», потому что хочется планов по девять секунд, — ошибка:
 # порог 9 даёт планы по 12.4 c и на четверть меньше материала.
-BEAT_SECS = {"warm": (4.0, 0.0), "contemplative": (6.0, 0.55)}
+BEAT_SECS = {"warm": (3.4, 0.5), "contemplative": (6.0, 0.55),
+             # harsh — жёсткий разбор аварии. Раньше ключа не было и канал
+             # падал на умолчание (6.0, 0.0): ровно шесть секунд без разброса.
+             # Ставим ЧАЩЕ, чем режет рендер в теле (5-8 с), иначе соседние
+             # планы делят один кадр и смены не видно.
+             "harsh": (4.2, 0.5)}
 BEAT_SECS_DEFAULT = (6.0, 0.0)
 
 # ХОЛОДНОЕ НАЧАЛО: (сколько секунд держать частую нарезку, длина плана в ней).
@@ -10598,8 +11782,12 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
     ready = 0          # сколько кадров нашлось готовыми с прошлого прогона
     prev_query = "cinematic background"
     for i, b in enumerate(beats, 1):
-        query = ((queries[i - 1] if queries else "")
-                 or extract_keywords(b["text"]) or prev_query)
+        # ЗАСЛОН ОТ МУСОРА: отказ модели, огрызок или одни служебные слова
+        # не должны уходить в генератор картинки — см. query_ok.
+        cand = (queries[i - 1] if queries else "") or ""
+        if not query_ok(cand):
+            cand = extract_keywords(b["text"])
+        query = cand if query_ok(cand) else prev_query
         prev_query = query
         if target_indices is not None and (i - 1) not in target_indices:
             continue
@@ -10694,7 +11882,7 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
                             hint="проверь остаток квоты VeoNonStop",
                             level="заметно")
             elif not dest.exists():
-                gen_video(_image_prompt(query, visual_style), dest, log)
+                gen_video(_image_prompt(query, visual_style, dest), dest, log)
             return (i, True, None)
         except Cancelled:
             return (i, False, None)   # прерванный кадр — не «неудача», не шумим
@@ -10800,7 +11988,11 @@ def _prefetch_ai_beats(beats: list[dict], queries: list[str] | None,
             elif err is not None:
                 log(f"[Раскадровка] План {i}: параллельно не вышло "
                     f"({err}) - досоздастся в обычном проходе")
-            log(f"[Очередь Veo] Готово {completed}/{len(jobs)}; "
+            # Заголовок по тому, кто РЕАЛЬНО рисует: без ключа очередь к Veo
+            # отношения не имеет, а строка «Очередь Veo» сбивала с толку —
+            # владелец видел её при полностью отключённом Veo.
+            _qname = "Очередь Veo" if veo_live_keys() else "Очередь кадров"
+            log(f"[{_qname}] Готово {completed}/{len(jobs)}; "
                 f"успешно {ok}, в работе до {workers}")
     # Уже вне `with`: пул закрыт, ни одного живого потока с оплаченной задачей
     # не осталось. Готовые кадры лежат на диске под теми же именами, что ждёт
@@ -10954,7 +12146,16 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                 "переиспользуются")
         else:
             log("[Раскадровка] Составляю умные запросы по смыслу текста (LLM)...")
-            queries = smart_queries(beats, agnes_key, log)
+            # Сценарий читаем ЗДЕСЬ, а не тащим параметром через всю цепочку:
+            # он и так лежит в папке проекта. Из него берутся имена события,
+            # без которых модель видит лишь свой кусок текста и пишет запрос,
+            # подходящий любому ролику канала (замер 30.08: 12 кадров из 148).
+            try:
+                _txt = (Path(out_dir) / "script.txt").read_text(
+                    encoding="utf-8", errors="replace")
+            except OSError:
+                _txt = ""
+            queries = smart_queries(beats, agnes_key, log, script_text=_txt)
             # Двойников чиним ЗДЕСЬ — до того, как по запросу что-то скачано
             # или нарисовано, и до записи в кэш, чтобы повторный прогон взял
             # уже исправленные запросы, а имена файлов не разъехались.
@@ -11029,7 +12230,8 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
         for v in pix:
             vids = v.get("videos") or {}
             # medium ~1080p, large бывает 4K — тащить исходник незачем
-            f = vids.get("medium") or vids.get("large") or vids.get("small")
+            # СНАЧАЛА large — см. выше: medium у Pixabay это 720p.
+            f = vids.get("large") or vids.get("medium") or vids.get("small")
             if not f or not f.get("url"):
                 continue
             key = ("pixabay_video", str(v["id"]))
@@ -11262,11 +12464,14 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             secs = sum(55 if plan_kinds[i] == "video" else 9
                        for i in (range(len(beats)) if visual_mode == "ai"
                                  else sorted(ai_indices)))
-            log(f"[Раскадровка] ВНИМАНИЕ: рабочего ключа VeoNonStop нет, "
-                f"{ai_planned} ИИ-планов пойдут запасным генератором — это "
-                f"примерно {secs / 3600:.1f} ч только на них. Хочешь быстрее "
-                f"— убавь долю ИИ-кадров или поставь VEO_VIDEO_RATIO=0, "
-                f"остальное возьмётся со стоков за секунды", "warn")
+            # Спокойно, без «ВНИМАНИЕ». Работа без VeoNonStop — штатный
+            # режим, а не сбой: подписки может не быть вовсе. Пугать этим на
+            # каждом ролике незачем, а вот СКОЛЬКО ЭТО ЗАЙМЁТ — сказать надо,
+            # иначе человек не понимает, почему сборка идёт часами.
+            log(f"[Раскадровка] {ai_planned} ИИ-планов рисует запасной "
+                f"генератор, это примерно {secs / 3600:.1f} ч. Быстрее — "
+                f"убавь долю ИИ-кадров или поставь VEO_VIDEO_RATIO=0: "
+                f"остальное возьмётся со стоков за секунды")
 
     # СЦЕНЫ: планы, которые нарисуются целиком вместо съёмки. Модель читает
     # сценарий и сама решает, где съёмка бессильна — «вес перешёл на три
@@ -11345,8 +12550,12 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                                # только пополняется и защищает от повторов
             raise Cancelled("Остановлено пользователем")
         need = b["end"] - b["start"]
-        query = ((queries[i - 1] if queries else "")
-                 or extract_keywords(b["text"]) or prev_query)
+        # ЗАСЛОН ОТ МУСОРА: отказ модели, огрызок или одни служебные слова
+        # не должны уходить в генератор картинки — см. query_ok.
+        cand = (queries[i - 1] if queries else "") or ""
+        if not query_ok(cand):
+            cand = extract_keywords(b["text"])
+        query = cand if query_ok(cand) else prev_query
         prev_query = query
         safe = re.sub(r"[^\w\-]+", "_", query)[:40]
         mm, ss = divmod(int(b["start"]), 60)
@@ -11363,11 +12572,17 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
             try:
                 import gen_scenes
                 dest_sc = sdir / f"beat_{i:03d}_scene_{sc['kind']}.mp4"
+                # Кадр СЦЕНЫ = кадр ролика. Без этого схема всегда рисовалась
+                # 1920x1080, а на вертикальном канале render.py режет такой
+                # клип центральным crop до 31.6% ширины — заголовок, шкалы и
+                # стрелки за краем, и в журнале при этом «СЦЕНА … -> OK».
+                sc_w, sc_h = scene_frame()
                 if not dest_sc.exists():
                     gen_scenes.render_scene(
                         sc["kind"], dest_sc, need, title=sc.get("title", ""),
                         items=sc.get("items"), lat=sc.get("lat"),
                         lon=sc.get("lon"), log=log,
+                        width=sc_w, height=sc_h,
                         # Почерк канала — до самой подложки сцены. Без него
                         # схемы всех каналов рисуются на одном фоне, и это
                         # была одна из причин «каналы монтируются одинаково».
@@ -11414,15 +12629,27 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                     # переставала показывать настоящие беды.
                     if (not animated and veo_live_keys()
                             and _env_switch("VEO_ANIMATE_PHOTOS", True)):
+                        # КЛЮЧ БЕРЁМ ОДИН РАЗ И ИМ ЖЕ ХОРОНИМ. Здесь вызов шёл
+                        # БЕЗ api_key, а внутри gen_video_from_image ключ
+                        # берётся как os.getenv("VEO_API_KEY") — то есть всегда
+                        # ПЕРВЫЙ, мимо ротации veo_key_now(). Хоронился же тот,
+                        # на который указывала ротация. При двух ключах в .env
+                        # (VEO_API_KEY2 — штатная возможность) это РАЗНЫЕ
+                        # ключи: запрос падал мёртвым первым, а в мёртвые
+                        # уходил ЖИВОЙ второй. После этого veo_live_keys()
+                        # пустел, печаталось «оживление кадров выключено до
+                        # конца прогона», и весь остаток ролика шёл на Ken
+                        # Burns при полностью рабочей подписке.
+                        key_used = veo_key_now()
                         try:
-                            gen_video_from_image(jpg, query, clip, log=log,
+                            gen_video_from_image(jpg, query, clip,
+                                                 api_key=key_used, log=log,
                                                  style=visual_style)
                             animated = True
                         except Exception as e:
                             if _veo_key_dead(e):
-                                # Хороним ключ — следующие планы уже не пойдут
-                                # сюда вовсе, а сразу возьмут Ken Burns.
-                                veo_kill_key(veo_key_now(), log)
+                                # Хороним ИМЕННО ТОТ ключ, которым и ходили.
+                                veo_kill_key(key_used, log)
                                 log(f"[Раскадровка] План {i}: оживление "
                                     "кадров выключено до конца прогона — "
                                     "ключ VeoNonStop мёртв, будет Ken Burns")
@@ -11446,7 +12673,7 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
                 else:
                     clip = sdir / f"beat_{i:03d}_{safe}_ai.mp4"
                     if not clip.exists():   # уже мог подготовить префетч
-                        gen_video(_image_prompt(query, visual_style), clip, log,
+                        gen_video(_image_prompt(query, visual_style, clip), clip, log,
                                  seconds=need)
                     src_dur = audio_duration(clip) or need
                 pool.append(clip)
@@ -11588,26 +12815,53 @@ def auto_storyboard(out_dir: Path, log, pexels_keys: str = "",
     (out_dir / "timeline.json").write_text(
         json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
     xml = export_premiere_xml(timeline, voice, out_dir / "sequence.xml", fps=30)
-    # инструкция рядом: почему .xml, а не .prproj, и как получить порядок
+    # ПАПКА, ГОТОВАЯ К ПЕРЕТАСКИВАНИЮ. Обменные форматы подводят: у
+    # владельца Premiere 26.0 не берёт sequence.xml вовсе — файл целый,
+    # а корзина пустая. Обычные mp4 с номерами в именах читает любая
+    # версия, и «перетащить папку -> выделить всё -> Автоматизировать к
+    # последовательности» даёт ту же раскладку без всякого импорта XML.
+    NL = chr(10)          # перевод строки для текста инструкции ниже
+    готовая = out_dir / "для_premiere"
+    сложено = 0
+    try:
+        готовая.mkdir(exist_ok=True)
+        for стар in готовая.glob("*.mp4"):
+            стар.unlink()
+        for n_, шт in enumerate(timeline, 1):
+            ф = Path(шт.get("file", ""))
+            if not ф.exists():
+                continue
+            shutil.copy2(ф, готовая / ("%03d_%s" % (n_, ф.name)))
+            сложено += 1
+    except OSError as e:
+        log(f"[Раскадровка] Папку для Premiere сложить не вышло: {e}", "warn")
+
     (out_dir / "КАК_ОТКРЫТЬ_В_PREMIERE.txt").write_text(
-        "КАК ИМПОРТИРОВАТЬ В ADOBE PREMIERE PRO\n"
-        "=" * 40 + "\n\n"
-        "1. Premiere: File > Import… > выбери sequence.xml\n"
-        "   Появится готовая секвенция: видео-клипы стоят ПО ПОРЯДКУ по\n"
-        "   таймкодам, под ними — дорожка с озвучкой. Всё уже выстроено.\n\n"
-        "2. Субтитры: File > Import… > subs\\voiceover.srt\n"
-        "   Перетащи на таймлайн — получишь дорожку подписей (Captions).\n\n"
-        "ПОЧЕМУ НЕ .prproj?\n"
-        ".prproj — закрытый бинарный формат Adobe, его нельзя создать\n"
-        "снаружи программы. sequence.xml (Final Cut Pro XML) — ОФИЦИАЛЬНЫЙ\n"
-        "формат обмена, который Premiere открывает напрямую и превращает\n"
-        "в такой же редактируемый таймлайн, как .prproj. После открытия\n"
-        "сохрани через File > Save As — и получишь свой .prproj.\n\n"
-        "Клипы лежат в папке storyboard\\ — не перемещай её до импорта.\n",
+        "КАК ОТКРЫТЬ ЭТОТ МАТЕРИАЛ В PREMIERE PRO" + NL
+        + "=" * 40 + NL + NL
+        + "СПОСОБ 1 — рабочий в любой версии." + NL
+        + "  1. Shift+1 — панель «Проект» (не «Продукт»: это Productions," + NL
+        + "     там всё заблокировано и корзина всегда пустая)." + NL
+        + "  2. Перетащи мышью папку «для_premiere» прямо в эту панель." + NL
+        + "  3. Ctrl+A — выделить всё." + NL
+        + "  4. Правой кнопкой — «Автоматизировать к последовательности»." + NL
+        + "  Клипы названы 001_, 002_ и дальше, поэтому сортировка по" + NL
+        + "  имени совпадает с порядком в ролике." + NL + NL
+        + "  5. Отдельно перетащи audio" + chr(92) + "voiceover.mp3 на звуковую" + NL
+        + "     дорожку и subs" + chr(92) + "voiceover.srt — на дорожку подписей." + NL + NL
+        + "СПОСОБ 2 — если повезёт." + NL
+        + "  File > Import… > sequence.xml — готовая секвенция сразу." + NL
+        + "  Это Final Cut Pro XML; новые Premiere берут его не всегда." + NL
+        + "  Не появилось в корзине — иди способом 1." + NL + NL
+        + "ЧЕРНОВИК_склейка.mp4, если он рядом, — все планы подряд с" + NL
+        + "озвучкой одним файлом. Открывается чем угодно, Premiere не" + NL
+        + "нужен: посмотреть материал целиком до монтажа." + NL + NL
+        + "Папку storyboard" + chr(92) + " до импорта не перемещай." + NL,
         encoding="utf-8")
     log(f"[Раскадровка] Готово: {len(timeline)}/{len(beats)} планов, "
         f"{out_dir / 'timeline.json'}")
-    log("[Раскадровка] Premiere Pro: File > Import > sequence.xml — готовый "
-        "таймлайн по порядку (видео + озвучка). Субтитры: импортируй "
-        "voiceover.srt. Подробности — файл КАК_ОТКРЫТЬ_В_PREMIERE.txt")
+    log(f"[Раскадровка] Для Premiere: перетащи папку «для_premiere» "
+        f"({сложено} клипов по порядку) в панель «Проект», выдели всё "
+        f"и «Автоматизировать к последовательности». Подробности — "
+        f"файл КАК_ОТКРЫТЬ_В_PREMIERE.txt")
     return timeline

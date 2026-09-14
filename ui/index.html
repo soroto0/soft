@@ -38,6 +38,8 @@
 
     <div class="chrome-right">
       <span class="hint" id="version">v3.0</span>
+      <button class="iconbtn" id="sideToggle" onclick="app.toggleSide()"
+              title="Скрыть или показать правую панель">▥</button>
       <button class="iconbtn" onclick="app.openSettings()" title="Настройки">⚙</button>
       <button class="avatar" id="channelAvatar" onclick="app.toggleChannelPop()" title="Канал">—</button>
     </div>
@@ -68,6 +70,7 @@
         </span>
       </button>
       <button class="navlink" onclick="app.openGate()">Сменить канал</button>
+      <button class="navlink" onclick="app.openKit()">Набор материала</button>
       <button class="navlink" onclick="app.openSettings()">⚙ Настройки</button>
     </div>
   </div>
@@ -153,7 +156,7 @@
         </div>
 
         <div class="card" style="text-align:center">
-          <button class="btn big" id="autoBtn" onclick="app.autopilot()">🌙&nbsp; Автопилот на ночь</button>
+          <button class="btn big" id="autoBtn" onclick="app.autopilot()">🌙&nbsp; Собрать все каналы подряд</button>
           <div class="field" style="justify-content:center; margin-top:14px">
             <label>Роликов на канал</label>
             <input type="number" id="autoVideos" value="1" min="1" max="5"
@@ -164,6 +167,22 @@
             что и кнопка выше. Тема берётся по нише канала, каждый ролик уходит
             в свою папку с датой. Упавший канал не останавливает остальные;
             итог — последними строками журнала. Оставь ноутбук включённым.
+          </div>
+          <div class="pop-sep" style="margin:16px 0"></div>
+          <button class="btn big" id="parBtn" onclick="app.autopilotParallel()">
+            ⚡&nbsp; Собрать несколько каналов разом</button>
+          <div class="field" style="justify-content:center; margin-top:14px">
+            <label>Каналов одновременно</label>
+            <input type="number" id="parMax" value="" min="1" max="8"
+                   placeholder="все" style="width:70px">
+          </div>
+          <div id="parStatus" style="margin-top:14px"></div>
+          <div class="hint" style="margin-top:8px">
+            Пустое поле — значит ВСЕ включённые каналы разом. Каждый канал идёт своим процессом, поэтому они не мешают друг другу
+            форматом кадра и кнопкой «Стоп». Пока один ждёт ответа сервера,
+            второй жмёт видео — на сборке ffmpeg занят лишь треть времени.
+            Журналы: <b>autopilot_logs/&lt;канал&gt;.log</b>. Идёт снаружи окна:
+            программу не закрывай.
           </div>
         </div>
 
@@ -404,12 +423,33 @@
               <option>8 c</option><option>10 c</option>
             </select>
           </div>
+          <!-- Режим монтажа выставляет сразу две вещи — источник кадров и
+               движок графики. Порознь их выставляли неправильно: люди
+               включали «ИИ в едином стиле», а плашки продолжали идти через
+               Remotion, то есть Node оставался обязательным, хотя весь смысл
+               режима был в том, чтобы обойтись без него. -->
+          <div class="field">
+            <label>Режим монтажа</label>
+            <select id="montageMode" onchange="app.setMontageMode(this.value)">
+              <option value="full" selected>Полный — сток + ИИ, графика Remotion</option>
+              <option value="ai_only">Только ИИ — без Node, графика встроенная</option>
+              <option value="custom">Свой — настройки ниже</option>
+            </select>
+          </div>
           <div class="field">
             <label>Источник кадров</label>
             <select id="visualMode">
               <option value="stock">только стоки (мало ИИ-кадров)</option>
               <option value="mixed" selected>микс: часть кадров — ИИ</option>
               <option value="ai">ИИ в едином стиле (уровень канала)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Движок графики</label>
+            <select id="overlayEngine">
+              <option value="auto" selected>авто — Remotion, если стоит Node</option>
+              <option value="remotion">только Remotion</option>
+              <option value="pillow">встроенный (без Node)</option>
             </select>
           </div>
           <div class="field">
@@ -572,8 +612,12 @@
             <label class="switch"><input type="checkbox" id="rChapters"><span class="tr"></span>Цветокор по главам</label>
             <label class="switch"><input type="checkbox" id="rDraft"><span class="tr"></span>Черновик 720p (быстро)</label>
             <!-- Атмосферные частицы отдельным слоем поверх кадра: делают
-                 картинку «живой» и непохожей от ролика к ролику. -->
-            <label class="switch"><input type="checkbox" id="rSand"><span class="tr"></span>Пыль в воздухе</label>
+                 картинку «живой» и непохожей от ролика к ролику.
+                 «Пыль в воздухе» стоит ГАЛОЧКОЙ, потому что в webapp.py она
+                 включена по умолчанию: пока галочка была снята, «Собрать
+                 всё» давало пыль, а «Рендер» — нет, и объяснить это по
+                 экрану было нечем. -->
+            <label class="switch"><input type="checkbox" id="rSand" checked><span class="tr"></span>Пыль в воздухе</label>
             <label class="switch"><input type="checkbox" id="rStars"><span class="tr"></span>Звёзды/искры</label>
             <label class="switch"><input type="checkbox" id="rEmbers"><span class="tr"></span>Тёплые угольки</label>
             <label class="switch"><input type="checkbox" id="rThumbs" checked><span class="tr"></span>Обложки для YouTube</label>
@@ -588,8 +632,10 @@
           <div class="sep"></div>
           <div class="sect">Эффекты поверх кадра</div>
           <div class="switches">
-            <label class="switch"><input type="checkbox" id="rBloom"><span class="tr"></span>Свечение (bloom)</label>
-            <label class="switch"><input type="checkbox" id="rLeak"><span class="tr"></span>Световая засветка</label>
+            <!-- Свечение и засветка включены по умолчанию — это умолчание
+                 webapp.py, и галочки обязаны его показывать. -->
+            <label class="switch"><input type="checkbox" id="rBloom" checked><span class="tr"></span>Свечение (bloom)</label>
+            <label class="switch"><input type="checkbox" id="rLeak" checked><span class="tr"></span>Световая засветка</label>
             <label class="switch"><input type="checkbox" id="rDust"><span class="tr"></span>Плёночная пыль</label>
             <label class="switch"><input type="checkbox" id="rFlicker"><span class="tr"></span>Мерцание</label>
           </div>
@@ -615,7 +661,259 @@
         </div>
       </section>
 
+      <!-- ============ ИИ-ВИДЕО ============
+           Прямой доступ ко всем режимам генератора, без конвейера и без
+           Remotion. Нужно, когда ролик делается «ИИ плюс эффекты», и
+           когда надо просто посмотреть, что генератор отдаёт. -->
+      <section class="stage" id="stage-ai">
+        <div class="stage-head">
+          <h1>ИИ-видео</h1>
+          <p>Все режимы генератора напрямую — без сценария и без Remotion</p>
+        </div>
+
+        <!-- ПОЛНЫЙ РЕНДЕР БЕЗ REMOTION. Тот же путь, что у основной кнопки
+             «Генерировать видео», но визуал целиком из генератора: тема ->
+             сценарий -> озвучка -> кадры -> оживление -> подписи -> музыка.
+             Ни одного оверлея Remotion по замыслу. -->
+        <div class="card">
+          <div class="card-head">Шаг 1 — сгенерировать кадры</div>
+          <div class="field">
+            <label>Тема</label>
+            <input type="text" id="abTopic" class="grow"
+                   placeholder="о чём ролик — одной фразой">
+          </div>
+          <div class="field">
+            <label>Язык</label>
+            <select id="abLang">
+              <option>русский</option><option>английский</option>
+              <option>испанский</option><option>немецкий</option>
+            </select>
+            <label style="min-width:auto">Кадр</label>
+            <select id="abRatio">
+              <option value="9:16" selected>9:16 вертикаль</option>
+              <option value="16:9">16:9 горизонт</option>
+            </select>
+            <label style="min-width:auto">Длина</label>
+            <select id="abSecs">
+              <option value="30">30 c</option>
+              <option value="60" selected>1 мин</option>
+              <option value="120">2 мин</option>
+              <option value="180">3 мин</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Кадров</label>
+            <select id="abCount">
+              <option>4</option><option>6</option><option selected>8</option>
+              <option>12</option><option>16</option><option>24</option>
+            </select>
+          </div>
+          <div class="field" style="margin-top:12px">
+            <button class="btn primary" onclick="app.aiFrames()">✦&nbsp; Сгенерировать кадры</button>
+          </div>
+          <div class="hint" style="margin-top:8px">
+            Кадры появятся в списке ниже. Отметь нужные галочками и нажми
+            «Собрать из выбранных» — соседние кадры сшиваются в клип, поэтому
+            из N кадров выходит N−1 клипов по 8 секунд. Длину клипа генератор
+            не принимает: замер — заказал 4 с, вернулось 8,0.
+          </div>
+        </div>
+
+
+        <!-- ИНГРЕДИЕНТЫ — как в Google Flow: набор опорных картинок,
+             который прикладывается к КАЖДОЙ генерации. Это и держит
+             одного и того же героя во всей сцене. -->
+        <div class="card">
+          <div class="card-head">
+            Ингредиенты <span class="count" id="aiIngCount">0</span>
+            <div class="spacer"></div>
+            <button class="btn ghost" onclick="app.aiIngAdd('hero')">+ Герой</button>
+            <button class="btn ghost" onclick="app.aiIngAdd('place')">+ Место</button>
+            <button class="btn ghost" onclick="app.aiIngAdd('style')">+ Стиль</button>
+          </div>
+          <div class="ing-row" id="aiIngRow"></div>
+          <div class="hint" style="margin-top:8px">
+            Прикладываются автоматически ко всему, что генерируется здесь —
+            выбирать их каждый раз не нужно. Пустой набор = каждый клип сам
+            по себе, герой будет разным.
+          </div>
+        </div>
+
+
+        <div class="card">
+          <div class="card-head">Режим</div>
+          <div class="field">
+            <select id="aiKind" onchange="app.aiKindChanged()">
+              <option value="text">Текст → видео</option>
+              <option value="image">Картинка → видео</option>
+              <option value="batch">Batch Frame — первый и последний кадр</option>
+              <option value="component">Компонент — несколько героев в кадре</option>
+              <option value="banana">Картинка (Banana)</option>
+            </select>
+            <div class="spacer"></div>
+            <span class="hint" id="aiNeed">картинки не нужны</span>
+          </div>
+
+          <div class="field" id="aiImagesRow">
+            <label>Картинки</label>
+            <input type="text" id="aiImages" class="grow" spellcheck="false"
+                   placeholder="выбери файлы — для Batch Frame первый и последний кадр">
+            <button class="btn ghost" onclick="app.aiPickImages()">Выбрать…</button>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="field">
+            <label>Кадр</label>
+            <select id="aiAspect">
+              <option value="9:16" selected>9:16 — вертикаль (шортс)</option>
+              <option value="16:9">16:9 — горизонт</option>
+              <option value="1:1">1:1 — квадрат</option>
+              <option value="4:5">4:5 — лента</option>
+              <option value="21:9">21:9 — широкий</option>
+            </select>
+            <label style="min-width:auto">Штук</label>
+            <select id="aiCount">
+              <option>1</option><option>2</option><option>3</option><option>4</option>
+            </select>
+            <label style="min-width:auto">Камера</label>
+            <select id="aiCamera">
+              <option value="">как выйдет</option>
+              <option value="static camera, locked off">неподвижная</option>
+              <option value="slow push in toward the subject">медленный наезд</option>
+              <option value="slow pull back from the subject">медленный отъезд</option>
+              <option value="slow pan left to right">панорама вбок</option>
+              <option value="handheld, slight natural shake">с рук</option>
+              <option value="low angle looking up at the subject">снизу вверх</option>
+              <option value="overhead looking straight down">сверху вниз</option>
+              <option value="slow orbit around the subject">облёт</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Промпт</label>
+          </div>
+          <textarea id="aiPrompt" rows="5" spellcheck="false"
+                    placeholder="что должно быть в кадре и как оно движется"></textarea>
+
+          <div class="field" style="margin-top:12px">
+            <button class="btn primary" onclick="app.aiGenerate()">✦&nbsp; Сгенерировать</button>
+            <div class="spacer"></div>
+            <button class="btn ghost" onclick="app.aiRefresh()">Обновить список</button>
+            <button class="btn ghost" onclick="rpc('ai_open_folder')">🗀 Папка</button>
+          </div>
+          <div class="hint" style="margin-top:8px">
+            Всё сгенерированное копится в папке ai_studio рядом с софтом и
+            показывается ниже. Рядом с каждым файлом сохраняется промпт.
+          </div>
+        </div>
+
+        <!-- СЦЕНЫ — как SceneBuilder у Flow. Ролик длиннее восьми секунд
+             одной задачей не получить, но можно набрать цепочкой, где
+             каждый следующий клип начинается с ПОСЛЕДНЕГО КАДРА
+             предыдущего: стык тогда не виден, там один и тот же кадр.
+             Замер 20.08: длину клипа API не принимает — заказал 4 c,
+             вернулось 8.0 c. Поэтому длина ролика набирается только
+             числом клипов: две минуты = 15 штук. -->
+        <div class="card">
+          <div class="card-head">
+            Сцены <span class="count" id="aiSceneCount">0</span>
+            <div class="spacer"></div>
+            <button class="btn ghost" onclick="app.aiSceneNew()">+ Новая сцена</button>
+          </div>
+          <div id="aiSceneRows"></div>
+          <div class="hint" style="margin-top:8px">
+            Клип кладётся в сцену кнопкой «в сцену» под ним. Дальше
+            «Продолжить» дорисовывает следующий клип с последнего кадра —
+            так набирается любая длина. «Склеить» собирает сцену в один файл.
+          </div>
+        </div>
+
+
+        <div class="card">
+          <div class="card-head">
+            Шаг 2 — кадры <span class="count" id="aiCount2">0</span>
+            <span class="hint" id="aiPicked">выбрано 0</span>
+            <div class="spacer"></div>
+            <button class="btn ghost" onclick="app.aiPickAll()">Выбрать все</button>
+            <button class="btn ghost" onclick="app.aiPickNone()">Снять</button>
+            <button class="btn primary" onclick="app.aiBuildFrom()">▶ Собрать из выбранных</button>
+          </div>
+          <div class="ai-grid" id="aiGrid"></div>
+        </div>
+      </section>
+
+
       <!-- ============ ЭКСПОРТ ============ -->
+      <section class="stage" id="stage-montage">
+        <div class="stage-head">
+          <h1>Монтаж</h1>
+          <p>Материал россыпью: каждый пункт отдельным файлом, для Premiere Pro</p>
+        </div>
+
+        <div class="card">
+          <div class="card-head">Откуда брать</div>
+          <div class="field">
+            <label>Канал
+              <select id="mChannel" onchange="app.montageChannel()"></select>
+            </label>
+            <label>Ролик
+              <select id="mProject" onchange="app.montageProject()"></select>
+            </label>
+          </div>
+          <div class="hint" id="mPath">—</div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">О чём собирать</div>
+          <div class="hint" style="margin-bottom:10px">
+            Оставь пусто — возьму тему из очереди канала и напишу сценарий
+            сам. Впиши тему — напишу по ней. Вставь готовый сценарий — возьму
+            его как есть и ничего не буду сочинять.
+          </div>
+          <div class="field">
+            <input type="text" id="mTopic" class="grow"
+                   placeholder="тема ролика — или оставь пусто">
+          </div>
+          <textarea id="mScript" class="prose" spellcheck="false"
+                    style="min-height:150px; margin-top:10px"
+                    placeholder="свой сценарий целиком — необязательно"></textarea>
+          <div class="field" style="margin-top:12px">
+            <button class="btn primary" onclick="app.buildMaterial()">
+              Собрать материал</button>
+            <span class="hint">Озвучка, субтитры и клип под каждый план.
+              Рендера и плашек не будет — режешь сам.</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">Что лежит в проекте</div>
+          <div class="hint" style="margin-bottom:12px">
+            Remotion и собранный ролик для ручного монтажа не нужны. Нажми на
+            строку — покажу файл в проводнике.
+          </div>
+          <div id="exportRows"></div>
+          <div class="field" style="margin-top:14px">
+            <button class="btn primary" onclick="app.exportPack()">
+              Собрать всё в одну папку</button>
+            <button class="btn" onclick="app.loadExportKit()">Обновить</button>
+            <button class="btn" onclick="app.openFolder()">Папка проекта</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">Как открыть в Premiere Pro</div>
+          <div class="hint">
+            1. File → Import → <b>sequence.xml</b> — появится готовая секвенция:
+            клипы стоят по таймкодам, под ними дорожка с озвучкой.<br>
+            2. File → Import → <b>voiceover.srt</b>, перетащи на таймлайн —
+            получишь дорожку подписей.<br>
+            3. Папку <b>storyboard</b> до импорта не перемещай: пути к клипам
+            внутри sequence.xml записаны полностью.
+          </div>
+        </div>
+      </section>
+
       <section class="stage" id="stage-export">
         <div class="stage-head">
           <h1>Экспорт</h1>
@@ -623,14 +921,10 @@
         </div>
 
         <div class="card">
+          <div class="card-head">Обложки и SEO</div>
           <div class="field">
-            <button class="btn primary" onclick="app.openFolder()">Открыть папку проекта</button>
             <button class="btn" onclick="app.runSeo()">SEO: названия и описание</button>
             <button class="btn" onclick="app.makeThumbs()">Обложки по сценарию</button>
-          </div>
-          <div class="hint" style="margin-top:10px">
-            Premiere Pro: File → Import → sequence.xml — готовый таймлайн: клипы по
-            таймкодам, озвучка под ними. Субтитры: File → Import → subs/voiceover.srt.
           </div>
         </div>
 
@@ -724,6 +1018,77 @@
   </div>
 </div>
 
+<!-- ================= НАБОР МАТЕРИАЛА =================
+     Ветка для тех, кто режет сам. Конвейер отдаёт готовый ролик и решает
+     за монтажёра всё; здесь программа только ДОБЫВАЕТ материал по теме и
+     раскладывает по папкам, а таймлайн человек собирает в своей монтажке.
+     Поэтому тут нет ни канала, ни голоса, ни рендера — только «что искать»
+     и «сколько». -->
+<div class="modal-bg" id="kitModal">
+  <div class="modal" style="width:600px">
+    <h2>Набор материала</h2>
+    <div class="hint">
+      Тема, несколько слов или кусок сценария. Программа разложит это на планы,
+      найдёт под каждый видео и фото, подберёт музыку и сложит папку — резать
+      будешь сам в Premiere, DaVinci или чём привык.
+    </div>
+    <textarea id="kitQuery" spellcheck="false" style="margin-top:10px"
+              placeholder="например: крушение моста Моранди в Генуе"></textarea>
+
+    <div class="sep"></div>
+    <div class="sect">Что искать в интернете</div>
+    <div class="field">
+      <label>Планов</label>
+      <input type="number" id="kitShots" value="8" min="1" max="30" style="width:80px">
+      <label style="margin-left:14px"><input type="checkbox" id="kitVideo" checked> видео</label>
+      <label style="margin-left:10px"><input type="checkbox" id="kitPhoto" checked> фото</label>
+      <label style="margin-left:10px"><input type="checkbox" id="kitMusic" checked> музыка</label>
+    </div>
+
+    <div class="sep"></div>
+    <div class="sect">Что дорисовать нейросетью</div>
+    <div class="field">
+      <label>Кадров</label>
+      <input type="number" id="kitAiFrames" value="0" min="0" max="30" style="width:80px"
+             oninput="app.kitCost()">
+      <label style="margin-left:14px">Клипов</label>
+      <input type="number" id="kitAiClips" value="0" min="0" max="30" style="width:80px"
+             oninput="app.kitCost()">
+    </div>
+    <div class="hint" id="kitCostLine">Только поиск в интернете — минута-две на всё.</div>
+
+    <div class="modal-foot">
+      <button class="btn ghost" onclick="app.closeKit()">Закрыть</button>
+      <button class="btn ghost" id="kitOpenBtn" onclick="app.kitOpen()" hidden>Открыть папку</button>
+      <button class="btn primary" onclick="app.kitStart()">Собрать</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= ПЕРВЫЙ ЗАПУСК =================
+     Показывается, только когда не вписан обязательный ключ. Смысл окна —
+     не «настройки», а ответ на единственный вопрос новичка: с чего начать.
+     Поэтому здесь два поля вместо восьми, у каждого своя кнопка «Получить»,
+     и написано, сколько это стоит и сколько занимает времени. -->
+<div class="modal-bg" id="setupModal">
+  <div class="modal setup">
+    <h2>С чего начать</h2>
+    <p class="setup-lead" id="setupLead">Загружаю…</p>
+
+    <div id="setupRequired"></div>
+
+    <div class="sep"></div>
+    <button class="btn ghost setup-more" id="setupMoreBtn"
+            onclick="app.setupToggleMore()">Что можно подключить позже →</button>
+    <div id="setupOptional" hidden></div>
+
+    <div class="modal-foot">
+      <button class="btn ghost" onclick="app.setupSkip()">Пропустить</button>
+      <button class="btn primary" onclick="app.setupSave()">Сохранить и начать</button>
+    </div>
+  </div>
+</div>
+
 <!-- ================= НАСТРОЙКИ ================= -->
 <div class="modal-bg" id="settingsModal">
   <div class="modal">
@@ -739,9 +1104,9 @@
 
     <div class="sep"></div>
     <div class="sect">Генерация</div>
-    <div class="field"><label>VeoNonStop (основной)</label><input type="text" id="sVeo" class="grow" placeholder="veo_..."></div>
-    <div class="field"><label>Gemini</label><input type="text" id="sGemini" class="grow" placeholder="запасной для текста"></div>
-    <div class="field"><label>Agnes</label><input type="text" id="sAgnes" class="grow" placeholder="запасной, если Veo недоступен"></div>
+    <div class="field"><label>VeoNonStop</label><input type="text" id="sVeo" class="grow" placeholder="платный, необязательный — генерация видео нейросетью"></div>
+    <div class="field"><label>Gemini</label><input type="text" id="sGemini" class="grow" placeholder="ОБЯЗАТЕЛЬНЫЙ, бесплатный — тексты и картинки"></div>
+    <div class="field"><label>Agnes</label><input type="text" id="sAgnes" class="grow" placeholder="платный, необязательный — запас на случай квоты Gemini"></div>
 
     <div class="sep"></div>
     <div class="sect">Музыка</div>
@@ -771,14 +1136,17 @@
 
     <div class="sep"></div>
     <div class="sect">Стоки</div>
-    <div class="hint" style="margin-bottom:6px">Pexels — по одному ключу на строку (ротация при лимите):</div>
+    <div class="hint" style="margin-bottom:6px">Pexels — ОБЯЗАТЕЛЬНЫЙ и бесплатный, это видеоряд ролика. По одному ключу на строку (ротация при лимите):</div>
     <textarea id="sPexels" spellcheck="false"></textarea>
-    <div class="hint" style="margin:10px 0 6px">Pixabay:</div>
+    <div class="hint" style="margin:10px 0 6px">Pixabay — бесплатный, второй источник съёмки:</div>
     <textarea id="sPixabay" spellcheck="false"></textarea>
 
     <div class="modal-foot">
       <!-- Проверка ключей вынесена кнопкой, потому что мёртвый ключ иначе
            обнаруживается только посреди прогона (см. core.check_llm_keys). -->
+      <!-- Мастер вызывается и вручную: покупателю он открывается сам, а
+           владельцу нужен, чтобы показать этот экран на записи для продажи. -->
+      <button class="btn ghost" onclick="app.closeSettings(); app.openSetup()">С чего начать</button>
       <button class="btn ghost" onclick="app.checkKeys()">Проверить ключи</button>
       <button class="btn ghost" onclick="app.closeSettings()">Отмена</button>
       <button class="btn primary" onclick="app.saveSettings()">Сохранить</button>

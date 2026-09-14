@@ -55,8 +55,13 @@ def _secret_file() -> Path | None:
     return got[0] if got else None
 
 
-def ready() -> tuple[bool, str]:
-    """Можно ли идти за статистикой. -> (да/нет, что мешает)."""
+def ready(channel: str = "") -> tuple[bool, str]:
+    """Можно ли идти за статистикой. -> (да/нет, что мешает).
+
+    channel — если назван, проверяется токен ИМЕННО ЭТОГО канала. Без него
+    ответ «да» означал бы, что чужой токен сойдёт, а он не сойдёт: дальше
+    откроется браузер за входом.
+    """
     try:
         import google.oauth2.credentials  # noqa: F401
         import google_auth_oauthlib  # noqa: F401
@@ -65,13 +70,27 @@ def ready() -> tuple[bool, str]:
         return False, ("не установлены библиотеки Google: "
                        "pip install google-api-python-client "
                        "google-auth-oauthlib")
-    if any(ANALYTICS.glob('token*.json')):
+    # ТОКЕН СПРАШИВАЕМ ПРО КОНКРЕТНЫЙ КАНАЛ, а не «есть ли хоть один».
+    #
+    # Замер 31.08: токены лежали для einsturzpunkt, estoico-es и bauwissen,
+    # а для tiefenzeit — нет. Прежняя проверка видела чужие токены, отвечала
+    # «можно», и на шаге удержания открывался БРАУЗЕР С ВЫБОРОМ АККАУНТА —
+    # посреди ночной сборки, которая идёт без человека. Владелец увидел это
+    # как «не надо выбирать гугл аккаунт».
+    if channel:
+        if token_path(channel).exists() or TOKEN.exists():
+            return True, ""
+    elif any(ANALYTICS.glob('token*.json')):
         return True, ""
     if _secret_file() is None:
         return False, ("нет ключа доступа: положи client_secret*.json в "
                        f"{ANALYTICS} (как получить — "
                        "analytics/КАК_ПОДКЛЮЧИТЬ_API.md)")
-    return True, "ключ есть, но вход ещё не выполнен — потребуется браузер"
+    # Ключ есть, но входа по этому каналу не было. Для человека за
+    # клавиатурой это «нажми и войди», а для автосборки — стоп: браузер
+    # посреди ночи не откроет никто, и процесс будет ждать вечно.
+    return False, ("вход по этому каналу не выполнен — нужен разовый вход "
+                   "в браузере, автоматически это делать нельзя")
 
 
 def _creds(log=print, channel: str = ""):

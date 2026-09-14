@@ -25,6 +25,11 @@ const STAGES = [
   { id: "media",    label: "Раскадровка", icon: "▦", check: "Раскадровка", group: "Этапы" },
   { id: "overlays", label: "Оверлеи",    icon: "✦", check: "Оверлеи", group: "Этапы" },
   { id: "render",   label: "Рендер",     icon: "▶", check: "Рендер", group: "Этапы" },
+  { id: "ai",      label: "ИИ-видео",  icon: "✧", check: null, group: "Главное" },
+  // Отдельный пункт, а не карточка внутри «Экспорта»: материал россыпью
+  // нужен тем, кто режет сам, и искать его в конце ленты этапов неверно —
+  // это не этап конвейера, а вход в другую работу.
+  { id: "montage", label: "Монтаж",    icon: "🎬", check: null, group: "Главное" },
   { id: "export",   label: "Экспорт",    icon: "⤓", check: "Premiere", group: "Этапы" },
 ];
 
@@ -119,6 +124,28 @@ function showStage(id) {
     (n) => n.classList.toggle("active", n.dataset.stage === id));
   const s = STAGES.find((x) => x.id === id);
   if (s && !isBusy) setStatus(s.label);
+  // Список сгенерированного подтягиваем при заходе на вкладку: файлы
+  // появляются в папке из фонового потока, и без этого он оставался
+  // таким, каким был на момент запуска окна.
+  // ЗДЕСЬ СТОЯЛО window.app — И ВКЛАДКА НЕ РАБОТАЛА ВООБЩЕ. app объявлен
+  // через const, а const НЕ создаёт свойства у window: условие всегда было
+  // ложным, и не срабатывало ни скрытие поля картинок, ни загрузка
+  // галереи, ни ингредиенты, ни сцены. Со стороны вкладка выглядела
+  // мёртвой: «Сгенерировано 0» и лишнее поле в режиме, которому картинки
+  // не нужны.
+  if (id === "ai" && typeof app !== "undefined") {
+    app.aiKindChanged();
+    app.aiRefresh();
+    app.aiIngLoad();
+    app.aiSceneLoad();
+  }
+  // Монтажный набор — по той же причине: файлы дописываются фоном, и
+  // список обязан читаться в момент захода, а не при запуске окна.
+  if (id === "montage" && typeof app !== "undefined") app.loadMontageSources();
+  if (id === "dashboard" && typeof app !== "undefined") {
+    app.fillParMax();
+    app.startParStatus();
+  }
   const sc = document.querySelector(".scroll");
   if (sc) sc.scrollTop = 0;
 }
@@ -156,8 +183,12 @@ let isBusy = false;
 
 function setStatus(text) {
   $("status").textContent = text;
-  // «Готов» и название этапа — покой; всё остальное считаем работой
-  const busy = !!text && !/^(Готов|Проект|Сценарий|Озвучка|Субтитры|Раскадровка|Оверлеи|Рендер|Экспорт)$/.test(text);
+  // «Готов» и название этапа — покой; всё остальное считаем работой.
+  // Дашборд и Проекты обязаны быть в списке: без них заход на новый экран
+  // выставлял isBusy=true, островок навсегда оставался «в работе», кольцо
+  // переставало показывать готовность, а showStage больше не менял подпись
+  // (там стоит «if (!isBusy)») — статус залипал на «Дашборд».
+  const busy = !!text && !/^(Готов|Дашборд|Проекты|Проект|Сценарий|Озвучка|Субтитры|Раскадровка|Оверлеи|Рендер|Экспорт)$/.test(text);
   isBusy = busy;
   $("island").classList.toggle("busy", busy);
 }
@@ -172,12 +203,39 @@ function setRing(pct) {
   $("ring").style.setProperty("--pct", pct);
   $("ringPct").textContent = pct + "%";
 }
-function taskDone() { setStatus("Готов"); setProgress(0, 0); refresh(); }
+function taskDone() {
+  setStatus("Готов");
+  setProgress(0, 0);
+  refresh();
+  // Галерею ИИ обновляем ЗДЕСЬ. Задача «Кадры» пишет в журнал «Готово: 8 из
+  // 8», кладёт файлы на диск - и на этом всё: refresh() перечитывает
+  // состояние проекта, но список кадров не трогает. Экран оставался пустым,
+  // и кадры появлялись, только если уйти на другую вкладку и вернуться.
+  // Вкладки переключаются классом .active, а НЕ style.display: проверка по
+  // display была бы всегда истинной. Признак открытой вкладки - curStage.
+  if (curStage === "ai" && typeof app !== "undefined" && app.aiRefresh) {
+    app.aiRefresh();
+  }
+}
 
 /* ---------- Состояние ---------- */
 let state = null;
 let lastProject = null;
 let channelsCache = [];
+
+// Палитр в софте три, а каналов у человека бывает больше. Берём ту, что
+// занята меньше всех: второй канал не станет копией первого, третий — копией
+// второго. Порядок при равенстве постоянный, чтобы выбор не прыгал.
+const PALETTES = ["harsh", "warm", "contemplative"];
+function leastUsedPalette() {
+  const used = {};
+  PALETTES.forEach((p) => { used[p] = 0; });
+  (channelsCache || []).forEach((c) => {
+    const p = (c && c.palette) || "";
+    if (p in used) used[p] += 1;
+  });
+  return PALETTES.reduce((a, b) => (used[b] < used[a] ? b : a), PALETTES[0]);
+}
 
 // Смена КАНАЛА перезагружает поля жёстче, чем смена проекта: даже если курсор
 // стоит в поле, даже если новое значение пустое. Иначе сценарий прошлого канала
@@ -394,13 +452,46 @@ const app = {
     const cur = $("channelSel").value;
     const box = $("channelPopRows");
     if (box) {
+      // В строке канала три действия, а не одно. Раньше был только выбор:
+      // убрать канал из софта было нельзя вообще (владелец пробовал и не
+      // смог), а выключить его из ночи — только правкой channels.json.
       box.innerHTML = channelsCache.map((c, i) => `
         <div class="pop-row${c.id === cur ? " active" : ""}" data-ch="${esc(c.id)}">
           <span class="ava" style="background:${chColor(c, i)}">${esc(chLetter(c))}</span>
-          <span>${esc(c.name || c.id)}</span>
+          <span class="pop-name">${esc(c.name || c.id)}</span>
+          <button class="pop-mini" data-night="${esc(c.id)}"
+            title="${c.active === false ? "включить в ночной автопилот" : "убрать из ночного автопилота"}"
+            >${c.active === false ? "🌙̶" : "🌙"}</button>
+          <button class="pop-mini danger" data-del="${esc(c.id)}"
+            title="убрать канал из софта (папка с роликами останется)">✕</button>
         </div>`).join("") || '<div class="pop-act">нет каналов</div>';
       box.querySelectorAll(".pop-row").forEach((r) => {
-        r.onclick = () => app.gatePick(r.dataset.ch);
+        r.onclick = (e) => {
+          if (e.target.closest("button")) return;   // клик по кнопке — не выбор
+          app.gatePick(r.dataset.ch);
+        };
+      });
+      box.querySelectorAll("[data-night]").forEach((b) => {
+        b.onclick = (e) => {
+          e.stopPropagation();
+          const id = b.dataset.night;
+          const c = channelsCache.find((x) => x.id === id) || {};
+          rpc("channel_autopilot", id, c.active === false).then(() => { app.loadChannels(true); refresh(); });
+        };
+      });
+      box.querySelectorAll("[data-del]").forEach((b) => {
+        b.onclick = (e) => {
+          e.stopPropagation();
+          const id = b.dataset.del;
+          const c = channelsCache.find((x) => x.id === id) || {};
+          // Спрашиваем прямо и говорим, что папка останется: иначе
+          // «удалил, а место не освободилось» читается как поломка.
+          if (!confirm("Убрать канал «" + (c.name || id) + "» из софта?"
+                     + "\n\nПапка с роликами останется на диске — сценарии,"
+                     + "\nозвучка и оплаченные кадры не стираются."
+                     + "\nУдалить её можно вручную.")) return;
+          rpc("channel_delete", id).then(() => { app.loadChannels(true); refresh(); });
+        };
       });
     }
     const i = channelsCache.findIndex((c) => c.id === cur);
@@ -479,16 +570,34 @@ const app = {
       // жаловался словами «монтаж трёх каналов очень похож», только теперь у
       // всех каналов сразу.
       // Существующему каналу подставляем ЕГО значение (иначе правка любого
-      // другого поля молча переписала бы почерк), новому — рабочее «harsh»,
-      // чтобы канал не родился безликим.
-      palette: cur.palette || (cur.id ? "" : "harsh"),
+      // другого поля молча переписала бы почерк), новому — САМУЮ РЕДКУЮ из
+      // уже занятых.
+      //
+      // Здесь стояло жёсткое «harsh», и каждый новый канал рождался копией
+      // первого. Замер 21.08: три канала из четырёх сидели на harsh, а она
+      // задаёт склейки, целевую громкость, обработку голоса, настроение
+      // музыки, фоновый шум, стиль обложек и вероятности свечения, пыли и
+      // мерцания. Владелец увидел это сразу: «в швейцарском канале эффекты
+      // как на немецком». Плашки при этом расходились честно (совпадение
+      // 11%) — одинаковым было ровно то, что тянет за собой палитра.
+      palette: cur.palette || (cur.id ? "" : leastUsedPalette()),
       voice: cur.voice || "", rate: cur.rate || 0,
       visual_style: cur.visual_style || "кинематографичный",
       watermark: cur.watermark || "", accent: cur.accent || "",
       avoid: cur.avoid || "", youtube_url: cur.youtube_url || "",
+      // ЭТИХ ДВУХ ПОЛЕЙ В ФОРМЕ НЕ БЫЛО — а именно они говорят софту, О ЧЁМ
+      // канал. Без них новый канал нельзя было завести по смыслу: владелец
+      // сделал канал про кулинарию и получил ролик про стройку, потому что
+      // сказать «здесь кулинария» было негде. topic_formula выбирает тему,
+      // script_extra задаёт, как её писать.
+      topic_formula: cur.topic_formula || "",
+      script_extra: cur.script_extra || "",
     }, null, 2);
     const out = prompt(
       "Настройки канала (id — латиницей, он же имя папки).\n" +
+      "\ntopic_formula — О ЧЁМ канал. По нему подбирается тема\n" +
+      "  каждого ролика. Пусто = тему придётся вписывать руками.\n" +
+      "script_extra — как писать сценарий: чей голос, что показывать.\n" +
       "palette — почерк канала: harsh (жёсткий разбор), warm (бытовой),\n" +
       "contemplative (медленный). Пустая палитра = канал без своего лица.\n" +
       "Пустой voice = голос выбирается автоматически.", draft);
@@ -582,6 +691,179 @@ const app = {
              + "план ~1.5 с, субтитры включены", "dim");
     }
   },
+  // ---- ИИ-видео: прямой доступ к генератору, без конвейера ----
+  // Сколько картинок нужно каждому режиму — то же число, что проверяет
+  // бэкенд. Показываем ДО запуска: иначе Batch Frame уходит на сервер с
+  // одной картинкой, тратит слот и падает там.
+  // ДВА ШАГА, а не один. Однокнопочная сборка «тема -> готовое видео»
+  // отнимала у человека тот единственный шаг, где он и решает, каким
+  // ролик будет: выбор кадров. Теперь генератор отдаёт кадры, человек
+  // отмечает нужные, и ролик собирается только из них.
+  aiFrames() {
+    const t = $("abTopic").value.trim();
+    if (!t) return addLog("Напиши тему", "warn");
+    rpc("ai_frames", t, $("abLang").value, $("abRatio").value,
+        parseInt($("abCount").value));
+  },
+  aiPicked() {
+    return [...document.querySelectorAll(".ai-pick:checked")]
+      .map((c) => c.dataset.path);
+  },
+  aiCountPicked() {
+    const n = app.aiPicked().length;
+    if ($("aiPicked")) $("aiPicked").textContent = "выбрано " + n;
+  },
+  aiPickAll() {
+    document.querySelectorAll(".ai-pick").forEach((c) => { c.checked = true; });
+    app.aiCountPicked();
+  },
+  aiPickNone() {
+    document.querySelectorAll(".ai-pick").forEach((c) => { c.checked = false; });
+    app.aiCountPicked();
+  },
+  aiBuildFrom() {
+    const sel = app.aiPicked();
+    if (sel.length < 2) return addLog("Отметь хотя бы два кадра", "warn");
+    // Порядок сборки = порядок в списке: кадры идут новыми сверху, а
+    // ролик должен идти по сюжету, поэтому разворачиваем.
+    const ordered = sel.slice().reverse();
+    rpc("ai_build_from", ordered.join(" | "), $("abLang").value,
+        $("abRatio").value, $("abTopic").value.trim());
+  },
+  aiKindChanged() {
+    const need = {text: 0, banana: 0, image: 1, batch: 2, component: 2};
+    const n = need[$("aiKind").value] || 0;
+    $("aiNeed").textContent = n === 0 ? "картинки не нужны"
+      : n === 1 ? "нужна 1 картинка" : "нужно минимум " + n + " картинки";
+    $("aiImagesRow").style.display = n === 0 ? "none" : "";
+  },
+  aiPickImages() {
+    rpc("ai_pick_images").then((p) => { if (p) $("aiImages").value = p; });
+  },
+  aiGenerate() {
+    const prompt = $("aiPrompt").value.trim();
+    // Камера отдельным списком, а не словами в промпте: у Flow это
+    // отдельный орган управления, и не зря — забытое движение камеры
+    // даёт статичный кадр, который в ленте читается как фотография.
+    const cam = $("aiCamera").value;
+    const full = cam ? prompt + ". Camera: " + cam : prompt;
+    rpc("ai_generate", $("aiKind").value, full, $("aiAspect").value,
+        parseInt($("aiCount").value), $("aiImages").value);
+  },
+  aiIngAdd(kind) { rpc("ai_ingredient_add", kind).then(app.aiIngShow); },
+  aiIngRemove(name) { rpc("ai_ingredient_remove", name).then(app.aiIngShow); },
+  aiIngLoad() { rpc("ai_ingredients").then(app.aiIngShow); },
+  aiIngShow(rows) {
+    const box = $("aiIngRow");
+    if (!box) return;
+    rows = rows || [];
+    $("aiIngCount").textContent = rows.length;
+    box.innerHTML = rows.length ? rows.map((r) => `
+      <div class="ing-cell" title="${esc(r.name)}">
+        <img src="file:///${encodeURI(r.path.replace(/\\/g, "/"))}">
+        <span class="ing-tag">${esc(r.label)}</span>
+        <button class="ing-x" data-ing="${esc(r.name)}">✕</button>
+      </div>`).join("")
+      : '<div class="hint">пусто — герой будет разным в каждом клипе</div>';
+    box.querySelectorAll("[data-ing]").forEach((b) => {
+      b.onclick = () => app.aiIngRemove(b.dataset.ing);
+    });
+  },
+  aiSceneNew() {
+    const n = prompt("Имя сцены:", "");
+    if (n) rpc("ai_scene_new", n).then(app.aiSceneShow);
+  },
+  aiSceneLoad() { rpc("ai_scenes").then(app.aiSceneShow); },
+  aiSceneShow(rows) {
+    const box = $("aiSceneRows");
+    if (!box) return;
+    rows = rows || [];
+    window._scenes = rows;
+    $("aiSceneCount").textContent = rows.length;
+    box.innerHTML = rows.length ? rows.map((s) => `
+      <div class="scene-row">
+        <span class="scene-name">${esc(s.name)}</span>
+        <span class="hint">${s.clips} клип. · ${s.secs} c</span>
+        <div class="spacer"></div>
+        <button class="btn ghost" data-ext="${esc(s.name)}">Продолжить</button>
+        <button class="btn ghost" data-asm="${esc(s.name)}">Склеить</button>
+      </div>`).join("")
+      : '<div class="hint">сцен пока нет</div>';
+    box.querySelectorAll("[data-ext]").forEach((b) => {
+      b.onclick = () => {
+        const what = prompt("Что происходит дальше в сцене «"
+                            + b.dataset.ext + "»?", "");
+        if (what) rpc("ai_scene_extend", b.dataset.ext, what,
+                      $("aiAspect").value);
+      };
+    });
+    box.querySelectorAll("[data-asm]").forEach((b) => {
+      b.onclick = () => rpc("ai_scene_assemble", b.dataset.asm);
+    });
+  },
+  aiToScene(path) {
+    const list = (window._scenes || []).map((s) => s.name);
+    if (!list.length) return addLog("Сначала заведи сцену", "warn");
+    const n = prompt("В какую сцену положить?" + "\n\n" + list.join(", "),
+                     list[0]);
+    if (n) rpc("ai_scene_add", n, path).then(app.aiSceneShow);
+  },
+  aiExtend(path, name) {
+    // Продолжение берёт ПОСЛЕДНИЙ кадр клипа и стартует с него — так у
+    // Flow снят потолок в восемь секунд. Стык не виден: там один и тот
+    // же кадр.
+    const what = prompt("Что происходит дальше в кадре?" +
+                        "\n\nПродолжаем: " + name, "");
+    if (!what) return;
+    rpc("ai_extend", path, what, $("aiAspect").value);
+  },
+  aiRefresh() {
+    rpc("ai_list").then((rows) => {
+      const box = $("aiGrid");
+      if (!box) return;
+      rows = rows || [];
+      $("aiCount2").textContent = rows.length;
+      if (!rows.length) {
+        box.innerHTML = '<div class="hint">пока пусто</div>';
+        return;
+      }
+      box.innerHTML = rows.map((r) => `
+        <div class="ai-cell">
+          ${r.kind === "video"
+            ? `<video src="file:///${encodeURI(r.path.replace(/\\/g, "/"))}"
+                     controls preload="metadata"></video>`
+            : `<img src="file:///${encodeURI(r.path.replace(/\\/g, "/"))}">`}
+          ${r.kind === "image" ? `<label class="ai-pick-box">
+            <input type="checkbox" class="ai-pick"
+                   data-path="${esc(r.path)}"> выбрать
+          </label>` : ""}
+          <div class="ai-meta">
+            <span class="ai-name">${esc(r.name)}</span>
+            <span class="hint">${r.size_mb} МБ</span>
+          </div>
+          <div class="ai-acts">
+            ${r.kind === "video" ? `
+              <button data-ext2="${esc(r.path)}" data-nm="${esc(r.name)}">Продолжить</button>
+              <button data-sc="${esc(r.path)}">в сцену</button>` : ""}
+          </div>
+          <div class="ai-prompt" title="${esc(r.prompt)}">${esc(r.prompt)}</div>
+        </div>`).join("");
+      // Кнопки нарисованы шаблоном, обработчики вешаем ПОСЛЕ вставки:
+      // innerHTML их не переносит, и без этого они были бы мёртвыми.
+      // Счётчик выбранных обновляем и при отрисовке, и по клику: без
+      // первого он врал сразу после генерации новых кадров.
+      box.querySelectorAll(".ai-pick").forEach((c) => {
+        c.onchange = () => app.aiCountPicked();
+      });
+      app.aiCountPicked();
+      box.querySelectorAll("[data-ext2]").forEach((b) => {
+        b.onclick = () => app.aiExtend(b.dataset.ext2, b.dataset.nm);
+      });
+      box.querySelectorAll("[data-sc]").forEach((b) => {
+        b.onclick = () => app.aiToScene(b.dataset.sc);
+      });
+    });
+  },
   pickMusic: () => rpc("pick_music").then(p => { if (p) $("musicPath").value = p; }),
   mixMusic: () => rpc("mix_music", $("musicPath").value,
                       parseInt($("musicGain").value)),
@@ -617,7 +899,30 @@ const app = {
   suggestOverlays: () => rpc("suggest_overlays", parseFloat($("ovDur").value))
       .then(r => { if (r) $("overlaysText").value = r; }),
   saveOverlays: () => rpc("save_overlays", $("overlaysText").value),
-  render: () => rpc("render", {
+  // Эффекты поверх кадра — ОДИН набор ключей на обе кнопки.
+  // Раньше их слала только кнопка «Рендер», явными true/false из галочек, а
+  // genParams() («Собрать всё» и Автопилот) не слал вовсе — и питон
+  // подставлял свои умолчания, где bloom, light_leak и sand ВКЛЮЧЕНЫ. Один и
+  // тот же проект выходил со свечением и засветкой через цепочку и плоским
+  // через «Рендер», при одинаково выглядящих галочках и без единой строки
+  // объяснения на экране. Теперь оба пути шлют одно и то же, а галочки в
+  // index.html выставлены ровно в питоновские умолчания — то, что человек
+  // видит, и есть то, что получится.
+  // randomize здесь ЖЕ, и это не лишнее: при включённом «Разнообразии»
+  // bloom, засветку, пыль и мерцание выбирает core.project_style — от пути
+  // проекта, детерминированно. «Собрать всё» его слало, «Рендер» нет, и
+  // пересборка того же проекта выходила с другими эффектами, чем первая
+  // сборка. Тем же соображением сюда добавляли профиль канала (см.
+  // _render_opts в webapp.py): пересборка обязана давать тот же ролик.
+  fxParams() {
+    const on = id => ($(id) ? $(id).checked : false);
+    return {
+      bloom: on("rBloom"), light_leak: on("rLeak"), dust: on("rDust"),
+      flicker: on("rFlicker"), sand: on("rSand"), stars: on("rStars"),
+      embers: on("rEmbers"), randomize: on("randomize"),
+    };
+  },
+  render: () => rpc("render", Object.assign({
     resolution: $("rRes").value, fps: parseInt($("rFps").value),
     intensity: $("rInt").value, sub_size: $("rSubSize").value,
     quality: $("rQuality").value, sub_style: $("rSubStyle").value,
@@ -625,14 +930,9 @@ const app = {
     vignette: $("rVignette").checked, letterbox: $("rLetterbox").checked,
     vhs: $("rVhs").checked, chromab: $("rChromab").checked,
     chapters: $("rChapters").checked, draft: $("rDraft").checked,
-    bloom: $("rBloom").checked, light_leak: $("rLeak").checked,
-    dust: $("rDust").checked, flicker: $("rFlicker").checked,
-    sand: $("rSand") ? $("rSand").checked : false,
-    stars: $("rStars") ? $("rStars").checked : false,
-    embers: $("rEmbers") ? $("rEmbers").checked : false,
     out_name: $("outName").value,
     overlays: $("overlaysText").value,
-  }),
+  }, app.fxParams())),
   stopRender: () => rpc("stop_render"),
   openResult: () => rpc("open_result", $("outName").value),
   openFolder: () => rpc("open_folder"),
@@ -641,6 +941,178 @@ const app = {
   generateAll() { rpc("generate_all", app.genParams()); },
   // Ночной прогон идёт РОВНО с теми же настройками, что и кнопка рядом:
   // отдельный набор параметров разъехался бы с ней при первой же правке.
+  /* ---------- Вкладка «Экспорт»: монтажный набор ---------- */
+  /* Список строит Python: он один знает, что реально лежит на диске.
+     Страница только рисует и просит открыть пункт ПО КЛЮЧУ — путь она не
+     называет, иначе окно могло бы попросить открыть что угодно. */
+  /* Каналы и ролики для вкладки «Монтаж». Список строит Python: он
+     знает, где лежат папки каналов и в какой из них есть что монтировать. */
+  montageSources: null,
+  async loadMontageSources() {
+    const src = await rpc("montage_sources");
+    if (!src || !src.channels) return;
+    this.montageSources = src;
+    const cs = $("mChannel");
+    if (!cs) return;
+    cs.innerHTML = src.channels.map(
+      c => `<option value="${c.id}">${c.name}</option>`).join("");
+    // Выбранным показываем тот канал, чей проект открыт сейчас.
+    const cur = (src.current || "").replace(/\\/g, "/");
+    let pick = src.channels.find(
+      c => c.projects.some(p => cur.startsWith(p.path.replace(/\\/g, "/"))));
+    if (!pick) pick = src.channels[0];
+    if (pick) cs.value = pick.id;
+    await this.montageChannel(cur);
+  },
+  async montageChannel(keepPath) {
+    const src = this.montageSources;
+    if (!src) return;
+    const c = src.channels.find(x => x.id === $("mChannel").value);
+    // ПЕРЕКЛЮЧАЕМ САМ КАНАЛ, а не только папку. Без этой строки выбор на
+    // вкладке менял лишь рабочую папку, а язык, голос, палитра и формат
+    // кадра оставались от прежнего канала: владелец выбрал Tiefenzeit,
+    // нажал «Собрать материал» — и получил Einsturzpunkt с вертикальным
+    // кадром и планом 1.5 c (31.08).
+    if (c) {
+      await rpc("channel_select", c.id);
+      const sel = $("channelSel");
+      if (sel) sel.value = c.id;
+      await this.loadChannels(false);
+    }
+    const ps = $("mProject");
+    if (!c || !ps) return;
+    if (!c.projects.length) {
+      ps.innerHTML = '<option value="">— нет готовых папок —</option>';
+      $("mPath").textContent = "У этого канала пока нечего монтировать";
+      $("exportRows").innerHTML =
+        '<div class="hint">Сначала собери ролик на этом канале.</div>';
+      return;
+    }
+    ps.innerHTML = c.projects.map(
+      p => `<option value="${p.path}">${p.name}</option>`).join("");
+    const want = (keepPath || "").replace(/\\/g, "/");
+    const same = c.projects.find(p => p.path.replace(/\\/g, "/") === want);
+    ps.value = same ? same.path : c.projects[0].path;
+    this.montageProject();
+  },
+  async montageProject() {
+    const path = $("mProject").value;
+    if (!path) return;
+    $("mPath").textContent = path;
+    await rpc("set_project", path);
+    this.loadExportKit();
+  },
+
+  buildMaterial() {
+    // Своя тема и свой сценарий — с ЭТОЙ вкладки, а не с «Сценария».
+    // Пусто в обоих полях означает прежнее поведение: тема из очереди
+    // канала, сценарий пишется сам.
+    const topic = ($("mTopic") ? $("mTopic").value : "").trim();
+    const script = ($("mScript") ? $("mScript").value : "").trim();
+    const откуда = script ? "по твоему сценарию"
+                          : (topic ? `по теме «${topic}»`
+                                   : "по теме из очереди канала");
+    if (!confirm(`Соберу материал ${откуда}: озвучка, субтитры, клип под `
+                 + "каждый план. Рендера и плашек НЕ будет.\n\n"
+                 + "Это часы работы. Запускать?")) return;
+    rpc("build_material",
+        Object.assign(app.genParams(), { script: script, topic: topic }));
+  },
+  materialDone() {
+    addLog("[Материал] Готово — смотри список ниже", "ok");
+    this.loadExportKit();
+  },
+
+  async loadExportKit() {
+    const box = $("exportRows");
+    if (!box) return;
+    const rows = await rpc("export_kit");
+    if (!rows || !rows.length) { box.innerHTML =
+      '<div class="hint">Проект пуст — сначала собери сценарий.</div>'; return; }
+    box.innerHTML = rows.map(r => {
+      const cls = r.ready ? "exp-row" : "exp-row miss";
+      const mark = r.ready ? "✓" : "·";
+      const click = r.ready ? ` onclick="app.exportOpen('${r.key}')"` : "";
+      return `<div class="${cls}"${click}>
+                <div class="exp-mark">${mark}</div>
+                <div class="exp-mid">
+                  <div class="exp-title">${r.title}</div>
+                  <div class="exp-hint">${r.hint}</div>
+                </div>
+                <div class="exp-info">${r.info}</div>
+              </div>`;
+    }).join("");
+  },
+  exportOpen(key) { rpc("export_open", key); },
+  exportPack() { rpc("export_pack"); },
+  exportPacked(dir) {
+    addLog("[Экспорт] Папка собрана: " + dir, "ok");
+    this.loadExportKit();
+  },
+
+  /* Поле «Каналов одновременно» заполняем ЧИСЛОМ ВКЛЮЧЁННЫХ КАНАЛОВ.
+     В разметке стояла двойка, и при каждом перезапуске окна она
+     возвращалась — просьба «три канала» трижды дала два. */
+  async fillParMax() {
+    const el = $("parMax");
+    if (!el) return;
+    const n = await rpc("active_channels_count");
+    if (n && n > 0) { el.value = Math.min(4, n); el.max = Math.max(4, n); }
+  },
+  /* Ход сборки. Отвечает на единственный вопрос, который тут важен:
+     ЗАВИСЛО ИЛИ РАБОТАЕТ. Отличить можно только по пульсу журнала — по
+     общему времени нельзя, ролик честно собирается часами. */
+  parStatusTimer: null,
+  async loadParStatus() {
+    const box = $("parStatus");
+    if (!box) return;
+    const st = await rpc("parallel_status");
+    if (!st) return;
+    if (!st.running || !st.running.length) {
+      box.innerHTML = '<div class="hint">Сейчас ничего не собирается.</div>';
+      return;
+    }
+    const lim = st.silent_limit_min || 45;
+    box.innerHTML = st.running.map(r => {
+      const m = r.silent_min;
+      let mark = "работает", cls = "ok";
+      if (m === null) { mark = "журнала нет"; cls = "warn"; }
+      else if (m > lim) { mark = `МОЛЧИТ ${m} мин — похоже, зависло`; cls = "err"; }
+      else if (m > 10) { mark = `тихо ${m} мин`; cls = "warn"; }
+      else { mark = `работает, строка ${m} мин назад`; }
+      return `<div class="exp-row">
+                <div class="exp-mark">${cls === "ok" ? "▶" : "!"}</div>
+                <div class="exp-mid">
+                  <div class="exp-title">${r.id}</div>
+                  <div class="exp-hint">${esc(r.last || "")}</div>
+                </div>
+                <div class="exp-info">${mark}</div>
+              </div>`;
+    }).join("");
+  },
+  startParStatus() {
+    if (this.parStatusTimer) return;
+    this.loadParStatus();
+    this.parStatusTimer = setInterval(() => this.loadParStatus(), 20000);
+  },
+  autopilotParallel() {
+    // ПУСТОЕ ПОЛЕ = ВСЕ включённые каналы. Прежде здесь стояла двойка,
+    // зашитая в разметку, и она возвращалась при каждом перезапуске окна:
+    // владелец трижды просил три канала и трижды получал два. Подстановка
+    // числа из питона не спасала — showStage при старте не вызывается, а
+    // страница может открыться раньше, чем мост ответит. Теперь решает
+    // питон: 0 значит «сколько каналов включено, столько и бери».
+    const raw = ($("parMax").value || "").trim();
+    const n = raw ? (parseInt(raw) || 0) : 0;
+    const v = parseInt($("autoVideos").value) || 1;
+    if (!confirm(`Запущу каналы параллельно, ${n ? "до " + n : "ВСЕ включённые"} одновременно, `
+                 + `по ${v} ролик(ов) на канал.\n\n`
+                 + "Каждый канал пойдёт отдельным процессом и будет писать "
+                 + "в свой журнал autopilot_logs/. Это часы работы, окно "
+                 + "закрывать нельзя. Запускать?")) return;
+    rpc("autopilot_parallel", { max: n, videos: v });
+  },
+
   autopilot() {
     const n = parseInt($("autoVideos").value) || 1;
     const chn = channelsCache.length || 0;
@@ -659,7 +1131,7 @@ const app = {
                                    { videos: n, script: "", topic: "" }));
   },
   genParams() {
-    return {
+    return Object.assign({
       lang: $("lang").value, tone: $("tone").value,
       visual_mode: $("visualMode").value, visual_style: $("visualStyle").value,
       ai_ratio: parseFloat($("aiRatio").value),
@@ -677,12 +1149,11 @@ const app = {
       vhs: $("rVhs").checked, chromab: $("rChromab").checked,
       chapters: $("rChapters").checked, draft: $("rDraft").checked,
       overlays: $("overlaysText").value,
-      randomize: $("randomize").checked,
       thumbs: $("rThumbs") ? $("rThumbs").checked : true,
       grow_variants: $("rGrow") ? $("rGrow").checked : true,
       check_shots: $("rShots") ? $("rShots").checked : true,
       topic: $("topic") ? $("topic").value : "",
-    };
+    }, app.fxParams());
   },
   clearLog() { $("console").innerHTML = ""; $("console2").innerHTML = ""; },
   copyLog() {
@@ -698,6 +1169,41 @@ const app = {
       b.scrollTop = b.scrollHeight;
     }
   },
+  // ---------- набор материала под ручной монтаж ----------
+  openKit() { $("kitModal").classList.add("open"); app.kitCost(); },
+  closeKit() { $("kitModal").classList.remove("open"); },
+  kitCost() {
+    // Цифры не выдуманные: замер 24.08.2026 на запасном генераторе — кадр
+    // 2624x1472 около двух минут, клип 5 с в 720p — 98 секунд. Человек
+    // должен видеть, во что он ввязывается, ДО нажатия кнопки, иначе
+    // «собрать» на 20 клипов выглядит как зависшая программа.
+    const f = +$("kitAiFrames").value || 0, c = +$("kitAiClips").value || 0;
+    const mins = Math.round((f * 2 + c * 1.7) + 1.5);
+    $("kitCostLine").textContent = (f || c)
+      ? `Поиск плюс генерация: примерно ${mins} мин. Кадр ~2 мин, клип ~1.7 мин.`
+      : "Только поиск в интернете — минута-две на всё.";
+  },
+  kitStart() {
+    const q = $("kitQuery").value.trim();
+    if (!q) { $("kitQuery").focus(); return; }
+    $("kitOpenBtn").hidden = true;
+    rpc("mediakit_build", {
+      query: q,
+      shots: +$("kitShots").value || 8,
+      stock_video: $("kitVideo").checked,
+      stock_photo: $("kitPhoto").checked,
+      music: $("kitMusic").checked,
+      ai_frames: +$("kitAiFrames").value || 0,
+      ai_clips: +$("kitAiClips").value || 0,
+    });
+  },
+  kitDone(dir) {
+    // Окно НЕ закрываем: человек тут же видит кнопку «Открыть папку», а не
+    // ищет результат по журналу.
+    $("kitOpenBtn").hidden = false;
+    $("kitCostLine").textContent = "Готово: " + dir;
+  },
+  kitOpen() { rpc("mediakit_open", ""); },
   openSettings() {
     rpc("settings_get").then(s => {
       s = s || {};
@@ -739,7 +1245,32 @@ const app = {
 
 $("projPath").addEventListener("change",
   () => rpc("set_project", $("projPath").value).then(refresh));
-$("lang").addEventListener("change", app.fillVoices);
+// ЯЗЫК ПРИНАДЛЕЖИТ КАНАЛУ, и раньше это делало список неработающим: канал
+// навязывал свой язык при каждом обновлении состояния (см. setSel("lang",
+// c.lang) в applyChannels), поэтому выбранный руками язык откатывался
+// назад через секунду. Со стороны это выглядело так: «какой канал ни
+// выбери, язык озвучки поменять нельзя».
+//
+// Чиним не отменой власти канала, а тем, что список её ЗАПИСЫВАЕТ: смена
+// языка при выбранном канале правит профиль канала. Тогда выбор держится
+// и в следующем ролике тоже — а без канала список работает как прежде,
+// разово на текущий проект.
+$("lang").addEventListener("change", () => {
+  app.fillVoices();
+  const id = $("channelSel") ? $("channelSel").value : "";
+  const c = channelsCache.find((x) => x.id === id);
+  if (!c) return;                       // без канала — разовая настройка
+  const lang = $("lang").value;
+  if (!lang || lang === c.lang) return;
+  // Голос канала привязан к языку: немецкий голос на испанском тексте
+  // читает по-немецки. Меняя язык, снимаем закреплённый голос — тогда
+  // он подберётся заново под новый язык.
+  rpc("channel_save", {id: c.id, lang: lang, voice: ""}).then(() => {
+    addLog("Язык канала «" + (c.name || c.id) + "» изменён на " + lang
+           + "; закреплённый голос снят — подберётся под новый язык");
+    app.loadChannels(true); refresh();
+  });
+});
 
 /* ---------- Старт ---------- */
 app.fillVoices();
@@ -753,7 +1284,12 @@ addLog("Интерфейс загружен. Лента этапов сверх�
 // себя не выдаёт, пока отвечает основной (Gemini), и вылезает ровно тогда,
 // когда дневная квота Gemini кончилась на середине ролика. Спрашиваем на
 // старте; сам вызов защищён от повторного захода (boot() зовётся дважды).
-function boot() { refresh(); app.loadChannels(true); rpc("check_keys_startup"); }
+function boot() {
+  refresh(); app.loadChannels(true); rpc("check_keys_startup");
+  // Мастер первого запуска — по ОТСУТСТВИЮ обязательного ключа, а не по
+  // метке «первый раз»: после переустановки метка соврала бы, ключ — нет.
+  rpc("needs_setup").then((need) => { if (need) app.openSetup(); });
+}
 if (window.pywebview) boot();
 else window.addEventListener("pywebviewready", boot);
 setTimeout(() => { if (!state) boot(); }, 700);   // демо-режим в браузере
@@ -797,7 +1333,12 @@ function renderQuickTools() {
 
 let projectsCache = [];
 
-async function renderProjects() {
+// Имя НЕ renderProjects: так уже называется функция выше, которая строит
+// мини-ленту проектов на экране «Проект» из state.projects. Второе объявление
+// с тем же именем молча затирало первое — список #projList оставался пустым
+// навсегда, а каждый refresh() уходил читать meta.json всех папок канала,
+// ровно то, чего этот экран и должен избегать.
+async function renderProjectsPage() {
   const box = $("projectRows");
   if (!box) return;
   const rows = (await rpc("projects_list")) || [];
@@ -819,11 +1360,13 @@ async function renderProjects() {
 
     // Чипы показывают то, чем проекты РЕАЛЬНО отличаются друг от друга:
     // язык и голос приходят из профиля канала, длительность — оттуда же.
+    // Всё это свободный ввод человека (channels.json), поэтому в разметку —
+    // только через esc, как имя проекта строкой ниже.
     const chips = [];
-    if (p.lang) chips.push(`<span class="chip">🌐 ${p.lang}</span>`);
-    if (p.minutes) chips.push(`<span class="chip">⏱ ${p.minutes} мин</span>`);
-    if (p.voice) chips.push(`<span class="chip">🎙 ${p.voice}</span>`);
-    if (p.channel_name) chips.push(`<span class="chip">📺 ${p.channel_name}</span>`);
+    if (p.lang) chips.push(`<span class="chip">🌐 ${esc(p.lang)}</span>`);
+    if (p.minutes) chips.push(`<span class="chip">⏱ ${esc(p.minutes)} мин</span>`);
+    if (p.voice) chips.push(`<span class="chip">🎙 ${esc(p.voice)}</span>`);
+    if (p.channel_name) chips.push(`<span class="chip">📺 ${esc(p.channel_name)}</span>`);
     if (p.size_mb) chips.push(`<span class="chip ok">▶ ${p.size_mb} МБ</span>`);
 
     el.innerHTML = `
@@ -841,12 +1384,16 @@ async function renderProjects() {
 
     const [openBtn, folderBtn, delBtn] = el.querySelectorAll(".pacts button");
     openBtn.onclick = async () => { await rpc("set_project", p.path); refresh(); showStage("project"); };
-    folderBtn.onclick = () => rpc("open_folder", p.path);
+    // Папку ПРОИЗВОЛЬНОГО проекта открывает open_project_folder(path).
+    // У open_folder аргументов нет вовсе — он открывает текущий проект, и
+    // лишний путь ронял вызов на мосту (TypeError), кнопка не работала.
+    folderBtn.onclick = () => rpc("open_project_folder", p.path);
     delBtn.onclick = async () => {
       // Проект — это часы работы и гигабайты на диске; спрашиваем всегда.
       if (!confirm(`Удалить проект «${p.topic || p.name}» со всеми файлами?`)) return;
       await rpc("delete_project", p.path);
-      renderProjects();
+      refresh();                 // текущий проект мог быть удалён — перечитать
+      renderProjectsPage();
     };
     box.appendChild(el);
   });
@@ -877,6 +1424,9 @@ async function renderProjects() {
 /* ---------- Строка состояния ---------- */
 
 async function refreshStats() {
+  // Без моста опрос каждые 5 с только сыпал бы в журнал «демо-режим:
+  // бэкенд не подключён» (см. mockApi.call).
+  if (!window.pywebview) return;
   const st = await rpc("system_stats");
   if (!st) return;
   const mem = $("statMem"), q = $("statQueue");
@@ -889,11 +1439,13 @@ async function refreshStats() {
 const bar = {
   newProject() {
     const name = prompt("Название проекта:");
-    if (name) rpc("new_project", name).then(() => { refresh(); renderProjects(); });
+    if (name) rpc("new_project", name).then(() => { refresh(); renderProjectsPage(); });
   },
   preview() { rpc("open_result"); },
   generate() { rpc("generate_all", app.genParams()); },
-  folder() { rpc("open_project_folder"); },
+  // Папка ТЕКУЩЕГО проекта — это open_folder без аргументов.
+  // open_project_folder требует путь и без него падал на мосту.
+  folder() { rpc("open_folder"); },
 };
 window.bar = bar;
 
@@ -904,9 +1456,220 @@ window.bar = bar;
 const _showStage = showStage;
 showStage = function (id) {
   _showStage(id);
-  if (id === "dashboard") { renderQuickTools(); renderProjects(); }
-  if (id === "projects") renderProjects();
+  if (id === "dashboard") { renderQuickTools(); renderProjectsPage(); }
+  if (id === "projects") renderProjectsPage();
 };
 
 setInterval(refreshStats, 5000);
 setTimeout(() => { refreshStats(); renderQuickTools(); }, 800);
+
+/* =====================================================================
+   РЕЖИМ МОНТАЖА
+
+   Два независимых переключателя — источник кадров и движок графики —
+   людьми воспринимались как один. Человек ставил «ИИ в едином стиле»,
+   ждал, что Node больше не нужен, а плашки продолжали идти через
+   Remotion, и первый же прогон падал на отсутствующем npx. Режим
+   выставляет оба разом; «Свой» оставлен для тех, кому нужна смесь.
+   ===================================================================== */
+
+const MONTAGE_MODES = {
+  full:    { visual: "mixed", engine: "auto",
+             note: "Сток плюс ИИ-кадры, графика через Remotion. Нужен Node.js." },
+  ai_only: { visual: "ai", engine: "pillow",
+             note: "Каждый кадр генерируется ИИ, плашки рисует встроенный движок. "
+                 + "Node.js не нужен, Remotion и HyperFrames не участвуют. "
+                 + "Дороже по генерации и дольше, зато кадр всегда попадает в текст." },
+};
+
+async function applyMontageMode(mode, save) {
+  const m = MONTAGE_MODES[mode];
+  if (!m) return;                       // «Свой» — ничего не навязываем
+  if ($("visualMode")) $("visualMode").value = m.visual;
+  if ($("overlayEngine")) $("overlayEngine").value = m.engine;
+  // Доля ИИ в режиме «только ИИ» ни на что не влияет — кадры и так все
+  // генерируются, — но оставлять её на 85% значит показывать человеку
+  // цифру, которая противоречит выбранному режиму.
+  if (mode === "ai_only" && $("aiRatio")) {
+    const opt = [...$("aiRatio").options].find((o) => o.value === "0.85");
+    if (opt) $("aiRatio").value = "0.85";
+  }
+  addLog("[Монтаж] " + m.note, "dim");
+  if (save) await rpc("settings_save", { overlay_engine: m.engine });
+}
+
+// Движок графики читается питоном из settings.json, а не из параметров
+// прогона, поэтому его надо сохранить, а не просто выставить в списке.
+async function saveOverlayEngine() {
+  const el = $("overlayEngine");
+  if (!el) return;
+  await rpc("settings_save", { overlay_engine: el.value });
+  addLog("[Монтаж] Движок графики: " + el.options[el.selectedIndex].text, "dim");
+}
+
+app.setMontageMode = (mode) => applyMontageMode(mode, true);
+app.saveOverlayEngine = saveOverlayEngine;
+
+// Ручная правка любого из двух списков переводит режим в «Свой»: иначе
+// подпись режима врала бы о том, что на самом деле выставлено.
+document.addEventListener("DOMContentLoaded", () => {
+  // Поле «Каналов одновременно» заполняем ПРИ ЗАГРУЗКЕ. Раньше это стояло
+  // только на входе во вкладку через showStage, а showStage при старте не
+  // вызывается вовсе — поле так и оставалось с зашитой в разметку двойкой,
+  // и просьба «три канала» трижды превращалась в два (31.08).
+  if (typeof app !== "undefined") { app.fillParMax(); app.startParStatus(); }
+  const mm = $("montageMode");
+  ["visualMode", "overlayEngine"].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("change", () => {
+      if (mm) mm.value = "custom";
+      if (id === "overlayEngine") saveOverlayEngine();
+    });
+  });
+});
+
+/* ===================== МАСТЕР ПЕРВОГО ЗАПУСКА =====================
+   Всё содержимое рисуется ИЗ РЕЕСТРА core.KEY_SPECS, а не из разметки.
+   Раньше подписи к ключам жили в index.html и разошлись с правдой: платный
+   VeoNonStop был подписан «основной», бесплатный Gemini — «запасной». Пока
+   подписи лежат в другом файле, чем проверка, они расходятся снова; поэтому
+   единственный источник — питон.                                        */
+
+const SETUP = { keys: [], probing: {}, values: {} };
+
+/* Состояния приходят из питона по-русски («не спросил» — с пробелом), а имя
+   класса с пробелом развалилось бы на два класса и красило бы не то. Поэтому
+   в разметку идёт латинская метка, а человеку показывается русский текст. */
+const KSTATE = {
+  "ok": "ok", "пусто": "empty", "лимит": "limit", "мёртв": "dead",
+  "не спросил": "unknown", "wait": "wait", "filled": "filled",
+};
+const kslug = (s) => KSTATE[s] || "unknown";
+
+function setupRow(k) {
+  const money = k.money === "платный"
+    ? '<span class="tag paid">платный</span>'
+    : '<span class="tag free">бесплатно</span>';
+  const st = SETUP.probing[k.id] || (k.filled ? { state: "filled" } : null);
+  const dot = st ? `<span class="kdot ${kslug(st.state)}"></span>` : "";
+  const note = st && st.text
+    ? `<span class="kstate ${kslug(st.state)}">${esc(st.text)}${st.why ? " — " + esc(st.why) : ""}</span>`
+    : "";
+  return `
+    <div class="krow" data-key="${esc(k.id)}">
+      <div class="khead">${dot}<b>${esc(k.title)}</b>${money}
+        <span class="kwhen">${esc(k.howlong)}</span></div>
+      <div class="kgives">${esc(k.gives)}</div>
+      <div class="field">
+        <input type="text" id="k_${esc(k.id)}" class="grow" spellcheck="false"
+               value="${esc(SETUP.values[k.id] || "")}"
+               placeholder="${k.filled && k.hint ? esc(k.hint) + " — вписан"
+                             : k.filled ? "уже вписан" : "вставь ключ сюда"}">
+        <button class="btn ghost" onclick="app.setupGet('${esc(k.id)}')">Получить</button>
+        <button class="btn ghost" onclick="app.setupProbe('${esc(k.id)}')">Проверить</button>
+      </div>
+      <div class="kwithout">Без него: ${esc(k.without)}</div>
+      ${note}
+    </div>`;
+}
+
+/* Забрать набранное из полей ПЕРЕД перерисовкой.
+   Без этого «Проверить» стирало ВСЕ введённые ключи: renderSetup()
+   пересобирает innerHTML целиком, а вместе с ним пересоздаёт поля ввода —
+   и человек на первом же экране терял то, что только что вставил. Сама
+   проверка при этом уходила с верным значением, поэтому в журнале дефект
+   не виден. Замерено вживую. */
+function grabSetupValues() {
+  for (const k of SETUP.keys) {
+    const el = $("k_" + k.id);
+    if (el) SETUP.values[k.id] = el.value;
+  }
+}
+
+function renderSetup() {
+  grabSetupValues();
+  const req = SETUP.keys.filter(k => k.role === "обязательный");
+  const opt = SETUP.keys.filter(k => k.role !== "обязательный");
+  const free = req.filter(k => k.money === "бесплатно").length;
+  $("setupLead").innerHTML =
+    `Чтобы собрать первый ролик, нужно ${req.length} ключа — ` +
+    `${free === req.length ? "оба бесплатные" : "часть бесплатных"}. ` +
+    `Озвучка работает без ключей вообще. Остальное подключается когда угодно ` +
+    `и на первый ролик не влияет.`;
+  $("setupRequired").innerHTML = req.map(setupRow).join("");
+  $("setupOptional").innerHTML = opt.map(setupRow).join("");
+}
+
+Object.assign(app, {
+  async openSetup() {
+    const r = await rpc("keys_report");
+    SETUP.keys = (r && r.keys) || [];
+    SETUP.probing = {};
+    SETUP.values = {};
+    renderSetup();
+    $("setupModal").classList.add("open");
+  },
+  setupToggleMore() {
+    const box = $("setupOptional");
+    box.hidden = !box.hidden;
+    $("setupMoreBtn").textContent = box.hidden
+      ? "Что можно подключить позже →"
+      : "Свернуть необязательные ↑";
+  },
+  setupGet(id) {
+    const k = SETUP.keys.find(x => x.id === id);
+    if (k) rpc("open_url", k.where);
+  },
+  async setupProbe(id) {
+    grabSetupValues();
+    SETUP.probing[id] = { state: "wait", text: "проверяю…" };
+    renderSetup();
+    const r = await rpc("key_probe", id, SETUP.values[id] || "");
+    SETUP.probing[id] = r || { state: "не спросил", text: "нет ответа" };
+    renderSetup();
+  },
+  // Пишем ТОЛЬКО непустые поля: пустое поле означает «не трогай», а не
+  // «сотри». Иначе открытый и закрытый без правок мастер стирал бы ключи,
+  // вписанные раньше в «Настройках API».
+  async setupSave() {
+    grabSetupValues();
+    const payload = {};
+    for (const k of SETUP.keys) {
+      const v = (SETUP.values[k.id] || "").trim();
+      if (v) payload[k.id] = v;
+    }
+    if (Object.keys(payload).length) await rpc("settings_save", payload);
+    const r = await rpc("keys_report");
+    if (r && !r.ready) {
+      addLog("Ещё не вписаны обязательные ключи: " + r.missing.join(", "), "warn");
+      SETUP.keys = r.keys; renderSetup();
+      return;
+    }
+    $("setupModal").classList.remove("open");
+    addLog("Ключи сохранены. Можно делать первый ролик.", "ok");
+  },
+  setupSkip() {
+    $("setupModal").classList.remove("open");
+    addLog("Мастер пропущен. Ключи всегда можно вписать в «Настройках API».", "dim");
+  },
+});
+
+
+/* Правая панель: спрятать или показать.
+   Выбор запоминается в localStorage, а не в settings.json: это настройка
+   ОКНА, а не проекта, и гонять её через питон ради одного логического
+   значения незачем. Обёрнуто в try — в некоторых сборках окна хранилище
+   недоступно, и падать из-за настройки вида нельзя. */
+Object.assign(app, {
+  toggleSide() {
+    const hidden = document.body.classList.toggle("side-hidden");
+    try { localStorage.setItem("cf.side-hidden", hidden ? "1" : "0"); } catch (e) {}
+  },
+});
+
+try {
+  if (localStorage.getItem("cf.side-hidden") === "1") {
+    document.body.classList.add("side-hidden");
+  }
+} catch (e) {}

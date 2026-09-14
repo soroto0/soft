@@ -2199,5 +2199,2140 @@
     "checked": "2026-08-16 20:06",
     "subject": "A schematic section cut showing inactive/unconnected piezometer nodes as grey circles, with the active piping channel passing through a blind spot highlighted in orange.",
     "title": "SENSORKALIBRIERUNG UND MESSLÜCKEN"
+  },
+  "progressive_collapse_mechanics": {
+    "verdict": "ok",
+    "why": "Five vertical columns under a sagging beam; the central column is orange with a crack and labeled 0 kN, while the adjacent columns have large red arrows and '265 kN' labels compared to the smaller white arrows and '100 kN' labels on the outer columns.",
+    "checked": "2026-08-17 23:39",
+    "subject": "Ein schematisches Gittermodell zeigt, wie das Versagen einer zentralen Stütze (orange markiert) die Lastpfeile auf benachbarte Stützen massiv vergrößert, bis diese ebenfalls orange aufblinken.",
+    "title": "Prinzip: Progressiver Kollaps"
+  },
+  "neutral_axis_stresses": {
+    "verdict": "ok",
+    "why": "a rectangle containing a horizontal gray band and five circles, adjacent to two triangles of horizontal arrows (red on top, yellow on bottom) that meet at a point aligned with the gray band.",
+    "checked": "2026-08-17 23:40",
+    "subject": "Ein orthogonaler Schnitt einer Decke zeigt Druckspannungs-Vektoren oben und Zugspannungs-Vektoren unten, während die mittlere 'neutrale Zone' grau und spannungsfrei bleibt.",
+    "title": "Spannungsverteilung im Querschnitt"
+  },
+  "precast_element_assembly": {
+    "verdict": "ok",
+    "why": "a grey base rectangle, three white triangle outlines and four yellow circles above it, and a larger dotted rectangle separated at the top, all with leader lines and labels.",
+    "checked": "2026-08-17 23:44",
+    "subject": "Eine technische Explosionszeichnung zeigt die untere Fertigteilplatte, die darauf montierten Gitterträger mit Kugeln und den darüber liegenden Bereich für den Ortbeton.",
+    "title": "Aufbau der Elementdecke"
+  },
+  "interface_joint_detail": {
+    "verdict": "ok",
+    "why": "a rectangle divided into two horizontal grey zones by a dashed orange line, with leader lines pointing to each zone and the line.",
+    "checked": "2026-08-17 23:46",
+    "subject": "Ein Detail-Schnitt zeigt die Kontaktlinie zwischen altem Fertigteilbeton und neuem Ortbeton als markante, orange gestrichelte Linie.",
+    "title": "Detail: Horizontale Trennfuge"
+  },
+  "reduced_contact_area": {
+    "verdict": "ok",
+    "why": "a 4x4 grid of dark grey circles with dashed inner outlines, set against a background of orange diagonal hatching that fills the spaces between them, with leader lines and labels.",
+    "checked": "2026-08-17 23:48",
+    "subject": "Eine Draufsicht auf die Fuge zeigt, wie die Kugeln den Großteil der Fläche einnehmen, sodass nur schmale, orange schraffierte Betonstege zur Kraftübertragung verbleiben.",
+    "title": "Reduzierte Verbundfläche"
+  },
+  "monolithic_vs_layered": {
+    "verdict": "ok",
+    "why": "a curved rectangular block divided into two horizontal layers, with red downward arrows on top, a dashed yellow line through the center, and a side diagram showing two triangles meeting at that center line.",
+    "checked": "2026-08-17 23:53",
+    "subject": "Ein Belastungsdiagramm zeigt, wie sich die Decke als eine Einheit biegt, wobei die neutrale Faser exakt in der Mitte des Gesamtsystems verläuft.",
+    "title": "Theoretisches Tragverhalten (Monolithisch)"
+  },
+  "required_surface_roughness": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"two adjacent rectangles with a zigzag boundary between them, three horizontal arrows crossing the boundary, and a dimension line labeled 't ≥ 5mm' at",
+    "checked": "2026-08-17 23:55",
+    "subject": "Eine technische Detailzeichnung kontrastiert eine glatte Fuge mit einer normgerechten, sägezahnartigen Profilierung für mechanischen Verbund.",
+    "title": "Soll-Zustand: Verzahnte Fuge"
+  },
+  "actual_surface_condition": {
+    "verdict": "ok",
+    "why": "Two grey rectangular blocks containing circles and dots, separated by a perfectly straight horizontal yellow line, with a scale bar at the bottom.",
+    "checked": "2026-08-17 23:56",
+    "subject": "Eine mikroskopische Schnittansicht zeigt die glatte Stahlschalungshaut des Fertigteils und die fehlende Verzahnung zum Ortbeton.",
+    "title": "Ist-Zustand: Glatte Grenzfläche"
+  },
+  "independent_layer_statics": {
+    "verdict": "ok",
+    "why": "Two separate curved lines (white and orange) between two triangular supports, with downward arrows above them and a dashed red circle below.",
+    "checked": "2026-08-18 00:00",
+    "subject": "Die Animation zeigt, wie sich die obere Platte und der untere Binder nun separat durchbiegen, was zu einer massiven Überlastung des Binders (orange) führt.",
+    "title": "Statik des getrennten Systems"
+  },
+  "horizontal_force_corbel": {
+    "verdict": "ok",
+    "why": "A horizontal rectangle resting on a bracket attached to a vertical column, with an orange horizontal arrow labeled 'F_H' pointing into the column, a small orange vertical line labeled 'ΔL', and a glowing orange contact area.",
+    "checked": "2026-08-18 00:07",
+    "subject": "Ein Detail-Aufriss zeigt, wie der sich ausdehnende Träger horizontal gegen die vertikale Stütze drückt; ein orangefarbener Kraftvektor markiert den Druckpunkt.",
+    "title": "Horizontalkraft auf Konsole"
+  },
+  "rebar_anchorage_error": {
+    "verdict": "ok",
+    "why": "A vertical rectangle and an attached trapezoid containing two horizontal bars of different lengths: a longer gray dashed bar labeled 'SOLL: 15 cm' and a shorter orange solid bar labeled 'IST: 5 cm'.",
+    "checked": "2026-08-18 00:08",
+    "subject": "Eine Röntgenansicht der Konsole vergleicht die Soll-Position der Bewehrung (15cm, grau) mit der Ist-Position (5cm, orange).",
+    "title": "Fehlerhafte Bewehrungsverankerung"
+  },
+  "capacity_reduction_chart": {
+    "verdict": "ok",
+    "why": "A bar chart with a vertical axis from 0% to 100%, two bars of different heights labeled 100% and 42% with corresponding lengths of 150 mm and 80 mm, and a schematic cross-section of a bracket in a wall with a downward arrow and a dimension line 't'.",
+    "checked": "2026-08-18 00:09",
+    "subject": "Ein Balkendiagramm zeigt das Absinken der Bruchlast von 100% auf unter 50% bei Verkürzung der Einbindetiefe.",
+    "title": "Tragfähigkeitsverlust Konsole"
+  },
+  "final_delamination": {
+    "verdict": "ok",
+    "why": "Two rectangular blocks stacked vertically, with the top block shifted to the right; a bright orange horizontal line separates them, and red arrows point in opposite directions along this interface.",
+    "checked": "2026-08-18 00:13",
+    "subject": "Die gesamte horizontale Trennfuge des Gebäudequerschnitts leuchtet orange auf und die obere Schicht gleitet sichtbar von der unteren ab.",
+    "title": "Delamination der Schichten"
+  },
+  "cross_section_cut": {
+    "verdict": "ok",
+    "why": "three concentric circles of different shades, a radius line labeled 'Ø 150mm', four downward-pointing yellow arrows, and a horizontal line labeled 'Bodenanker'",
+    "checked": "2026-08-18 02:55",
+    "subject": "Schnitt durch ein Stahlseil mit Maßpfeilen, die die Zugkraft (Vektoren) nach unten in den Bodenanker visualisieren.",
+    "title": "Seilquerschnitt und Vorspannung"
+  },
+  "structural_diagram": {
+    "verdict": "ok",
+    "why": "A vertical stack of four rectangular segments (SEG 1 through SEG 4) with a large downward-pointing orange arrow at the bottom pressing into a base labeled GELENKLAGER, accompanied by a vertical dashed line.",
+    "checked": "2026-08-18 02:59",
+    "subject": "Der Mast als vertikale Linie, unterteilt in Segmente, mit einem massiven Pfeil nach unten, der den kumulierten vertikalen Druck auf das Gelenklager darstellt.",
+    "title": "Statik unter Dauerlast"
+  },
+  "vibration_wave_diagram": {
+    "verdict": "ok",
+    "why": "Three dashed sine curves of increasing frequencies labeled 0.5 Hz, 1.2 Hz, and 2.5 Hz, plotted over a distance axis from 0m to 800m.",
+    "checked": "2026-08-18 03:02",
+    "subject": "Sinuskurven entlang der Seile, die die harmonischen Schwingungen und deren Frequenzbereiche als Wellenmuster darstellen.",
+    "title": "Seilschwingungen"
+  },
+  "resonance_chart": {
+    "verdict": "ok",
+    "why": "A resonance curve plotted on a graph with axes for Amplitude and Frequenz (Hz), showing a sharp peak at 5 Hz marked with a dashed line labeled Eigenfrequenz and a point marker on the descending slope.",
+    "checked": "2026-08-18 03:04",
+    "subject": "Ein Diagramm, das die Amplitudenverstärkung zeigt, wenn die Seilschwingungsfrequenz die Eigenfrequenz des Mastes erreicht.",
+    "title": "Resonanzkatastrophe"
+  },
+  "asymmetric_load_map": {
+    "verdict": "ok",
+    "why": "Three circular anchor points (A, B, C) arranged in a triangle connected by dashed lines, with two identical upward arrows labelled '60kN' at B and C, and a longer vertical yellow bar extending upwards from point A.",
+    "checked": "2026-08-18 03:12",
+    "subject": "Draufsicht auf die drei Ankerpunkte, bei denen ein Punkt einen höheren Vektorpfeil zeigt, was die Unwucht im System verdeutlicht.",
+    "title": "Asymmetrische Lastverteilung"
+  },
+  "deformation_schematic": {
+    "verdict": "ok",
+    "why": "A curved white vertical line, a series of vertical yellow squares, a thick yellow arrow labeled '3.1 kN' pointing down-right, a thin red line labeled '1.0 kN' pointing down-left, a white arrowhead, and horizontal grid lines.",
+    "checked": "2026-08-18 03:17",
+    "subject": "Seitliche Ansicht des Mastes, der sich durch asymmetrischen Zug der Abspannseile seitlich krümmt.",
+    "title": "Mastverformung"
+  },
+  "torsion_diagram": {
+    "verdict": "ok",
+    "why": "Two vertical dashed lines connecting three crossbars with circular end nodes that progressively twist relative to each other, flanked by curved rotational arrows.",
+    "checked": "2026-08-18 03:19",
+    "subject": "Isometrische Ansicht eines Mastsegments, bei dem Rotationspfeile die Torsion (Verdrehung) zwischen den Fachwerkknoten illustrieren.",
+    "title": "Torsionsspannung im Gittermast"
+  },
+  "stress_analysis_section": {
+    "verdict": "ok",
+    "why": "A diagonal white beam connecting two grey square nodes labeled as weld points, with red glowing spots at the junctions, a torsion callout, and a bending force label.",
+    "checked": "2026-08-18 03:21",
+    "subject": "Detailansicht einer Diagonale im Fachwerk, die unter Torsion an den Schweißpunkten punktuelle Spannungsspitzen (rot markiert) zeigt.",
+    "title": "Biegebeanspruchung der Streben"
+  },
+  "load_capacity_graph": {
+    "verdict": "ok",
+    "why": "Two horizontal bars of differing lengths measured against an axis calibrated in kN with a dashed limit line.",
+    "checked": "2026-08-18 03:23",
+    "subject": "Ein Balkendiagramm, das die geforderte Tragfähigkeit (Soll) der tatsächlichen, minderwertigen Stahlfestigkeit (Ist) gegenüberstellt.",
+    "title": "Traglast-Vergleich"
+  },
+  "force_flow_animation": {
+    "verdict": "ok",
+    "why": "Two parallel horizontal lines connected by diagonal truss struts, with yellow directional force arrows on the outer struts and a purple middle strut marked by red dots at the upper joint.",
+    "checked": "2026-08-18 03:26",
+    "subject": "Animation eines Mastsegments: Die Kraftlinien (Vektoren) durch das Fachwerk werden unterbrochen, sobald eine Strebe ausfällt, und stauen sich an den Nachbarstreben.",
+    "title": "Unterbruch des Kraftflusses"
+  },
+  "load_redistribution": {
+    "verdict": "ok",
+    "why": "A vertical grey rectangle labeled 'MAST', a dashed diagonal line pointing down and left to a large yellow downward arrow labeled 'LAST 222%', and the text 'OST' on the right with no corresponding line or arrow.",
+    "checked": "2026-08-18 03:29",
+    "subject": "Schematische Darstellung des Mastes, bei der sich die Lastvektoren nach dem Versagen der Ostseite massiv auf die Westseite konzentrieren.",
+    "title": "Lastumverteilung"
+  },
+  "stress_comparison_chart": {
+    "verdict": "ok",
+    "why": "a bar chart with two bars labeled 400 kN and 175 kN on a baseline, with an orange circular dot at the top edge of the smaller bar",
+    "checked": "2026-08-18 03:31",
+    "subject": "Balkendiagramm: Nenntragfähigkeit vs. tatsächliche Belastung, mit einer orangefarbenen Markierung am Bruchpunkt.",
+    "title": "Bauteilversagen"
+  },
+  "atomic_lattice_diagram": {
+    "verdict": "ok",
+    "why": "a grid of vertical and diagonal grey lines with larger white circles at the intersections, and smaller orange circles moving along dashed red lines between the white circles",
+    "checked": "2026-08-18 03:33",
+    "subject": "Zoom-in auf das Metallgitter (Kristallstruktur), in das kleine Punkte (Wasserstoff) zwischen die Gitteratome eindringen.",
+    "title": "Wasserstoffdiffusion"
+  },
+  "coating_section": {
+    "verdict": "ok",
+    "why": "A rectangular cross-section divided into a dark gray 'STEEL CORE' layer and a lighter gray 'ZINC LAYER' on top, with several small circular dots distributed within the steel core and the interface zone.",
+    "checked": "2026-08-18 03:35",
+    "subject": "Schnitt durch die Stahloberfläche mit einer dickeren, grauen Zinkschicht obendrauf, die die Wasserstoffatome im Inneren einschließt.",
+    "title": "Zinkversiegelung"
+  },
+  "pressure_buildup_diagram": {
+    "verdict": "ok",
+    "why": "A dark triangular wedge shape containing a cluster of yellow circles, crossed by a horizontal red double-ended arrow pointing outwards beyond its borders.",
+    "checked": "2026-08-18 03:37",
+    "subject": "Detailansicht eines Haarrisses, an dem sich Wasserstoffatome sammeln und durch Pfeile den Druck nach außen gegen die Risswände ausüben.",
+    "title": "Interner Druckaufbau"
+  },
+  "time_process_graph": {
+    "verdict": "ok",
+    "why": "A horizontal timeline axis with tick marks from 0 to 120 minutes, with a bar above it divided into a grey segment labeled 'Normale Dauer' spanning 0 to 60 minutes and a red segment labeled '+42 min Überzeit' spanning from 60 to 102 minutes.",
+    "checked": "2026-08-18 03:49",
+    "subject": "Zeitstrahl der Produktion: Normale Dauer vs. tatsächliche Dauer, mit Hervorhebung der 42-minütigen Überzeit als Ursache.",
+    "title": "Produktionsfehler: Zeitüberschreitung"
+  },
+  "grain_boundary_diagram": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"Four blue-grey rectangles separated by gaps containing dashed yellow lines, with several red circles placed both inside the rectangles and on",
+    "checked": "2026-08-18 03:51",
+    "subject": "Mikroskopische Ansicht der Korngrenzen im Stahl, an denen sich die Wasserstoffatome als Ansammlung ablagern.",
+    "title": "Wasserstoff an Korngrenzen"
+  },
+  "roof_strata_section": {
+    "verdict": "ok",
+    "why": "three horizontal layers of different shades of grey, a vertical dimension line on the left, labels with measurements on the right, and a large orange downward-pointing arrow with the label '500t'.",
+    "checked": "2026-08-18 23:39",
+    "subject": "A vertical section cut showing the layers of concrete and humus, with a dimension line and a large orange arrow indicating the 500t downward force.",
+    "title": "QUERSCHNITT DACHAUFBAU"
+  },
+  "load_concentration_elevation": {
+    "verdict": "ok",
+    "why": "A horizontal grey bar containing three vertical dashed lines, with three orange triangles positioned so their apexes align with those lines, each topped by a horizontal line and the text 'F: 50kN'.",
+    "checked": "2026-08-18 23:41",
+    "subject": "An orthogonal side view of the truss where grey material piles turn orange as they align perfectly with the vertical joint axis.",
+    "title": "PUNKTLASTEN AN KOPPELSTELLEN"
+  },
+  "stress_distribution_map": {
+    "verdict": "ok",
+    "why": "a 5x5 grid of orange squares, a digital counter displaying 667.6 kg/m², and a vertical axis with a scale and a pointer indicating a value above 650.",
+    "checked": "2026-08-18 23:42",
+    "subject": "A top-down grid of the roof where grey squares turn orange one by one as a digital counter hits 600 kg/m².",
+    "title": "FLÄCHENLAST ÜBERSCHREITUNG"
+  },
+  "collapse_zone_plan": {
+    "verdict": "ok",
+    "why": "a floor plan with labeled zones, a scale bar, a north arrow, and a large orange-brown area bounded by a dashed red line and labeled with a measurement.",
+    "checked": "2026-08-18 23:43",
+    "subject": "An orthogonal floor plan of the supermarket where a 500m² polygon is highlighted in orange to show the specific failure zone.",
+    "title": "EINSTURZBEREICH SEKTION 2"
+  },
+  "joint_fracture_detail": {
+    "verdict": "ok",
+    "why": "two grey rectangles separated by a gap, with dashed circles representing bolt holes, yellow arrows indicating outward force, and orange jagged shapes at the bolt hole locations.",
+    "checked": "2026-08-18 23:46",
+    "subject": "A close-up technical drawing of the joint where the grey steel components slide apart, leaving orange fracture lines at the bolt holes.",
+    "title": "BRUCHSTELLE KNOTENPUNKT"
+  },
+  "vibration_propagation_diagram": {
+    "verdict": "ok",
+    "why": "a grey grid representing a frame, an orange arrow pointing upwards from a base bar, and orange glowing circles at the intersections of the vertical and horizontal lines",
+    "checked": "2026-08-18 23:46",
+    "subject": "A schematic of the building frame where orange pulse waves travel from the ground up into the remaining grey trusses.",
+    "title": "VIBRATIONSÜBERTRAGUNG"
+  },
+  "truss_modification_diagram": {
+    "verdict": "ok",
+    "why": "a truss structure divided by a central vertical dashed line, with a top dimension line of 18.00m and two bottom dimension lines of 9.00m each",
+    "checked": "2026-08-18 23:49",
+    "subject": "An 18m long truss is shown in an orthogonal view with a thin vertical cut line in the center and a dimension label '9.00m' for each half.",
+    "title": "LOGISTISCHE TRÄGERTEILUNG"
+  },
+  "force_vector_analysis": {
+    "verdict": "ok",
+    "why": "a white outline of a bolt with a small grey horizontal arrow and a large, thick orange vertical arrow passing through its center",
+    "checked": "2026-08-18 23:51",
+    "subject": "A diagram of a bolt with a small grey arrow for shear and a massive orange arrow representing the unintended axial tension.",
+    "title": "FEHLDIMENSIONIERUNG DER KRÄFTE"
+  },
+  "density_comparison_visual": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"An orange diamond shape with '1.0 m' labels on its edges, a vertical dashed line labeled '1.0 m', a vertical axis on the right with ticks fro",
+    "checked": "2026-08-18 23:53",
+    "subject": "A cube of dry substrate (grey) is gradually filled with an orange liquid level to illustrate the weight increasing to 1000kg/m³.",
+    "title": "MASSEZUWACHS DURCH REGEN"
+  },
+  "tension_redistribution_model": {
+    "verdict": "ok",
+    "why": "a downward-curved grey outline, a central square with dots, and two orange arrows pointing horizontally away from it",
+    "checked": "2026-08-18 23:54",
+    "subject": "The truss bows downward in an exaggerated grey outline while orange vectors pull horizontally away from the center joint.",
+    "title": "TRANSFORMATION DER SPANNUNG"
+  },
+  "deformation_trigger_schematic": {
+    "verdict": "ok",
+    "why": "a curved grey bar, three downward red arrows, a vertical scale with numbers, and two disconnected orange line segments near an orange rectangle.",
+    "checked": "2026-08-18 23:56",
+    "subject": "A technical detail of a cable snapping or a sensor bracket bending in orange as the main grey beam deflects downward.",
+    "title": "MECHANISCHE VERFORMUNG"
+  },
+  "plastic_deformation_sequence": {
+    "verdict": "ok",
+    "why": "three numbered stages of a vertical bar under downward force, transitioning from a straight white shape to a curved yellow shape and finally an S-shaped orange-red profile, with dimension lines and a color-coded stress bar.",
+    "checked": "2026-08-18 23:57",
+    "subject": "A three-stage technical drawing showing a bolt profile shifting from a straight cylinder to an orange-tinted 'S' shape.",
+    "title": "PLASTISCHE VERFORMUNG"
+  },
+  "safety_margin_chart": {
+    "verdict": "ok",
+    "why": "two horizontal bars of different lengths and colors aligned to a horizontal axis with percentage markings from 0% to 100%, with a vertical dashed line at the 50% mark.",
+    "checked": "2026-08-18 23:58",
+    "subject": "A technical bar chart showing the 'Soll-Last' (Target) in grey and the 'Ist-Versagen' (Actual Failure) in orange at the 50% mark.",
+    "title": "TRAGFÄHIGKEITS-GRENZWERT"
+  },
+  "capacity_deficit_comparison": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"two vertical bars of different heights (grey and orange) on a baseline, with dashed horizontal lines and labels indicating a 3:1 ratio.\", \"depicts\": ",
+    "checked": "2026-08-19 00:02",
+    "subject": "A side-by-side comparison of a theoretical thick plate (grey) vs. the actual thin plate used (orange).",
+    "title": "STATISCHES DEFIZIT (1/3)"
+  },
+  "bearing_failure_process": {
+    "verdict": "ok",
+    "why": "a grey oval at the end of a vertical orange-yellow gradient path, a red downward arrow, three horizontal layers, and a temperature color ramp",
+    "checked": "2026-08-19 00:04",
+    "subject": "An animation of a bolt (grey) moving vertically through a steel plate, leaving a crushed orange wake behind it.",
+    "title": "LOCHLEIBUNGSVERSAGEN"
+  },
+  "hole_ovalization_detail": {
+    "verdict": "ok",
+    "why": "a dashed grey circle and an overlapping solid orange oval, with vertical red arrows pointing outwards and a dimension line indicating a change in height.",
+    "checked": "2026-08-19 00:06",
+    "subject": "A technical drawing showing a perfect circle in grey and an overlapping orange oval to show the extent of the metal flow.",
+    "title": "OVALISIERUNG DER BOHRUNG"
+  },
+  "leverage_increase_diagram": {
+    "verdict": "ok",
+    "why": "a horizontal bar with a load box on the right, a dashed support box on the left, an orange dimension line measuring the distance between them, and a small line graph showing an exponential curve",
+    "checked": "2026-08-19 00:07",
+    "subject": "A geometric diagram where the distance between the load and the support increases, highlighted by an orange dimension line that grows.",
+    "title": "EXPONENTIELLE HEBELWIRKUNG"
+  },
+  "eccentric_load_path": {
+    "verdict": "ok",
+    "why": "a layered grey rectangle with six circular bolt symbols, a dashed vertical center line, and an offset orange vertical arrow.",
+    "checked": "2026-08-19 00:08",
+    "subject": "A cross-section showing the vertical load axis (orange) offset by several centimeters from the center of the bolt group (grey).",
+    "title": "EXZENTRISCHE LASTLEITUNG"
+  },
+  "bolt_bending_stress": {
+    "verdict": "ok",
+    "why": "a curved vertical bar with internal dashed lines of varying colors, two horizontal bars with opposing red arrows, a curved yellow dashed arrow, and a color scale for internal stress",
+    "checked": "2026-08-19 00:10",
+    "subject": "A close-up of a single bolt showing internal orange stress curves indicating it is being bent like a lever, not just sheared.",
+    "title": "ZUSATZBEANSPRUCHUNG: BIEGUNG"
+  },
+  "asymmetric_load_redistribution": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"Four rectangles in a row labeled 'KNOTEN 1' through 'KNOTEN 4', with the second rectangle colored dark brown and the others grey; two orange ",
+    "checked": "2026-08-19 00:12",
+    "subject": "A plan view of the roof where the missing section causes large orange arrows to redirect the weight onto the neighboring grey trusses.",
+    "title": "ASYMMETRISCHE LASTVERTEILUNG"
+  },
+  "load_path_shift": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a dashed white square overlaid with several thick, intersecting brownish-orange lines and three small red dots.\", \"depicts\": false, \"why\": \"The drawi",
+    "checked": "2026-08-19 00:13",
+    "subject": "A wireframe model of the building where original grey load lines disappear and are replaced by chaotic, thick orange lines.",
+    "title": "VERSCHIEBUNG DER LASTPFADE"
+  },
+  "structural_instability_diagram": {
+    "verdict": "ok",
+    "why": "a tilted segmented rectangle on a base, three orange arrows pointing in the direction of the tilt, and a dashed line at the top",
+    "checked": "2026-08-19 00:14",
+    "subject": "An orthogonal view of the facade leaning inward with orange arrows showing the lack of lateral support from the missing roof.",
+    "title": "VERLUST DER QUERSTABILITÄT"
+  },
+  "structural_perimeter_failure": {
+    "verdict": "ok",
+    "why": "a circle with a white border and yellow interior, outward-pointing arrows, a dimension line marked 2mm on the border, and a break in the border where yellow material flows out.",
+    "checked": "2026-08-19 20:47",
+    "subject": "Corte transversal de la tortilla con cota de 2mm en la corteza; flechas de presión interna empujan hacia fuera hasta que aparece una grieta naranja.",
+    "title": "FALLO ESTRUCTURAL PERIMETRAL"
+  },
+  "material_composition_ratio": {
+    "verdict": "ok",
+    "why": "A horizontal bar divided into a dark section and a yellow section, set against a percentage axis (0-100%) with a small red dashed rectangle highlighting the boundary area.",
+    "checked": "2026-08-19 20:49",
+    "subject": "Gráfico de barras técnico comparando el volumen de agua frente al sólido en un tubérculo Kennebec, resaltando el margen crítico del 3%.",
+    "title": "RATIO DE MATERIA SECA"
+  },
+  "mass_loss_evaporation": {
+    "verdict": "ok",
+    "why": "An oval shape with outward-pointing dashed arrows, a digital percentage display, and a horizontal scale from 60% to 100%.",
+    "checked": "2026-08-19 20:51",
+    "subject": "Diagrama de una lámina de patata con flechas de salida de vapor y un contador digital que desciende del 100% al 60% de masa inicial.",
+    "title": "PÉRDIDA DE MASA HÍDRICA"
+  },
+  "thermal_coagulation_window": {
+    "verdict": "ok",
+    "why": "a horizontal temperature axis from 59°C to 67°C, two horizontal bars representing different temperature ranges, and a large vertical highlighted rectangle covering the 3-degree overlap between 62°C and 65°C",
+    "checked": "2026-08-19 20:53",
+    "subject": "Eje de temperatura (60°C-65°C) con dos bandas de fase; una zona de solapamiento de 3 grados se ilumina para mostrar el equilibrio de fases.",
+    "title": "VENTANA TÉRMICA CRÍTICA"
+  },
+  "vapor_expansion_failure": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"three horizontal layers with labels and percentages, yellow circles of different sizes within the layers, and a dark cross at a break in the top laye",
+    "checked": "2026-08-19 20:57",
+    "subject": "Sección lateral mostrando burbujas de gas creciendo internamente contra una corteza rígida; el punto de ruptura se marca con un aspa naranja.",
+    "title": "EXPANSIÓN POR VAPOR ATRAPADO"
+  },
+  "structural_seepage_failure": {
+    "verdict": "ok",
+    "why": "A top horizontal brown bar, two layers of light gray rounded rectangles with vertical gaps between them, and orange vertical bars with downward arrows passing through those gaps from the top bar to a bottom gray line.",
+    "checked": "2026-08-19 20:58",
+    "subject": "Corte de la base donde el fluido (huevo) penetra los intersticios de la patata en lugar de coagular en la superficie, indicado con flechas de flujo naranja.",
+    "title": "FILTRACIÓN POR FALLO TÉRMICO"
+  },
+  "material_density_projection": {
+    "verdict": "ok",
+    "why": "a large dashed circle containing a grid of 37 small yellow circles with red center points, a background grid, a radius dimension line, and technical text labels.",
+    "checked": "2026-08-19 21:00",
+    "subject": "Vista superior de la sartén con una rejilla de ingeniería que muestra la distribución equidistante de las láminas de patata para soporte de carga.",
+    "title": "DENSIDAD DE CARGA UNIFORME"
+  },
+  "cellular_evaporation_process": {
+    "verdict": "ok",
+    "why": "A hexagonal frame with a dashed inner line, a central circle, small dots with movement lines pointing outwards, and a vertical bar with a 5% marker.",
+    "checked": "2026-08-19 21:01",
+    "subject": "Esquema de una célula vegetal con vacuolas liberando moléculas de H2O a través de la membrana celular sin colapsar la pared exterior.",
+    "title": "EVAPORACIÓN INTRACELULAR"
+  },
+  "lipid_capillarity_infiltration": {
+    "verdict": "ok",
+    "why": "a large vertical rectangle connected to horizontal channels between hatched layers, with arrows pointing into the channels, and a vertical pressure scale with a low value highlighted.",
+    "checked": "2026-08-19 21:07",
+    "subject": "Sección de fibra de patata con flechas naranjas que muestran el aceite penetrando en los micro-conductos de la estructura por falta de presión de vapor.",
+    "title": "ABSORCIÓN POR CAPILARIDAD"
+  },
+  "thermal_shock_gradient": {
+    "verdict": "ok",
+    "why": "A line graph with time (s) and temperature (°C) axes, a white line dropping from 120°C to 75°C, and an orange-shaded triangular area between the initial temperature level and the drop.",
+    "checked": "2026-08-19 21:09",
+    "subject": "Gráfico de línea de tiempo vs temperatura que cae bruscamente de 120°C a 75°C, con el área de pérdida resaltada en naranja.",
+    "title": "CHOQUE TÉRMICO SISTÉMICO"
+  },
+  "thermal_inertia_ratio": {
+    "verdict": "ok",
+    "why": "a horizontal axis with kg labels, a grey rectangle and a yellow rectangle of different widths, an arrow pointing from the grey to the yellow, and a dashed circle with 'ΔT ≈ 0'.",
+    "checked": "2026-08-19 21:10",
+    "subject": "Diagrama de masas comparativo (1:3) donde el bloque mayor (aceite) absorbe el vector de frío de la patata sin variar su posición en la escala.",
+    "title": "INERCIA TÉRMICA DEL MEDIO"
+  },
+  "ingredient_moisture_analysis": {
+    "verdict": "ok",
+    "why": "a vertical bar divided into two colored segments against a y-axis labeled from 0.0g to 1.0g, with percentage labels and leader lines for each segment.",
+    "checked": "2026-08-19 21:20",
+    "subject": "Desglose porcentual de un gramo de materia prima mostrando el volumen dominante de agua frente a la fibra sólida.",
+    "title": "ANÁLISIS HÍDRICO: CEBOLLA"
+  },
+  "protein_bond_interference": {
+    "verdict": "ok",
+    "why": "Two dashed lines with vertical dotted connectors and arrows between them, interspersed with large orange spheres.",
+    "checked": "2026-08-19 21:21",
+    "subject": "Esquema de cadenas de proteína intentando enlazarse, con burbujas de vapor naranja interponiéndose y bloqueando los puntos de unión.",
+    "title": "INTERFERENCIA EN RED PROTEICA"
+  },
+  "chemical_bond_sabotage": {
+    "verdict": "ok",
+    "why": "Three pairs of yellow circles labeled 'S' with orange hexagons labeled 'AZÚCAR' positioned between them; lines connect the 'S' circles but are interrupted or overlaid by the hexagons.",
+    "checked": "2026-08-19 21:23",
+    "subject": "Diagrama molecular de enlaces S-S (azufre) siendo bloqueados por moléculas de azúcar representadas como obstáculos geométricos naranjas.",
+    "title": "SABOTAJE DE PUENTES DISULFURO"
+  },
+  "post_cook_migration_failure": {
+    "verdict": "ok",
+    "why": "nested rounded rectangles representing layers, orange arrows pointing from the center to the outer edge, and a red highlight on the outer boundary containing a jagged line",
+    "checked": "2026-08-19 21:24",
+    "subject": "Corte de la tortilla terminada con flechas naranjas de humedad viajando del núcleo a la corteza, provocando una rotura por fatiga en la superficie.",
+    "title": "MIGRACIÓN HÍDRICA POST-COCCIÓN"
+  },
+  "protein_contraction_syneresis": {
+    "verdict": "ok",
+    "why": "a grid of white dots smaller than a dashed square boundary, orange spheres scattered between the grid and the boundary, a temperature slider at 73°C, and a status scale set to 'Red cont'.",
+    "checked": "2026-08-19 21:28",
+    "subject": "La red de filamentos se encoge bruscamente, reduciendo el espacio intersticial y expulsando gotas de fluido naranja hacia los bordes.",
+    "title": "CONTRACCIÓN PROTEICA (SINÉRESIS)"
+  },
+  "cookware_thermal_accumulation": {
+    "verdict": "ok",
+    "why": "a horizontal bar divided into three distinct colored layers, labeled 'ACERO INOX', 'NÚCLEO TÉRMICO 3mm', and 'BASE INDUCCIÓN', with six upward-pointing arrows above it and temperature markers for 180°C and 220°C.",
+    "checked": "2026-08-19 21:30",
+    "subject": "Sección de la base metálica de 3mm con vectores de calor ascendentes que persisten tras la desaparición del icono de la fuente de fuego.",
+    "title": "ACUMULACIÓN TÉRMICA DEL SOPORTE"
+  },
+  "heat_conduction_velocity": {
+    "verdict": "ok",
+    "why": "a rectangle divided by a dashed line, a color gradient from red to grey, a millimeter ruler, and an arrow labeled with a velocity value",
+    "checked": "2026-08-19 21:32",
+    "subject": "Corte vertical con regla milimétrica; una zona de calor avanza 0,4mm cada segundo hacia el centro geométrico de la masa.",
+    "title": "VELOCIDAD DE CONDUCCIÓN TÉRMICA"
+  },
+  "lipid_suspension_collapse": {
+    "verdict": "ok",
+    "why": "A graph with a vertical axis for stability, grey circles at the top, yellow circles at the bottom with vertical lines above them, a brown band at the base, and fragmented orange dashed lines.",
+    "checked": "2026-08-19 21:34",
+    "subject": "Partículas de almidón que flotaban en el medio pierden su sustentación y caen hacia el fondo; los enlaces rotos se marcan en naranja.",
+    "title": "COLAPSO DE SUSPENSIÓN LÍPIDA"
+  },
+  "roof_cross_section": {
+    "verdict": "ok",
+    "why": "a rectangle divided into three horizontal gray layers of varying thickness, a vertical scale with centimeter markings, five downward-pointing orange arrows, and text labels for materials and weights.",
+    "checked": "2026-08-20 15:58",
+    "subject": "A vertical section cut of the roof shows layers of concrete, insulation, and humus, with orange force arrows pointing downward and a total weight figure.",
+    "title": "DACHLAST-ANALYSE"
+  },
+  "component_modification": {
+    "verdict": "ok",
+    "why": "a long horizontal rectangle with a dimension line of 17.00m, tick marks for length, and a vertical orange dashed line crossing it at one point",
+    "checked": "2026-08-20 15:59",
+    "subject": "A technical projection of the 17-meter steel beam shows a vertical orange dashed line where it was cut into two pieces for transport.",
+    "title": "BAUTEIL-MODIFIKATION"
+  },
+  "roof_layers": {
+    "verdict": "ok",
+    "why": "a vertical stack of seven distinct horizontal rectangles of varying thicknesses and patterns, separated by space, with leader lines on the right and numbers on the left.",
+    "checked": "2026-08-20 16:00",
+    "subject": "An exploded section view shows the sequence of soil, drainage layers, and heavy paving stones with callout leaders naming each material.",
+    "title": "SYSTEMAUFBAU DACHGARTEN"
+  },
+  "load_distribution_plan": {
+    "verdict": "ok",
+    "why": "a grid of thin lines labeled A-D and 1-3 with orange glowing circles and red 'X' marks centered on every intersection, plus a dimension line labeled 8.50m",
+    "checked": "2026-08-20 16:02",
+    "subject": "A top-down plan view shows orange shaded circles (material piles) positioned directly over the intersection points of the steel grid.",
+    "title": "MATERIAL-LAGERUNG"
+  },
+  "vibration_transfer": {
+    "verdict": "ok",
+    "why": "A grid of three vertical columns and two horizontal beams, with yellow sine-wave lines running vertically inside the columns starting from a dashed ground line.",
+    "checked": "2026-08-20 16:07",
+    "subject": "A schematic of the remaining building frame shows sine-wave lines traveling from the ground up into the overloaded steel members.",
+    "title": "VIBRATIONS-ÜBERTRAGUNG"
+  },
+  "force_vector_comparison": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a vertical bolt passing through two horizontal plates, with two grey horizontal arrows pointing in opposite directions and two large orange vertical ",
+    "checked": "2026-08-20 16:11",
+    "subject": "A diagram of a single bolt shows a grey arrow for intended shear (sideways) and a large orange arrow for unintended tension (pulling apart).",
+    "title": "SCHER- VS. ZUGBELASTUNG"
+  },
+  "moment_diagram": {
+    "verdict": "ok",
+    "why": "a curved white line between two triangular supports, several red downward arrows, and two orange horizontal arrows pointing outward at the bottom center.",
+    "checked": "2026-08-20 16:14",
+    "subject": "A side view of the beam shows it curving downward (exaggerated), with orange arrows illustrating the conversion of vertical load into horizontal tension at the center.",
+    "title": "BIEGEMOMENT-KONVERSION"
+  },
+  "sensor_deformation": {
+    "verdict": "ok",
+    "why": "a curved grey bar with a downward arrow, a horizontal bar with three distinct layers labeled with callouts, a red 'X' mark on the bar, a line graph of strain over time, and a red status box with alarm text",
+    "checked": "2026-08-20 16:16",
+    "subject": "A cross-section of a ceiling cable shows it stretching and snapping due to beam deflection, triggering the orange alarm signal.",
+    "title": "FEHLINTERPRETATION SENSORIK"
+  },
+  "plastic_deformation_timeline": {
+    "verdict": "ok",
+    "why": "A graph with a yellow curve plotted against stress and strain axes, divided into elastic and plastic zones; an orange vertical shape with a narrowed middle section, tension arrows, and a dimension line indicating increased length.",
+    "checked": "2026-08-20 16:17",
+    "subject": "A technical graph shows a curve entering the 'plastic zone', while a detail of a bolt shows it permanently thinning and stretching in orange.",
+    "title": "PLASTISCHE VERFORMUNG"
+  },
+  "bearing_failure_detail": {
+    "verdict": "ok",
+    "why": "a grey rectangle containing a grey circle, red arrows pointing right, a dashed yellow circle, a black semi-circle, and an orange-to-red gradient oval, with a scale and a color ramp.",
+    "checked": "2026-08-20 16:21",
+    "subject": "A close-up of a bolt hole shows the circular perimeter deforming into an orange oval as the bolt 'cuts' through the steel plate.",
+    "title": "LOCHLEIBUNGSVERSAGEN"
+  },
+  "calculation_error": {
+    "verdict": "ok",
+    "why": "two horizontal panels: the top features a grey curved line under five red arrows with a '12.0mm' label, while the bottom features two orange lines meeting at a grey rectangle with four dots under five red arrows with a '41.3mm' label, both over a shared distance axis",
+    "checked": "2026-08-20 16:22",
+    "subject": "A split screen compares a continuous beam (Grey/Safe) with the actual bolted joint (Orange/Failure point) under the same load.",
+    "title": "BERECHNUNGSMODELL-FEHLER"
+  },
+  "eccentric_loading": {
+    "verdict": "ok",
+    "why": "a rectangle with a dashed center line, three circles on that line, a red horizontal arrow offset below the center line, a vertical dimension line 'e' marking that offset, and orange curved arrows around each circle.",
+    "checked": "2026-08-20 16:27",
+    "subject": "A technical detail shows the force arrow offset from the center axis of the plate, creating an orange twisting moment (torque) on the bolts.",
+    "title": "EXZENTRISCHE KRAFTEINLEITUNG"
+  },
+  "site_map_isometric": {
+    "verdict": "ok",
+    "why": "a central highlighted brown rectangle with a leader line, surrounded by four larger empty rectangular outlines, a 50m scale bar, a north arrow, and a grid of thin lines.",
+    "checked": "2026-08-21 13:01",
+    "subject": "A simplified grey-scale map of the district highlights the supermarket footprint and the surrounding high-rise buildings using thin technical outlines.",
+    "title": "STANDORT RIGA-ZOLITŪDE"
+  },
+  "point_load_diagram": {
+    "verdict": "ok",
+    "why": "three parallel isometric skeletal trusses with vertical lines, topped by orange cones containing red downward-pointing arrows aligned with the vertical truss lines.",
+    "checked": "2026-08-21 13:04",
+    "subject": "An isometric skeletal view of the roof trusses shows orange cones representing soil piles placed exactly over the vertical joint lines of the steel beams.",
+    "title": "PUNKLAST-KONZENTRATION"
+  },
+  "joint_stress_analysis": {
+    "verdict": "ok",
+    "why": "a central circle surrounded by concentric colored rings, five downward-pointing orange arrows, a vertical load axis with a scale from 0 to 800, and a horizontal color legend",
+    "checked": "2026-08-21 13:05",
+    "subject": "A close-up orthogonal view of a bolt connection shows stress lines concentrating around the bolt holes, with orange arrows indicating the increasing vertical load.",
+    "title": "KNOTENPUNKT-BELASTUNG"
+  },
+  "collapse_footprint": {
+    "verdict": "ok",
+    "why": "a large white rectangle containing a smaller grey rectangle with a red border, dimension lines labeled '25 m' and '20 m', four yellow icons, horizontal grey bars, and a scale bar.",
+    "checked": "2026-08-21 13:07",
+    "subject": "A top-down floor plan of the market highlights the specific rectangular area of the collapse in a shaded grey, with dimensions and cash register icons for reference.",
+    "title": "EINSTURZBEREICH"
+  },
+  "vibration_propagation": {
+    "verdict": "ok",
+    "why": "A horizontal ground line with three points from which vertical yellow wavy lines rise into a layered rectangular block, the top of which is colored reddish-orange.",
+    "checked": "2026-08-21 13:08",
+    "subject": "A structural wireframe shows sine-wave lines traveling from the ground up through columns into the remaining roof sections, which are highlighted in faint orange to show instability.",
+    "title": "SCHWINGUNGSÜBERTRAGUNG"
+  },
+  "logistics_truss_cut": {
+    "verdict": "ok",
+    "why": "two rectangular bars separated by a vertical dashed line, with a top dimension line labeled 'TOTAL: 17.0m' and two bottom dimension lines each labeled '8.5m'.",
+    "checked": "2026-08-21 13:09",
+    "subject": "An animation shows a single 17m beam being bisected by a thin cut-line, with dimension lines showing the two new 8.5m segments.",
+    "title": "LOGISTIK-TRENNUNG"
+  },
+  "saturation_weight_increase": {
+    "verdict": "ok",
+    "why": "a vertical axis with numbers 0-3000, two bars labeled 'TROCKEN' and 'GESÄTTIGT', where the second bar is a stack of a grey base and an orange top section with a dimension line labeled '+1000 (H₂O)'.",
+    "checked": "2026-08-21 13:14",
+    "subject": "A bar chart compares the weight of 'Trockener Kies' (grey) to 'Gesättigter Kies' (orange), showing the 1000kg/m³ water contribution.",
+    "title": "SÄTTIGUNGSGRAD / GEWICHT"
+  },
+  "structural_deficit_overlay": {
+    "verdict": "ok",
+    "why": "a schematic joint with a central square and bars, a top axis marked from 0% to 100%, a short grey arrow pointing left labeled 33%, and a long red-orange arrow pointing right labeled 100%.",
+    "checked": "2026-08-21 13:25",
+    "subject": "The technical drawing of the joint is overlaid with red-orange 'REQUIRED' force arrows vs. thin grey 'ACTUAL' capacity arrows.",
+    "title": "TRAGFÄHIGKEITSDEFIZIT"
+  },
+  "calculation_error_scale": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"a single orange triangular joint above a horizontal axis marked from 0x to 6x with a short red bar indicating the 1x position.\", \"depicts\": f",
+    "checked": "2026-08-21 13:28",
+    "subject": "A visual comparison shows six identical truss joints in ghost-grey, which are then replaced by a single orange one to represent the actual strength.",
+    "title": "BERECHNUNGSFEHLER FAKTOR 6"
+  },
+  "sensor_discrepancy_graph": {
+    "verdict": "ok",
+    "why": "A line graph with a vertical axis (0 to MAX) and horizontal axis (0% to 100%), featuring a flat gray line and a rising orange curve that ends at a marked point labeled 'BRUCHPUNKT'.",
+    "checked": "2026-08-22 14:45",
+    "subject": "Ein Liniendiagramm zeigt eine flache, graue Linie für die Sensordaten, während eine ansteigende orangefarbene Kurve die tatsächliche Materialermüdung bis zum Bruchpunkt darstellt.",
+    "title": "Sensorik vs. Strukturelle Integrität"
+  },
+  "geographical_site_plan": {
+    "verdict": "ok",
+    "why": "a horizontal track with yellow dots labeled P10 to P15, a red box containing a jagged line between P12 and P13, and parallel lines below labeled as a road",
+    "checked": "2026-08-22 14:46",
+    "subject": "Eine orthogonale Draufsicht der Avenida Tláhuac mit markierten Pfeilernummern und der exakten Position der eingestürzten Sektion zwischen Pfeiler 12 und 13.",
+    "title": "Lageplan Sektor Olivos-Tezonco"
+  },
+  "structural_buckling_diagram": {
+    "verdict": "ok",
+    "why": "two vertical pillars, a truss of thin lines, red downward arrows, and two downward-curving lines representing flanges, the lower one glowing orange.",
+    "checked": "2026-08-22 14:47",
+    "subject": "Eine Seitenansicht der Brückenträger zeigt die statischen Vektoren, wobei der untere Flansch des Trägers orange aufleuchtet und sich unter Last plastisch verformt.",
+    "title": "Strukturversagen Segment 12-13"
+  },
+  "material_spec_comparison": {
+    "verdict": "ok",
+    "why": "Two rectangles of different heights side-by-side, with dimension lines marking 24 mm on the taller left one and 18 mm on the shorter right one, plus a 6 mm difference zone.",
+    "checked": "2026-08-22 14:53",
+    "subject": "Zwei technische Detailzeichnungen im Profilvergleich stellen die geplanten 24mm den verbauten 18mm gegenüber, inklusive Bemaßungslinien.",
+    "title": "Spezifikation Blechstärke"
+  },
+  "shear_stud_density": {
+    "verdict": "ok",
+    "why": "an isometric rectangular slab with a grid of small white pin-like icons and a grid of red 'X' marks, along with text labels for target, actual, and deficit values.",
+    "checked": "2026-08-22 14:55",
+    "subject": "Eine Isometrie des Stahlträgers zeigt ein Raster der Bolzen; fehlende Bolzen werden durch orangefarbene Kreuze markiert, um das Defizit zu visualisieren.",
+    "title": "Dichte der Kopfbolzendübel"
+  },
+  "weld_penetration_cut": {
+    "verdict": "ok",
+    "why": "a T-junction of two grey rectangles with two semi-circular weld beads; the left bead contains a shaded zone extending deep into the junction, while the right orange bead has a much smaller red mark at the surface.",
+    "checked": "2026-08-22 14:59",
+    "subject": "Ein technischer Querschnitt einer Kehlnaht zeigt den Unterschied zwischen einer korrekten Durchschweißung und der mangelhaften, nur oberflächlichen Verbindung (orange).",
+    "title": "Schweißnaht-Einbrandtiefe"
+  },
+  "progressive_deformation_sequence": {
+    "verdict": "ok",
+    "why": "A sagging truss structure and curved line plotted against a vertical millimeter scale, accompanied by a graph showing a rising curve against a cycle count.",
+    "checked": "2026-08-22 15:00",
+    "subject": "Eine Zeitraffer-Animation der Brückensilhouette zeigt in übertriebener Skalierung das Absinken des Trägers über tausende Lastzyklen hinweg.",
+    "title": "Kumulative Strukturverformung"
+  },
+  "seismic_shear_stress": {
+    "verdict": "ok",
+    "why": "a light gray rectangle above a dark gray I-beam shape, with four glowing orange circles at their interface and horizontal yellow arrows pointing in opposite directions within each layer.",
+    "checked": "2026-08-22 15:01",
+    "subject": "Ein Schnittmodell zeigt horizontale Scherpfeile zwischen Betonplatte und Stahlträger, die während des Bebens die Bolzenverbindungen orange aufleuchten lassen.",
+    "title": "Scherbelastung durch Seismik"
+  },
+  "deflection_measurement": {
+    "verdict": "ok",
+    "why": "two vertical gray pillars, a horizontal dashed line, a curved yellow beam, and a red vertical dimension line labeled '10,4 cm' between the dashed line and the beam's lowest point.",
+    "checked": "2026-08-22 15:04",
+    "subject": "Eine technische Ansicht des Brückensegments mit einer Bemaßung, die den 10cm-Abstand zwischen der horizontalen Nulllinie und dem tiefsten Punkt des Trägers zeigt.",
+    "title": "Vertikale Durchbiegung (Ist-Zustand)"
+  },
+  "axle_load_comparison": {
+    "verdict": "ok",
+    "why": "two rectangular boxes with circles underneath, each with four downward arrows; the arrows on the bottom box are longer and a different color than those on the top box, accompanied by numbers (12.5 t and 15.2 t).",
+    "checked": "2026-08-22 15:05",
+    "subject": "Zwei schematische Züge werden gegenübergestellt; Pfeile unter den Rädern visualisieren den Gewichtsunterschied in Tonnen pro Achse.",
+    "title": "Vergleich der Achslasten"
+  },
+  "weld_artifact_section": {
+    "verdict": "ok",
+    "why": "a vertical bolt shape with a flared base, two yellow rectangles representing a ring in cross-section, and two red zones labeled as voids between the ring and the bolt foot, all set within a dark background.",
+    "checked": "2026-08-22 15:08",
+    "subject": "Ein Schnitt durch den Bolzenfuß zeigt den vergessenen Keramikring, der eine vollständige Umschließung des Bolzens durch den Beton verhinderte.",
+    "title": "Eingeschlossene Keramikringe"
+  },
+  "shear_force_concentration": {
+    "verdict": "ok",
+    "why": "Two grey rectangles representing a plate and a beam, connected by small red-tinted triangular zones; several yellow arrows point from the upper rectangle into the left connecting zone.",
+    "checked": "2026-08-22 15:10",
+    "subject": "Eine Detailansicht der Träger-Schweißnaht zeigt, wie die mechanischen Lastpfeile von der Platte direkt in die Naht wandern und diese orange zum Reißen bringen.",
+    "title": "Konzentration der Scherkräfte"
+  },
+  "dead_load_increase": {
+    "verdict": "ok",
+    "why": "Three stacked horizontal rectangles representing layers, five orange downward arrows originating in the top layer, and the text '+2450 kg/m' in a box.",
+    "checked": "2026-08-22 15:12",
+    "subject": "Ein Querschnitt des Fahrwegs zeigt die zusätzliche Schotterschicht mit einer Gewichtsangabe in kg/m, die als orangefarbener Vektor nach unten drückt.",
+    "title": "Erhöhung der statischen Eigenlast"
+  },
+  "displacement_vector": {
+    "verdict": "ok",
+    "why": "A horizontal rectangle, a diagonal rectangular bar above it, and a red triangular arrow indicating direction.",
+    "checked": "2026-08-22 21:07",
+    "subject": "A section cut showing the diagonal strut sliding away from the base, with a red arrow indicating the direction of movement.",
+    "title": "Verschiebung der Strebe"
+  },
+  "grid_comparison_section": {
+    "verdict": "ok",
+    "why": "two side-by-side square outlines, the left containing a dense 6x5 grid of thin yellow lines and the right containing a sparse 3x3 grid of wider red lines",
+    "checked": "2026-08-22 21:08",
+    "subject": "Side-by-side orthogonal projections showing the dense support grid of the residential block versus the wide-span grid of the warehouse.",
+    "title": "Stützraster: Wohnblock vs. Warenhaus"
+  },
+  "structural_section_cut": {
+    "verdict": "ok",
+    "why": "Two diagrams separated by a dashed line: on the left, a horizontal grey bar supported by two vertical grey blocks under a red Y-symbol, labeled 'Balkendecke'; on the right, a single horizontal grey bar under a red Y-symbol, labeled 'Flachdecke', showing the absence of the vertical support blocks.",
+    "checked": "2026-08-22 21:09",
+    "subject": "A technical comparison showing a beam-supported slab versus a flat slab, highlighting the lack of structural depth in the latter.",
+    "title": "Balkendecke vs. Flachdecke"
+  },
+  "punching_shear_diagram": {
+    "verdict": "ok",
+    "why": "A three-layered horizontal block labeled 'Estrich', 'Dämmung', and 'Beton', with a vertical white rectangle representing a column pushing up into it, and an orange-shaded trapezoidal region labeled 'Versagenskegel' with red diagonal lines indicating the failure boundaries.",
+    "checked": "2026-08-22 21:11",
+    "subject": "A cross-section animation showing a column head pushing upward through the concrete slab, creating a conical failure zone.",
+    "title": "Mechanismus des Durchstanzens"
+  },
+  "reinforcement_comparison": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"A vertical axis with ticks from 0mm to 16mm, a silver bar labeled '16mm Soll' and '16mm Ø', and a red bar labeled '8mm Ist' and '8mm Ø'.\", \"d",
+    "checked": "2026-08-22 21:15",
+    "subject": "A detail drawing comparing the required 16mm steel bar diameter to the actual 8mm wire used.",
+    "title": "Bewehrungsquerschnitt"
+  },
+  "load_distribution_graph": {
+    "verdict": "ok",
+    "why": "A bar chart with a baseline axis and two vertical bars labeled 'Calculated' and 'Actual', where the 'Actual' bar is taller and stacked with an additional red segment labeled 'Missing Load'.",
+    "checked": "2026-08-22 21:16",
+    "subject": "A bar chart showing the calculated load versus the actual total weight, including the ignored concrete self-weight.",
+    "title": "Fehlerhafte Lastberechnung"
+  },
+  "load_concentration_diagram": {
+    "verdict": "ok",
+    "why": "three white squares labeled HVAC A, B, and C inside a dashed rectangle labeled ROOF STRUCTURE GRID, each surrounded by a circular orange-to-yellow gradient, with a vertical scale on the right labeled MAX LOAD and MIN LOAD",
+    "checked": "2026-08-22 21:18",
+    "subject": "An overhead view showing the concentrated weight of the HVAC units and their localized load distribution on the roof structure.",
+    "title": "Punktlast der Klimaanlagen"
+  },
+  "hollow_box_girder_section": {
+    "verdict": "ok",
+    "why": "A schematic cross-section of a rectangular box structure consisting of two horizontal light-blue rectangles at the top and bottom, and two vertical hatched rectangles on the left and right, with dashed symmetry axes and text labels.",
+    "checked": "2026-08-22 21:19",
+    "subject": "An orthogonal cross-section of the wooden box girder, identifying plywood webs and spruce chords.",
+    "title": "Hohlkasten-Träger im Detail"
+  },
+  "bolt_penetration_cut": {
+    "verdict": "ok",
+    "why": "a layered cross-section with labelled zones for membrane, insulation, and chord, penetrated from above by a vertical red shaft and arrowhead with fracture marks at the top surface",
+    "checked": "2026-08-22 21:22",
+    "subject": "A section cut showing a bolt piercing the roof membrane and entering the wooden chord, creating an entry point for moisture.",
+    "title": "Beschädigung des Obergurts"
+  },
+  "fill_layer_diagram": {
+    "verdict": "ok",
+    "why": "A profile view of a sagging concrete block labeled 'Betondecke', topped with a dotted layer labeled 'Kiesausgleich' that is thicker in the middle than at the sides, a thin upper layer labeled 'Bitumenpappe', a red dashed vertical line labeled 'Durchbiegung', and a bottom axis with markers at 0m, 2m, and 4m.",
+    "checked": "2026-08-22 21:25",
+    "subject": "A profile view showing the roof sag filled with extra gravel and bitumen, visually illustrating the increased dead load.",
+    "title": "Kiesausgleich der Durchbiegung"
+  },
+  "hydrolysis_zoom": {
+    "verdict": "ok",
+    "why": "three horizontal rectangular bars representing wood layers and a glue joint, where the middle bar features a color gradient from blue to red with five white circles crossed out by red Xs, all intersected by a diagonal white line with 'Intakt' and 'Hydrolysiert' labels at the bottom",
+    "checked": "2026-08-22 21:27",
+    "subject": "A microscopic detail view of the glued joint showing the chemical breakdown of the urea-formaldehyde resin over time.",
+    "title": "Hydrolyse der Leimfuge"
+  },
+  "effective_height_graph": {
+    "verdict": "ok",
+    "why": "A vertical axis with percentage markings from 0% to 100%, a tall gradient-filled bar labeled 'Original' reaching 100%, a shorter gradient-filled bar with a red border labeled 'Delaminiert' reaching about 40%, and a dashed horizontal line labeled 'Verlust' between them.",
+    "checked": "2026-08-22 21:29",
+    "subject": "A diagram comparing the original effective height of the beam versus the reduced height caused by delamination.",
+    "title": "Verlust der statischen Höhe"
+  },
+  "deflection_curve": {
+    "verdict": "ok",
+    "why": "a curved line with a color gradient, a horizontal dashed line labeled 'Initial State', a vertical dotted line measuring the deflection labeled '4.0 mm', and a horizontal axis labeled 'Beam Span (m)' from 0m to 40m",
+    "checked": "2026-08-22 21:33",
+    "subject": "A side-profile line drawing showing the 4.2mm downward curve of the roof beam compared to the initial flat state.",
+    "title": "Kritische Durchbiegung"
+  },
+  "corrosion_graph": {
+    "verdict": "ok",
+    "why": "A vertical axis with ticks labeled 0 to 3, a horizontal axis, a grey bar labeled 'Grenzwert' at height 1, a gradient-colored bar labeled 'Messwert' at height 3, a dashed horizontal line at level 1, and labels '1x' and '3x' above the bars.",
+    "checked": "2026-08-22 21:34",
+    "subject": "A bar chart showing the safe limit of chloride levels versus the actual measured value at the steel bars.",
+    "title": "Chloridkonzentration an der Bewehrung"
+  },
+  "shear_cone_formation": {
+    "verdict": "ok",
+    "why": "Three stacked horizontal layers with labels on the right, a vertical column extending downwards, and an inverted trapezoidal region with a red-to-yellow gradient bounded by diagonal red dashed lines starting from the top corners of the column.",
+    "checked": "2026-08-22 21:35",
+    "subject": "A section cut showing internal shear fractures propagating through the concrete slab around the column head.",
+    "title": "Entstehung der Scherkegel"
+  },
+  "node_geometry": {
+    "verdict": "ok",
+    "why": "An angled rectangle intersecting a horizontal line, with a dashed centerline, an arc indicating an angle of 18.2 degrees, a horizontal dimension line of 3200mm, and labels for the node and structural parts.",
+    "checked": "2026-08-24 16:09",
+    "subject": "Orthogonal side projection showing the precise intersection angle of member 11 and the deck with technical dimension lines.",
+    "title": "GEOMETRIE KNOTENPUNKT 11"
+  },
+  "interface_detail": {
+    "verdict": "ok",
+    "why": "two pairs of stacked grey rectangles separated by a vertical dashed line; the left pair has a flat dashed red interface line and horizontal arrows; the right pair has a jagged sawtooth interface line, a horizontal arrow, and a vertical dimension line labeled 'h_t >= 6 mm'",
+    "checked": "2026-08-24 16:17",
+    "subject": "Split-screen detail showing a smooth interface versus a required jagged, high-friction surface with dimension callouts.",
+    "title": "SOLL-IST-VERGLEICH SCHERREIBUNG"
+  },
+  "structural_displacement": {
+    "verdict": "ok",
+    "why": "a vertical orange rectangle shifted to the right of a dashed grey outline, a red arrow pointing right, and a horizontal scale at the base.",
+    "checked": "2026-08-24 16:18",
+    "subject": "Technical diagram showing the original position in grey and the lateral outward movement of the member in orange.",
+    "title": "VERSCHIEBUNG DER STREBE"
+  },
+  "grid_evolution": {
+    "verdict": "ok",
+    "why": "a large rectangle with solid yellow borders and corner/midpoint squares, overlaid with dashed yellow lines that divide it into four smaller rectangles with squares at their intersections.",
+    "checked": "2026-08-24 16:19",
+    "subject": "Orthogonal floor plan overlay comparing the dense residential column grid with the wide-span commercial layout.",
+    "title": "ÄNDERUNG DES STÜTZRASTERS"
+  },
+  "ceiling_comparison": {
+    "verdict": "ok",
+    "why": "Two cross-sectional diagrams side-by-side: the left shows a thick slab with an intermediate support block (beam) on a column, while the right shows a thinner slab resting directly on a column with red dashed lines marking a potential failure zone.",
+    "checked": "2026-08-24 16:24",
+    "subject": "Cross-section comparing a standard beam-supported slab to the thinner, riskier flat-slab design.",
+    "title": "BALKEN- VS. FLACHDECKE"
+  },
+  "punching_shear_mechanism": {
+    "verdict": "ok",
+    "why": "a horizontal hatched rectangle joined to a vertical rectangle, with downward arrows on top, an upward arrow at the junction, and two diagonal dashed red lines angled through the horizontal rectangle from the corners of the vertical one.",
+    "checked": "2026-08-24 16:26",
+    "subject": "Section cut showing the internal 45-degree shear stress lines forming inside the concrete slab around the column head.",
+    "title": "MECHANISMUS DURCHSTANZEN"
+  },
+  "rebar_spec": {
+    "verdict": "ok",
+    "why": "two hatched circles of different sizes on a grid, one grey with a 'Ø 16 mm' dimension line and one orange with a 'Ø 8 mm' dimension line",
+    "checked": "2026-08-24 16:28",
+    "subject": "Technical drawing of two rebar cross-sections with dimension lines: 16mm (grey) versus 8mm (orange).",
+    "title": "ABWEICHUNG BEWEHRUNGSDURCHMESSER"
+  },
+  "load_calculation_error": {
+    "verdict": "ok",
+    "why": "a tilted balance scale with a single yellow box on the raised left side and a yellow box stacked under a larger red box on the lowered right side, with downward arrows of unequal length.",
+    "checked": "2026-08-24 16:29",
+    "subject": "A balance scale diagram showing 'Calculated Load' versus 'Actual Total Load' including the massive concrete weight.",
+    "title": "FEHLENDE EIGENLASTBERECHNUNG"
+  },
+  "girder_section": {
+    "verdict": "ok",
+    "why": "A rectangle divided into top and bottom brown bars, side grey bars, and a central black void, with leader lines, labels, and red dimension lines with numbers.",
+    "checked": "2026-08-24 16:32",
+    "subject": "Engineering section cut showing the spruce chords and plywood webs with labels and internal cavity dimensions.",
+    "title": "QUERSCHNITT HOHLKASTENBINDER"
+  },
+  "penetration_detail": {
+    "verdict": "ok",
+    "why": "a vertical pointed bar pressing into and through a thin horizontal line into a larger rectangular block, with an orange semi-circular highlight and a red dot at the point of contact.",
+    "checked": "2026-08-24 16:40",
+    "subject": "Detail section of a steel bolt puncturing the grey roof membrane and entering the timber chord, highlighted in orange.",
+    "title": "BESCHÄDIGUNG DER DACHHAUT"
+  },
+  "roof_accumulation": {
+    "verdict": "ok",
+    "why": "a cross-section with grey layers labeled 'BETONTRÄGER', 'DÄMMUNG', and 'BESTAND', an orange layer labeled 'KIESFÜLLUNG' filling a dip, a red-orange bar labeled 'BITUMEN NEU', and a vertical scale with a pointer at '125 kg/m²'.",
+    "checked": "2026-08-24 16:42",
+    "subject": "Animated section showing layers of grey (original) and orange (repair) material accumulating, with a weight counter.",
+    "title": "ZUSÄTZLICHE DACHLAST"
+  },
+  "chemical_degradation": {
+    "verdict": "ok",
+    "why": "two horizontal grey rectangles with internal lines, separated by a gap containing scattered, tilted orange squares with internal dots and dashed lines, plus labels and a vertical dashed line.",
+    "checked": "2026-08-24 16:47",
+    "subject": "Micro-view diagram of timber laminations where the grey glue line turns orange and shatters into fragments.",
+    "title": "HYDROLYSE DER LEIMFUGEN"
+  },
+  "delamination": {
+    "verdict": "ok",
+    "why": "five horizontal grey rectangles stacked vertically and offset horizontally, three vertical yellow arrows pointing down at the top rectangle, and red dashed lines between the layers.",
+    "checked": "2026-08-24 16:48",
+    "subject": "Section of the beam showing horizontal layers sliding apart horizontally under vertical load arrows.",
+    "title": "DELAMINIERUNG DER BINDER"
+  },
+  "internal_flooding": {
+    "verdict": "ok",
+    "why": "a rectangular cross-section with layered top boundaries, four downward-pointing dashed arrows, a vertical scale with centimeter markings, and an orange-filled area at the bottom with a horizontal top line.",
+    "checked": "2026-08-24 16:50",
+    "subject": "Section cut of the hollow girder showing an orange water level line and moisture penetration arrows.",
+    "title": "KONDENSWASSERANSAMMLUNG"
+  },
+  "asymmetric_load": {
+    "verdict": "ok",
+    "why": "a rectangle containing a color gradient from dark to bright orange, a color scale bar, a marked off-center point labeled 'Schwerpunkt', and dashed lines.",
+    "checked": "2026-08-24 16:52",
+    "subject": "Top-down roof plan with an orange heatmap showing the eccentric distribution of the snow mass.",
+    "title": "ASYMMETRISCHE SCHNEELAST"
+  },
+  "corrosion_process": {
+    "verdict": "ok",
+    "why": "two adjacent vertical rectangles of different colors and widths with dimension lines, small orange circles along their shared boundary, and a bar chart comparing two quantities against a numbered axis",
+    "checked": "2026-08-24 16:54",
+    "subject": "Section of rebar inside concrete where orange particles penetrate the porous material and attack the steel core.",
+    "title": "CHLORIDINDUZIERTE KORROSION"
+  },
+  "leverage_calculation": {
+    "verdict": "ok",
+    "why": "a vertical axis with height markers from 0m to 75m, a circular fulcrum at the base, and two plotted curves labeled 'Wind Force' and 'Exponential Torque at Fulcrum'.",
+    "checked": "2026-08-24 19:39",
+    "subject": "A technical diagram isolates the mast as a vertical line with a fulcrum at the deck, showing the exponential increase of torque at the base.",
+    "title": "HEBELARM-EFFEKT (L = 75m)"
+  },
+  "stabilitats_grenze": {
+    "verdict": "ok",
+    "why": "a coordinate system with two plotted curves, a horizontal axis labeled with degrees including a specific tick for 73°, a vertical axis for height, and a red circle marking the point where the yellow curve crosses the x-axis into a shaded red zone.",
+    "checked": "2026-08-24 21:46",
+    "subject": "Technisches Diagramm der Stabilitätskurve; die x-Achse zeigt den Neigungswinkel, eine orangefarbene Markierung hebt den Absturz der Kurve bei exakt 73 Grad hervor.",
+    "title": "Kritischer Neigungswinkel"
+  },
+  "flutungs_punkt": {
+    "verdict": "ok",
+    "why": "a tilted semi-circular hull cross-section with internal deck lines, a horizontal waterline, an orange dot with an arrow pointing inward, a vertical dimension line labeled 'Δh = 0.00 m', and an angle gauge set to 40 degrees.",
+    "checked": "2026-08-24 21:49",
+    "subject": "Querschnitt des Rumpfes bei 40 Grad Neigung; eine Bemaßungslinie zeigt den Abstand der offenen Seitenpforte zur Wasserlinie, markiert mit einem orangefarbenen Eintrittspfeil.",
+    "title": "Flutungswinkel bei Seitenpforte"
+  },
+  "stability_curve_graph": {
+    "verdict": "ok",
+    "why": "A coordinate system with a vertical axis, two parabolic curves of different heights and widths, and a red dot on the horizontal axis at the end of the smaller curve with a '73°' label.",
+    "checked": "2026-08-25 00:54",
+    "subject": "Zwei Kurven in einem Koordinatensystem: Die eine zeigt den Stabilitätsbereich bei ausgefahrenem Kiel, die andere bei eingezogenem Kiel, mit Markierung des Kipp-Punktes.",
+    "title": "Stabilitätskurve im Vergleich"
+  },
+  "free_surface_effect_section": {
+    "verdict": "ok",
+    "why": "a tilted quadrilateral divided into blue and grey zones by a horizontal dashed line, with a red arrow pointing towards the lower corner",
+    "checked": "2026-08-25 01:02",
+    "subject": "Ein Querschnitt, der das Wasser im Rumpf zeigt; beim Neigen des Schiffes verschiebt sich die Wasseroberfläche (Vektor) zur tieferen Seite, was die Krängung beschleunigt.",
+    "title": "Freier Oberflächeneffekt"
+  },
+  "retractable_keel_projection": {
+    "verdict": "ok",
+    "why": "A vertical dashed rectangular track containing a solid grey rectangle in the middle, with three labeled horizontal lines on the left ('RETRACTED 0m', 'MID-POSITION 2m', 'MAX DEPTH 4m') and an orange vertical dimension line on the right labeled '80cm OFFSET' spanning from the bottom of the grey rectangle to the bottom of the dashed track.",
+    "checked": "2026-08-25 01:04",
+    "subject": "Eine technische Zeichnung des Kiels mit drei Stufen; eine orangefarbene Maßlinie zeigt die mittlere Position im Vergleich zur maximalen Tiefe.",
+    "title": "Ballastkiel-Positionen"
+  },
+  "keel_extension_comparison": {
+    "verdict": "ok",
+    "why": "a layered U-shaped cross-section, a vertical bar with a bulb at the bottom, a vertical scale from 0m to 10m, a dimension line indicating 9.64m, and several text labels with leader lines.",
+    "checked": "2026-08-25 14:07",
+    "subject": "A cross-section of the hull shows the keel moving vertically between 4m and 9.83m marks with technical dimension lines and weight callouts in steel grey.",
+    "title": "VARIABLER TIEFGANG (HUBKIEL)"
+  },
+  "as_found_keel_position": {
+    "verdict": "ok",
+    "why": "a hull cross-section with a vertical keel, where a solid grey rectangle ends halfway down a path defined by dashed lines, accompanied by an orange dimension line labeled 'IST: 50%' and a vertical scale.",
+    "checked": "2026-08-25 14:16",
+    "subject": "A technical drawing compares the 'Soll' (target) fully extended position in dashed lines with the 'Ist' (actual) halfway position highlighted with an orange dimension figure.",
+    "title": "IST-ZUSTAND BALLASTKIEL"
+  },
+  "hybrid_structure_section": {
+    "verdict": "ok",
+    "why": "a tapered tower shape divided into two distinct vertical zones, with a vertical dimension line indicating 100m for the lower segmented part and 64m for the upper part.",
+    "checked": "2026-08-25 16:43",
+    "subject": "Orthogonale Schnittzeichnung des Turms mit Bemaßungslinien für die 100m Beton- und 64m Stahlsektion.",
+    "title": "AUFBAU HYBRIDTURM NORDEX N149"
+  },
+  "post_tensioning_system": {
+    "verdict": "ok",
+    "why": "four stacked gray rectangles with two vertical dashed yellow lines passing through them, and four red downward-pointing arrows at the top.",
+    "checked": "2026-08-25 16:44",
+    "subject": "Schnitt durch die Betonringe, der die vertikalen Spannstähle und nach unten gerichtete Lastpfeile der Vorspannkraft zeigt.",
+    "title": "SYSTEM DER INTERNEN VORSPANNUNG"
+  },
+  "transition_piece_detail": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a vertical stack of three rectangular zones labeled as steel shell, transition piece, and concrete foundation, with vertical yellow lines representin",
+    "checked": "2026-08-25 16:46",
+    "subject": "Technische Detailzeichnung der Ringflansche mit Führungslinien und Bezeichnungen der Verbindungselemente.",
+    "title": "DETAIL ÜBERGANGSSTÜCK STAHL-BETON"
+  },
+  "contact_surface_failure": {
+    "verdict": "ok",
+    "why": "Two rectangles separated by a gap, three downward arrows, a scale bar, and a glowing orange dot at a single point where a small protrusion on the lower rectangle touches the upper one.",
+    "checked": "2026-08-25 16:47",
+    "subject": "Mikroskopische Schnittansicht der Kontaktfuge, in der ein signal-orangefarbener Punkt die extreme Pressung an einer Unebenheit markiert.",
+    "title": "PUNKTUELLE LASTKONZENTRATION"
+  },
+  "load_path_redistribution": {
+    "verdict": "ok",
+    "why": "a vertical structure with downward arrows at the top and multiple curved lines that originate across the top and converge to a single point on the right side of the base",
+    "checked": "2026-08-25 16:50",
+    "subject": "Vektorgrafik der Kraftflüsse, die sich von einer symmetrischen Verteilung zu einer asymmetrischen Bündelung auf einer Turmseite verschieben.",
+    "title": "DYNAMISCHE LASTPFAD-VERSCHIEBUNG"
+  },
+  "load_distribution_map": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a rectangle divided into three horizontal bands with two arrows of equal size pointing in opposite directions from the top band, both labeled '3.000t",
+    "checked": "2026-08-25 21:10",
+    "subject": "Draufsicht auf das Fundament; zwei große Pfeile mit den Werten 3.000t markieren den Druckunterschied zwischen Nord- und Südseite, der das Gebäude verschiebt.",
+    "title": "Kräfteungleichgewicht"
+  },
+  "soil_mechanics_animation": {
+    "verdict": "ok",
+    "why": "three yellow bars tilted to the right, a dashed vertical line indicating the original position of the middle bar, a layered gray background with a sloped top edge, and text labels for load and flow direction",
+    "checked": "2026-08-25 21:12",
+    "subject": "Animation des Untergrunds als zähe Masse, die unter dem Gewicht des Erdwalls in die Grube fließt; die Pfähle biegen sich mit der Fließrichtung des Schlamms.",
+    "title": "Plastische Bodenverformung"
+  },
+  "internal_pressure_analysis": {
+    "verdict": "ok",
+    "why": "five horizontal orange arrows pointing at a vertical bar divided into colored layers, a red arrow pointing right within the bar next to the number 90.14, and a horizontal axis with numerical ticks.",
+    "checked": "2026-08-26 14:14",
+    "subject": "Orange force vectors expand outward against the steel ring cross-section to illustrate the peak stress accumulation at the silo base.",
+    "title": "BERECHNETE RINGSPANNUNG (N/mm²)"
+  },
+  "pore_water_pressure_buildup": {
+    "verdict": "ok",
+    "why": "a grid of nine grey circles with brown dots at contact points, orange double-headed arrows pointing from the gaps into the circles, and a large grey block with a downward arrow above them.",
+    "checked": "2026-08-26 14:19",
+    "subject": "Orange arrows between soil particles grow and push outward, showing how trapped water reduces grain-to-grain friction under the rising concrete load.",
+    "title": "ANSTIEG DES PORENWASSERDRUCKS"
+  },
+  "janssen_effect_diagram": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a graph with axes for 'Tiefe' (depth) and 'Druck' (pressure), featuring a dashed linear diagonal, a solid orange curve labeled 'Sättigung', and a red",
+    "checked": "2026-08-26 14:23",
+    "subject": "A technical graph line transitions from a linear grey path to an orange curve to show the saturation of horizontal pressure.",
+    "title": "LASTVERTEILUNG NACH JANSSEN"
+  },
+  "concept_map_overlap": {
+    "verdict": "ok",
+    "why": "a central circle with three lines radiating from its center to three larger, overlapping circles, labeled A, B, and J, containing small horizontal marks.",
+    "checked": "2026-08-26 17:32",
+    "subject": "Against a faded indigo backdrop, a single hairline stroke slowly traces a central circle that branches into delicate, overlapping stone-colored rings representing thematic categories (A, B, J) expanding as they accumulate microscopic textual points.",
+    "title": "La estructura de los convolutos"
+  },
+  "geographical_route": {
+    "verdict": "ok",
+    "why": "multiple thick green paths with dashed centerlines converging from the left into a single point on a vertical red line labeled Portbou, within a dashed red funnel outline.",
+    "checked": "2026-08-26 17:46",
+    "subject": "A minimalist, abstract map of the border appears as a single hairline curve where wide, dusty-green pathways of escape slowly constrict and funnel into a single, tight point at Portbou.",
+    "title": "El embudo de la frontera"
+  },
+  "fuerzas_conceptuales": {
+    "verdict": "ok",
+    "why": "scattered grey diamond shapes within a horizontal gradient, three dashed arrows pointing right toward a vertical line, and a numbered horizontal axis.",
+    "checked": "2026-08-27 18:37",
+    "subject": "Un flujo constante de partículas color piedra se acumula en un lado de la pantalla, ejerciendo una presión visual sobre un punto que retrocede lentamente hacia el vacío absoluto.",
+    "title": "La Dinámica del Progreso"
+  },
+  "mecanismo_legal": {
+    "verdict": "ok",
+    "why": "a horizontal axis with distance markers, a large glowing decagon forming a closed loop, a text box with a dashed arrow pointing into the shape, and text inside the enclosure.",
+    "checked": "2026-08-27 18:38",
+    "subject": "Una línea divisoria que representa la frontera se transforma en un lazo cerrado mediante un trazo fino, ilustrando cómo el espacio de asilo se convierte en una trampa geométrica sin salida.",
+    "title": "El Mecanismo de la Trampa"
+  },
+  "static_load_distribution": {
+    "verdict": "ok",
+    "why": "a cross-section of a three-story building with shelf units, gray arrows pointing down from the shelves to a foundation slab, and shorter orange arrows pointing up from the ground layers below.",
+    "checked": "2026-08-29 13:49",
+    "subject": "Ein orthogonaler Schnitt zeigt das Gebäude; graue Lastvektoren weisen von den Regaletagen nach unten auf die Fundamentplatte, während die Bodenwiderstandspfeile darunter kürzer werden und orange flackern.",
+    "title": "STATISCHE LASTVERTEILUNG ARCHIVGEBÄUDE"
+  },
+  "subsurface_spatial_relationship": {
+    "verdict": "ok",
+    "why": "A vertical axis with depth markers from 0m to -35m, three horizontal shaded soil layers, a yellow rectangle above ground with a hatched foundation box below it, a vertical gray bar, and a large red rectangle aligned to the -28m mark.",
+    "checked": "2026-08-29 13:52",
+    "subject": "Eine technische Aufrisszeichnung zeigt die räumliche Nähe zwischen dem Archivfundament und der 28 Meter tiefen Baugrube inklusive der vertikalen Schlitzwand-Barriere.",
+    "title": "GEOMETRIE WAIDMARKT-BAUSTELLE"
+  },
+  "material_volume_anomaly": {
+    "verdict": "ok",
+    "why": "Two vertical rectangles against a depth scale; the left one is filled to the top with gray, the right one is partially filled with gray and has a gray channel leading into an orange-dashed hatched area.",
+    "checked": "2026-08-29 13:55",
+    "subject": "Zwei parallele Aufrisse der Lamelle 11 zeigen links das theoretische Füllniveau und rechts den tatsächlichen Abfluss des grauen Betons in eine orange markierte Kies-Anomalie im Erdreich.",
+    "title": "SOLL-IST-VERGLEICH BETONAGE"
+  },
+  "structural_cross_section": {
+    "verdict": "ok",
+    "why": "a large gray rectangle containing a smaller dashed orange rectangle; inside the orange rectangle are horizontal lines, small white dots, and a tilted dark square, while the surrounding gray area contains a few dark circles.",
+    "checked": "2026-08-29 13:58",
+    "subject": "Ein Detail-Schnitt der Betonwand zeigt ein orange hervorgehobenes 'Fenster' aus losem Kies und einem Gesteinsblock, das die ansonsten massive graue Betonstruktur unterbricht.",
+    "title": "DETAIL: FEHLSTELLE LAMELLE 11"
+  },
+  "auflager_geometrie_versagen": {
+    "verdict": "ok",
+    "why": "two hatched rectangles representing a console and a beam, with a dimension line and numerical value (50.4 mm) measuring their horizontal overlap labeled 'KONTAKTFLÄCHE'.",
+    "checked": "2026-08-29 14:35",
+    "subject": "Eine technische Seitenansicht zeigt den Betonbinder, der horizontal von der Konsole rutscht, während Maßketten die schwindende Kontaktfläche bis zum Nullpunkt dokumentieren.",
+    "title": "DETAIL: VERLUST DER AUFLAGERFLÄCHE"
+  },
+  "geometrie_vergleich_konsole": {
+    "verdict": "ok",
+    "why": "a grey stepped block, an orange hatched area, two horizontal dimension lines (30 cm and 20 cm), a horizontal axis with centimeter markings, and a red callout pointing to the hatched area.",
+    "checked": "2026-08-29 14:36",
+    "subject": "Zwei orthogonale Projektionen werden übereinandergelegt, wobei die 10 cm Differenz durch orangefarbene Maßlinien und eine schraffierte Fläche hervorgehoben werden.",
+    "title": "REDUKTION DER AUFLAGERTIEFE"
+  },
+  "kraftvektoren_spaltzug": {
+    "verdict": "ok",
+    "why": "a cross-section of a column and corbel with a vertical white arrow labeled '42t' pressing on the outer edge, and four horizontal orange arrows labeled 'SPALTZUG' inside the corbel.",
+    "checked": "2026-08-29 14:38",
+    "subject": "Ein Schnittbild der Konsole zeigt den vertikalen Lastpfeil, der zur Außenkante wandert und dort orangefarbene, horizontale Spannungsvektoren im Betoninneren auslöst.",
+    "title": "EXZENTRISCHE LAST UND SPALTZUGKRÄFTE"
+  },
+  "querschnitt_bewehrung_kiesnest": {
+    "verdict": "ok",
+    "why": "a white geometric outline containing a grid of thin lines, with three orange circular regions containing small white dots, and text labels with leader lines",
+    "checked": "2026-08-29 14:41",
+    "subject": "Ein technischer Querschnitt zeigt das dichte Gitter der Bewehrungsstäbe, in dem orange markierte Hohlräume (Kiesnester) die strukturelle Schwächung visualisieren.",
+    "title": "INTERNE GEFÜGESTÖRUNG (KIESNESTER)"
+  },
+  "material_strength_comparison": {
+    "verdict": "ok",
+    "why": "two vertical bars on a Y-axis (0-400 MPa) with horizontal dashed lines at 235 and 355, a solid line at 372, and a red mark with an arrow on the right bar at the 235 level",
+    "checked": "2026-08-29 17:46",
+    "subject": "Zwei identische Bauteil-Zeichnungen stehen nebeneinander; eine Maßlinie zeigt die Belastungsgrenze, wobei das S235-Bauteil durch eine orangefarbene Markierung deutlich früher die Streckgrenze erreicht als die S355-Vorgabe.",
+    "title": "MATERIALGÜTE S355 VS. S235"
+  },
+  "asymmetric_loading_forces": {
+    "verdict": "ok",
+    "why": "A tilted grid structure with a top section divided into two halves; the left half is filled with a grey pattern and labeled 'BEFÜLLT', while the right is 'LEER'. Two horizontal orange arrows point towards the filled side, and the entire structure is skewed to the right relative to dashed vertical lines.",
+    "checked": "2026-08-29 18:00",
+    "subject": "In einer orthogonalen Frontansicht füllt sich nur die linke Hälfte der Schalung, woraufhin horizontale orangefarbene Vektorpfeile erscheinen, die die resultierende Schieflage des Gerüsts illustrieren.",
+    "title": "ASYMMETRISCHE BELASTUNG"
+  },
+  "foundation_settlement_knicklaenge": {
+    "verdict": "ok",
+    "why": "a vertical column on a foundation, a dashed orange axis line, a dimension line for height, a horizontal zero-level line, and a downward orange arrow labeled Δs.",
+    "checked": "2026-08-29 18:02",
+    "subject": "Die Detailzeichnung eines Stützenfußes zeigt, wie die Bodenlinie (Nullpunkt) nach unten wandert, während eine Bemaßung die Verlängerung der knickgefährdeten Achse in Orange hervorhebt.",
+    "title": "SETZUNG UND KNICKLÄNGE S-14"
+  },
+  "lateral_torsional_buckling_geometry": {
+    "verdict": "ok",
+    "why": "Two dimension lines labeled SOLL and IST with numerical values (6,00m and 12,00m), four white squares representing supports, and orange bars representing beams, where the central beam section is curved with a downward-pointing arrow.",
+    "checked": "2026-08-29 18:13",
+    "subject": "Eine Draufsicht auf die Stahlträger zeigt zwei Bemaßungsketten: Die obere (Soll) zeigt 6,00m-Abstände, die untere (Ist) springt auf 12,00m um, woraufhin sich der Träger in der Mitte orange verformt.",
+    "title": "ABWEICHUNG HALTERUNGSABSTAND"
+  },
+  "torsionskraft_gelenk": {
+    "verdict": "ok",
+    "why": "A schematic diagram of a double-gardan joint with a central axis, featuring a vertical white arrow labeled 'F_y (HEBEN)', a yellow curved arrow labeled 'M_x (ROTATION)', a dashed signal-orange elliptical arrow labeled 'M_t (UNERWARTETE TORSION)' twisting around the central axis, and a bar chart comparing 'SOLL' and 'IST' values.",
+    "checked": "2026-08-29 22:51",
+    "subject": "A technical diagram of the double-gardan joint displays orthogonal force vectors representing lifting and rotation, with an unexpected signal-orange torsion vector twisting the central axis.",
+    "title": "TORSIONSBELASTUNG IM DOPPELKARDAN"
+  },
+  "fundamentbolzen_ausriss": {
+    "verdict": "ok",
+    "why": "A three-layer cross-section labeled ASPHALT, CONCRETE, and BEDROCK with a vertical bolt shape pulled by an upward red arrow, intersected by a diagonal line of orange dots at the interface.",
+    "checked": "2026-08-29 23:09",
+    "subject": "An underground cross-section of the concrete foundation shows the anchor bolt being pulled upward by a massive force arrow, with signal-orange micro-fractures spreading through the concrete interface as the thread loses grip.",
+    "title": "VERSAGEN DER FUNDAMENTVERANKERUNG"
+  },
+  "lastumkehr_drehbolzen": {
+    "verdict": "ok",
+    "why": "A schematic rectangle representing an 80mm bolt with a double-headed vertical arrow in the center, an orange indicator on the side labeled CRACK, and an active compression/tension indicator on the right.",
+    "checked": "2026-08-29 23:33",
+    "subject": "An orthogonal projection of the 80mm bolt shows load arrows periodically reversing direction from tension to compression, with a signal-orange indicator highlighting the fatigue crack growing with each cycle.",
+    "title": "DYNAMISCHE LASTUMKEHR AM BOLZEN"
+  },
+  "ultraschall_schattenzone": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"three horizontal layers labeled KANZEL, HALTERUNG, and GEHÄUSE, a yellow block on top with vertical dashed yellow lines extending downwards, ",
+    "checked": "2026-08-29 23:38",
+    "subject": "A cross-section of the assembled joint shows the ultrasonic probe emitting steel-grey scan lines that bypass the hidden crack due to physical obstruction by the outer bracket, leaving the crack highlighted in signal-orange.",
+    "title": "SCHATTENZONE DER ULTRASCHALLPRÜFUNG"
+  },
+  "exploded_view": {
+    "verdict": "ok",
+    "why": "five trapezoidal blocks separated by gaps, with continuous solid and dashed yellow lines passing through their centers, accompanied by labels and a distance scale",
+    "checked": "2026-08-30 02:26",
+    "subject": "Eine Explosionszeichnung der Brücke zeigt die Trennfugen zwischen den Betonsegmenten und die internen Stahlseile, die sie wie Perlen auf einer Schnur zusammenhalten.",
+    "title": "Segmentierte Konstruktion"
+  },
+  "assembly_sequence": {
+    "verdict": "ok",
+    "why": "a horizontal line with three yellow dots labeled 1 to 3, and a red wheeled vehicle carrying a grey block positioned between the first two dots",
+    "checked": "2026-08-30 02:27",
+    "subject": "Eine orthogonale Animation zeigt das Brückensegment, das auf einem Tieflader aus einer Seitenstraße zur Endposition transportiert und dort hydraulisch abgesetzt wird.",
+    "title": "Montage-Ablauf"
+  },
+  "force_distribution": {
+    "verdict": "ok",
+    "why": "a dark rectangle containing three curved orange lines, thin dashed gray lines forming an arch, red downward arrows at the top, yellow outward arrows at the sides, and a vertical color scale with numbers.",
+    "checked": "2026-08-30 02:28",
+    "subject": "Ein Querschnitt des Trägers zeigt die internen Spannstähle. Die Animation verdeutlicht den Zug-Druck-Verlauf innerhalb der Betonplatte mit dünnen grauen Kraftlinien.",
+    "title": "Interne Lastverteilung"
+  },
+  "scale_comparison": {
+    "verdict": "ok",
+    "why": "a vertical axis with numerical labels and ticks (0 to 300 kN), two bars of different heights and colors (grey and orange) on a horizontal axis, and a red dashed line with text indicating a percentage drop",
+    "checked": "2026-08-30 02:31",
+    "subject": "Ein Balkendiagramm vergleicht die theoretische Tragfähigkeit (grau) mit der realen, massiv reduzierten Kapazität (orange) am Knotenpunkt 11.",
+    "title": "Soll- vs. Ist-Tragfähigkeit"
+  },
+  "load_stress_diagram": {
+    "verdict": "ok",
+    "why": "a horizontal rectangle meeting a diagonal parallelogram at a dashed orange line, with pairs of opposing white arrows along that line and a large orange arrow pointing to a red circle on it.",
+    "checked": "2026-08-30 02:33",
+    "subject": "Ein Schnitt durch den Pfeiler-11-Knoten zeigt Vektorpfeile, die die wirkenden Scherkräfte an der glatten Arbeitsfuge illustrieren; ein oranger Pfeil markiert den Punkt des Versagens.",
+    "title": "Knotenpunkt 11: Scherspannung"
+  },
+  "dynamic_loading": {
+    "verdict": "ok",
+    "why": "a T-junction structure with a dashed yellow line passing through it, inward-pointing yellow arrows on the line, and three downward-pointing orange arrows on top.",
+    "checked": "2026-08-30 02:34",
+    "subject": "Ein animiertes Diagramm zeigt, wie das Anziehen der Spannseile die vertikale Kraft auf den Knotenpunkt erhöht, dargestellt durch wachsende orangefarbene Last-Vektoren.",
+    "title": "Erhöhte Scherkräfte durch Vorspannung"
+  },
+  "stress_limit_comparison": {
+    "verdict": "ok",
+    "why": "A horizontal axis with tick marks from 0° to 40°, a vertical axis, a dashed yellow line at 30° labeled '30° Limit', a solid orange line at 27° labeled '27° Failure', and a small white circle on the 27° line with a faint line extending upwards labeled 'Riss'.",
+    "checked": "2026-08-30 02:52",
+    "subject": "Ein Diagramm vergleicht die theoretische 30°-Grenze mit der tatsächlichen 27°-Bruchgrenze, wobei der Punkt des Versagens an der Schweißnaht orange hervorgehoben wird.",
+    "title": "Stabilitätsgrenze vs. Realität"
+  },
+  "orthogonal_section": {
+    "verdict": "ok",
+    "why": "a horizontal red bar, eight vertical white bars on top of it, two yellow rectangular blocks underneath, a hatched horizontal band intersecting the blocks, and a vertical dashed dimension line labeled 'H' on the right",
+    "checked": "2026-08-30 02:57",
+    "subject": "Ein technischer Schnitt durch die Plattform zeigt die zwei Pontons, die acht Säulen und das Hauptdeck mit Bemaßungslinien für die Gesamthöhe.",
+    "title": "Schnitt: Ocean Ranger Struktur"
+  },
+  "mesh_analysis": {
+    "verdict": "ok",
+    "why": "A large rectangular frame containing a coarse grid of grey lines, with a smaller red square in the center containing a much finer grid of orange lines, labeled with a pointer as 'Kritische Spannung / Feines Netz'.",
+    "checked": "2026-08-30 02:59",
+    "subject": "Ein Drahtgittermodell der Tricells zeigt das zu grobe Berechnungsraster, wobei die kritischen Spannungsbereiche durch ein feineres, korrektes Netz überlagert werden.",
+    "title": "Finite-Elemente-Berechnungsraster"
+  },
+  "circuit_flow_diagram": {
+    "verdict": "ok",
+    "why": "A box labeled 'PWR' connected by a solid white line to a box labeled 'VALVE' containing an orange rectangle, with a dashed orange line labeled 'SHORT CIRCUIT' connecting a faded blue 'WATER' label to the orange rectangle.",
+    "checked": "2026-08-30 03:02",
+    "subject": "Ein Schaltplan zeigt den Kurzschluss durch eindringendes Wasser, der den Stromkreis zu den Magnetventilen umleitet und den Öffnungsmechanismus orange markiert.",
+    "title": "Fehlerhafte Ventilsteuerung"
+  },
+  "load_distribution_shift": {
+    "verdict": "ok",
+    "why": "A horizontal bar on three vertical columns, with three upward yellow arrows of decreasing size labeled with percentages (67%, 53%, 40%) and one large downward red arrow labeled 'GEWICHT'.",
+    "checked": "2026-08-30 03:03",
+    "subject": "Vektorpfeile zeigen die nach oben gerichtete Auftriebskraft, die an den gefluteten Säulen abnimmt, während ein massiver Gewichtspfeil nach unten zieht.",
+    "title": "Verlust des Auftriebs"
+  },
+  "axial_eccentricity_detail": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"three pairs of radiating lines in grey and orange, a central convergence point for the grey lines, a dimension line connecting a grey and orange line",
+    "checked": "2026-08-30 05:12",
+    "subject": "Draufsicht auf einen Knotenpunkt; gestrichelte Linien zeigen das theoretische Zentrum, während die physischen Rohrachsen mit einer Maßlinie von 37mm versetzt und orange markiert dargestellt werden.",
+    "title": "GEOMETRISCHE ABWEICHUNG: KNOTENPUNKT"
+  },
+  "euler_buckling_physics": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a downward arrow, a gradient-filled rectangle, a dashed bent line, and a horizontal axis with numbers 0 to 100 labeled 'AXIALE LAST (kN)'.\", \"depicts",
+    "checked": "2026-08-30 05:14",
+    "subject": "Ein vertikaler Stab unter axialem Druck zeigt eine zunehmende orangefarbene Last-Anzeige, bis er bei Erreichen des Grenzwerts schlagartig nach außen knickt.",
+    "title": "PHÄNOMEN: EULERSCHE KNICKLAST"
+  },
+  "static_system_comparison": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\n \"shows\": \"Two vertical diagrams of a rod; the left features a straight white line with five horizontal tick marks and a short dimension line, while the right",
+    "checked": "2026-08-30 05:15",
+    "subject": "Zwei orthogonale Ansichten eines Stabes: Links das Modell mit fixierten Haltepunkten, rechts die Realität ohne Abstützung, wobei orangefarbene Biegungslinien das seitliche Ausweichen verdeutlichen.",
+    "title": "BERECHNUNGSFEHLER: KNICKLÄNGE"
+  },
+  "progressive_failure_sequence": {
+    "verdict": "ok",
+    "why": "a truss diagram with one dashed line, several orange-highlighted lines, thick orange arrows pointing along those lines, and numerical labels '242 kN'.",
+    "checked": "2026-08-30 05:16",
+    "subject": "Ein schematisches Gittermodell zeigt, wie nach dem Ausfall eines orange markierten Stabes die Lastpfeile in den angrenzenden Elementen massiv dicker werden, bis diese ebenfalls orange aufleuchten.",
+    "title": "KETTENREAKTION: LASTUMLAGERUNG"
+  },
+  "cross_section_weld_failure": {
+    "verdict": "ok",
+    "why": "A three-layered rectangle labelled FLANGE, WELD, and WEB, with three downward-pointing arrows above and an orange-red crack line extending into the weld layer.",
+    "checked": "2026-08-30 05:18",
+    "subject": "Ein technischer Querschnitt durch einen Stahlträger zeigt die Schweißnaht; orangefarbene Kraftvektoren weisen auf Spannungsspitzen hin, bevor ein orangefarbener Riss die Naht trennt.",
+    "title": "DETAIL: SCHWEISSNAHT-QUERSCHNITT"
+  },
+  "liquid_drop_model": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"an oval outline of white dots containing a color gradient, two vertical lines labeled F1 and F2, and text labels.\", \"depicts\": false, \"why\": \"The dra",
+    "checked": "2026-08-30 07:36",
+    "subject": "Un círculo formado por puntos densos que se deforma como una gota de agua al ser golpeado, elongándose hasta estrecharse en el centro.",
+    "title": "El átomo como gota"
+  },
+  "energy_scale_comparison": {
+    "verdict": "ok",
+    "why": "two vertical bars of vastly different heights on a baseline, labeled with numerical values (5 eV and 200,000,000 eV) and a multiplier (x 40,000,000), with a break symbol on the taller bar.",
+    "checked": "2026-08-30 07:37",
+    "subject": "Dos columnas: una pequeña representando energía química y una inmensa representando la fisión, mostrando la desproporción visual.",
+    "title": "Escala de energía"
+  },
+  "neutron_flux_discrepancy": {
+    "verdict": "ok",
+    "why": "a line graph with a vertical axis labeled with percentages, a smooth white curve, and a yellow line that follows the curve before spiking sharply upward at a point marked with a red dot and the text '+14%'",
+    "checked": "2026-08-30 07:38",
+    "subject": "Un gráfico de líneas donde una curva teórica suave es superada por una línea de datos real que se dispara un 14% por encima.",
+    "title": "Desfase en los sensores"
+  },
+  "mass_energy_equivalence_diagram": {
+    "verdict": "ok",
+    "why": "a horizontal bar divided into two grey segments with a gap in the middle containing a glowing orange circle, labeled with '0' and 'M' at the ends and 'E = Δmc²' above the gap",
+    "checked": "2026-08-30 07:41",
+    "subject": "Una línea horizontal que representa la masa del uranio; al final, se divide en dos fragmentos más pequeños con un hueco intermedio que se transforma en un destello de energía.",
+    "title": "La pérdida de masa"
+  },
+  "radon_sog_effekt": {
+    "verdict": "ok",
+    "why": "horizontal parallel lines with grey rectangular breaks, purple dots, a horizontal dashed arrow, and two vertical arrows pointing from the outside through the grey rectangles into the central space",
+    "checked": "2026-08-30 15:57",
+    "subject": "Kleine lila Gas-Punkte werden durch den Unterdruck (dargestellt durch Sog-Pfeile) durch die Gummidichtungen der Rohrverbindung in den Hauptluftstrom gezogen.",
+    "title": "Radon-Eintritt durch Unterdruck"
+  },
+  "taupunkt_kondensation": {
+    "verdict": "ok",
+    "why": "a color-graded rectangle with a temperature axis, a dashed vertical line, white dots, and blue teardrop shapes along the left vertical edge.",
+    "checked": "2026-08-30 15:58",
+    "subject": "Eine Detailansicht der Rohrwand zeigt, wie feuchte Luftpartikel beim Kontakt mit der kalten Oberfläche zu blauen Wassertropfen verschmelzen und nach unten rinnen.",
+    "title": "Entstehung von Kondenswasser"
+  },
+  "bodensetzung_gefaellebruch": {
+    "verdict": "ok",
+    "why": "A vertical scale with depth markers, five downward yellow arrows, a curved horizontal pipe shape containing a blue rectangular block, and a dashed reference line.",
+    "checked": "2026-08-30 15:59",
+    "subject": "Eine Vorher-Nachher-Animation zeigt, wie sich ein perfekt gerades Rohr durch braune Last-Pfeile verformt, bis eine Senke entsteht, in der sich blaues Wasser sammelt.",
+    "title": "Gefahr durch Bodensetzung"
+  },
+  "waermeaustausch_prinzip": {
+    "verdict": "ok",
+    "why": "a rectangle containing a red-to-blue color gradient and temperature numbers, surrounded by a hatched background with red arcs crossing the rectangle's boundary.",
+    "checked": "2026-08-30 16:00",
+    "subject": "Rote Wärmewellen wandern aus der Luft im Rohrinneren durch die Wandung in das umgebende, blau schraffierte Erdreich, während die Luftfarbe im Rohr von Rot zu Blau wechselt.",
+    "title": "Passiver Wärmetauscher im Boden"
+  },
+  "temperatur_tiefenprofil": {
+    "verdict": "ok",
+    "why": "a graph of temperature vs. depth with a curve starting at ~38°C at the surface, oscillating through soil layers, and becoming a vertical line at 10°C at 2.0m depth.",
+    "checked": "2026-08-30 16:01",
+    "subject": "Ein vertikaler Schnitt zeigt oben eine wild schwankende Temperaturkurve (Sonne/Hitze), während in 2 Metern Tiefe eine konstante, ruhige Linie bei 10 Grad verharrt.",
+    "title": "Thermische Trägheit des Bodens"
+  },
+  "geological_transition": {
+    "verdict": "ok",
+    "why": "a rectangle split into a solid grey block and a striped block of alternating brown and grey layers, with orange horizontal arrows in the layered section and a scale bar at the bottom",
+    "checked": "2026-08-31 00:11",
+    "subject": "Ein Längsschnitt visualisiert den Wechsel von homogenem Hawkesbury-Sandstein zur geschichteten Mittagong-Formation, wobei orangefarbene Vektorpfeile die horizontalen Spannungskonzentrationen markieren.",
+    "title": "ÜBERGANGSZONE MITTAGONG-FORMATION"
+  },
+  "delamination_mechanism": {
+    "verdict": "ok",
+    "why": "five stacked horizontal layers where the lower layers exhibit progressively more downward curvature, creating orange lens-shaped gaps between them, with red downward arrows and dotted lines indicating a tunnel arch.",
+    "checked": "2026-08-31 00:12",
+    "subject": "Ein Detail-Querschnitt zeigt die horizontalen Gesteinsschichten der Tunneldecke, die sich nacheinander wie Buchseiten nach unten biegen, wobei die entstehenden Hohlräume orange hervorgehoben werden.",
+    "title": "MECHANIK DER DELAMINATION"
+  },
+  "cross_section_depth": {
+    "verdict": "ok",
+    "why": "a cross-section with three horizontal layers, a rectangular foundation with a red base, a circular tunnel below it, and a vertical yellow dimension line labeled '20.0 m' between them.",
+    "checked": "2026-08-31 00:12",
+    "subject": "Eine orthogonale Schnittdarstellung zeigt das Fundament des Apartmenthauses und den Tunnel 20 Meter darunter, während eine Bemaßungslinie die vertikale Distanz verdeutlicht.",
+    "title": "GEOMETRIE DER ÜBERDECKUNG"
+  },
+  "tunnel_geometry_plan": {
+    "verdict": "ok",
+    "why": "Three thick lines representing tunnels meeting at a central point, an orange hatched circle at the intersection, and a dimension line labeled \"14.0 m\" across that area.",
+    "checked": "2026-08-31 00:13",
+    "subject": "Ein technischer Grundriss zeigt, wie drei Tunnelpfade an einem Punkt konvergieren und eine kritische Spannweite von 14 Metern bilden, die durch eine orangefarbene Schraffur als Schwachstelle markiert wird.",
+    "title": "GRUNDRISS DER TUNNELKREUZUNG"
+  },
+  "rock_bolt_deficiency": {
+    "verdict": "ok",
+    "why": "Three horizontal layers labeled as rock types, three vertical bars representing anchors, dimension lines for 'IST' and 'SOLL' lengths, and orange circles at the anchor tips.",
+    "checked": "2026-08-31 00:14",
+    "subject": "Eine technische Zeichnung vergleicht die Ist-Länge der Stahlbolzen mit der Tiefe des stabilen Felsens; orangefarbene Callouts zeigen, dass die Ankerenden in der instabilen Zone verbleiben.",
+    "title": "FEHLERHAFTE ANKER-GEOMETRIE"
+  },
+  "querschnitt_dammaufbau": {
+    "verdict": "ok",
+    "why": "a trapezoidal cross-section divided into five symmetrical zones with three distinct hatching patterns, leader lines with labels, and a vertical dimension line marked 93 m",
+    "checked": "2026-08-31 12:59",
+    "subject": "Eine orthogonale Schnittzeichnung zeigt die Materialschichten mit technischen Schraffuren, während Maßlinien die 93 Meter Höhe und Leader-Linien die Materialzonen benennen.",
+    "title": "ZONIERUNG DES STAUDAMMS"
+  },
+  "injektionsschleier_defekt": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a 3D grid with vertical lines extending to depth markers, two orange circular zones, and a thick red curved line labeled 'WASSEREINBRUCH'.\", \"depicts",
+    "checked": "2026-08-31 13:00",
+    "subject": "Eine Isometrie des Untergrunds zeigt drei Reihen von Zementinjektionen, wobei graue Linien in orange markierte Hohlräume abfließen und eine ungeschützte Passage für das Wasser hinterlassen.",
+    "title": "LÜCKENHAFTER DICHTUNGSSCHLEIER"
+  },
+  "porenwasserdruck_vektoren": {
+    "verdict": "ok",
+    "why": "two horizontal rectangles representing rock and concrete, with a row of vertical orange arrows pointing upwards from the boundary, and a vertical scale on the right labeled in bars.",
+    "checked": "2026-08-31 13:00",
+    "subject": "In einer Detailansicht des Felsfundaments erscheinen vertikale, signal-orangefarbene Kraftpfeile, die gegen die Basis der Struktur drücken und sich mit steigendem Pegel verlängern.",
+    "title": "HYDRAULISCHER AUFTRIEB"
+  },
+  "spannungskonzentration_sporngraben": {
+    "verdict": "ok",
+    "why": "A grey T-shaped concrete structure with a central protrusion labeled 'SPORNGRABEN' embedded in two horizontal layers, with red downward arrows at the top and orange lines radiating from the bottom corners of the protrusion into the bottom layer.",
+    "checked": "2026-08-31 13:01",
+    "subject": "Die technische Zeichnung des Sporngrabens zeigt, wie an den 90-Grad-Winkeln des Betons feine orangefarbene Risslinien in das angrenzende Erdreich ausstrahlen.",
+    "title": "GEOMETRISCHE SPANNUNGSKONZENTRATION"
+  },
+  "statikversagen_block_14": {
+    "verdict": "ok",
+    "why": "a tilted rectangle with a pivot point at one corner, force arrows, dashed horizontal lines below it, and numerical values for mass and angle.",
+    "checked": "2026-08-31 13:02",
+    "subject": "Eine Frontalprojektion von Block 14 zeigt die Rotation des Bauteils um seinen Fußpunkt, während die darunterliegende Bodenstruktur als weggespülte gestrichelte Linie dargestellt wird.",
+    "title": "KIPPSTABILITÄTSVERLUST BLOCK 14"
+  },
+  "lastverteilung_vektoren": {
+    "verdict": "ok",
+    "why": "three horizontal lines representing floor levels, three vertical columns, downward-pointing white arrows within the columns, and orange triangle warning icons at the junctions of the columns and the middle floor level.",
+    "checked": "2026-08-31 15:12",
+    "subject": "Vertikale Vektorpfeile zeigen den Kraftfluss durch die Stützen, während orangefarbene Warnsymbole die kritischen Belastungspunkte an den Säulenköpfen markieren.",
+    "title": "LASTVERTEILUNG OBERGESCHOSSE"
+  },
+  "kollaps_sequenz": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\n  \"shows\": \"A vertical axis with height markings from 0m to 40m, and a stack of eleven thin horizontal rectangles at the bottom labeled L1 through L11",
+    "checked": "2026-08-31 15:14",
+    "subject": "Ein schematischer Aufriss zeigt die elf Stockwerke, die sich nacheinander entlang einer vertikalen Y-Achse nach unten verschieben.",
+    "title": "KOLLAPSSEQUENZ (11 ETAGEN)"
+  },
+  "geographic_site_layout": {
+    "verdict": "ok",
+    "why": "two labeled grey shapes connected by a yellow line, a dimension line labeled '1100 m' spanning the gap, a scale bar, and a north arrow",
+    "checked": "2026-08-31 15:15",
+    "subject": "An orthogonal top-down map shows the bridge connecting the mainland to the island, with a dimension line extending across the 1100m span to show the scale of the void.",
+    "title": "GEOGRAPHISCHE ÜBERSICHT"
+  },
+  "crack_progression_scale": {
+    "verdict": "ok",
+    "why": "A grey rectangle containing a red diamond shape, positioned above a horizontal scale with tick marks labeled from 0mm to 6mm, a white bracket-like line, and the yellow text '5.1 mm'.",
+    "checked": "2026-08-31 15:47",
+    "subject": "A close-up technical drawing of a concrete crack with a sliding caliper gauge showing the measurement expanding to 6mm.",
+    "title": "Rissbreiten-Entwicklung"
+  },
+  "deflection_analysis": {
+    "verdict": "ok",
+    "why": "A curved white line, a horizontal dashed white line, four downward-pointing orange arrows, a legend with three lines labeled 'Beton', 'Stahlbewehrung', and 'Putzschicht', and text labels.",
+    "checked": "2026-08-31 15:50",
+    "subject": "A line diagram shows the slab bending under load, with a dashed line indicating the original flat plane and orange arrows representing the stress vector.",
+    "title": "Deckenplatten-Durchbiegung"
+  },
+  "sensor_data_timeline": {
+    "verdict": "ok",
+    "why": "A line graph with a vertical axis from 0% to 100% and a horizontal axis from 0s to 120s, showing a white oscillating line that ends abruptly near 86s with an orange dot.",
+    "checked": "2026-08-31 16:01",
+    "subject": "A line graph showing static sensor output levels over a 120-second countdown, ending abruptly as the signal-orange failure point appears.",
+    "title": "Sensordaten-Analyse"
+  },
+  "joint_stress_diagram": {
+    "verdict": "ok",
+    "why": "A T-joint weld diagram with a vertical plate, a horizontal base plate, and weld fillets containing a red crack line, with two force vector arrows (yellow solid and red dashed) pointing from the top, alongside a bar chart comparing 'SOLL' (400 kN) and 'IST' (580 kN) values.",
+    "checked": "2026-08-31 16:04",
+    "subject": "A technical detail view of a welded joint with dimension lines indicating force vectors, showing the discrepancy between theoretical capacity and actual failure.",
+    "title": "Schweißnaht-Belastung"
+  },
+  "intersection_graph": {
+    "verdict": "ok",
+    "why": "A line graph with a horizontal axis marked with years from 1950 to 2030, showing a rising dashed red curve labeled 'DEMANDA' and a falling solid yellow line labeled 'EXTRACCIÓN' that intersect.",
+    "checked": "2026-08-31 16:16",
+    "subject": "Dos líneas se mueven: una curva de demanda subiendo y una línea de capacidad bajando; el punto de cruce marca el momento crítico del colapso.",
+    "title": "Demanda vs Extracción"
+  },
+  "force_comparison_bar": {
+    "verdict": "ok",
+    "why": "A horizontal bar chart comparing two bars labelled 'Löwe' and '[Sm]ilodon' along a percentage scale from 0% to 100%.",
+    "checked": "2026-08-31 16:18",
+    "subject": "Ein Balkendiagramm vergleicht die Kraft von Smilodon und Löwe, wobei der Smilodon-Balken deutlich kleiner bleibt.",
+    "title": "Vergleich der Beißkraft"
+  },
+  "muscle_leverage_curve": {
+    "verdict": "ok",
+    "why": "a line graph with a vertical axis labeled 'Kraft...' and a horizontal axis labeled 'Öffnungswinkel' with markers for '0°' and '45°', showing a plotted line with five data points that slopes downwards with increasing steepness",
+    "checked": "2026-08-31 16:23",
+    "subject": "Eine Kurve zeigt, wie die Hebelkraft der Kiefermuskulatur mit zunehmendem Öffnungswinkel rapide abfällt.",
+    "title": "Kraftverlust bei Dehnung"
+  },
+  "data_divergence_flow": {
+    "verdict": "ok",
+    "why": "A horizontal dashed timeline with markers T0 to T3, which splits between T1 and T2 into two solid lines: a white line branching upwards to a box labeled 'VERDAD', and a red line branching downwards through a gradient rectangle labeled 'FILTRO' to a box labeled 'CONTROL'.",
+    "checked": "2026-08-31 16:24",
+    "subject": "Un flujo de datos original se divide en dos: uno sigue la línea recta de la verdad y el otro se desvía mediante un filtro que lo altera para justificar el control.",
+    "title": "El Código Manipulado"
+  },
+  "jaw_rotation_angle": {
+    "verdict": "ok",
+    "why": "Two horizontal white lines, one with an attached yellow line forming an acute angle with a dashed arc labeled '65°' and 'Löwe', the other with an attached red line forming an obtuse angle with a dashed arc labeled '120°' and 'Smilodon', along with a degree scale at the bottom.",
+    "checked": "2026-08-31 16:24",
+    "subject": "Ein animierter Schädel-Bogen zeigt den Öffnungswinkel von 65 Grad (Löwe) im Vergleich zu 120 Grad (Smilodon).",
+    "title": "Kieferöffnung im Vergleich"
+  },
+  "exponential_growth_model": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"A graph with axes labeled 'TIEMPO' and 'RECURSOS', a dashed red line at the top labeled 'LÍMITE FÍSICO', and a rising curve that curves upwar",
+    "checked": "2026-08-31 16:25",
+    "subject": "Una curva ascendente que se acelera verticalmente hasta chocar contra una línea horizontal que representa los límites físicos del planeta.",
+    "title": "Crecimiento vs Recursos"
+  },
+  "rebound_effect_cycle": {
+    "verdict": "ok",
+    "why": "An outer circular line with three colored nodes labeled '1. EFFICIENCY GAIN', '2. LOWER COST', and '3. HIGHER DEMAND', connected to the center by dotted radial lines, surrounding an inner dashed circular ring.",
+    "checked": "2026-08-31 16:26",
+    "subject": "Un bucle circular donde la mayor eficiencia de una máquina libera espacio para que la demanda total aumente, creando una espiral de consumo mayor.",
+    "title": "La Paradoja de Eficiencia"
+  },
+  "cross_section_stress": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"A three-layered block labeled Enamel, Dentin, and Pulp with a circular red-to-yellow gradient in the center, a thin red diagonal line in the ",
+    "checked": "2026-08-31 16:26",
+    "subject": "Ein animierter Querschnitt des Zahns zeigt beim Aufprall auf einen Knochen rote Spannungsbereiche, die zum Bruch führen.",
+    "title": "Zahnstruktur unter Belastung"
+  },
+  "entropy_funnel": {
+    "verdict": "ok",
+    "why": "A funnel shape containing a light blue rectangle at the top and several scattered red circles in the lower section, positioned next to a vertical axis marked from 0% to 100%.",
+    "checked": "2026-08-31 16:27",
+    "subject": "Un diagrama de embudo que muestra recursos ordenados entrando y convirtiéndose en una masa creciente de residuos desordenados e inútiles.",
+    "title": "Economía y Entropía"
+  },
+  "neck_force_vector": {
+    "verdict": "ok",
+    "why": "A light grey trapezoidal shape, a white curved line, a red circle, and two downward-pointing yellow triangular arrows.",
+    "checked": "2026-08-31 16:28",
+    "subject": "Vektorpfeile zeigen, wie die Kraft nicht aus dem Kiefer, sondern durch eine Abwärtsbewegung des Nackens in die Zähne geleitet wird.",
+    "title": "Kopf-Nacken-Mechanik"
+  },
+  "biomechanical_pivot_shift": {
+    "verdict": "ok",
+    "why": "Two simplified line-art skull diagrams labeled 'Frühform' and 'Spätform' on a timeline, each containing a color-gradient bar representing a muscle and a small circle representing a pivot point.",
+    "checked": "2026-08-31 16:29",
+    "subject": "Ein animierter Schädel zeigt die Verschiebung des Muskel-Ansatzpunktes und wie sich der Drehpunkt des Kiefers verändert.",
+    "title": "Veränderte Hebelverhältnisse"
+  },
+  "ballast_system_flow": {
+    "verdict": "ok",
+    "why": "A central rectangle labeled 'PUMP' connected by a dashed line to a yellow triangle pointing toward a red rectangle labeled 'T4', alongside three other blue rectangles labeled 'T1', 'T2', and 'T3'.",
+    "checked": "2026-08-31 16:58",
+    "subject": "A schematic layout of the ballast tanks with arrows showing the intended water flow direction from the pump to the intended tank.",
+    "title": "Ballastsystem: Flussrichtung"
+  },
+  "cross_section_tilt": {
+    "verdict": "ok",
+    "why": "A tilted rectangle divided into three horizontal layers, a red dot labeled 'G' at the center, a vertical dashed line passing through the dot, and an arc with the number '14°'.",
+    "checked": "2026-08-31 17:00",
+    "subject": "An orthogonal cross-section of the hull shows the center of gravity and the 14-degree rotation with a dimension line indicating the tilt angle.",
+    "title": "Querschnitt: Krängungswinkel"
+  },
+  "stability_diagram": {
+    "verdict": "ok",
+    "why": "A central rectangle containing a green checkmark, with a yellow vertical line above labeled 'B=80kN' and a red vertical line below labeled 'G=80kN', positioned above a horizontal axis marked from 0kN to 100kN.",
+    "checked": "2026-08-31 17:03",
+    "subject": "A vector diagram showing the equilibrium of buoyancy and gravity forces, with a 'Green' checkmark overlaying the stable calculation.",
+    "title": "Stabilitätsberechnung: Lastzustand"
+  },
+  "bar_chart_comparison": {
+    "verdict": "ok",
+    "why": "A bar chart with two vertical bars of different heights, labeled 'Kopf' and 'Arme', with numerical values '167 Mio' and '333 Mio' displayed above them.",
+    "checked": "2026-08-31 17:23",
+    "subject": "Ein Balkendiagramm zeigt das Verhältnis von 1/3 (Kopf) zu 2/3 (Arme) der 500 Millionen Nervenzellen.",
+    "title": "Verteilung der Neuronen"
+  },
+  "centralized_flowchart": {
+    "verdict": "ok",
+    "why": "A vertical column of four circles connected by a dashed line, with a vertical line segment labeled 'Signalweg' running parallel to the connection.",
+    "checked": "2026-08-31 17:28",
+    "subject": "Ein Flussdiagramm zeigt den linearen Weg eines Signals vom Gehirn über die Wirbelsäule direkt zur Hand.",
+    "title": "Hierarchische Steuerung (Wirbeltier)"
+  },
+  "network_diagram": {
+    "verdict": "ok",
+    "why": "A central yellow circle labeled 'KOPF' connected by eight dashed lines to eight smaller white circles arranged in an arc, each labeled 'ARM' followed by a number from 1 to 8.",
+    "checked": "2026-08-31 17:29",
+    "subject": "Ein zentraler Knotenpunkt im Kopf ist mit acht peripheren Knoten in den Armen verbunden, um die dezentrale Steuerung zu visualisieren.",
+    "title": "Neun Intelligenzzentren"
+  },
+  "cost_comparison_scale": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a horizontal axis with labels from 0W to 2000W, a large red rectangle labeled 2000W, and a small yellow rectangle labeled 40W\", \"depicts\": false, \"wh",
+    "checked": "2026-08-31 19:41",
+    "subject": "Zwei Waagschalen: Links ein großer, rot glühender Stromzähler (2000W), rechts eine kleine, grün leuchtende Umwälzpumpe (40W), die beide die gleiche Kühlleistung erbringen.",
+    "title": "Stromverbrauch im Vergleich"
+  },
+  "flowchart_monopoly": {
+    "verdict": "ok",
+    "why": "A flowchart with four labeled boxes connected by lines: a dashed line, a thick red vertical line, a thin red line with a perpendicular bar, and a thin red line connecting to the 'Brunnenring' box.",
+    "checked": "2026-08-31 19:46",
+    "subject": "Ein Flussdiagramm: Der 'Split-Anlagen-Pfad' führt in einen Kreislauf aus Wartungsgebühren und Neukauf-Pfeilen, während der 'Brunnenring-Pfad' in einer Sackgasse endet, die den Geldfluss stoppt.",
+    "title": "Wartungs-Falle vs. Eigenbau"
+  },
+  "mechanical_diagram": {
+    "verdict": "ok",
+    "why": "a cross-section with two grey blocks separated by a yellow horizontal layer, a blue vertical area on the left, a red triangle pointing into the yellow layer, and the top block tilted upwards.",
+    "checked": "2026-08-31 19:47",
+    "subject": "Eine Schnittzeichnung zeigt, wie der Wasserdruck in die Fuge zwischen Damm und Fels eindringt und das Bauwerk als Hebel nach außen drückt.",
+    "title": "Hydraulischer Keileffekt"
+  },
+  "thermal_layer_diagram": {
+    "verdict": "ok",
+    "why": "A central white square with a vertical line extending upwards, surrounded by a circular gradient of yellow-orange, with small grey dots arranged in a circle around the square, and a vertical temperature scale to the right.",
+    "checked": "2026-08-31 20:19",
+    "subject": "Ein Thermometer-Sensor in der Mitte, umgeben von einer gelb-orangen, halbtransparenten 'Wärme-Blase' aus ruhenden Luftmolekülen.",
+    "title": "Die stehende Wärmeschicht"
+  },
+  "data_comparison_chart": {
+    "verdict": "ok",
+    "why": "A line chart with a percentage y-axis and a time x-axis, displaying a white line labeled 'Official Log' and a yellow line labeled 'Actual Sensor', with a vertical dashed red line connecting them labeled 'DISCREPANCY'.",
+    "checked": "2026-08-31 20:19",
+    "subject": "Ein Liniendiagramm vergleicht die offiziellen Protokolldaten mit den tatsächlichen Wetterdaten und markiert die Lücke als Fehlerquelle.",
+    "title": "Fehlerhafte Feuchtigkeitsmessung"
+  },
+  "time_line_overlap": {
+    "verdict": "ok",
+    "why": "A horizontal timeline from 0y to 7y with tick marks, a solid colored bar extending from 0y to 5y with a color gradient from light beige to orange-red, and small red circles plotted at each year mark from 0y to 5y.",
+    "checked": "2026-08-31 20:21",
+    "subject": "Una línea de tiempo horizontal muestra un segmento sólido que representa los siete años de prisión, con círculos superpuestos que indican la erosión de su identidad frente al peso del tiempo.",
+    "title": "Siete años de encierro"
+  },
+  "financial_breakdown_graph": {
+    "verdict": "ok",
+    "why": "A horizontal bar chart with three bars of varying lengths, labeled with categories and numerical values (42M €, 65M €, 35M €), positioned above a horizontal axis marked from 0M to 140M.",
+    "checked": "2026-08-31 20:23",
+    "subject": "Ein Balkendiagramm zeigt die Verteilung der 142 Millionen Euro auf Entsorgung, Demontage und Versicherungsforderungen.",
+    "title": "Aufschlüsselung der Schadenskosten"
+  },
+  "quantity_comparison": {
+    "verdict": "unverified",
+    "why": "рендер упал: till (C:\\Users\\ali\\Desktop\\2\\remotion\\node_modules\\@remotion\\cli\\dist\\still.js:112:5)\u001b[39m\n\u001b[31m    at async cli (C:\\Users\\ali\\Desktop\\2\\remotion\\node_modules\\@remotion\\cli\\dist\\index.js:100:13)\u001b[39m\n",
+    "checked": "2026-08-31 20:25",
+    "subject": "Dos pilas de libros se comparan en altura; una parte de la pila se transforma en planos geométricos y órbitas celestes, ilustrando la sustitución de la fe por la ciencia.",
+    "title": "Páginas intervenidas"
+  },
+  "venturi_effect_pressure": {
+    "verdict": "ok",
+    "why": "A central rectangle labeled 'FAN' inside a larger frame, with red horizontal lines on the left and blue horizontal lines on the right, and text labels 'HIGH P' and 'LOW P'.",
+    "checked": "2026-08-31 20:27",
+    "subject": "Seitenansicht des Fensters: Der Lüfter verengt den Raum, farbige Drucklinien (rot für hoch, blau für niedrig) zeigen den Unterdruck hinter den Rotorblättern.",
+    "title": "Lokaler Unterdruckbereich"
+  },
+  "cross_section_analysis": {
+    "verdict": "ok",
+    "why": "A rectangular box divided into three horizontal colored bands (red, gold, blue), with a vertical line on the left labeled 'Temperaturgradient' and leader lines on the right pointing to each band.",
+    "checked": "2026-08-31 20:27",
+    "subject": "Ein vertikaler Querschnitt durch die Schalung zeigt farblich differenzierte Zonen (spröde vs. flüssig) zur Visualisierung der ungleichmäßigen Härtung.",
+    "title": "Inhomogene Beton-Aushärtung"
+  },
+  "document_cross_section": {
+    "verdict": "ok",
+    "why": "A light blue rectangle containing horizontal lines and the number '482', with a faint, semi-transparent horizontal bar crossing over the number.",
+    "checked": "2026-08-31 20:27",
+    "subject": "Un zoom sobre una réplica minimalista del documento donde la línea de tinta negra se anima para revelar el número oculto debajo, enfatizando el acto de censura administrativa.",
+    "title": "La cifra tachada"
+  },
+  "force_field_diagram": {
+    "verdict": "ok",
+    "why": "A central point labeled 'BRUNO' connected by three dashed lines to three outer circles labeled 'INQUISICIÓN', 'IGLESIA', and 'MOCENIGO', with a horizontal line segment at the bottom.",
+    "checked": "2026-08-31 20:29",
+    "subject": "Un diagrama de fuerzas donde el punto central (Bruno) es atraído por varios vectores externos (la Iglesia, Mocenigo, la Inquisición), mostrando cómo fue confinado en una trampa estratégica.",
+    "title": "La red de vigilancia"
+  },
+  "chimney_effect_heat": {
+    "verdict": "ok",
+    "why": "Three vertical rectangular bars of different colors labeled 'Masonry', 'Insulation', and 'Cladding', with three orange triangles pointing upward inside the central 'Insulation' bar.",
+    "checked": "2026-08-31 20:33",
+    "subject": "Querschnitt einer modernen Hauswand: Rote Pfeile steigen in der Dämm-Schicht nach oben, statt die Wärme nach außen abzuleiten.",
+    "title": "Der Kamineffekt in der Wand"
+  },
+  "fan_mounting_guide": {
+    "verdict": "ok",
+    "why": "A dashed-line rectangle representing a frame, three stacked blue rectangles labeled 'Lüfter', dashed arrows pointing right from each, and a vertical dimension line labeled 'Unteres Drittel' indicating the bottom section of the frame.",
+    "checked": "2026-08-31 20:34",
+    "subject": "Eine Skizze des Fensterrahmens mit drei Lüftern im unteren Drittel, Pfeile zeigen den Luftstrom nach außen, mit einem Maßband-Label für 'unteres Drittel'.",
+    "title": "Optimale Lüfter-Anordnung"
+  },
+  "anatomical_cross_section": {
+    "verdict": "ok",
+    "why": "A rectangular frame containing three stacked horizontal bars of different colors, with leader lines pointing to each section labeled 'MUSKELGEW', 'LEBER (25%)', and 'DARM/ORGAN'.",
+    "checked": "2026-08-31 21:19",
+    "subject": "Ein Querschnitt eines Weißen Hais, bei dem die Leber hervorgehoben und farblich abgesetzt wird, um ihre enorme relative Größe im Körper zu verdeutlichen.",
+    "title": "Anatomie des Hais"
+  },
+  "tactical_pincer_movement": {
+    "verdict": "ok",
+    "why": "A central red circle labeled 'PREY' surrounded by four white circles labeled V1-V4, connected to the center by dashed yellow lines within a dashed circular boundary.",
+    "checked": "2026-08-31 21:21",
+    "subject": "Draufsicht auf das Meer: Orcas bewegen sich strategisch an die Ränder, um den Hai in die Mitte zu drängen und alle Fluchtvektoren zu blockieren.",
+    "title": "Taktische Einkesselung"
+  },
+  "pincer_maneuver_diagram": {
+    "verdict": "ok",
+    "why": "A horizontal line labeled 'SURFACE', an orange fish-like shape labeled 'PREY' at the surface, and two white oval shapes labeled 'PORT' and 'STARBOARD' positioned below the prey with dashed lines connecting them to the prey.",
+    "checked": "2026-08-31 21:22",
+    "subject": "Ein schematisches Diagramm zeigt zwei Orcas, die eine Zangenbewegung um einen Hai ausführen, um ihn zur Oberfläche zu zwingen.",
+    "title": "Zangenangriff der Orcas"
+  },
+  "load_redirection_diagram": {
+    "verdict": "ok",
+    "why": "Two grey vertical rectangles, a horizontal yellow bar connecting them, and red arrows indicating a downward force that splits into two horizontal directions.",
+    "checked": "2026-09-01 00:25",
+    "subject": "Animation zeigt den Lastpfad: Erst vertikal, dann abrupt horizontal abgelenkt durch einen Träger in die angrenzenden Wände.",
+    "title": "Horizontale Lastumleitung"
+  },
+  "mechanism_cross_section": {
+    "verdict": "ok",
+    "why": "A circular arrangement of small rectangles connected by a dashed line, with one rectangle highlighted in red, a red vertical line segment above it, and a curved orange line extending from that segment.",
+    "checked": "2026-09-01 00:27",
+    "subject": "Una vista lateral de un engranaje de reloj donde un diente se rompe o se bloquea, mostrando la energía cinética disipándose en lugar de transmitirse.",
+    "title": "Mecanismo del tiempo detenido"
+  },
+  "pressure_build_up": {
+    "verdict": "ok",
+    "why": "A horizontal grey shape that narrows towards the right, with a dashed vertical line, a series of five vertical red bars of increasing height, and an axis with numerical labels.",
+    "checked": "2026-09-01 00:29",
+    "subject": "Ein Diagramm zeigt den Querschnitt des Kanals, der sich verengt, während rote Pfeile den exponentiell ansteigenden Druck visualisieren.",
+    "title": "Staudruck-Gefahr"
+  },
+  "load_comparison_chart": {
+    "verdict": "ok",
+    "why": "A bar chart with a vertical axis labeled in kN, two vertical bars labeled 'Geplant' and 'Tatsächlich', and an orange segment at the top of the second bar marked with a '+14%' indicator.",
+    "checked": "2026-09-01 00:31",
+    "subject": "Ein Balkendiagramm vergleicht die geplante Last mit der tatsächlichen Last, wobei 14% als orangefarbene Differenz hervorgehoben sind.",
+    "title": "Statische Lastabweichung"
+  },
+  "levitation_physics": {
+    "verdict": "ok",
+    "why": "a central dark circle with white rectangular teeth, surrounded by a dashed circular line and radial dashed lines connecting the teeth to small orange dots.",
+    "checked": "2026-09-01 00:41",
+    "subject": "Diagrama de sección transversal de un engranaje suspendido en el aire sin contacto, rodeado por líneas de fuerza magnética que lo mantienen estable.",
+    "title": "Mecanismo de levitación"
+  },
+  "temporal_reflection": {
+    "verdict": "ok",
+    "why": "A vertical grey rectangle labeled 'ESPEJO', a dashed horizontal line leading to it, and a solid line extending from the rectangle to a vertical axis marked with time increments (T, T-2m, T-4m, T-6m, T-8m, T-10m).",
+    "checked": "2026-09-01 00:44",
+    "subject": "Un diagrama de trayectoria de luz donde el rayo rebota en el espejo y se desvía hacia una línea de tiempo desplazada diez minutos hacia atrás.",
+    "title": "El espejo de diez minutos"
+  },
+  "gas_concentration": {
+    "verdict": "ok",
+    "why": "A graph with a vertical axis labeled 'CO-Konzentration (ppm)' and a horizontal axis labeled 'Zeit (Minuten)', featuring a horizontal dashed red line at the 200 mark and a rectangular area filled with a vertical color gradient.",
+    "checked": "2026-09-01 00:44",
+    "subject": "Eine Animation zeigt den Anstieg der CO-Konzentration im Raumvolumen, wobei die 200-ppm-Marke in Rot hervorgehoben wird.",
+    "title": "Gefährliche CO-Konzentration"
+  },
+  "cross_section_mechanism": {
+    "verdict": "ok",
+    "why": "three horizontal rectangles representing layers, a central gear-like circle, thin leader lines with labels, and pale green dashed concentric arcs emanating from the central gear",
+    "checked": "2026-09-01 13:38",
+    "subject": "Un corte transversal en líneas finas de un reloj suizo donde los engranajes permanecen estáticos mientras una vibración en verde pálido emana del escape.",
+    "title": "EL MECANISMO EN REPOSO"
+  },
+  "lastpfad_bewehrung_querschnitt": {
+    "verdict": "ok",
+    "why": "a vertical rectangle containing two yellow vertical lines, with gray downward-pointing arrows positioned along those lines, and text labels with leader lines.",
+    "checked": "2026-09-01 13:38",
+    "subject": "Orthogonaler Schnitt der Säule zeigt graue Vektorpfeile, die den Kraftfluss entlang der vertikalen Bewehrungsstäbe nach unten leiten.",
+    "title": "LASTVERTEILUNG IN DER STÜTZE"
+  },
+  "vergleich_druckfestigkeit": {
+    "verdict": "ok",
+    "why": "A vertical axis with numerical ticks from 0 to 40, two vertical bars of different heights, and an orange hatched area on the second bar marked with a bracket.",
+    "checked": "2026-09-01 13:39",
+    "subject": "Zwei technische Diagramm-Säulen vergleichen den Soll-Wert C30/37 mit dem Ist-Wert 18 N/mm², wobei der Defizit-Bereich orange schraffiert ist.",
+    "title": "DRUCKFESTIGKEIT: SOLL VS. IST"
+  },
+  "lastumleitung_horizontal": {
+    "verdict": "ok",
+    "why": "three vertical red arrows pointing down at a horizontal yellow bar supported by two vertical grey blocks, with a horizontal white dashed double-headed arrow inside the yellow bar pointing towards the blocks",
+    "checked": "2026-09-01 13:41",
+    "subject": "Ein schematischer Aufriss zeigt, wie vertikale Lastpfeile auf den horizontalen Träger treffen und im 90-Grad-Winkel zu den Seitenwänden abgelenkt werden.",
+    "title": "STRUKTURELLE LASTUMLEITUNG"
+  },
+  "causality_collapse": {
+    "verdict": "ok",
+    "why": "three horizontal lines originating from a vertical axis, each severed by red diagonal slashes, with three large colored circles positioned in the empty space to the right of the breaks.",
+    "checked": "2026-09-01 13:43",
+    "subject": "Varios círculos que representan eventos históricos se desconectan de sus líneas de origen, flotando aislados en el espacio vacío del fondo índigo.",
+    "title": "COLAPSO DE LA CAUSALIDAD"
+  },
+  "structural_angle_flow": {
+    "verdict": "ok",
+    "why": "Two white rectangles joined at an angle, a yellow arc marking a 14° angle, horizontal dashed lines transitioning into wavy red dashed lines with small circles, and several text labels.",
+    "checked": "2026-09-01 13:44",
+    "subject": "Zwei Holzelemente werden mit einer Winkelangabe von 14° skizziert, während ein glatter Luftstrom beim Passieren der Kante in turbulente, kreisförmige Linien aufbricht.",
+    "title": "Der 14-Grad-Strömungsabriss"
+  },
+  "magnetic_forces_diagram": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"Twelve rectangles arranged in a ring around a central dark circle, with one solid and one dashed concentric circle passing through or inside the ring",
+    "checked": "2026-09-01 13:46",
+    "subject": "Círculos concéntricos de grosor mínimo muestran las fuerzas de repulsión que mantienen a los engranajes suspendidos sin tocar un eje central.",
+    "title": "PRESIÓN MAGNÉTICA"
+  },
+  "punktlast_ueberlagerung": {
+    "verdict": "ok",
+    "why": "a horizontal slab supported by a vertical column, a stack of rectangles on top, an orange circular highlight on the slab, and several downward-pointing gray arrows between the rectangles and the highlight.",
+    "checked": "2026-09-01 13:47",
+    "subject": "Ein statisches Modell der Deckenplatte zeigt die Akkumulation von Lastvektoren (grau) durch die Paletten direkt über der orange markierten Schwachstelle.",
+    "title": "ZUSÄTZLICHE STATISCHE LAST"
+  },
+  "chemical_reaction_over_time": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a line graph with axes for time (0h-4h) and percentage (8%-16%), a rising line, and a three-layered rectangle with green dots scattered in the space ",
+    "checked": "2026-09-01 13:48",
+    "subject": "Ein Zeitstrahl von 0 bis 4 Stunden zeigt einen ansteigenden Prozentwert für die Holzfeuchte, während gleichzeitig grüne Partikel (Formaldehyd) aus der Holzoberfläche in die Umgebung austreten.",
+    "title": "Feuchtigkeits-Gift-Reaktion"
+  },
+  "historical_curvature": {
+    "verdict": "ok",
+    "why": "a circular arc with a color gradient, chronological year labels (1900, 2000, 2100), and two endpoints labeled 'T-MINUS' and 'T-PLUS' with arrows pointing toward each other in the gap.",
+    "checked": "2026-09-01 13:48",
+    "subject": "Una línea horizontal extensa comienza a curvarse lentamente por los extremos hasta que el punto del futuro toca el punto del pasado.",
+    "title": "CURVATURA DE LA HISTORIA"
+  },
+  "feedback_loop_diagram": {
+    "verdict": "ok",
+    "why": "a central circle labeled 'OBSERVADOR' with concentric dashed rings, a horizontal dashed reference line, and a solid yellow line that deviates from it at four points labeled E-1 through E-4.",
+    "checked": "2026-09-01 13:50",
+    "subject": "Un círculo central etiquetado como 'Observador' emite ondas que, al tocar una línea de tiempo, alteran la trayectoria de los eventos previos.",
+    "title": "RETROALIMENTACIÓN DEL PASADO"
+  },
+  "gas_concentration_scale": {
+    "verdict": "ok",
+    "why": "a rectangular room outline with furniture icons, a vertical axis scaled from 0 to 200, a gray fill level aligned with the 194 mark, a digital counter, and a warning icon",
+    "checked": "2026-09-01 13:50",
+    "subject": "Ein einfacher Raum-Umriss füllt sich von unten nach oben mit einer grauen Fläche, während ein Zähler oben rechts von 0 auf 200 ppm springt und ein Warnsymbol erscheint.",
+    "title": "CO-Sättigung im Raum"
+  },
+  "knotenpunkt_versagen": {
+    "verdict": "ok",
+    "why": "a grid of nine nodes connected by lines, with one corner node marked in red with an 'X', two adjacent nodes in yellow, and thick gold arrows with '+117% LAST' pointing to the yellow nodes.",
+    "checked": "2026-09-01 13:50",
+    "subject": "Draufsicht auf das statische Skelett; der Eckknoten färbt sich signal-orange, während die Lastpfeile der angrenzenden Stützen durch die Umverteilung schlagartig dicker werden.",
+    "title": "VERSAGEN DES KNOTENPUNKTS"
+  },
+  "volume_scale_comparison": {
+    "verdict": "ok",
+    "why": "A stylized, abstract shape representing a shark body outline in dark grey, containing a distinct, smaller orange-to-yellow gradient shape, with two leader lines pointing to each area labeled with percentages.",
+    "checked": "2026-09-01 16:05",
+    "subject": "Ein 3D-Modell des Hais wird transparent, um das Volumen der Leber im Vergleich zum restlichen Körpervolumen hervorzuheben.",
+    "title": "Die Leber als Energiespeicher"
+  },
+  "tactical_map_view": {
+    "verdict": "ok",
+    "why": "A black background with a white scale bar at the bottom, a white dashed rectangle, three yellow circles, three red circles labeled 'HAIFISCH', and dashed lines radiating from the center.",
+    "checked": "2026-09-01 16:13",
+    "subject": "Eine Draufsicht auf das Küstengebiet zeigt Orca-Punkte, die sich taktisch positionieren, um die Fluchtwege der Hai-Punkte abzuriegeln.",
+    "title": "Koordinierte Kesseljagd"
+  },
+  "top_down_maneuver": {
+    "verdict": "ok",
+    "why": "Two white circles labeled 'PORT' and 'STARBOARD', a small orange oval labeled 'PREY', and two dashed orange lines forming a V-shape that converges at the prey.",
+    "checked": "2026-09-01 16:17",
+    "subject": "Eine stilisierte Draufsicht zeigt die 'Zangenbewegung' der zwei Orcas, die den Hai in einen Bereich ohne Fluchtmöglichkeit drängen.",
+    "title": "Zangenangriff der Orcas"
+  },
+  "geographic_escape_route": {
+    "verdict": "ok",
+    "why": "A white curved line representing a coastline, a red dot labeled 'ORCA', a yellow dot, and a dashed yellow line connecting the two dots, set against a distance scale from 0km to 200km.",
+    "checked": "2026-09-01 16:21",
+    "subject": "Eine Karte von Südafrika zeigt einen Punkt (Hai) an der Küste, der bei Erscheinen eines Orca-Symbols schnell eine lange Linie weg von der Küste in den Ozean zieht.",
+    "title": "Flucht in die Weite"
+  },
+  "asymmetric_site_layout": {
+    "verdict": "ok",
+    "why": "a profile view of ground layers with a trapezoidal pit on the left and a triangular pile on the right, including vertical dimension lines labeled -5.0m and +10.0m, and a dashed arc arrow connecting them.",
+    "checked": "2026-09-01 22:20",
+    "subject": "A slate-grey profile view of the site animates the excavation of a 5-meter pit on the left and the simultaneous rising of a 10-meter soil pile on the right, with dimension lines indicating heights.",
+    "title": "Asymmetrische Baustellen-Topographie"
+  },
+  "foundation_shear_cross_section": {
+    "verdict": "ok",
+    "why": "three stacked rectangular blocks representing layers, a horizontal gap between the middle and bottom blocks, and a single orange circular indicator at the top edge of the bottom block with a leader line.",
+    "checked": "2026-09-01 22:21",
+    "subject": "An orthogonal cross-section of the building shows the underground piles shearing cleanly at the foundation slab connection, with a single signal-orange indicator at the fracture point.",
+    "title": "Bruchstelle der Fundamentpfähle"
+  },
+  "pile_bending_failure": {
+    "verdict": "ok",
+    "why": "a curved vertical shaft with a hollow core and internal layers, several horizontal yellow arrows of varying lengths pushing against its side, and a red jagged mark at the point of greatest curvature.",
+    "checked": "2026-09-01 22:22",
+    "subject": "An engineering detail of a single hollow pile shows lateral pressure vectors bending the shaft, culminating in a signal-orange structural failure line at the point of maximum shear stress.",
+    "title": "Biegespannung der Spannbetonpfähle"
+  },
+  "horizontal_soil_pressure": {
+    "verdict": "ok",
+    "why": "three horizontal rectangular layers, a sequence of horizontal arrows pointing right through the middle layer, a dashed box on the right, and a color gradient bar at the bottom.",
+    "checked": "2026-09-01 22:22",
+    "subject": "A technical sectional diagram shows horizontal load arrows propagating through the soft soil layer from the high-pressure hill side towards the zero-pressure excavation pit.",
+    "title": "Horizontaler Erddruckverlauf"
+  },
+  "probe_pfahl_hohlraum": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a vertical grey rectangle crossing three horizontal colored bands labeled 'Грунт 1', 'Грунт 2', and 'Грунт 3', with a gap below the rectangle marked ",
+    "checked": "2026-09-02 21:32",
+    "subject": "Разрез грунта: свая длиной 18 m уходит вниз, под её остриём пустота 2,4 m, три слоя грунта с названиями, размерная линия с числом 2,4 m, трещина как акцент",
+    "title": "Пустота под сваей"
+  },
+  "probe_last_umverteilung": {
+    "verdict": "ok",
+    "why": "a horizontal beam above four support positions, where three positions have vertical bars labeled '118 t' and the fourth is crossed out, with downward arrows on the beam and a horizontal reference line labeled 'REF: 88t / UNIT'.",
+    "checked": "2026-09-02 21:34",
+    "subject": "Сравнение: четыре опоры по 88 тонн против трёх по 118 тонн, оба числа подписаны, столбцы одной шкалы, стрелки нагрузки на верхней балке",
+    "title": "Нагрузка ушла на три опоры"
+  },
+  "probe_schweissnaht_riss": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"three vertical rectangular zones with different diagonal hatchings, a vertical red line between two zones, a callout box labeled 'Корень' with a lead",
+    "checked": "2026-09-02 21:37",
+    "subject": "Разрез сварного шва: корень шва, зона термического влияния и основной металл разными штриховками, выноска с поводком на корень, трещина 340 mm с размерной линией",
+    "title": "Трещина по шву"
+  },
+  "probe_wasser_weg": {
+    "verdict": "ok",
+    "why": "Four stacked rectangles labeled 'Кровля' and 'Слой 1-3', a vertical dashed line passing through them, a red dot at the bottom, and a vertical dimension line labeled '4 ч'.",
+    "checked": "2026-09-02 21:41",
+    "subject": "Путь протечки: вход через шов на кровле, движение сквозь три слоя перекрытия, выход внизу; по пути бежит точка, время 4 часа подписано, слои названы",
+    "title": "Куда ушла вода"
+  },
+  "probe_temperatur_abfall": {
+    "verdict": "ok",
+    "why": "a line graph with a horizontal axis (0-800°C), a vertical axis (%), a falling yellow curve, a red point marked with dashed lines leading to '40%' and '540°C', and a background grid",
+    "checked": "2026-09-02 21:43",
+    "subject": "График: ось температуры 0-800 C с делениями, ось прочности в процентах, кривая падения, отметка 540 C и 40 % с пунктиром, сетка позади данных",
+    "title": "Прочность против температуры"
+  },
+  "wall_thickness_comparison": {
+    "verdict": "ok",
+    "why": "a thin white circle with eight orange arrows pointing outwards from the center to the perimeter, labeled '250 PSI', and a leader line pointing to the circle labeled 'STAHLWAND 4.8'.",
+    "checked": "2026-09-06 17:00",
+    "subject": "Eine orthogonale Schnittansicht des Rohres füllt das Bild; die Stahlwand ist nur eine hauchdünne Linie, gegen die massive orangefarbene Vektorpfeile für 250 PSI drücken.",
+    "title": "DRUCK VS. MATERIALSTÄRKE"
+  },
+  "atomic_impurity_grid": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"A grid of 1000 small grey circles (40 columns by 25 rows) containing 7 larger orange circles distributed within the pattern.\", \"depicts\": true, \"why\"",
+    "checked": "2026-09-06 17:01",
+    "subject": "Ein geordnetes Gitter aus 1000 grauen Stahl-Atomen wird von genau 7 orangefarbenen Fremdatomen unterbrochen, die wie Keile die schützende Eisenfluoridschicht aufbrechen.",
+    "title": "KRITISCHE VERUNREINIGUNG 0,7%"
+  },
+  "inspection_blind_spot": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"A white L-shaped line representing a pipe with vertical tick marks along its horizontal section, an orange 'NULL-ZONE' text label next to the vertica",
+    "checked": "2026-09-06 17:02",
+    "subject": "Eine Isometrie der Rohrleitung zeigt Dutzende Messpunkte (Fadenkreuze) auf geraden Strecken, während der kritische Krümmer in einer orangefarbenen 'Null-Zone' ohne Markierungen liegt.",
+    "title": "PRÜF-BLINDHEIT"
+  },
+  "ballistic_trajectory": {
+    "verdict": "ok",
+    "why": "a horizontal line, a grey block labeled ANLAGE, an orange parabolic curve connecting the block to a jagged shape labeled OSTUFER, a truck silhouette inside that shape, and a dimension line for 640m.",
+    "checked": "2026-09-06 17:03",
+    "subject": "Eine technische Seitenansicht zeigt den Fluss als flache Linie; eine orangefarbene Parabel verbindet die Anlage mit dem Ufer, wobei eine LKW-Silhouette im 15t-Fragment die Masse verdeutlicht.",
+    "title": "TRÜMMERFLUG V-1"
+  },
+  "safety_circuit_failure": {
+    "verdict": "ok",
+    "why": "two boxes connected by a line that is interrupted by an orange 'X' and changes from solid to dashed, plus a horizontal axis with time markers and a vertical line at 0s",
+    "checked": "2026-09-06 17:04",
+    "subject": "Ein Schaltplan zeigt die Verbindung zwischen Leitwarte und Sprühpumpe; ein orangefarbenes 'X' markiert die physische Trennung der Linie, während ein Zeitstrahl den Ausfall auf Sekunde 0 setzt.",
+    "title": "SYSTEMTRENNUNG"
+  },
+  "selective_corrosion_profile": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"two horizontal grey bars divided into three segments labeled ROHR A, KRÜMMER, and ROHR B, where the middle segment of the top bar contains an",
+    "checked": "2026-09-06 17:04",
+    "subject": "Ein technischer Längsschnitt zeigt drei Rohrsegmente; während die geraden Stücke dicke graue Wände behalten, zeigt der Krümmer eine orangefarbene Auszehrung, die 5x tiefer in das Metall ragt.",
+    "title": "SELEKTIVER MATERIALABTRAG"
+  },
+  "severed_control_pathway": {
+    "verdict": "ok",
+    "why": "Two labeled rectangles connected by horizontal lines, which are bisected by a vertical orange jagged line; a status box at the destination shows a numerical value of 0%.",
+    "checked": "2026-09-09 00:01",
+    "subject": "A schematic wiring diagram showing the path from 'Leitwarte' to 'Wassersprühturm'; an orange jagged line (the explosion) bisects the wires, showing a '0% Signal' status at the pump end.",
+    "title": "TOTALAUSFALL DER SICHERHEITSSYSTEME"
+  },
+  "metallurgical_impurity_grid": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: 2) - has orange corner\n3. (x=11, y...) - has orange corner\n4. (x=13, y...) - has orange corner\n5. (x=15, y...) - has orange corner (with callout)\n6. (",
+    "checked": "2026-09-09 00:02",
+    "subject": "A grid of 1.000 grey squares representing steel molecules; exactly 7 squares turn signal-orange, visually breaking the alignment of the protective 'Eisenfluoridschicht' line above them.",
+    "title": "CHEMISCHE VERUNREINIGUNG: 0,7 PROZENT"
+  },
+  "ballistic_trajectory_fragment": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"A horizontal baseline, a red rectangle labeled '12m', a yellow box, an orange parabolic arc, and the number '640m' centered below the baseline.\", \"de",
+    "checked": "2026-09-09 00:04",
+    "subject": "A technical profile view of the river; a 15t reactor part is represented by a simple box, its trajectory marked by a long orange parabola spanning exactly 640 meters, with a 12-meter truck silhouette for scale.",
+    "title": "FLUGBAHN DES 15-TONNEN-FRAGMENTS"
+  },
+  "toxic_plume_vector": {
+    "verdict": "unverified",
+    "why": "Gemini: Gemini (зрение): HTTPSConnectionPool(host='generativelanguage.googleapis.com', port=443): Max retries exceeded with url: /v1beta/models/gemini-3.1-flash-lite:generateContent?key=<ключ скрыт> скрыт> (Caused by NameResolutionError(\"HTTPSConnection(host='generativelanguage.googleapis.com', port=443): Failed to resolve 'generativelanguage.googleapis.com' ([Errno 11001] getaddrinfo failed)\")); ",
+    "checked": "2026-09-09 00:05",
+    "subject": "A top-down map grid of Philadelphia; orange vector arrows show the 11 km/h wind pushing the cloud into empty space, while a ghosted orange area shows the 1.5 million people who would have been hit by a 180-degree shift.",
+    "title": "WINDRICHTUNG ALS RETTUNGSFAKTOR"
+  },
+  "erosion_profile_elbow": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: {\"shows\": \"a vertical gray bar that curves at the top, where the outer boundary of the curve is drawn much closer to the inner boundary than in the straight sec",
+    "checked": "2026-09-09 00:07",
+    "subject": "An orthogonal projection of an L-shaped pipe; while the straight sections show 100% wall thickness, the outer radius of the bend is eaten away by an orange gradient until only 5% remains.",
+    "title": "SELEKTIVE KORROSION IM KRÜMMER"
+  },
+  "ballistic_trajectory_map": {
+    "verdict": "ok",
+    "why": "a top-down map with grey blocks, a faint grid, a slate-grey vertical band, an orange arc connecting two points, a dimension line marked 640m, and a truck silhouette.",
+    "checked": "2026-09-09 11:58",
+    "subject": "An orthogonal top-down map shows the refinery as a grey grid; an orange vector line arcs from the center, crossing a slate-grey river to a point 640m away, where a truck silhouette is placed for scale.",
+    "title": "Flugbahn Fragment V-1"
+  },
+  "micro_section_comparison": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"An orange rectangle and a grey rectangle side-by-side between two horizontal lines, a separate white rectangle to the right, and two dimensio",
+    "checked": "2026-09-09 11:59",
+    "subject": "A section cut of the pipe fills the frame; the camera zooms into the orange-tinted failure point until the steel wall is a hairline, measured against the 0.76mm thickness of a standard credit card shown in cross-section.",
+    "title": "Kritische Wandstärke 0,38 mm"
+  },
+  "metallurgical_matrix_grid": {
+    "verdict": "ok",
+    "why": "a grid of 1,000 small circles with 7 highlighted in orange, horizontal dashed lines, a solid white line with a yellow segment, and the text '1 %' and 'Legierungsfehler 0,7 %'.",
+    "checked": "2026-09-09 12:00",
+    "subject": "A grid of 1,000 grey steel-atom icons fills the screen; 7 icons turn signal-orange and start to vibrate, causing the surrounding 'protective layer' lines to dissolve, while a human hand points to the scale.",
+    "title": "Legierungsfehler 0,7 %"
+  },
+  "differential_erosion_bar": {
+    "verdict": "ok",
+    "why": "Two vertical bars of different heights on a baseline, labeled with '85 mm' and '25 mm', positioned below a horizontal 'Reference Bolt' line and dashed grid lines.",
+    "checked": "2026-09-09 12:03",
+    "subject": "Two vertical bars represent steel thickness; the left bar (standard) shrinks slowly, while the right bar (elbow 821) drops 5 times faster, measured against a fixed reference line representing the height of a standard bolt.",
+    "title": "Beschleunigter Materialabtrag"
+  },
+  "safety_circuit_interruption": {
+    "verdict": "unverified",
+    "why": "ответ зрения не разобрался: ```json\n{\"shows\": \"An explosion icon and a pump icon connected by a dashed red line with a physical break, a callout box showing a cable cross-section, and a 24",
+    "checked": "2026-09-09 12:04",
+    "subject": "A logic flow diagram connects an orange 'Explosion' icon to a 'Water Pump' icon via a slate-grey line; the line snaps physically at the timestamp 04:02:00, represented by a severed heavy-duty power cable icon for scale.",
+    "title": "Systemversagen Notabschaltung"
+  },
+  "inspection_blind_spot_schematic": {
+    "verdict": "ok",
+    "why": "a grey pipe schematic with dimension lines and values (450mm, 900mm, 600mm) on straight sections, an orange-highlighted elbow, and a '0' with a red strike-through symbol next to it.",
+    "checked": "2026-09-09 12:04",
+    "subject": "An isometric wireframe of the pipe system shows dozens of grey dimension lines on straight sections; the camera pans to the orange-highlighted elbow where the dimension line is replaced by a '0' and a strike-through symbol.",
+    "title": "Übersehene Prüfpunkte"
+  },
+  "invisible_topography": {
+    "verdict": "ok",
+    "why": "a fine-line outline of a hand, a circular magnifying lens overlaying it, and a dense field of small white and red dots within that circle, with a callout label 'COSTO ANUAL: 450 PUNTOS'",
+    "checked": "2026-09-12 18:40",
+    "subject": "Una mano humana dibujada en trazo fino se expande bajo un círculo de lupa que revela una textura rugosa de 450 puntos geométricos, representando el costo anual de la ignorancia.",
+    "title": "La piel como transporte"
+  },
+  "lethality_tracks": {
+    "verdict": "ok",
+    "why": "Two horizontal grey lines labeled 'MÉDICOS' and 'PARTERAS'; the top line contains a rectangular frame with ten circles (nine white, one green), while the bottom line is a thin horizontal stroke.",
+    "checked": "2026-09-12 18:41",
+    "subject": "Dos líneas paralelas de color piedra cruzan el encuadre; la línea de los médicos se ensancha hasta contener 10 círculos, de los cuales uno se vuelve verde polvoriento, mientras la de las parteras permanece fina.",
+    "title": "El peso del conocimiento"
+  },
+  "anatomical_overlap": {
+    "verdict": "ok",
+    "why": "The number 1847, two overlapping gray rectangular silhouettes, a green network of lines and dots in the torso with a leader line, and a red crossed-out circle in the pelvic area.",
+    "checked": "2026-09-12 18:45",
+    "subject": "La silueta de un hombre y una mujer se superponen en el centro; el área de coincidencia no es el útero, sino una red linfática que se ilumina en verde piedra bajo la fecha 1847.",
+    "title": "La fiebre no tiene sexo"
+  },
+  "radial_influence": {
+    "verdict": "ok",
+    "why": "A rectangular room outline with a central bed, a perimeter of yellow dashed lines with arrows, a red dashed circle around the bed, and a leader line pointing from a text box to a dot on the bed.",
+    "checked": "2026-09-12 18:46",
+    "subject": "Un plano cenital de una habitación con una ventana; el aire fluye solo por los bordes sin tocar la cama central, donde el área de efecto del 1% de mortalidad nace únicamente del contacto médico.",
+    "title": "El aire contra el contacto"
+  },
+  "volume_vs_surface": {
+    "verdict": "ok",
+    "why": "The text 'ANNO 1850' above a faded 3D block with labeled layers (DERMIS, TEJIDO, MÉDULA) inside a red 'prohibited' symbol, next to a white rectangle with a yellow silhouette outline held by a curved white arm.",
+    "checked": "2026-09-12 18:48",
+    "subject": "Una mano sostiene una hoja de papel plana con una silueta dibujada (el maniquí), mientras detrás se desvanece un cuerpo con profundidad y capas anatómicas reales bajo la fecha 1850.",
+    "title": "La ciencia de cartón"
   }
 }

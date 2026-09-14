@@ -13,6 +13,23 @@ from pathlib import Path
 import requests
 
 VEO_BASE_URL = os.getenv("VEO_BASE_URL", "https://veononstop.org/api/v1")
+
+# Поставщик генерации. "veononstop" (по умолчанию) — этот файл целиком;
+# "google" — официальный Gemini API через google_veo.py. Переключается
+# переменной среды VEO_PROVIDER, без правки кода: нужен запасной путь на
+# случай, когда посредник недоступен, подорожал или закрылся.
+VEO_PROVIDER = os.getenv("VEO_PROVIDER", "veononstop").strip().lower()
+
+
+def provider() -> str:
+    """Текущий поставщик; читается на каждый вызов, чтобы переключение
+    работало и без перезапуска приложения."""
+    return os.getenv("VEO_PROVIDER", VEO_PROVIDER).strip().lower()
+
+
+def _google():
+    import google_veo
+    return google_veo
 VEO_API_KEY = os.getenv("VEO_API_KEY", "")
 
 DONE_STATES = {"completed", "succeeded", "success"}
@@ -130,12 +147,44 @@ def pending_task(dest: Path, kind: str) -> str:
         return str(item.get("task_id", ""))
 
 
-def track_task(task_id: str, dest: Path, kind: str) -> None:
+# КАКИМ КЛЮЧОМ ПОСТАВЛЕНА ЗАДАЧА. Ключей у Veo может быть несколько
+# (VEO_API_KEY, VEO_API_KEY2, ...), и ротация в core выдаёт то один, то
+# другой. Отменять задачу можно ТОЛЬКО тем ключом, которым она поставлена:
+# чужой ключ получает 401/403 «нет такой задачи», а задача остаётся жить и
+# держать слот. Кладём в журнал не сам ключ, а его отпечаток: veo_tasks.json
+# лежит рядом с проектом обычным файлом, и секрету там не место. Отпечаток
+# берём готовый — _key_id ниже, тот же, которым считается расход по аккаунту:
+# двух разных «отпечатков ключа» в одном файле быть не должно.
+def known_keys() -> list[str]:
+    """Все ключи Veo из среды — тот же набор, что перебирает ротация core."""
+    names = ["VEO_API_KEY"]
+    names += sorted((n for n in os.environ
+                     if n.startswith("VEO_API_KEY")
+                     and n[len("VEO_API_KEY"):].isdigit()),
+                    key=lambda n: int(n[len("VEO_API_KEY"):]))
+    out: list[str] = []
+    for n in names:
+        k = (os.getenv(n, "") or "").strip()
+        if k and k not in out:
+            out.append(k)
+    return out
+
+
+# Ключ ПОСЛЕДНЕГО запроса этого потока. Нужен потому, что track_task зовут
+# из core сразу после создания задачи и без ключа — а ключ там из ротации.
+# Локально для потока: параллельные генерации ходят разными ключами, и общая
+# переменная перепутала бы их между собой.
+_CUR = threading.local()
+
+
+def track_task(task_id: str, dest: Path, kind: str, api_key: str = "") -> None:
     """Сохраняет ID сразу после отправки задачи, до начала ожидания."""
+    key = (api_key or getattr(_CUR, "key", "") or VEO_API_KEY)
     with _TASK_LOCK:
         tasks = _load_tasks()
         tasks[str(Path(dest).resolve())] = {
             "task_id": task_id, "kind": kind, "created_at": int(time.time()),
+            "key_id": _key_id(key),
         }
         _save_tasks(tasks)
 
@@ -173,15 +222,36 @@ def pending_tasks() -> list[dict]:
 
 
 def cancel_pending_tasks(api_key: str = "") -> int:
-    """Отменяет только задачи текущего проекта, а не всего аккаунта Veo."""
+    """Отменяет только задачи текущего проекта, а не всего аккаунта Veo.
+
+    КАЖДУЮ ЗАДАЧУ ГАСИМ ТЕМ КЛЮЧОМ, КОТОРЫМ ОНА ПОСТАВЛЕНА. Раньше сюда
+    приходил один ключ на всех (webapp брал os.getenv("VEO_API_KEY") — то
+    есть всегда ПЕРВЫЙ, мимо ротации veo_key_now), и задача, поставленная
+    вторым ключом, отменялась первым: сервер отвечал 4xx, условие ниже
+    считало это за «задачи всё равно нет» и стирало запись. Итог хуже, чем
+    «не отменили»: задача жива, держит слот и деньги, а гасить её больше
+    нечем — «Стоп» ходит только по журналу.
+    """
+    keys = {_key_id(k): k for k in known_keys()}
+    if api_key:
+        keys.setdefault(_key_id(api_key), api_key.strip())
     cancelled, lost = 0, 0
     for item in pending_tasks():
         task_id = str(item.get("task_id", ""))
         if not task_id:
             continue
+        # key_id нет у записей, сделанных до появления отпечатка, — для них
+        # свой ключ считаем неизвестным и ведём себя как раньше.
+        key_id = str(item.get("key_id", "") or "")
+        key = keys.get(key_id, "") if key_id else (api_key or VEO_API_KEY)
+        # «Ключ найден» = мы точно знаем, что гасим СВОЕЙ рукой. Если ключа
+        # задачи в среде уже нет, пробуем чем есть, но запись не трогаем.
+        mine = bool(key)
+        if not key:
+            key = api_key or VEO_API_KEY
         drop = True
         try:
-            cancel_task(task_id, api_key)
+            cancel_task(task_id, key)
             cancelled += 1
         except VeoError as e:
             # Разбираем ОТКАЗ ПО КОДУ, а не «любая ошибка — забыли и пошли
@@ -192,7 +262,15 @@ def cancel_pending_tasks(api_key: str = "") -> int:
             # случае, и отменить такую задачу становилось нечем — «Стоп»
             # ходит только по журналу. Человек видел «остановлено», а Veo
             # продолжал считать оплаченный кадр до серверного таймаута.
-            drop = bool(e.status) and e.status != 429 and e.status < 500
+            #
+            # ДВА ИСКЛЮЧЕНИЯ ИЗ «4xx — значит задачи нет».
+            # 401/403 — это не «задачи нет», а «задача не твоя»: ключ не тот.
+            # И `mine=False` — ключа задачи в среде не нашлось, значит любой
+            # ответ получен ЧУЖИМ ключом и ничего про судьбу задачи не
+            # говорит. В обоих случаях запись обязана остаться: только по ней
+            # задачу можно будет догасить правильным ключом.
+            drop = (mine and bool(e.status) and e.status not in (401, 403, 429)
+                    and e.status < 500)
             if not drop:
                 lost += 1
         except Exception:
@@ -215,6 +293,9 @@ def _headers(api_key: str = "") -> dict:
     key = (api_key or VEO_API_KEY).strip()
     if not key:
         raise VeoError("VEO_API_KEY не задан (см. .env)")
+    # Запоминаем ключ ЭТОГО потока: следом за созданием задачи идёт
+    # track_task, которому ключ никто не передаёт (см. _CUR выше).
+    _CUR.key = key
     return {"X-API-Key": key, "Content-Type": "application/json"}
 
 
@@ -424,7 +505,15 @@ def generate_video_and_wait(prompt: str, dest: Path, aspect_ratio: str = "16:9",
     ~4-8 c в документации, но под параллельной нагрузкой на практике
     наблюдался апскейл дольше 180с — поэтому таймаут 420с и один повтор)
     до 1080p и скачивает уже апскейленную версию; если обе попытки не
-    удались, тихо скачивает исходный 720p, а не проваливает всю генерацию."""
+    удались, тихо скачивает исходный 720p, а не проваливает всю генерацию.
+
+    При VEO_PROVIDER=google вызов уходит в google_veo (официальный Gemini
+    API): там апскейла нет, нужное разрешение запрашивается сразу."""
+    if provider() == "google":
+        return _google().generate_video_and_wait(
+            prompt, dest, aspect_ratio=aspect_ratio, api_key="",
+            poll_s=poll_s, timeout_s=timeout_s, upscale=upscale, log=log)
+
     dest = Path(dest)
     task_id = pending_task(dest, "text-to-video")
     if task_id:
@@ -536,7 +625,10 @@ _IMAGE_LOCK = threading.RLock()
 def _key_id(api_key: str = "") -> str:
     """Короткий отпечаток ключа: лимит считается НА АККАУНТ, а ключей у нас
     несколько (VEO_API_KEY, VEO_API_KEY2, ...) и они ротируются. Храним хеш,
-    а не сам ключ и не его хвост — файл лежит на диске рядом с кодом."""
+    а не сам ключ и не его хвост — файл лежит на диске рядом с кодом.
+
+    Тем же отпечатком помечается задача в veo_tasks.json (track_task): по
+    нему «Стоп» гасит её ТЕМ ЖЕ ключом, которым она поставлена."""
     key = (api_key or VEO_API_KEY).strip()
     return hashlib.sha1(key.encode("utf-8")).hexdigest()[:12] if key else "-"
 
@@ -698,8 +790,12 @@ def banana_upscale(media_id: str, project_id: str,
 # ---------- Аккаунт ----------
 
 def account_info(api_key: str = "") -> dict:
+    if provider() == "google":
+        return _google().account_info(api_key)
     return _request("GET", "/account/info", api_key)
 
 
 def account_usage(api_key: str = "") -> dict:
+    if provider() == "google":
+        return _google().account_usage(api_key)
     return _request("GET", "/account/usage", api_key)

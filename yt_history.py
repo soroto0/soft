@@ -797,6 +797,84 @@ def retention(channel: dict, data: dict | None = None) -> dict:
     }
 
 
+def retention_records(channel_id: str, data: dict | None = None) -> list[dict]:
+    """Все замеры удержания канала, старые первыми."""
+    d = data if data is not None else load()
+    box = d.get("channels", {}).get(channel_id, {}) or {}
+    return box.get("retention") or []
+
+
+def record_retention(channel_id: str, prof: dict, source: str = "build",
+                     log=print) -> dict:
+    """Записать замер удержания, снятый ВНЕ сбора — на сборке ролика.
+
+    ЗАЧЕМ ЭТО ВООБЩЕ. webapp._retention_brief спрашивал YouTube живьём на
+    КАЖДУЮ сборку (yt_stats.drop_profile — запрос на канал плюс запрос на
+    кривую каждого ролика), печатал строку в журнал и выбрасывал числа.
+    То есть самый частый замер удержания в проекте не сохранялся нигде, а
+    вопрос «стало ли лучше после правок монтажа» отвечался по памяти. При
+    этом квота на него тратилась настоящая, каждую сборку.
+
+    ПОЧЕМУ ОТДЕЛЬНАЯ ВЕТКА, А НЕ СНИМОК. Снимок (collect) — это канал
+    целиком: подписчики, каталог роликов, разрезы трафика. Здесь их нет и
+    быть не может: drop_profile спрашивает только кривые. Положи это в
+    snapshots с ok=true — и growth() возьмёт такой снимок как «сейчас»,
+    не найдёт в нём channel.subs и отчитается о падении подписчиков до
+    нуля, а topics() увидит канал без роликов. Ветка отдельная по той же
+    причине, по какой отдельно лежит ctr: у записи другое происхождение и
+    другая полнота, и различать их обязана сама запись, а не человек по
+    памяти.
+
+    Форма записи повторяет ctr-запись (date/at/by/source) и снимок
+    (per_video — тот же словарь id -> сводка кривой, что лежит в
+    snapshots[].curves), чтобы читалось всё одинаково.
+
+    Замена только по паре «канал + дата»: две сборки за сутки дают тот же
+    замер с точностью до шума, а завтрашний — НОВАЯ точка истории.
+    """
+    if not channel_id or not prof or prof.get("drop_sec") is None:
+        raise ValueError("нечего записывать: замер пуст")
+    per = {}
+    for w in prof.get("per_video") or []:
+        vid = w.get("video")
+        if not vid:
+            continue
+        per[vid] = {
+            "drop_frac": round(float(w.get("drop_frac") or 0), 4),
+            "drop_size": round(float(w.get("drop_size") or 0), 4),
+            "drop_sec": w.get("drop_sec"),
+            "half_sec": w.get("half_sec"),
+            "views": w.get("views", 0),
+            "watched_pct": w.get("watched_pct", 0),
+            "title": (w.get("title") or "")[:120],
+        }
+    rec = {
+        "date": _today(),
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "by": "auto",
+        "source": source,
+        "videos": prof.get("videos", len(per)),
+        "drop_sec": prof.get("drop_sec"),
+        # drop_size приходит из drop_profile уже в процентах (округлён),
+        # per_video — долями. Смешивать нельзя: см. retention() выше, там
+        # доли умножаются на 100 при чтении.
+        "drop_size": prof.get("drop_size"),
+        "half_sec": prof.get("half_sec"),
+        "per_video": per,
+    }
+    data = load()
+    box = data.setdefault("channels", {}).setdefault(channel_id, {})
+    recs = box.setdefault("retention", [])
+    recs[:] = [r for r in recs if r.get("date") != rec["date"]]
+    recs.append(rec)
+    recs.sort(key=lambda r: r.get("date", ""))
+    save(data)
+    _say(log, f"[История] {channel_id}: записан замер удержания — обвал на "
+              f"{rec['drop_sec']}-й секунде, минус {rec['drop_size']}% "
+              f"по {rec['videos']} ролик(ам) за {rec['date']}")
+    return rec
+
+
 # ----------------------------------------- показы и CTR: только руками
 #
 # Всё в этом разделе стоит на одном факте: чисел, которые здесь

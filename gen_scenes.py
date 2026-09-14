@@ -44,8 +44,11 @@ import argparse
 import json
 import re
 import os
+import shutil
 import subprocess
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
@@ -76,6 +79,79 @@ BUILTIN_SCENES = ("globe", "layers", "forces", "chart", "backdrop")
 
 # Сколько раз просить модель переписать сцену, если приёмка её отвергла.
 ATTEMPTS = 3
+
+# Сколько сцен пишется ОДНОВРЕМЕННО. Столько же, сколько кадров в
+# core._prefetch_ai_beats: предел 4 в проекте уже принят и обкатан на
+# генераторах картинок и видео. Замер прогона 29.08.2026: шесть сцен
+# заняли 61 минуту — это самый длинный этап сборки, длиннее параллельной
+# отрисовки 118 кадров (20 мин). Почти всё это время процесс просто ЖДЁТ
+# ответа модели: 35 попыток по 1-7 минут каждая, а сцены друг от друга не
+# зависят — ждать их по очереди незачем.
+SCENE_WORKERS = 4
+# Потолок выше писался под ОДИН канал. При параллельной сборке он умножается
+# на число каналов: три канала — это до 12 одновременных «npx remotion still»,
+# а каждый поднимает свой сборщик и свой Chrome. 31.08 на машине с 15.8 ГБ ОЗУ
+# (свободно было 4.1) два кадра так и упали. Поэтому потолок делится на число
+# каналов, которые собираются прямо сейчас. СЕБЯ СЧИТАЕМ: мы тоже один из них
+# — это тот случай, когда исключать свой процесс как раз НЕЛЬЗЯ.
+_КАНАЛОВ_КЭШ: list = [0.0, 1]        # когда мерили, сколько насчитали
+
+
+def _каналов_в_работе() -> int:
+    """Сколько каналов собирается прямо сейчас. Меряем раз в 2 минуты."""
+    import time as _t
+    if _t.monotonic() - _КАНАЛОВ_КЭШ[0] < 120:
+        return _КАНАЛОВ_КЭШ[1]
+    n = 1
+    try:
+        import re as _re
+        ps = ("Get-CimInstance Win32_Process | Where-Object { "
+              "($_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe') } | "
+              "ForEach-Object { $_.CommandLine }")
+        raw = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                             capture_output=True, text=True, timeout=25,
+                             encoding="utf-8", errors="replace",
+                             creationflags=CREATE_NO_WINDOW).stdout
+        своё = {m.group(1) for m in
+                (_re.search(r"autopilot\.py\s+--channel\s+(\S+)", l)
+                 for l in raw.splitlines()) if m}
+        n = max(1, len(своё))
+    except Exception:
+        pass                       # не смогли спросить — работаем как один
+    _КАНАЛОВ_КЭШ[:] = [_t.monotonic(), n]
+    return n
+
+# Замок на ПРИЁМКУ сцены. Писать код можно всем потокам разом, а accept()
+# параллельно — нельзя: он правит ОДИН на всех remotion/src/Scene.tsx
+# (register/unregister читают файл, меняют и пишут обратно) и запускает tsc
+# на ВЕСЬ проект. Два потока в этом месте либо затирают правку друг друга,
+# либо получают в свой вердикт чужие ошибки типов и бракуют исправную сцену.
+# Поэтому разделение такое: ДОЛГОЕ (ответ модели) — параллельно, ОБЩЕЕ
+# (запись Scene.tsx + tsc + рендер + зрение) — по одному под этим замком.
+_ACCEPT_LOCK = threading.Lock()
+
+# Потолок длины ответа на КОД сцены. Было 8000 — и этого не хватало.
+# Замер по 567 готовым сценам в remotion/src/scenes: в среднем 4823 символа
+# (138 строк), самая большая 15964 (503 строки), у каждой двадцатой больше
+# 7000. При ~3.3 символа на токен большая сцена — это уже 4800 токенов
+# только видимого текста, а у моделей Gemini/Agnes «размышления» тратят ТОТ
+# ЖЕ бюджет (см. core.agnes_chat). Отсюда обрывы посреди JSX, приходившие
+# как TS17008/TS1005: живой прогон 29.08 потерял так целую сцену.
+# Замер 02.09.2026 живым запросом к четырём моделям: усечение ответа шло
+# НЕ от длины кода, а от «размышлений». Gemini считает thoughtsTokenCount в
+# тот же maxOutputTokens: на коротком запросе gemini-3.5-flash потратил 2782
+# токена на размышления против 1761 на сам ответ, gemini-flash-latest — 1069
+# против 1883. На полном CODE_PROMPT (26 пунктов контракта) размышления
+# растут вместе с промптом и съедали весь бюджет: в журнале 34 обрыва вида
+# «finishReason=MAX_TOKENS, maxOutputTokens=16000 (получено 8934 символов)» —
+# то есть кода пришло тысячи на три токенов, а остальные тринадцать ушли на
+# рассуждения. Потолок здесь — не заказ длины, а предохранитель, и держать
+# его впритык бессмысленно: сцена в 200 строк это ~3000 токенов.
+CODE_TOKENS = 32000
+# Повтор ПОСЛЕ ОБРЫВА получает ещё больший запас: та же модель, тот же
+# промпт, и единственное, что мы можем изменить кроме просьбы «короче», —
+# перестать упираться в потолок.
+CODE_TOKENS_RETRY = 48000
 
 # Доля длительности, на которой берём кадр для ЗРЕНИЯ. Не середина и не
 # четверть: почти все сцены дорисовываются постепенно (strokeDashoffset,
@@ -118,13 +194,43 @@ Below is a narration script for a video on the channel "{channel}"
 ({tone}, {lang}).{look}
 
 Find up to {count} moments where FOOTAGE CANNOT SHOW what is being said, but a
-drawn animated diagram can. Good candidates:
-  - forces, loads, stresses redistributing inside a structure
-  - what lies underground / inside a wall / inside a mechanism (cross-section)
-  - a quantity changing over years
-  - a sequence of failures or stages
-  - geography: where on Earth, a route between places
-  - relative scale of two things
+drawn animated diagram can.
+
+EACH IDEA MUST BE A PICTURE THAT ARGUES, NOT A DIAGRAM TYPE. "A cross-section
+of the pile" is a category and it is worthless on its own — it produces a
+correct drawing nobody watches. The idea is what the picture PROVES, and the
+proof must land in the first second of the shot.
+
+Build every idea out of three parts:
+  a) WHAT THE VIEWER ASSUMES before this shot — the ordinary belief the
+     narration is about to break;
+  b) WHAT THE PICTURE SHOWS INSTEAD — one image that contradicts it. Not a
+     chart of the contradiction; the contradiction itself, drawn;
+  c) THE NUMBER from the script that makes it undeniable — it must appear in
+     the frame as geometry (a measured length, a counted grid, a bar against
+     a reference), never as a caption alone.
+
+Two worked examples of the difference:
+  weak : "cross-section of the hollow pile"
+  strong: "the wall you assume is solid is 8 cm thin — draw the pile the size
+          of the whole frame, wall hairline against a black void, a human
+          silhouette beside it for scale"
+  weak : "timeline of the collapse"
+  strong: "the building stood 96 hours after the first crack and fell in 3
+          minutes — draw the whole timeline, then let the last 3 minutes eat
+          two thirds of it"
+
+ALSO REQUIRED, per idea:
+  - name in `surprise` (one short sentence, in {lang}) exactly what the viewer
+    is supposed to feel: what they expected and what they got;
+  - one thing in the frame MUST BE FAMILIAR — a person, a car, a door, a hand
+    — so an unfamiliar quantity becomes readable. Scale with nothing to
+    compare against teaches nothing;
+  - no two ideas in your list may share a shape. If two are both "boxes in a
+    row" or both "arrows into a wall", replace one.
+
+BAD candidates (skip them): anything you could simply film or photograph —
+a person, a room, a tool lying on a bench, weather, a building exterior.
 
 BAD candidates (skip them): anything you could simply film or photograph —
 a person, a room, a tool lying on a bench, weather, a building exterior.
@@ -133,7 +239,8 @@ Reply with ONLY a JSON array, no markdown fences. Each element:
 {{"quote": "the exact sentence from the script this illustrates",
   "kind": "short_snake_case_name_for_this_diagram",
   "title": "on-screen caption, max 5 words, in {lang}",
-  "brief": "one sentence describing WHAT MOVES and WHY, for the animator"}}
+  "brief": "one sentence describing WHAT MOVES and WHY, for the animator",
+  "surprise": "what the viewer expected vs what they see, in {lang}"}}
 
 If the script has no such moments, reply with [].
 
@@ -237,8 +344,18 @@ Style: documentary schematic — thin lines, restrained palette (off-white
 look like a diagram in an archival report, not like a mobile app UI.
 
 WORKING EXAMPLE — copy this structure exactly, change only the drawing.
-Note how much is actually DRAWN: three named layers, a real gradient with
-three stops, a labelled axis, a moving front. That is the minimum density.
+It compiles clean under the project's own tsc (--strict --noUnusedLocals),
+and every rule of the MOTION CONTRACT below is visible in it. Copy the
+MECHANICS, not the subject: the shared `EO` options object; the ground line
+that expands scaleX BEFORE anything stands on it; the grid hairlines fading
+in separately from the data; the `.map()` where the interpolate window is
+shifted by `i * 0.05`; the leader line drawn with strokeDasharray /
+strokeDashoffset instead of faded in; the number that counts up with
+Math.round from the same variable that drives the geometry; the ONE outer
+<g> that scales 1.00 -> 1.04 across the whole shot; and the accent crack
+that lands LAST on a spring(). Measured 29.08 on this project: the model
+copies the example and ignores prose rules, so what is missing from the
+example is missing from the scene.
 It compiles under --strict --noUnusedLocals. Note the interpolate signature:
 interpolate(frame, [inputStart, inputEnd], [outputStart, outputEnd], options)
 — four arguments, the two ranges are ARRAYS OF THE SAME LENGTH, and the
@@ -246,85 +363,388 @@ options object is the ONLY place easing/extrapolate go. Passing a bare number
 as the fourth argument is the single most common compile error.
 
 import React from 'react';
-import {{ AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing }} from 'remotion';
+import {{ AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig, Easing }} from 'remotion';
 import type {{ SceneProps }} from '../types';
 
 export const ExampleScene: React.FC<SceneProps> = (p) => {{
   const frame = useCurrentFrame();
   const {{ fps }} = useVideoConfig();
   const span = Math.max(1, Math.round((p.dur || 6) * fps));
-
-  const draw = interpolate(frame, [0, span * 0.45], [0, 1], {{
-    easing: Easing.out(Easing.cubic),
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  }});
-  const heat = interpolate(frame, [span * 0.2, span * 0.85], [0, 1], {{
-    easing: Easing.inOut(Easing.quad),
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  }});
-  const rise = interpolate(frame, [span * 0.3, span * 0.7], [18, 0], {{
-    easing: Easing.out(Easing.cubic),
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  }});
-
   const opacity = p.enter * p.exit;
+
+  const EO = {{
+    easing: Easing.bezier(0.16, 1, 0.3, 1),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  }} as const;
+
+  const base = interpolate(frame, [0, span * 0.14], [0, 1], EO);
+  const grid = interpolate(frame, [span * 0.06, span * 0.18], [0, 0.38], EO);
+  const heat = interpolate(frame, [span * 0.18, span * 0.52], [0, 118], EO);
+  const push = interpolate(frame, [0, span], [1, 1.04], EO);
+  const lead = interpolate(frame, [span * 0.3, span * 0.48], [0, 1], EO);
+  const rise = interpolate(frame, [span * 0.3, span * 0.5], [18, 0], EO);
+  const crack = spring({{
+    frame: frame - Math.round(span * 0.5),
+    fps,
+    config: {{ damping: 11, stiffness: 190, mass: 0.6 }},
+  }});
+
   const layers = [
-    {{ x: 60, w: 90, fill: '#c9d3d9', name: 'STEEL 25 mm' }},
-    {{ x: 150, w: 60, fill: '#8a949b', name: 'SCALE 6 mm' }},
-    {{ x: 210, w: 110, fill: '#5d6a73', name: 'LINING 40 mm' }},
+    {{ y: 150, h: 28, fill: '#c9d3d9', name: 'STEEL 25 mm' }},
+    {{ y: 122, h: 16, fill: '#8a949b', name: 'SCALE 6 mm' }},
+    {{ y: 96, h: 26, fill: '#5d6a73', name: 'LINING 40 mm' }},
   ];
-  const ticks = [0, 1, 2, 3, 4];
+  const LEAD = Math.hypot(80, 36);
 
   return (
-    <AbsoluteFill style={{{{ opacity,
-                          justifyContent: 'center', alignItems: 'center' }}}}>
+    <AbsoluteFill style={{{{ opacity, justifyContent: 'center', alignItems: 'center' }}}}>
       <svg width="62%" viewBox="0 0 420 250">
-        <defs>
-          <linearGradient id="heat" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#d0523f" />
-            <stop offset="0.45" stopColor="#e0b44c" />
-            <stop offset="1" stopColor="#5b7f9c" />
-          </linearGradient>
-        </defs>
-        {{layers.map((L) => (
-          <g key={{L.name}}>
-            <rect x={{L.x}} y={{190 - 120 * draw}} width={{L.w}}
-                  height={{120 * draw}} fill={{L.fill}}
-                  stroke="#e9f2f6" strokeWidth={{0.6}} />
-            <text x={{L.x + L.w / 2}} y={{58}} fill="#e9f2f6" fontSize={{9}}
-                  textAnchor="middle" opacity={{draw}}>{{L.name}}</text>
+        <g transform={{`translate(210 125) scale(${{push}}) translate(-210 -125)`}}>
+          {{[0.25, 0.5, 0.75].map((k) => (
+            <line key={{k}} x1={{60}} y1={{190 - 110 * k}} x2={{330}} y2={{190 - 110 * k}}
+                  stroke="#8a949b" strokeWidth={{1}} opacity={{grid}} />
+          ))}}
+          <line x1={{60}} y1={{190}} x2={{330}} y2={{190}} stroke="#e9f2f6" strokeWidth={{2}}
+                transform={{`translate(60 0) scale(${{base}} 1) translate(-60 0)`}} />
+          {{layers.map((row, i) => {{
+            const g = interpolate(frame,
+              [span * (0.16 + i * 0.05), span * (0.34 + i * 0.05)], [0, 1], EO);
+            const pop = interpolate(frame,
+              [span * (0.16 + i * 0.05), span * (0.34 + i * 0.05)], [0.88, 1], EO);
+            return (
+              <g key={{row.name}} opacity={{g}}
+                 transform={{`translate(60 ${{row.y}}) scale(${{pop}}) translate(-60 ${{-row.y}})`}}>
+                <rect x={{60}} y={{row.y}} width={{170 * g}} height={{row.h}} fill={{row.fill}}
+                      stroke="#e9f2f6" strokeWidth={{0.6}} />
+                <text x={{236}} y={{row.y + row.h * 0.7}} fill="#e9f2f6" fontSize={{9}}>{{row.name}}</text>
+              </g>
+            );
+          }})}}
+          <path d="M 250 96 L 330 60" stroke="#e0b44c" strokeWidth={{1.6}} fill="none"
+                strokeDasharray={{LEAD}} strokeDashoffset={{LEAD * (1 - lead)}} />
+          <text x={{330}} y={{54}} fill="#e0b44c" fontSize={{13}} textAnchor="end">
+            {{Math.round(heat)}} °C
+          </text>
+          <g transform={{`translate(150 150) scale(${{crack}}) translate(-150 -150)`}} opacity={{crack}}>
+            <path d="M 150 150 l 8 -14 l -5 -3 l 10 -16" stroke="#d0523f"
+                  strokeWidth={{2.2}} fill="none" />
           </g>
-        ))}}
-        <rect x={{60}} y={{70}} width={{260}} height={{120}} fill="url(#heat)"
-              opacity={{0.5 * heat}} />
-        <line x1={{60 + 260 * heat}} y1={{62}} x2={{60 + 260 * heat}} y2={{198}}
-              stroke="#e9f2f6" strokeWidth={{2}} strokeDasharray="4 3" />
-        {{ticks.map((t) => (
-          <g key={{t}}>
-            <line x1={{60 + t * 65}} y1={{190}} x2={{60 + t * 65}} y2={{198}}
-                  stroke="#e9f2f6" strokeWidth={{1}} />
-            <text x={{60 + t * 65}} y={{212}} fill="#e9f2f6" fontSize={{9}}
-                  textAnchor="middle">{{180 - t * 40}}°C</text>
-          </g>
-        ))}}
-        <text x={{60}} y={{234}} fill="#d0523f" fontSize={{10}}>FIRE SIDE</text>
-        <text x={{320}} y={{234}} fill="#5b7f9c" fontSize={{10}}
-              textAnchor="end">SHELL</text>
+        </g>
       </svg>
       {{p.title ? (
         <div style={{{{ marginTop: 26, transform: `translateY(${{rise}}px)`,
-                     fontFamily: "'Segoe UI', Arial, sans-serif",
-                     fontSize: 34, color: '#e9f2f6' }}}}>{{p.title}}</div>
+                      fontFamily: "'Segoe UI', Arial, sans-serif",
+                      fontSize: 34, color: '#e9f2f6' }}}}>{{p.title}}</div>
       ) : null}}
     </AbsoluteFill>
   );
 }};
 
+IT MUST LOOK LIKE A TECHNICAL ILLUSTRATION, NOT LIKE SHAPES. A ring of grey circles on white is not a diagram — it is a placeholder, and it teaches the viewer nothing. Every scene must carry ALL FOUR of these, or it is worthless:
+  (a) DARK GROUND. Background near #0d1117..#16202b, never white. The drawing reads as an instrument panel, not a slide.
+  (b) A NAMED PART. At least one label in the frame with a thin leader line running from the word to the exact spot it names. The word must be a real term from the narration, not 'part 1'.
+  (c) A MEASURE. Where a size, depth, count or load matters, draw a dimension line with arrowheads at both ends and the figure written on it — like '10 m' or '118'. Numbers in the narration are the whole reason the scene exists; show them as geometry, not as a caption.
+  (d) ONE ACCENT COLOUR on the thing that fails, breaks, moves or matters — warm red #e0523c or amber #f0a92b against the cold greys. Exactly one accent, so the eye knows where to go.
+Draw the object in SECTION or CUTAWAY whenever the narration is about what is inside: a hollow pile is only interesting once the viewer sees the wall thickness against the void.
+
+LENGTH. Aim for about 120 lines and never exceed 200. A longer file gets cut off by the model's own output limit and then does not compile at all: the file ends mid-tag or mid-string and the whole scene is thrown away. Measured on this project: 522 of 650 rejected scenes failed exactly this way. A dense 120-line drawing that compiles beats a rich 300-line one that never arrives. Draw fewer elements, not sloppier ones.
+
+MOTION CONTRACT — measured on 10 real documentary / motion-graphics films
+on 2026-09-02. These are not style preferences; each one is the difference
+between a drawn film shot and a slide.
+
+12. NOTHING ARRIVES AT THE SAME TIME AS ITS SIBLING. Whenever you .map()
+    over an array, the delay MUST depend on the index. Measured stagger
+    between siblings in real work: 80 ms (VOX bar chart), 100 ms (title
+    lines), 120 ms (bar graph), 200-450 ms (callout parts). Write it as
+    `[span * (0.10 + i * 0.05), span * (0.28 + i * 0.05)]`. All bars
+    growing together is the single most named mistake in the breakdowns
+    and reads as a static poster.
+    Write every interpolate() call out IN FULL. Do NOT wrap them in a
+    helper like `const at = (d, len) => interpolate(...)` — an automatic
+    check counts the literal occurrences of `interpolate(` and `spring(` in
+    your file and rejects it below three together, so a helper gets your
+    scene thrown away for being motionless no matter how much actually
+    moves. Sharing the options
+    object is fine: `const EO = {{ easing: Easing.bezier(0.16, 1, 0.3, 1),
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }} as const;`
+
+13. LINES ARE DRAWN, NOT FADED IN. Every leader line, arrow, axis, outline
+    and contour must animate `strokeDashoffset` from its own length down
+    to 0 over 0.5-0.8 s. Compute the length (Math.hypot for a straight
+    segment) and set `strokeDasharray={{L}} strokeDashoffset={{L * (1 - t)}}`.
+    Animating a line's opacity instead is explicitly called out as the
+    thing that destroys the effect.
+
+14. ASSEMBLE A CALLOUT IN THIS ORDER, NEVER ALL AT ONCE: the anchor marker
+    first (a small ring or dot ON the thing being named, scale 0 -> 1 with
+    a slight overshoot to 1.10), then the leader line drawing outward
+    starting 250 ms later, then the label plate expanding scaleX 0 -> 1
+    from the end nearest the line at 700 ms, then the text itself at
+    850 ms. Total 1.25 s. This exact sequence is the standard.
+
+15. EASE-OUT, NEVER LINEAR. Arrivals use Easing.bezier(0.16, 1, 0.3, 1) or
+    Easing.out(Easing.cubic): a hard velocity peak in the first 15 % of the
+    interval, then a long settle. Linear interpolation on an entrance is
+    named as a failure in five of the ten films. Only a constant travelling
+    motion (a dot running along a path, a row sliding past) may be linear.
+
+16. THE WHOLE DRAWING MUST DRIFT. Wrap the entire SVG content in ONE <g>
+    and scale it 1.00 -> 1.04 across the full duration, about the centre
+    of the viewBox:
+      <g transform={{`translate(cx cy) scale(${{push}}) translate(-cx -cy)`}}>
+    Measured in the reference films: 1.5-2 % per second, never more than
+    8 % across one shot. A frozen picture measures exactly 0.00 frame
+    difference; not one shot in either owner reference does that.
+
+17. EVERYTHING SETTLES EARLY. All interpolate() output ranges must finish
+    by span * 0.6 at the latest, so the scene stands assembled and calm for
+    its last 40 %. Real graphics hold still for 10-40 s after a 1-2 s
+    build. An animation still running at the last frame collides with the
+    player's own 0.45 s fade-out and smears.
+
+18. ENTER WITH TWO PROPERTIES, NEVER OPACITY ALONE. Pair opacity with
+    either scale (start at 0.88, not 0) or an 8-20 px offset in y. A pure
+    opacity fade is what a slideshow does.
+
+19. THE ACCENT ELEMENT ARRIVES LAST. The one thing carrying the accent
+    colour — the crack, the failing member, the overload arrow — must be
+    the final element to appear, after the structure it sits on is already
+    drawn. It is also the only element allowed an overshoot.
+
+20. FOUNDATION FIRST. Draw the ground line, base rail or axis before
+    anything stands on it: the baseline expands scaleX 0 -> 1 over 0.5 s,
+    and only then do the bars/layers/columns grow from it.
+
+21. PUT A GRID OR RULE BEHIND THE DATA. Three to ten hairlines at 1 px,
+    at 25/50/75 % of the plot height, drawn in the palette grey at 0.35-0.40
+    opacity, fading in over 0.3 s separately from the data. Bars floating
+    on emptiness with no reference lines is named as a failure.
+
+22. TEXT SITS ON A PLATE, NEVER ON A SHADOW. No textShadow, no stroke on
+    text anywhere. If a caption overlaps the drawing, put an opaque plate
+    behind it: 112 % of the text width and 145 % of its cap height, corner
+    radius small (4-8 px) or exactly half the height for a pill. Dark text
+    on a light plate, or light text on a plate at least 60 % opaque.
+
+23. SIZE TYPE BY ITS JOB, measured as cap height against frame height:
+    axis ticks and part labels 1.4-2.5 %, the scene caption 2.8-3.8 %, and
+    a full-frame statement 6-10 %. Track wide (+0.06em) only on the large
+    sparse text and tight (-0.02em) on dense numerals — never the same
+    tracking on both.
+
+24. A NUMBER MUST COUNT UP, not appear. Any figure named in the narration
+    is derived from the same interpolate() that drives its geometry, and
+    printed with Math.round(). The digits and the bar height are then
+    literally the same variable, and the viewer sees the quantity change.
+
+25. TEXTURE CARRIES MEANING, NOT DECORATION. Use one colour and vary the
+    stroke instead of adding a second colour: dashed strokeDasharray="6 4"
+    for the uncertain / diffuse / before state, solid for the focused /
+    measured / after state, in the same hue. Reserve a second hue for a
+    true value ramp (cold grey -> amber -> red = safe -> limit -> failure).
+
+26. IF THE SUBJECT IS A SOLID, DRAW IT IN ISOMETRIC, not as a flat
+    rectangle: X = (x - y) * 0.866, Y = (x + y) * 0.5 - z. Keep every
+    receding edge on the 30 deg / 150 deg grid — a mismatched angle is the
+    first thing that reads as wrong.
+
+27. SOMETHING MUST LAND, NOT ONLY ARRIVE. Use spring() from remotion for
+    the one element that settles into place — the anchor ring of a callout,
+    the accent marker, a plate snapping open. Add `spring` to the import
+    line when you use it:
+      const pop = spring({{ frame: frame - Math.round(span * 0.5), fps,
+        config: {{ damping: 11, stiffness: 190, mass: 0.6 }} }});
+    That config reaches about 1.06 and settles in ~0.35 s: one overshoot, no
+    wobble. Measured across the 691 scenes already written for this project:
+    spring() appears 0 times and an overshoot 2 times. That absence is
+    exactly what makes them read as one template. spring() counts towards
+    the three-movement minimum, so it may stand in for one interpolate().
+
+28. ONE OVERSHOOT PER FRAME, AND ONLY ON THE ACCENT. Overshoot is +5..+7 %,
+    never past 1.10, ONE oscillation, decaying in 0.15-0.20 s. Everything
+    else lands flat on Easing.bezier(0.16, 1, 0.3, 1). And in a STRICT
+    TECHNICAL SCHEMATIC — a section, a load diagram, a dimensioned drawing —
+    there is NO overshoot anywhere: measured 0 % overshoot and 0
+    oscillations in every vector-geometry reference. A springy load arrow
+    reads as a toy, not as engineering.
+
+29. TIME THE BUILD BY THE MEASURED FIGURES. A line grows to full length in
+    0.15-0.20 s. A schema opens SEGMENT BY SEGMENT at 0.25-0.35 s per
+    segment, 0.8-1.0 s for the whole structure. A pop-in of a marker is
+    0.40 s. So a three-part structure is assembled between span * 0.10 and
+    span * 0.35 — not in one step, and not stretched over the whole shot.
+
+30. LET ONE THING TRAVEL. A leak, a route, a load path, a signal, a scan:
+    put a small dot or a short dash ON the path and move it along at
+    CONSTANT speed for the whole shot — this is the one place where linear
+    is correct (see 15). Derive its position from the same numbers the path
+    is drawn from: `const x = x1 + (x2 - x1) * t;`. One travelling element
+    does more for "this is a film, not a slide" than any number of fades.
+    A radial pulse is the same idea for a point source: rings from scale
+    0.2 to 3.2 with opacity 0.9 -> 0 over 0.8-1.0 s, a new ring every
+    0.25-0.35 s, 3-4 alive at once.
+
+31. VARY THE PROPERTY, NOT ONLY THE TIMING. At least THREE DIFFERENT KINDS
+    of change must be visible in the scene: length (strokeDashoffset), size
+    (scale), position (translate), quantity (a number counting up),
+    rotation, or a colour ramp. Measured on the 691 scenes already written
+    here: 100 % animate opacity, 92 % move something, but only 15 % draw a
+    line, 12 % scale anything, 5 % stagger by index, and 24 % animate
+    NOTHING AT ALL except opacity. A scene where everything merely fades in
+    is rejected automatically: "движение только прозрачностью".
+
 Reply with ONLY the TypeScript code. No markdown fences, no commentary.
 """
+
+
+# Кусок ПРИНЯТОЙ сцены remotion/src/scenes/neutral_axis_stresses.tsx
+# (5182 символа, шесть interpolate, прошла все ступени приёмки). Не выдуман:
+# переспросу нужен образец ровно того размера и плотности, которую приёмка
+# пропускает, а не ещё одно описание словами. Замер 29.08: у двадцати взятых
+# наугад принятых сцен медиана 5168 символов и медиана 3 interpolate, минимум
+# 1674 и 3 — отвергнутые заготовки были 830-860 символов и НОЛЬ interpolate.
+MOTION_EXAMPLE = """import React from 'react';
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import type { SceneProps } from '../types';
+
+export const NeutralAxisStressesScene: React.FC<SceneProps> = (p) => {
+  const opacity = p.enter * p.exit;
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const span = Math.max(1, Math.round((p.dur || 5) * fps));
+
+  const growth = interpolate(frame, [0, span * 0.3], [0, 1], {
+    easing: Easing.out(Easing.quad),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+
+  const stress = interpolate(frame, [span * 0.2, span * 0.7], [0, 1], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+
+  const labels = interpolate(frame, [span * 0.5, span * 0.9], [0, 1], {
+    easing: Easing.out(Easing.quad),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+
+  return (
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
+      ... every drawn element then USES growth / stress / labels:
+      height={150 * growth}, fill-opacity={stress}, opacity={labels} ...
+    </AbsoluteFill>
+  );
+};"""
+
+
+# Отказ -> что дописать ИМЕНЕМ. Общий список «возможных причин» модель
+# примерить к себе не может: замер 29.08 — load_distribution_cross_section и
+# material_strength_comparison отдали одну и ту же заготовку все три попытки
+# подряд. Здесь на каждую претензию приёмки заготовлено предметное указание,
+# и оно уходит в промпт вместо угадывания.
+STUB_FIX = [
+    ("interpolate вызван",
+     "You did not call interpolate() a single time, so the scene is a still "
+     "image. A scene MUST MOVE: declare at least THREE separate interpolate() "
+     "values over different frame ranges (e.g. [0, span*0.3], "
+     "[span*0.2, span*0.7], [span*0.5, span*0.9]) and USE every one of them "
+     "inside the SVG — as a width/height/x, as an opacity, as a "
+     "strokeDashoffset. A value you compute but never place in an attribute "
+     "changes nothing on screen and also breaks --noUnusedLocals."),
+    ("p.enter/p.exit",
+     "You never used p.enter and p.exit. Write `const opacity = p.enter * "
+     "p.exit;` and put that opacity on the root <AbsoluteFill>. Without both "
+     "names the scene pops in and out at the cut instead of fading."),
+    ("не читает кадр",
+     "You never called useCurrentFrame(). Nothing in the file depends on time, "
+     "so every frame of the render is identical. Read `const frame = "
+     "useCurrentFrame();` and drive the interpolate() calls with it."),
+    ("слишком короткий файл",
+     "What you sent is a placeholder, not a scene: a rectangle with a caption "
+     "over it. Accepted scenes in this project run 1700-9400 characters "
+     "(median about 5200) because they actually DRAW the subject — layers with "
+     "their boundaries, an axis with numbers, both bars of the comparison, "
+     "arrows with labels, 8-20 elements, usually built with .map() over a "
+     "small data array. Draw the thing itself; the caption is not the "
+     "drawing."),
+    ("движение только прозрачностью",
+     "Everything in your scene appears by fading in. Nothing is drawn, "
+     "nothing moves, nothing lands. Add all three of these: (a) draw every "
+     "line and arrow with strokeDasharray/strokeDashoffset instead of "
+     "fading it in; (b) wrap the whole SVG content in ONE <g> and scale it "
+     "1.00 -> 1.04 across the duration; (c) let the accent element land "
+     "with spring() so it overshoots once and settles. A fade is not "
+     "motion — it is a slide change."),
+    ("непрозрачная заливка",
+     "Your root element paints the whole frame with a solid colour, which "
+     "hides the shared Backdrop that Scene.tsx puts underneath. The root "
+     "<AbsoluteFill> must stay transparent — carry only opacity and layout on "
+     "it, and paint colour on the drawn shapes."),
+]
+
+
+def _stub_fixes(why: list | None) -> list[str]:
+    """Предметные указания по конкретным претензиям приёмки."""
+    текст = " | ".join(str(w) for w in (why or []))
+    return [fix for mark, fix in STUB_FIX if mark in текст]
+
+
+def retry_prompt(rejected: str, why: list | None) -> str:
+    """Хвост промпта для ПОВТОРНОЙ попытки.
+
+    Главная беда прошлой версии была не в словах, а в порядке: снизу промпта
+    лежала отвергнутая заготовка на 850 символов, а над ней стояло «keep
+    everything else». Для заготовки «everything else» — это и есть весь брак,
+    и модель прилежно возвращала её обратно. Поэтому:
+      * когда отказ заготовочный (нет движения, нет фейда, файл-обрубок),
+        прошлый ответ В ПРОМПТ НЕ КЛАДЁТСЯ вовсе — сохранять там нечего;
+      * что дописать, названо по имени, а не списком «возможных причин»;
+      * образец правильного куска стоит ПОСЛЕДНИМ, у самой генерации.
+    """
+    if not why:
+        return ""
+    fixes = _stub_fixes(why)
+    заготовка = any(m in " | ".join(str(w) for w in (why or []))
+                    for m in ("interpolate вызван", "слишком короткий файл",
+                              "не читает кадр"))
+    out = ["\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED by an automatic check. "
+           "These are the exact complaints:\n"
+           + "\n".join(f"  - {w}" for w in (why or []))]
+    if fixes:
+        out.append("\n\nWhat that means and what to write instead:\n"
+                   + "\n".join(f"  - {f}" for f in fixes))
+    if заготовка:
+        # Ни строки прошлого ответа: он сам себя воспроизводит.
+        out.append(
+            "\n\nDo NOT resend the previous file with small edits — it was a "
+            "stub and there is nothing in it worth keeping. Write the scene "
+            "again from scratch, at full density.\n\nThis is a REAL scene from "
+            "this project that passed every check. Match its shape and its "
+            "size:\n\n" + MOTION_EXAMPLE)
+    else:
+        out.append(
+            "\n\nCommon causes, in case they apply:\n"
+            "  - a variable you computed but never used (TypeScript is run "
+            "with --noUnusedLocals: DELETE it or actually use it)\n"
+            "  - everything you drew is the same colour as the background, "
+            "or positioned outside the frame, so the render is a flat fill\n"
+            "  - the animation finishes in the first frames, so the picture "
+            "at 25% and at 80% of the duration is identical\n"
+            "  - the picture is one shape filled with a single flat colour "
+            "with a caption over it. The caption is not the drawing. Draw "
+            "the gradient stops, the layers and their boundaries, the "
+            "second bar of the comparison, the axis with its numbers — "
+            "a rendered frame is shown to a vision model and it is asked "
+            "whether the promised thing is actually visible\n"
+            "\nPREVIOUS ATTEMPT:\n" + rejected[:3000]
+            + "\n\nFix exactly those problems and keep the rest of the "
+              "drawing.")
+    return "".join(out)
 
 
 # Вопрос зрению про ОТРИСОВАННЫЙ кадр. Списан с PICK_PROMPT в core.py —
@@ -562,6 +982,264 @@ def _fullframe_backgrounds(src: str) -> list[str]:
     return out
 
 
+# ---------- Ступень 0: ответ вообще доехал целиком? ----------
+# Замер живого прогона 29.08.2026: из шести сцен одного ролика три отвергнуты,
+# и у двух причина была одна и та же — ОБРЫВ ТЕКСТА, а не ошибка модели:
+#   material_volume_anomaly     — TS17008 (JSX element has no closing tag)
+#   hydrostatic_pressure_vectors — TS17008, потом дважды TS1005 ('}' expected)
+# Вторая потеряна навсегда: три попытки, каждая по минуте с лишним, и момент
+# остался обычным кадром. Компилятор в обоих случаях описывает СЛЕДСТВИЕ
+# («не закрыт тег»), и подсказка следующей попытке уходила чинить тег, хотя
+# чинить надо длину. Отличить обрыв от кривого кода можно ДО тайпчека и
+# бесплатно: у оборванного файла не сходятся скобки и текст кончается на
+# середине строки.
+CUT_MARK = "ответ модели оборван"
+
+
+def _closes_on_line(src: str, i: int) -> bool:
+    """Закрывается ли кавычка src[i] до конца этой же строки файла."""
+    q, j, n = src[i], i + 1, len(src)
+    while j < n and src[j] != "\n":
+        if src[j] == "\\":
+            j += 2
+            continue
+        if src[j] == q:
+            return True
+        j += 1
+    return False
+
+
+def _scan_code(src: str) -> tuple[str, list[str], str]:
+    """Разобрать TSX на «код» и «не код».
+
+    Возвращает (текст с забитыми пробелами строками и комментариями,
+    стек незакрытых скобок, состояние на конце файла). Строки и комментарии
+    забиваем, потому что скобка внутри '{' или /* { */ ничего не открывает,
+    а считать её означало бы ложные срабатывания на целых файлах."""
+    out, stack = [], []
+    i, n, state = 0, len(src), "code"
+    while i < n:
+        c, nxt = src[i], (src[i + 1] if i + 1 < n else "")
+        if state == "code":
+            if c == "/" and nxt == "/":
+                state, i = "line", i + 2
+                out.append("  ")
+                continue
+            if c == "/" and nxt == "*":
+                state, i = "block", i + 2
+                out.append("  ")
+                continue
+            if c in "'\"":
+                # Кавычка — начало строки ТОЛЬКО если она закрывается в этой
+                # же строке файла: многострочных строк в JS нет. Иначе это
+                # апостроф в тексте JSX — «(σ' → 0)», «don't». Первая версия
+                # глотала до конца строки и теряла ')' — два целых файла из
+                # 567 объявлялись оборванными на ровном месте.
+                if _closes_on_line(src, i):
+                    state, i = c, i + 1
+                    out.append(" ")
+                    continue
+                out.append(c)
+                i += 1
+                continue
+            if c == "`":
+                state, i = "tpl", i + 1
+                stack.append("`")
+                out.append(" ")
+                continue
+            if c in "([{":
+                stack.append(c)
+            elif c in ")]}":
+                пара = {")": "(", "]": "[", "}": "{"}[c]
+                if stack and stack[-1] == пара:
+                    stack.pop()
+                elif c == "}" and stack and stack[-1] == "${":
+                    stack.pop()
+                    state = "tpl"       # закрылась подстановка внутри шаблона
+                    out.append(" ")     # в «чистом» тексте её скобок нет вовсе
+                    i += 1
+                    continue
+                else:
+                    stack.append("!" + c)   # лишняя закрывающая
+            out.append(c)
+            i += 1
+            continue
+        if state == "line":
+            if c == "\n":
+                state = "code"
+            out.append(c if c == "\n" else " ")
+            i += 1
+            continue
+        if state == "block":
+            if c == "*" and nxt == "/":
+                state, i = "code", i + 2
+                out.append("  ")
+                continue
+            out.append(c if c == "\n" else " ")
+            i += 1
+            continue
+        if state == "tpl":
+            if c == "\\":
+                out.append("  ")
+                i += 2
+                continue
+            if c == "$" and nxt == "{":
+                state, i = "code", i + 2
+                stack.append("${")
+                out.append("  ")
+                continue
+            if c == "`":
+                state = "code"
+                if stack and stack[-1] == "`":
+                    stack.pop()
+            out.append(c if c == "\n" else " ")
+            i += 1
+            continue
+        # обычная строка в кавычках
+        if c == "\\":
+            out.append("  ")
+            i += 2
+            continue
+        if c == state or c == "\n":
+            state = "code"          # перевод строки в кавычках — уже не строка
+        out.append(c if c == "\n" else " ")
+        i += 1
+    return "".join(out), stack, state
+
+
+def _jsx_unclosed(cleaned: str) -> list[str]:
+    """Незакрытые JSX-теги. cleaned — вывод _scan_code (без строк и комментов).
+
+    Дженерики React.FC<SceneProps> и сравнения отсеиваем по символу ПЕРЕД
+    '<': у настоящего тега там не может стоять буква, цифра или ')'."""
+    стек, i, n = [], 0, len(cleaned)
+    while True:
+        i = cleaned.find("<", i)
+        if i < 0:
+            break
+        m = re.match(r"</?([A-Za-z][\w.]*)", cleaned[i:])
+        if not m:
+            i += 1
+            continue
+        закрывающий = cleaned[i + 1] == "/"
+        до = cleaned[i - 1] if i else " "
+        # Отсев только для ОТКРЫВАЮЩИХ: React.FC<SceneProps> и frame<end.
+        # У закрывающего '</' двусмысленности нет, а перед ним почти всегда
+        # стоит буква — текст подписи (…Erdbelastung</text>). Первая версия
+        # проверки глушила по этому правилу и закрывающие тоже: 344 целых
+        # файла из 567 объявлялись оборванными.
+        if not закрывающий and (до.isalnum() or до in "_$"):
+            i += 1
+            continue
+        j, глубина = i + m.end(), 0
+        while j < n:
+            ch = cleaned[j]
+            if ch == "{":
+                глубина += 1
+            elif ch == "}":
+                глубина -= 1
+            elif ch == ">" and глубина <= 0 and cleaned[j - 1] != "=":
+                break
+            elif ch == "<" and глубина <= 0:
+                j = n           # тег не закрылся своим '>' — это уже не тег
+                break
+            j += 1
+        if j >= n:
+            стек.append(m.group(1))     # '>' так и не встретился — обрыв
+            break
+        сам = cleaned[:j].rstrip().endswith("/")
+        if закрывающий:
+            # снимаем до одноимённого: перекос вложенности — не наше дело,
+            # его назовёт компилятор, а нам важно только «чего не хватает».
+            if m.group(1) in стек:
+                while стек.pop() != m.group(1):
+                    pass
+        elif not сам:
+            стек.append(m.group(1))
+        i = j + 1
+    return стек
+
+
+def truncated(src) -> str:
+    """Оборван ли ответ. '' — цел; иначе причина одной строкой.
+
+    Зовётся ДО тайпчека: обрыв и ошибка в коде лечатся по-разному, а
+    компилятор их не различает."""
+    провайдер = getattr(src, "why", "")      # core.CutText: сказал сам API
+    if провайдер:
+        return f"{CUT_MARK}: {провайдер}"
+    text = str(src)
+    if not text.strip():
+        return f"{CUT_MARK}: пустой ответ"
+    # Ответ БЕЗ объявления компонента — это не файл сцены: либо модель
+    # написала объяснение вместо кода, либо обрыв случился раньше, чем она
+    # дошла до export. Скобочную проверку ниже такой текст проходит целым
+    # (проза скобок не открывает) и ложится на диск, а tsc и бандл Remotion
+    # после этого валятся на ВСЕХ сценах разом, а не только на этой.
+    if "export const" not in text and "export default" not in text:
+        return (f"{CUT_MARK}: в ответе нет объявления компонента "
+                f"«export const ...» — пришёл не файл сцены, а "
+                f"«{text.strip()[:60]}»")
+    cleaned, stack, state = _scan_code(text)
+    if state == "block":
+        return f"{CUT_MARK}: файл кончается внутри комментария /* ... */"
+    if state == "tpl":
+        return f"{CUT_MARK}: файл кончается внутри шаблонной строки `...`"
+    открытые = [s for s in stack if not s.startswith("!")]
+    if открытые:
+        сколько = {}
+        for s in открытые:
+            сколько[s] = сколько.get(s, 0) + 1
+        чего = ", ".join(f"{k} x{v}" for k, v in сколько.items())
+        return (f"{CUT_MARK}: не закрыто скобок — {чего}; "
+                f"файл обрывается на «{text.rstrip()[-60:]}»")
+    теги = _jsx_unclosed(cleaned)
+    if теги:
+        return (f"{CUT_MARK}: не закрыт тег <{теги[-1]}>; "
+                f"файл обрывается на «{text.rstrip()[-60:]}»")
+    хвост = text.rstrip()
+    if хвост[-1] not in ";})>":
+        return (f"{CUT_MARK}: текст кончается на середине строки — "
+                f"«{хвост[-60:]}»")
+    return ""
+
+
+# Геометрические атрибуты SVG и вёрстки. opacity и fill СЮДА НЕ ВХОДЯТ:
+# именно они и есть «проявись и стой», ради отделения которого всё это.
+_ГЕОМЕТРИЯ = (
+    "transform|width|height|x1|x2|y1|y2|cx|cy|rx|ry|r|d|points|offset|"
+    "strokeDasharray|strokeDashoffset|strokeWidth|fontSize|left|top|"
+    "marginTop|translate|scale|rotate")
+
+
+def _геометрия_движется(src: str) -> bool:
+    """Зависит ли хоть одна ГЕОМЕТРИЯ от времени.
+
+    Ищем имена, посчитанные из кадра (`const x = interpolate(...)` или
+    `= spring(...)`), и смотрим, стоит ли хоть одно из них в геометрическом
+    атрибуте или в transform. Проверять наличие слова «scale» или
+    «strokeDashoffset» было НЕЛЬЗЯ: замер 02.09 по 691 принятой сцене —
+    такая грубая проверка отвергла бы 240 из них, и 192 ложно, потому что
+    добрая половина сцен двигает геометрию прямо в атрибуте
+    (`width={120 * draw}`, `r={6 * pulse}`), а transform не трогает вовсе.
+    """
+    имена = re.findall(r"(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*"
+                       r"(?:interpolate|spring)\s*\(", src)
+    имена = [n for n in dict.fromkeys(имена) if n]
+    if not имена:
+        return False
+    альт = "|".join(re.escape(n) for n in имена)
+    # атрибут={...имя...}  и  style={{ transform: `...${имя}...` }}
+    if re.search(rf"\b(?:{_ГЕОМЕТРИЯ})\s*=\s*\{{[^}}]{{0,240}}?"
+                 rf"\b(?:{альт})\b", src):
+        return True
+    if re.search(rf"(?:transform|translate|scale|rotate|matrix|skew)"
+                 rf"[^\n]{{0,160}}?\$\{{[^}}]{{0,120}}?\b(?:{альт})\b",
+                 src):
+        return True
+    return False
+
+
 def check_static(src: str) -> list[str]:
     """Ступень 2: то, что видно в коде без запуска."""
     bad = []
@@ -582,9 +1260,21 @@ def check_static(src: str) -> list[str]:
         bad.append("не использует p.enter/p.exit — сцена моргнёт на склейке")
     if re.search(r"placeholder|TODO|FIXME", src, re.I):
         bad.append("следы недоделки (placeholder/TODO)")
-    if src.count("interpolate(") < 3:
-        bad.append(f"движения почти нет: interpolate вызван "
-                   f"{src.count('interpolate(')} раз(а), нужно 3+")
+    движение = src.count("interpolate(") + src.count("spring(")
+    if движение < 3:
+        bad.append(f"движения почти нет: interpolate/spring вызваны "
+                   f"{движение} раз(а), нужно 3+")
+    # СЛОВАРЬ ДВИЖЕНИЯ. Замер 02.09 по 691 принятой сцене: opacity есть у
+    # 100 %, translate у 92.9 %, rotate 30.2 %, strokeDashoffset 14.8 %,
+    # scale 11.9 %, spring 0.0 %, перелёт 0.3 %, ступенька по индексу 5.5 %.
+    # И у 168 сцен (24.3 %) КРОМЕ прозрачности нет вообще ничего. Пункты
+    # контракта 13/16/18 требуют второго свойства с 02.09, но проверки на
+    # него не было — а требование, которое никто не проверяет, модель
+    # выполняет в четверти случаев. Это и есть «проявись, приедь, стой».
+    if not _геометрия_движется(src):
+        bad.append("движение только прозрачностью: ни один размер, путь или "
+                   "transform не зависит от кадра — всё, что делает сцена, "
+                   "это проявляется и стоит, как слайд")
     if "useCurrentFrame()" not in src:
         bad.append("не читает кадр — картинка статична")
     if re.search(r"Math\.random|new Date|Date\.now", src):
@@ -632,7 +1322,16 @@ def _still(kind: str, title: str, dur: float, at: float, dest: Path) -> str:
         cwd=REMOTION, capture_output=True, text=True, encoding="utf-8",
         errors="replace", timeout=600, creationflags=CREATE_NO_WINDOW)
     if r.returncode != 0 or not dest.exists():
-        return f"рендер упал: {(r.stderr or '')[-200:]}"
+        # НАЧАЛО ошибки, а не хвост. Раньше стояло [-200:], и у трассировки
+        # Node в журнал попадали последние строки — пути внутри самого
+        # Remotion. 31.08 два кадра упали, и всё, что осталось для разбора,
+        # это огрызок «till (still.js:112:5)»: сама причина отрезана, а
+        # диагностировать по хвосту нечего. Node пишет причину ПЕРВОЙ строкой.
+        поток = (r.stderr or "").strip() or (r.stdout or "").strip()
+        важное = [l for l in поток.splitlines()
+                  if l.strip() and not l.lstrip().startswith("at ")]
+        текст = " | ".join(важное[:4])[:400] or поток[:400]
+        return f"рендер упал (код {r.returncode}): {текст}"
     return ""
 
 
@@ -1009,6 +1708,119 @@ def unused_names(out: str, kind: str) -> list[tuple[int, str]]:
     return имена
 
 
+QUARANTINE = BASE / "_битые_схемы"
+
+
+def _ошибки_по_файлам(out: str) -> dict:
+    """Жалобы типизации, разложенные по ФАЙЛАМ: имя файла -> строки жалоб."""
+    по_файлам: dict = {}
+    for line in (out or "").splitlines():
+        m = re.match(r"\s*(\S+?\.tsx?)\(\d+,\d+\):\s*error\s+TS", line)
+        if m:
+            имя = m.group(1).replace("\\", "/").rsplit("/", 1)[-1]
+            по_файлам.setdefault(имя, []).append(line.strip())
+    return по_файлам
+
+
+def heal_foreign(out: str, kind: str, log=print) -> tuple[bool, str]:
+    """Ошибки типизации в ЧУЖИХ файлах сцен — вылечить или увести в карантин.
+
+    Зачем это здесь. Приёмка одной сцены запускает tsc на ВСЁМ проекте
+    Remotion, а вывод компилятора уходит в bad[] целиком, без разбора, чей
+    это файл. Значит одна старая сцена с лишней переменной отвергает подряд
+    ВСЕ новые, и код в них при этом безупречен: модель три раза переписывает
+    исправную сцену по чужой ошибке, а потом сцена теряется навсегда.
+
+    Замер 02.09.2026: в src/scenes лежал kraft_umleitung.tsx с TS6133
+    ('pathDownLen' is declared but its value is never read) — tsc возвращал
+    ошибку на КАЖДОЙ проверке, то есть ни одна новая сцена не могла быть
+    принята вообще. По журналу app.log за всю историю «не проходит
+    типизацию проекта» — 646 отказов из 1486 (43.5 %) и 152 из 339
+    окончательно потерянных сцен (44.8 %): это самая частая причина потери.
+
+    Мусорную мелочь чиним на месте той же repair_unused. Настоящую поломку
+    (обрыв, незакрытый тег) чинить нечем — уводим файл в карантин: снимаем
+    из диспетчера Scene.tsx и переносим в _битые_схемы. Не удаляем: сцена
+    ещё может понадобиться, и удалять чужую работу нельзя. Карантин лежит
+    ВНЕ remotion/, иначе tsc продолжил бы его компилировать.
+
+    Возвращает (трогали ли что-нибудь, отчёт одной строкой).
+    """
+    свой = f"{kind}.tsx"
+    сделано: list[str] = []
+    for имя, жалобы in _ошибки_по_файлам(out).items():
+        if имя == свой:
+            continue
+        if имя == REGISTRY.name:
+            # ВИСЯЧАЯ ЗАПИСЬ В ДИСПЕТЧЕРЕ. Предыдущая сцена не прошла
+            # приёмку, её .tsx удалён, а import и case в Scene.tsx остались —
+            # и tsc падает на КАЖДОЙ следующей сцене с чужим именем в тексте.
+            # Замер 01.09: airflow_diagram отвергнута ровно так
+            # («Cannot find module './scenes/load_redirection_diagram'»),
+            # причём сама она была ни при чём. Снимаем запись, файла которой
+            # нет: это восстановление реестра, а не удаление работы.
+            снял = []
+            for m in re.finditer(
+                    r"Cannot find module '\./scenes/([A-Za-z0-9_]+)'",
+                    "\n".join(жалобы)):
+                мёртвый = m.group(1)
+                if (SCENES_DIR / f"{мёртвый}.tsx").exists():
+                    continue
+                try:
+                    unregister(мёртвый, _component_name(мёртвый))
+                    снял.append(мёртвый)
+                except Exception:
+                    pass
+            if снял:
+                сделано.append(f"{имя}: снял висячие записи — "
+                               + ", ".join(снял))
+                log(f"[Сцены] в {имя} остались ссылки на удалённые сцены "
+                    f"({', '.join(снял)}) — снял, они роняли приёмку всех "
+                    "остальных", "warn")
+            else:
+                сделано.append(f"{имя}: ошибка не про висячие записи")
+            continue
+        путь = SCENES_DIR / имя
+        if not путь.exists():
+            # Ошибка не в сцене (Root.tsx, вариант оверлея) — трогать чужие
+            # подсистемы отсюда нельзя, только назвать.
+            сделано.append(f"{имя}: не сцена, чинить не берусь")
+            continue
+        чужой = путь.stem
+        if чужой in BUILTIN_SCENES:
+            сделано.append(f"{имя}: ручная сцена, не трогаю")
+            continue
+        try:
+            код = путь.read_text(encoding="utf-8")
+        except OSError as e:
+            сделано.append(f"{имя}: не прочитан ({e})")
+            continue
+        лечёный, менял = repair_unused(код, out, чужой)
+        if менял:
+            путь.write_text(лечёный, encoding="utf-8")
+            сделано.append(f"{имя}: убрал лишние объявления")
+            log(f"[Сцены] чужая сцена {имя} мешала приёмке — "
+                "убрал в ней неиспользуемые объявления", "warn")
+            continue
+        # Починить нечем — в карантин, иначе она будет валить каждую
+        # следующую сцену до конца ночи.
+        try:
+            QUARANTINE.mkdir(parents=True, exist_ok=True)
+            unregister(чужой, _component_name(чужой))
+            shutil.move(str(путь), str(QUARANTINE / имя))
+            сделано.append(f"{имя}: уведён в карантин ({жалобы[0][-90:]})")
+            log(f"[Сцены] чужая сцена {имя} не компилируется и роняла "
+                f"приёмку всех остальных — увёл в {QUARANTINE.name}", "warn")
+            _complain("сломанная схема убрана из проекта",
+                      why=f"«{чужой}»: {жалобы[0][-140:]}",
+                      hint=f"файл лежит в {QUARANTINE.name}; сцена будет "
+                           "написана заново при следующем ролике",
+                      level="заметно")
+        except Exception as e:
+            сделано.append(f"{имя}: карантин не удался ({e})")
+    return bool(сделано), "; ".join(сделано[:4])
+
+
 def only_unused(out: str, kind: str) -> bool:
     """Все ли жалобы типизации — про неиспользуемые объявления.
 
@@ -1024,6 +1836,47 @@ def only_unused(out: str, kind: str) -> bool:
         if not m or m.group(1) not in _МУСОРНЫЕ_КОДЫ:
             return False
     return True
+
+
+def repair_suggested(code: str, out: str, kind: str) -> tuple[str, bool]:
+    """Опечатки в именах, где КОМПИЛЯТОР САМ НАЗВАЛ правильное.
+
+    TypeScript на TS2551/TS2552 пишет прямо: «Property 'sine' does not exist
+    on type 'typeof Easing'. Did you mean 'sin'?» То есть верный ответ уже
+    лежит в тексте ошибки, а сцена из-за него уходила на переделку — целая
+    попытка модели, а это минуты.
+
+    Замер прогона 24.08.2026: этап «Сцены» стоил 48 минут на пять сцен (9.7
+    мин каждая), годной вышла одна из пяти. Из двенадцати отказов шесть — по
+    типизации, и Easing.sine среди них. Жечь пять минут на опечатку, ответ
+    на которую компилятор уже написал, — чистая потеря.
+
+    Чиним ТОЛЬКО когда подсказка есть и оба имени — простые идентификаторы,
+    и подставляем по границам слова В ТОЙ САМОЙ СТРОКЕ, где ругался
+    компилятор. По всему файлу нельзя: совпадающее имя в другом месте может
+    быть законным, и «починка» сломала бы рабочий кусок.
+    """
+    строки = code.splitlines()
+    менял = False
+    for l in (out or "").splitlines():
+        if f"{kind}.tsx(" not in l:
+            continue
+        m = re.search(r"\((\d+),\d+\):\s*error\s+TS255[12]:.*?"
+                      r"'([A-Za-z_$][\w$]*)'.*?Did you mean '([A-Za-z_$][\w$]*)'",
+                      l)
+        if not m:
+            continue
+        n, было, надо = int(m.group(1)) - 1, m.group(2), m.group(3)
+        if not (0 <= n < len(строки)):
+            continue
+        новая = re.sub(rf"\b{re.escape(было)}\b", надо, строки[n])
+        if новая != строки[n]:
+            строки[n] = новая
+            менял = True
+    if not менял:
+        return code, False
+    хвост = "\n" if code.endswith("\n") else ""
+    return "\n".join(строки) + хвост, True
 
 
 def repair_unused(code: str, out: str, kind: str) -> tuple[str, bool]:
@@ -1096,6 +1949,33 @@ def accept(kind: str, code: str, title: str, dur: float, log=print,
     вызовов (селф-тест зовёт accept без него).
     """
     component = _component_name(kind)
+    беды_подписи: list[str] = []
+    # ПОДПИСЬ НЕ ДОЛЖНА БЫТЬ ИМЕНЕМ ПЕРЕМЕННОЙ. Замер 02.09: в кадре сцены
+    # стояло «pfahl_wand_hohl» — title подставлялся из имени файла, и зритель
+    # читал латиницу с подчёркиванием. Приёмка это пропускала.
+    _t = (title or "").strip()
+    if _t and ("_" in _t or _t.lower() == kind.lower()):
+        беды_подписи.append(
+            "подпись в кадре — техническое имя «%s», а не текст" % _t[:40])
+    # ЧИСЛО ИЗ ЗАДАНИЯ ОБЯЗАНО БЫТЬ В КОДЕ. Сцена заказана ради него: если
+    # в brief стоит «8 cm bemasst», а восьмёрки в файле нет, промер не
+    # нарисован. Тоже проходило приёмку без замечаний.
+    import re as _re2
+    _числа = _re2.findall(r"(\d{2,4}(?:[.,]\d+)?)", subject or "")
+    _нет = [n for n in dict.fromkeys(_числа) if n not in code]
+    if _нет:
+        беды_подписи.append("числа из задания не нарисованы: "
+                            + ", ".join(_нет[:4]))
+    # СТУПЕНЬ 0, до всего остального: ответ вообще доехал целиком?
+    # Обрыв нельзя пускать дальше по двум причинам. Первая: компилятор
+    # назовёт его «незакрытый тег»/«нет скобки», и следующая попытка уйдёт
+    # чинить синтаксис вместо того, чтобы уложиться короче. Вторая: файл
+    # обрубка НЕ ПИШЕТСЯ на диск и не регистрируется в Scene.tsx — незачем
+    # тратить полминуты на tsc и рендер того, что заведомо не соберётся.
+    оборван = truncated(code)
+    if оборван:
+        log(f"[Сцены] {kind}: {оборван[:220]}", "warn")
+        return [оборван]
     # Механическую мелочь чиним, а не отвергаем. Забытое домножение на
     # p.enter/p.exit — половина всех отказов (замер 2026-08-14: 11 из 22), и
     # при этом сам рисунок сцены к нему отношения не имеет. Отказ здесь стоил
@@ -1105,6 +1985,20 @@ def accept(kind: str, code: str, title: str, dur: float, log=print,
         log(f"[Сцены] {kind}: дописал фейд (p.enter/p.exit) — модель забыла")
     path = SCENES_DIR / f"{kind}.tsx"
     SCENES_DIR.mkdir(parents=True, exist_ok=True)
+    # ПОВТОРНАЯ ПРОВЕРКА ХВОСТА — ПРЯМО У ЗАПИСИ. Ступень 0 выше смотрела на
+    # ответ модели, а на диск ложится уже ДРУГОЙ текст: между ними стоит
+    # repair_fade(), которая переписывает код. Битый .tsx в src/scenes роняет
+    # и tsc, и бандл Remotion ЦЕЛИКОМ — то есть уносит не свою сцену, а все
+    # остальные тоже, и следующие сцены ночи отвергаются с чужой причиной.
+    # Проверка стоит копейки и обязана быть у самой записи, а не только на
+    # входе в приёмку.
+    хвост = code.rstrip()
+    if not хвост.endswith((";", "}")) or "export const" not in code:
+        чего = ("" if "export const" in code
+                else " и в нём нет «export const»")
+        log(f"[Сцены] {kind}: код не дописан — на диск НЕ пишу", "warn")
+        return [f"{CUT_MARK}: файл не дописан, кончается на "
+                f"«{хвост[-60:]}»{чего}"]
     path.write_text(code, encoding="utf-8")
     register(kind, component)
 
@@ -1114,6 +2008,25 @@ def accept(kind: str, code: str, title: str, dur: float, log=print,
         # Мусорную строгость чиним сами и перепроверяем. Если починка не
         # помогла — возвращаем исходный файл и жалуемся ИСХОДНЫМ текстом:
         # он и уйдёт в подсказку следующей попытке.
+        # Опечатку, на которую компилятор сам дал ответ, чиним ДО всего
+        # прочего: она приходит вперемешку с настоящими ошибками, и ворота
+        # only_unused её не пропустили бы.
+        if not ok:
+            лечёный, менял = repair_suggested(code, out, kind)
+            if менял:
+                path.write_text(лечёный, encoding="utf-8")
+                ok2, out2 = typecheck()
+                if ok2:
+                    code, ok = лечёный, True
+                    log(f"[Сцены] {kind}: поправил опечатку в имени — "
+                        "компилятор сам подсказал верное")
+                else:
+                    # Опечатка была не единственной бедой. Оставляем
+                    # исправленный файл и жалуемся уже НОВЫМ текстом: иначе
+                    # следующая попытка получит подсказку про ошибку,
+                    # которой в файле больше нет.
+                    code, out = лечёный, out2
+                    path.write_text(code, encoding="utf-8")
         if not ok and only_unused(out, kind):
             лечёный, менял = repair_unused(code, out, kind)
             if менял:
@@ -1126,7 +2039,24 @@ def accept(kind: str, code: str, title: str, dur: float, log=print,
                 else:
                     path.write_text(code, encoding="utf-8")
         if not ok:
-            bad.append(f"не проходит типизацию проекта: {out.strip()[:300]}")
+            # Ошибки могут быть НЕ В ЭТОЙ сцене: tsc проверяет весь проект
+            # разом. Чужую беду лечим или уводим в карантин и перепроверяем.
+            трогали, отчёт = heal_foreign(out, kind, log)
+            if трогали:
+                ok, out = typecheck()
+                log(f"[Сцены] {kind}: чужие файлы мешали приёмке — {отчёт}")
+        if not ok:
+            мои = [l for l in out.splitlines()
+                   if f"{kind}.tsx(" in l and ": error TS" in l]
+            if мои:
+                bad.append("не проходит типизацию проекта: "
+                           + " ".join(x.strip() for x in мои)[:300])
+            else:
+                # Ни одной жалобы на НАШ файл. Винить сцену не за что:
+                # раньше именно здесь исправный код уходил на третий круг
+                # переписывания по чужой ошибке и терялся.
+                log(f"[Сцены] {kind}: tsc ругается, но не на эту сцену — "
+                    f"принимаю; чужое: {out.strip()[:160]}", "warn")
     if not bad:
         bad = check_render(kind, title, dur, log)
     if not bad and subject:
@@ -1162,7 +2092,7 @@ def accept(kind: str, code: str, title: str, dur: float, log=print,
     if bad:
         unregister(kind, component)
         path.unlink(missing_ok=True)
-    return bad
+    return bad + беды_подписи
 
 
 # ---------- Рендер сцены в клип раскадровки ----------
@@ -1181,14 +2111,26 @@ def render_scene(kind: str, dest: Path, seconds: float, *, title: str = "",
                  items: list | None = None, lat=None, lon=None,
                  width: int = 1920, height: int = 1080, fps: int = 30,
                  log=print, look: str = "", accent: str = "") -> Path:
-    """Отрисовать сцену в mp4 РОВНО нужной длительности.
+    """Отрисовать сцену в mp4 РОВНО нужной длительности и РОВНО в кадре ролика.
 
     Клип встаёт в раскадровку как обычный beat_NNN.mp4 — рендеру ролика
     знать про сцены не нужно, для него это просто ещё один файл.
+
+    width/height/fps едут в props и оттуда — в calculateMetadata композиции
+    Scene (remotion/src/Root.tsx). Флагов --width/--height у `remotion render`
+    нет, а --scale не то: сцены верстаются от useVideoConfig(), им нужен
+    другой видеоконфиг, а не растянутый на выходе кадр.
+
+    Раньше эти три параметра принимались и НЕ использовались ни разу, и сцена
+    всегда выходила 1920x1080. На вертикальном канале (1080x1920) render.py
+    приводит такой клип фильтром scale=increase + центральный crop: 1920x1080
+    растягивается до 3413x1920 и режется до 1080 — в кадре остаётся 31.6%
+    ширины сцены, подписи и шкалы за краем. Молча: рендер возвращает успех.
     """
     import overlays as ov
     props = {"kind": kind, "dur": round(float(seconds), 3),
-             "exit": 1, "enter": 1}
+             "exit": 1, "enter": 1,
+             "width": int(width), "height": int(height), "fps": int(fps)}
     if title:
         props["title"] = title
     if items:
@@ -1315,31 +2257,43 @@ def write_scene(idea: dict, api_key: str = "", log=print,
     prompt = CODE_PROMPT.format(
         quote=idea.get("quote", ""), brief=idea.get("brief", ""),
         title=idea.get("title", ""), component=_component_name(kind))
-    if rejected and why:
-        prompt += (
-            "\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED. Fix exactly these "
-            "problems and keep everything else:\n"
-            + "\n".join(f"  - {w}" for w in why)
-            + "\n\nCommon causes, in case they apply:\n"
-              "  - a variable you computed but never used (TypeScript is run "
-              "with --noUnusedLocals: DELETE it or actually use it)\n"
-              "  - everything you drew is the same colour as the background, "
-              "or positioned outside the frame, so the render is a flat fill\n"
-              "  - the animation finishes in the first frames, so the picture "
-              "at 25% and at 80% of the duration is identical\n"
-              "  - the picture is one shape filled with a single flat colour "
-              "with a caption over it. The caption is not the drawing. Draw "
-              "the gradient stops, the layers and their boundaries, the "
-              "second bar of the comparison, the axis with its numbers — "
-              "a rendered frame is shown to a vision model and it is asked "
-              "whether the promised thing is actually visible\n"
-              "\nPREVIOUS ATTEMPT:\n" + rejected[:3000])
+    # ОБРЫВ лечится не так, как ошибка в коде. Разбор прошлой попытки здесь
+    # был бы вреден вдвойне: он не про то (чинить нечего, код не дописан) и
+    # он вкладывает в промпт 3000 символов прошлого ответа, подталкивая
+    # модель писать ЕЩЁ длиннее — то есть обрываться снова. Замер 29.08:
+    # hydrostatic_pressure_vectors так и потеряли, три попытки подряд.
+    if any(CUT_MARK in str(w) for w in (why or [])):
+        return _strip_fences(core.llm_chat(
+            [{"role": "user", "content": prompt + (
+                "\n\nYOUR PREVIOUS ANSWER WAS CUT OFF mid-file — it hit the "
+                "output length limit, so the code was never finished. There "
+                "was nothing wrong with it, it was simply too long.\n"
+                "Write the SAME scene again, but SHORTER: aim for about 120 "
+                "lines and never exceed 200. Keep the drawing dense but "
+                "compact — fewer decorative elements, shorter labels, reuse "
+                "one .map() instead of repeating similar JSX blocks, no long "
+                "comments. Finish the file: the last line must be the closing "
+                "`};` of the component.")}],
+            api_key, 0.3, CODE_TOKENS_RETRY))
+    if why:
+        # Заготовочный отказ переспрашивается БЕЗ прошлого ответа, поэтому
+        # rejected здесь больше не обязателен: ветка нужна и тогда, когда
+        # возвращать нечего.
+        prompt += retry_prompt(rejected, why)
     # Температура для КОДА низкая. 0.85 хороша для замыслов, но на коде
     # даёт синтаксический мусор: замер 2026-08-04 — 26 отказов из 54 были
     # не «скучно нарисовано», а «'}' expected» и «No overload matches».
     # Разнообразие сцен обеспечивает propose(), а не дрожь в генераторе кода.
-    return _strip_fences(core.llm_chat(
-        [{"role": "user", "content": prompt}], api_key, 0.3, 8000))
+    сырое = core.llm_chat([{"role": "user", "content": prompt}], api_key, 0.3,
+                          CODE_TOKENS)
+    код = _strip_fences(сырое)
+    # Провайдер сам сказал, что упёрся в потолок, — несём эту пометку дальше,
+    # в accept(). Она надёжнее любого разбора скобок: там догадка, здесь факт.
+    почему = core.was_cut(сырое)
+    if почему:
+        log(f"[Сцены] {kind}: {почему}", "warn")
+        return core.mark_cut(код, почему)
+    return код
 
 
 def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
@@ -1368,14 +2322,23 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
         log(f"[Сцены] ВНИМАНИЕ: {lib_err} — библиотеку не переписываю, "
             "чтобы не потерять замыслы остальных сцен", "warn")
 
-    accepted = []
+    accepted: list[dict] = []
     have = set(available_scenes())
     # Сцены, которые аудит уже признал не изображающими своё название.
     # Библиотека ОБЩАЯ и переиспользуемая, поэтому один розовый прямоугольник
     # без такой проверки кочует из ролика в ролик неограниченно долго.
     quar = quarantined()
     seen_verdicts = audit_load()
-    for idea in ideas:
+
+    # ПЕРВЫЙ ПРОХОД, последовательный и мгновенный: развести замыслы на два
+    # ведра — «уже есть в библиотеке» (модель не нужна вовсе) и «надо писать».
+    # Раньше это решалось внутри общего цикла, но в параллели проверка
+    # `kind in have` перестала бы работать: have пополнялся по ходу дела, и
+    # два потока с одинаковым kind писали бы ОДИН файл сцены.
+    готовые: set[int] = set()          # номера замыслов, взятых из библиотеки
+    задания: list[tuple[int, dict, str]] = []   # (номер, замысел, старый код)
+    занятые: set[str] = set()          # kind'ы, уже отданные в работу
+    for номер, idea in enumerate(ideas):
         kind = idea["kind"]
         redo = ""
         if kind in have:
@@ -1384,7 +2347,7 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
                 # Такая сцена уже есть — не переписываем, просто используем.
                 # Так библиотека канала копится между роликами, а не
                 # переделывается заново каждую ночь.
-                accepted.append(idea)
+                готовые.add(номер)
                 was = (seen_verdicts.get(kind) or {}).get("verdict")
                 log(f"[Сцены] {kind}: уже в библиотеке — беру готовую"
                     + ("" if was == VISION_OK else " (зрением НЕ проверена)"))
@@ -1403,6 +2366,13 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
                 continue
             log(f"[Сцены] {kind}: помечена на перегенерацию ({redo[:120]}) — "
                 "пишу заново вместо того, чтобы брать готовую", "warn")
+        if kind in занятые:
+            # Один и тот же kind в списке замыслов дважды. В параллели это
+            # были бы два потока, пишущие один и тот же файл сцены и один и
+            # тот же Scene.tsx. Пишем один раз, а второй замысел получит тот
+            # же исход при сборке итога ниже — они про одну сцену.
+            continue
+        занятые.add(kind)
         # Старый код сцены на случай, если переписать не выйдет. accept()
         # при отказе СТИРАЕТ файл и вычищает его из Scene.tsx — для новой
         # сцены это правильно, а для существующей означало бы, что неудачная
@@ -1415,10 +2385,22 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
                 old_code = (SCENES_DIR / f"{kind}.tsx").read_text(encoding="utf-8")
             except OSError:
                 pass
+        задания.append((номер, idea, old_code))
+
+    def _написать(job: tuple[int, dict, str]) -> tuple[int, str | None]:
+        """Одна сцена целиком: попытки написать код + приёмка.
+
+        Возвращает (номер замысла, вердикт зрения) при успехе и
+        (номер, None) при провале. Тело — ровно прежний цикл попыток; вся
+        разница в том, что accept() зовётся под _ACCEPT_LOCK, потому что
+        только он трогает общие на весь проект файлы (Scene.tsx,
+        scenes_audit.json) и запускает tsc на всём Remotion.
+        """
+        номер, idea, old_code = job
+        kind = idea["kind"]
         # Что сцена ОБЯЗАНА изобразить — это и есть вопрос к зрению.
         subject = (idea.get("brief") or idea.get("quote") or "").strip()
         prev_code, prev_why = "", []
-        done = False
         for attempt in range(1, ATTEMPTS + 1):
             try:
                 code = write_scene(idea, api_key, log,
@@ -1427,8 +2409,18 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
                 log(f"[Сцены] {kind}: модель не ответила ({e})", "warn")
                 break
             report: dict = {}
-            bad = accept(kind, code, idea.get("title", ""), dur, log,
-                         subject=subject, api_key=api_key, report=report)
+            try:
+                with _ACCEPT_LOCK:
+                    bad = accept(kind, code, idea.get("title", ""), dur, log,
+                                 subject=subject, api_key=api_key,
+                                 report=report)
+            except Exception as e:
+                # В одиночном проходе исключение приёмки уносило весь grow().
+                # В параллельном оно унесло бы вдобавок работу соседних
+                # потоков, уже оплаченную вызовами модели, — гасим на своей
+                # сцене, остальные доедут.
+                log(f"[Сцены] {kind}: приёмка сорвалась ({e})", "warn")
+                break
             prev_code, prev_why = code, bad
             if not bad:
                 seen = report.get("vision", VISION_BLIND)
@@ -1436,35 +2428,77 @@ def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
                     + ("" if seen == VISION_OK else
                        " — но кадр зрением НЕ ПРОВЕРЕН, помечена в "
                        "scenes_audit.json"))
-                lib[f"{channel.get('id','')}/{kind}"] = {
-                    "kind": kind, "channel": channel.get("id", ""),
-                    "title": idea.get("title", ""),
-                    "quote": idea.get("quote", "")[:200],
-                    "brief": idea.get("brief", "")[:300],
-                    # Видел ли кто-нибудь эту сцену глазами. Поле нужно
-                    # именно в библиотеке: по нему `--audit --unverified`
-                    # потом досматривает то, что прошло на выбранной квоте.
-                    "vision": seen,
-                }
-                accepted.append(idea)
-                have.add(kind)
-                done = True
-                break
+                return номер, seen
             log(f"[Сцены] {kind}: отклонена (попытка {attempt}/{ATTEMPTS}) — "
                 + "; ".join(bad)[:200], "warn")
-        if not done:
-            log(f"[Сцены] {kind}: не прошла приёмку — этот момент останется "
-                "обычным кадром", "warn")
-            # Восстанавливаем ИМЕННО ЗДЕСЬ, а не в ветке «кончились попытки»:
-            # цикл выходит ещё и по break, когда модель не ответила, и тогда
-            # файл уже мог быть стёрт предыдущей попыткой.
-            if old_code:
-                (SCENES_DIR / f"{kind}.tsx").write_text(old_code,
-                                                        encoding="utf-8")
-                register(kind, _component_name(kind))
+        log(f"[Сцены] {kind}: не прошла приёмку — этот момент останется "
+            "обычным кадром", "warn")
+        # Восстанавливаем ИМЕННО ЗДЕСЬ, а не в ветке «кончились попытки»:
+        # цикл выходит ещё и по break, когда модель не ответила, и тогда
+        # файл уже мог быть стёрт предыдущей попыткой. Под тем же замком:
+        # это запись в Scene.tsx, такая же общая, как и в accept().
+        if old_code:
+            # try здесь ровно по той же причине, что и вокруг accept():
+            # register() умеет бросать («якорь не найден»), а исключение,
+            # выпущенное из потока, вылетает при чтении ex.map и уносит
+            # ВЕСЬ параллельный проход — вместе с уже оплаченными ответами
+            # модели по соседним сценам. Своя сцена и так уже провалена.
+            try:
+                with _ACCEPT_LOCK:
+                    (SCENES_DIR / f"{kind}.tsx").write_text(old_code,
+                                                            encoding="utf-8")
+                    register(kind, _component_name(kind))
                 log(f"[Сцены] {kind}: вернул прежнюю версию файла — она "
                     "остаётся помеченной на перегенерацию, но сборка "
                     "Remotion не разваливается", "warn")
+            except Exception as e:
+                log(f"[Сцены] {kind}: прежнюю версию вернуть не вышло "
+                    f"({e}) — этой сцены в диспетчере не будет", "warn")
+        return номер, None
+
+    # ВТОРОЙ ПРОХОД — параллельный, тем же приёмом, что и раскадровка кадров
+    # в core._prefetch_ai_beats: ThreadPoolExecutor + ex.map, порядок исхода
+    # совпадает с порядком заданий. Ждать ответа модели по очереди было
+    # самой дорогой ошибкой прогона: 61 минута на шесть сцен.
+    исходы: dict[int, str] = {}
+    if задания:
+        каналов = _каналов_в_работе()
+        потолок = max(1, SCENE_WORKERS // каналов)
+        потоков = max(1, min(потолок, len(задания)))
+        log(f"[Сцены] Параллельная генерация: {len(задания)} сцен, "
+            f"до {потоков} одновременно (приёмка — по одной)...")
+        with ThreadPoolExecutor(max_workers=потоков) as ex:
+            for сделано, (номер, seen) in enumerate(
+                    ex.map(_написать, задания), 1):
+                if seen is not None:
+                    исходы[номер] = seen
+                log(f"[Очередь сцен] Готово {сделано}/{len(задания)}; "
+                    f"принято {len(исходы)}, в работе до {потоков}"
+                    + (f" (каналов разом {каналов}, потолок урезан "
+                       f"с {SCENE_WORKERS})" if каналов > 1 else ""))
+
+    # ИТОГ в исходном порядке замыслов: параллель не должна менять порядок
+    # сцен в ролике. Дубли по kind (см. «занятые») получают исход своего
+    # близнеца — файл сцены у них общий.
+    удались = ({ideas[n]["kind"] for n in готовые}
+               | {ideas[n]["kind"] for n in исходы})
+    for номер, idea in enumerate(ideas):
+        kind = idea["kind"]
+        if номер in исходы:
+            lib[f"{channel.get('id','')}/{kind}"] = {
+                "kind": kind, "channel": channel.get("id", ""),
+                "title": idea.get("title", ""),
+                "quote": idea.get("quote", "")[:200],
+                "brief": idea.get("brief", "")[:300],
+                # Видел ли кто-нибудь эту сцену глазами. Поле нужно
+                # именно в библиотеке: по нему `--audit --unverified`
+                # потом досматривает то, что прошло на выбранной квоте.
+                "vision": исходы[номер],
+            }
+        elif kind not in удались:
+            continue
+        accepted.append(idea)
+        have.add(kind)
 
     if not lib_err:
         LIBRARY.write_text(json.dumps(lib, ensure_ascii=False, indent=2),

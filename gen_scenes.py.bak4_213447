@@ -1,0 +1,2804 @@
+#!/usr/bin/env python3
+"""ИИ пишет СЦЕНЫ под конкретный ролик — и они проходят приёмку.
+
+Сцена, в отличие от оверлея, занимает кадр целиком и заменяет собой съёмку
+там, где снимать нечего: «нагрузка перешла на три оставшиеся опоры», «под
+фундаментом залегает торф», «за сорок лет просело на двенадцать сантиметров».
+
+ПОЧЕМУ ЗДЕСЬ ТАКОЙ ЖЁСТКИЙ КОНТРОЛЬ. Полная ИИ-генерация кода в этом проекте
+уже проваливалась: модель игнорировала тип и выдавала пустые кадры. Хуже —
+первый «успешный» прогон дал синтаксически безупречную ЗАГЛУШКУ: непрозрачный
+прямоугольник во весь кадр с комментарием Placeholder и без анимации. Она
+прошла проверку, потому что проверкой было «компилируется и кадр не пустой».
+В ролике такая заглушка закрашивает всё видео сплошной заливкой.
+
+Поэтому приёмка тут в четыре ступени, и каждая отсекает свой класс брака:
+  1. типизация ФЛАГАМИ ПРОЕКТА (strict, noUnusedLocals) — неиспользованные
+     импорты interpolate/Easing выдают заглушку надёжнее всего;
+  2. статический разбор: непрозрачный корень, отсутствие p.enter/p.exit,
+     слова placeholder/TODO, слишком мало кода. Непрозрачный корень стоит
+     тут не для красоты: фон сцены кладёт Scene.tsx (живая подложка
+     Backdrop), и сцена, закрасившая кадр своим '#07090c', эту подложку
+     молча отменяет — получается ровное тёмное пятно на семь секунд,
+     которое посреди документального ролика читается как провал;
+  3. НАСТОЯЩИЙ рендер двух кадров и разбор пикселей: не залито, нарисовано
+     хоть что-то, достаточно цветов, между кадрами есть движение;
+  4. ЗРЕНИЕ: отрисованный кадр показывают модели и спрашивают, изображает
+     ли он то, что заявлено замыслом. Ступени 1-3 отвечают на вопрос «код
+     рабочий?» и ни одна не отвечает на вопрос «на картинке видно то, что
+     обещано названием?». Сцена thermal_gradient_map прошла их все и
+     оказалась ровным розовым прямоугольником в рамке под заголовком
+     «steam jacket cross-section»: ни градиента, ни разреза. Пиксели такое
+     не ловят в принципе — заливка, меняющая цвет со временем, честно даёт
+     и цвета, и движение;
+  5. взгляд человека — сцены складываются в папку на просмотр.
+
+Файл намеренно отдельный от gen_remotion_gemini.py: тот при запуске
+перезаписывает живой Overlay.tsx.
+
+    python gen_scenes.py --selftest              # негативный тест гейта
+    python gen_scenes.py --audit --limit 5       # досмотреть библиотеку
+    python gen_scenes.py --list                  # накопленные вердикты
+"""
+import argparse
+import json
+import re
+import os
+import shutil
+import subprocess
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+
+# Окно консоли НЕ ДОЛЖНО выскакивать. Программа живёт в своём окне
+# (pythonw), а каждый вызов ffmpeg, ffprobe и npx без этого флага открывает
+# чёрный прямоугольник поверх всего — при рендере их сотни за ролик, и они
+# перехватывают фокус, пока человек работает. Замер 2026-08-12: восемь мест
+# в четырёх файлах запускали процессы без него.
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+BASE = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE))
+
+REMOTION = BASE / "remotion"
+SCENES_DIR = REMOTION / "src" / "scenes"
+REGISTRY = REMOTION / "src" / "Scene.tsx"
+LIBRARY = BASE / "scenes.json"
+# Вердикты зрения по УЖЕ НАПИСАННЫМ сценам. Отдельный файл, а не поле в
+# .tsx и не переименование файла: сцены лежат в remotion/src, и любая правка
+# там пересобирает весь проект Remotion — пометка не стоит того, чтобы
+# трогать исходники, которые в этот момент может рендерить ночной прогон.
+AUDIT = BASE / "scenes_audit.json"
+
+# Сцены, написанные РУКАМИ, а не моделью. Аудит их не трогает вовсе, и
+# пометиться на перегенерацию они не могут: иначе grow() однажды перезаписал
+# бы ручной компонент машинным, а взять его обратно было бы неоткуда.
+BUILTIN_SCENES = ("globe", "layers", "forces", "chart", "backdrop")
+
+# Сколько раз просить модель переписать сцену, если приёмка её отвергла.
+ATTEMPTS = 3
+
+# Сколько сцен пишется ОДНОВРЕМЕННО. Столько же, сколько кадров в
+# core._prefetch_ai_beats: предел 4 в проекте уже принят и обкатан на
+# генераторах картинок и видео. Замер прогона 29.08.2026: шесть сцен
+# заняли 61 минуту — это самый длинный этап сборки, длиннее параллельной
+# отрисовки 118 кадров (20 мин). Почти всё это время процесс просто ЖДЁТ
+# ответа модели: 35 попыток по 1-7 минут каждая, а сцены друг от друга не
+# зависят — ждать их по очереди незачем.
+SCENE_WORKERS = 4
+# Потолок выше писался под ОДИН канал. При параллельной сборке он умножается
+# на число каналов: три канала — это до 12 одновременных «npx remotion still»,
+# а каждый поднимает свой сборщик и свой Chrome. 31.08 на машине с 15.8 ГБ ОЗУ
+# (свободно было 4.1) два кадра так и упали. Поэтому потолок делится на число
+# каналов, которые собираются прямо сейчас. СЕБЯ СЧИТАЕМ: мы тоже один из них
+# — это тот случай, когда исключать свой процесс как раз НЕЛЬЗЯ.
+_КАНАЛОВ_КЭШ: list = [0.0, 1]        # когда мерили, сколько насчитали
+
+
+def _каналов_в_работе() -> int:
+    """Сколько каналов собирается прямо сейчас. Меряем раз в 2 минуты."""
+    import time as _t
+    if _t.monotonic() - _КАНАЛОВ_КЭШ[0] < 120:
+        return _КАНАЛОВ_КЭШ[1]
+    n = 1
+    try:
+        import re as _re
+        ps = ("Get-CimInstance Win32_Process | Where-Object { "
+              "($_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe') } | "
+              "ForEach-Object { $_.CommandLine }")
+        raw = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                             capture_output=True, text=True, timeout=25,
+                             encoding="utf-8", errors="replace",
+                             creationflags=CREATE_NO_WINDOW).stdout
+        своё = {m.group(1) for m in
+                (_re.search(r"autopilot\.py\s+--channel\s+(\S+)", l)
+                 for l in raw.splitlines()) if m}
+        n = max(1, len(своё))
+    except Exception:
+        pass                       # не смогли спросить — работаем как один
+    _КАНАЛОВ_КЭШ[:] = [_t.monotonic(), n]
+    return n
+
+# Замок на ПРИЁМКУ сцены. Писать код можно всем потокам разом, а accept()
+# параллельно — нельзя: он правит ОДИН на всех remotion/src/Scene.tsx
+# (register/unregister читают файл, меняют и пишут обратно) и запускает tsc
+# на ВЕСЬ проект. Два потока в этом месте либо затирают правку друг друга,
+# либо получают в свой вердикт чужие ошибки типов и бракуют исправную сцену.
+# Поэтому разделение такое: ДОЛГОЕ (ответ модели) — параллельно, ОБЩЕЕ
+# (запись Scene.tsx + tsc + рендер + зрение) — по одному под этим замком.
+_ACCEPT_LOCK = threading.Lock()
+
+# Потолок длины ответа на КОД сцены. Было 8000 — и этого не хватало.
+# Замер по 567 готовым сценам в remotion/src/scenes: в среднем 4823 символа
+# (138 строк), самая большая 15964 (503 строки), у каждой двадцатой больше
+# 7000. При ~3.3 символа на токен большая сцена — это уже 4800 токенов
+# только видимого текста, а у моделей Gemini/Agnes «размышления» тратят ТОТ
+# ЖЕ бюджет (см. core.agnes_chat). Отсюда обрывы посреди JSX, приходившие
+# как TS17008/TS1005: живой прогон 29.08 потерял так целую сцену.
+# Замер 02.09.2026 живым запросом к четырём моделям: усечение ответа шло
+# НЕ от длины кода, а от «размышлений». Gemini считает thoughtsTokenCount в
+# тот же maxOutputTokens: на коротком запросе gemini-3.5-flash потратил 2782
+# токена на размышления против 1761 на сам ответ, gemini-flash-latest — 1069
+# против 1883. На полном CODE_PROMPT (26 пунктов контракта) размышления
+# растут вместе с промптом и съедали весь бюджет: в журнале 34 обрыва вида
+# «finishReason=MAX_TOKENS, maxOutputTokens=16000 (получено 8934 символов)» —
+# то есть кода пришло тысячи на три токенов, а остальные тринадцать ушли на
+# рассуждения. Потолок здесь — не заказ длины, а предохранитель, и держать
+# его впритык бессмысленно: сцена в 200 строк это ~3000 токенов.
+CODE_TOKENS = 32000
+# Повтор ПОСЛЕ ОБРЫВА получает ещё больший запас: та же модель, тот же
+# промпт, и единственное, что мы можем изменить кроме просьбы «короче», —
+# перестать упираться в потолок.
+CODE_TOKENS_RETRY = 48000
+
+# Доля длительности, на которой берём кадр для ЗРЕНИЯ. Не середина и не
+# четверть: почти все сцены дорисовываются постепенно (strokeDashoffset,
+# растущие столбцы), и на 25% схема ещё наполовину не появилась — модель
+# честно ответит «пусто», хотя сцена нормальная. 0.72 — уже дорисовано, но
+# ещё до затухания p.exit.
+VISION_AT = 0.72
+
+# Почерк СХЕМ у каждого канала свой — как у плашек и монтажа. Раньше сюда
+# уходили только имя канала, жанр и язык, поэтому разбор аварии и разбор
+# философа рисовались одинаково: те же линии, те же подписи, тот же ритм.
+# Ключ — palette, тот же, по которому разведены склейки (render.PALETTES),
+# плашки и обложки.
+SCENE_LOOK = {
+    "harsh": (
+        "Draw like an ENGINEERING REPORT: orthogonal projections, section "
+        "cuts, dimension lines with figures, load arrows, callout leaders "
+        "with part names. Thin technical strokes, steel grey and slate, one "
+        "signal-orange accent on the failure point only. No curves for "
+        "decoration, no glow, no gradients. It must look measured, not "
+        "designed."),
+    "warm": (
+        "Draw like a PRACTICAL GUIDE: before-and-after halves, a labelled "
+        "cutaway of the everyday object, a cost figure counting down, simple "
+        "step arrows. Rounded corners, honey and brick tones on cream, thick "
+        "friendly strokes. It must look like something a person sketched to "
+        "explain a fix, not like an instrument panel."),
+    "contemplative": (
+        "Draw like a MAP OF AN IDEA: a life laid along a slow line, "
+        "concepts as circles that overlap, a quotation given room. Hairline "
+        "strokes, dusty green and stone on faded indigo, wide empty space. "
+        "No arrows shouting, no numbers unless a date. It must feel unhurried "
+        "— the viewer is here for an hour."),
+}
+
+
+PROPOSE_PROMPT = """You are a documentary motion-graphics director.
+
+Below is a narration script for a video on the channel "{channel}"
+({tone}, {lang}).{look}
+
+Find up to {count} moments where FOOTAGE CANNOT SHOW what is being said, but a
+drawn animated diagram can.
+
+EACH IDEA MUST BE A PICTURE THAT ARGUES, NOT A DIAGRAM TYPE. "A cross-section
+of the pile" is a category and it is worthless on its own — it produces a
+correct drawing nobody watches. The idea is what the picture PROVES, and the
+proof must land in the first second of the shot.
+
+Build every idea out of three parts:
+  a) WHAT THE VIEWER ASSUMES before this shot — the ordinary belief the
+     narration is about to break;
+  b) WHAT THE PICTURE SHOWS INSTEAD — one image that contradicts it. Not a
+     chart of the contradiction; the contradiction itself, drawn;
+  c) THE NUMBER from the script that makes it undeniable — it must appear in
+     the frame as geometry (a measured length, a counted grid, a bar against
+     a reference), never as a caption alone.
+
+Two worked examples of the difference:
+  weak : "cross-section of the hollow pile"
+  strong: "the wall you assume is solid is 8 cm thin — draw the pile the size
+          of the whole frame, wall hairline against a black void, a human
+          silhouette beside it for scale"
+  weak : "timeline of the collapse"
+  strong: "the building stood 96 hours after the first crack and fell in 3
+          minutes — draw the whole timeline, then let the last 3 minutes eat
+          two thirds of it"
+
+ALSO REQUIRED, per idea:
+  - name in `surprise` (one short sentence, in {lang}) exactly what the viewer
+    is supposed to feel: what they expected and what they got;
+  - one thing in the frame MUST BE FAMILIAR — a person, a car, a door, a hand
+    — so an unfamiliar quantity becomes readable. Scale with nothing to
+    compare against teaches nothing;
+  - no two ideas in your list may share a shape. If two are both "boxes in a
+    row" or both "arrows into a wall", replace one.
+
+BAD candidates (skip them): anything you could simply film or photograph —
+a person, a room, a tool lying on a bench, weather, a building exterior.
+
+BAD candidates (skip them): anything you could simply film or photograph —
+a person, a room, a tool lying on a bench, weather, a building exterior.
+
+Reply with ONLY a JSON array, no markdown fences. Each element:
+{{"quote": "the exact sentence from the script this illustrates",
+  "kind": "short_snake_case_name_for_this_diagram",
+  "title": "on-screen caption, max 5 words, in {lang}",
+  "brief": "one sentence describing WHAT MOVES and WHY, for the animator",
+  "surprise": "what the viewer expected vs what they see, in {lang}"}}
+
+If the script has no such moments, reply with [].
+
+SCRIPT:
+{script}
+"""
+
+CODE_PROMPT = """Write ONE Remotion scene component in TypeScript.
+
+It illustrates this narration: "{quote}"
+What must move: {brief}
+On-screen caption: "{title}"
+
+STRICT CONTRACT — the file is rejected automatically if any of this is wrong:
+
+1. Exactly this shape, nothing else exported:
+
+import React from 'react';
+import {{ AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing }} from 'remotion';
+import type {{ SceneProps }} from '../types';
+
+export const {component}: React.FC<SceneProps> = (p) => {{ ... }};
+
+2. Import ONLY what you actually use, and declare NO variable you do not
+   use. The project runs tsc with --strict and --noUnusedLocals, so a
+   single leftover `const width = ...` or `const fps = ...` that you never
+   reference REJECTS THE WHOLE FILE. If you destructure useVideoConfig(),
+   take only the fields you actually need.
+   (Measured 2026-08-04: this single mistake caused half of all rejections.)
+3. Multiply your top-level opacity by `p.enter * p.exit`. Both must appear.
+   THIS IS THE MOST COMMON REJECTION AFTER UNUSED VARIABLES. Measured
+   2026-08-06: three attempts in a row rejected on this one rule, and half
+   the planned scenes never reached the video because of it. Write it
+   EXACTLY like this, as the first line of your component body:
+
+       const opacity = p.enter * p.exit;
+
+   and then put `style={{ opacity }}` on your root element. Do not compute
+   it inside JSX, do not name it something else, do not use only one of
+   the two. If your scene has its own fade you still multiply by this —
+   `const opacity = p.enter * p.exit * myOwnFade;`. Without both names
+   present in the file the scene is thrown away, however good it looks.
+4. DO NOT PAINT THE FRAME BACKGROUND. The player already puts a living
+   backdrop under your scene (soft moving light, dust motes, grain,
+   vignette) — that is what makes a drawn shot sit inside a documentary
+   instead of reading as a hole in the film. Your root element must
+   therefore stay TRANSPARENT: no `background` and no `backgroundColor`
+   on the root, and none on any <AbsoluteFill> — an <AbsoluteFill> covers
+   the whole frame, so filling one hides the backdrop completely.
+   Rejected automatically. (Opaque fills on a small inner <div> — a panel,
+   a card, a label plate — are fine, that is not the frame background.)
+   Do NOT import or render `Backdrop` yourself either: you would get two
+   of them stacked, and the vignette would double.
+   Assume a DARK backdrop underneath: draw with the light palette below,
+   never dark-on-dark. Do NOT leave the frame empty. Keep every element
+   inside the middle 80% of the frame — anything positioned outside is
+   invisible and the render comes out empty, which is an automatic
+   rejection.
+5. Everything must be drawn with SVG or divs. No images, no fetch, no
+   external files, no randomness, no Date/Math.random — the render must be
+   deterministic and identical every time.
+6. It must ANIMATE: derive values from useCurrentFrame() with at least three
+   separate interpolate() calls, so the picture at second 1 differs clearly
+   from the picture at second 4.
+7. Use `useVideoConfig()` for width/height/fps — never hardcode 1920/1080.
+8. Duration is p.dur seconds. Time your animation to fill it, not to finish
+   in the first half second.
+9. Caption: render p.title if present, near the bottom or top edge.
+10. No placeholder, TODO or FIXME anywhere.
+11. THE DRAWING MUST BE THE THING, NOT A LABEL FOR IT. A shape filled with
+    one flat colour, with a caption above it, is the most common failure
+    here and is rejected automatically: a real frame of your scene is
+    rendered and shown to a vision model, which is asked whether the
+    picture actually depicts "{title}". A caption saying "cross-section"
+    is a claim; only the drawing counts. Concretely:
+      - a GRADIENT is drawn as a gradient: an SVG <linearGradient> with 3+
+        stops, or a row of 8+ bands stepping in colour, with BOTH ends
+        labelled with their values (e.g. 18°C and 82°C). A single fill that
+        merely changes colour over time is NOT a gradient.
+      - a CROSS-SECTION shows what is inside: at least three distinct
+        layers/materials with visible boundaries between them, different
+        fills or hatching, each with a leader line and a name.
+      - a COMPARISON shows BOTH quantities in the same picture at the same
+        scale, each with its number — two bars, two columns, two circles.
+        One bar is not a comparison.
+      - a QUANTITY OVER TIME has a plotted polyline or path, a value axis
+        with 3+ ticks and numbers, and a time axis.
+      - a SEQUENCE OF STAGES shows the stages: numbered steps, or the same
+        object drawn three times in different states, joined by arrows.
+      - FORCES are arrows with a direction, a magnitude and a point of
+        application, drawn ON the object they act upon.
+      - a PATH or LEAK shows where it starts, what it passes through and
+        where it ends — not a single line across empty space.
+    Test yourself: cover the caption. A viewer who cannot read it must
+    still be able to say what the picture is about. Aim for 8-20 drawn
+    elements (use .map() over a small array of data — that is how you get
+    layers, ticks and bands without writing them out one by one), not 2.
+
+Style: documentary schematic — thin lines, restrained palette (off-white
+#e9f2f6, amber accent #e0b44c, danger #d0523f), generous empty space. It must
+look like a diagram in an archival report, not like a mobile app UI.
+
+WORKING EXAMPLE — copy this structure exactly, change only the drawing.
+It compiles clean under the project's own tsc (--strict --noUnusedLocals),
+and every rule of the MOTION CONTRACT below is visible in it. Copy the
+MECHANICS, not the subject: the shared `EO` options object; the ground line
+that expands scaleX BEFORE anything stands on it; the grid hairlines fading
+in separately from the data; the `.map()` where the interpolate window is
+shifted by `i * 0.05`; the leader line drawn with strokeDasharray /
+strokeDashoffset instead of faded in; the number that counts up with
+Math.round from the same variable that drives the geometry; the ONE outer
+<g> that scales 1.00 -> 1.04 across the whole shot; and the accent crack
+that lands LAST on a spring(). Measured 29.08 on this project: the model
+copies the example and ignores prose rules, so what is missing from the
+example is missing from the scene.
+It compiles under --strict --noUnusedLocals. Note the interpolate signature:
+interpolate(frame, [inputStart, inputEnd], [outputStart, outputEnd], options)
+— four arguments, the two ranges are ARRAYS OF THE SAME LENGTH, and the
+options object is the ONLY place easing/extrapolate go. Passing a bare number
+as the fourth argument is the single most common compile error.
+
+import React from 'react';
+import {{ AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig, Easing }} from 'remotion';
+import type {{ SceneProps }} from '../types';
+
+export const ExampleScene: React.FC<SceneProps> = (p) => {{
+  const frame = useCurrentFrame();
+  const {{ fps }} = useVideoConfig();
+  const span = Math.max(1, Math.round((p.dur || 6) * fps));
+  const opacity = p.enter * p.exit;
+
+  const EO = {{
+    easing: Easing.bezier(0.16, 1, 0.3, 1),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  }} as const;
+
+  const base = interpolate(frame, [0, span * 0.14], [0, 1], EO);
+  const grid = interpolate(frame, [span * 0.06, span * 0.18], [0, 0.38], EO);
+  const heat = interpolate(frame, [span * 0.18, span * 0.52], [0, 118], EO);
+  const push = interpolate(frame, [0, span], [1, 1.04], EO);
+  const lead = interpolate(frame, [span * 0.3, span * 0.48], [0, 1], EO);
+  const rise = interpolate(frame, [span * 0.3, span * 0.5], [18, 0], EO);
+  const crack = spring({{
+    frame: frame - Math.round(span * 0.5),
+    fps,
+    config: {{ damping: 11, stiffness: 190, mass: 0.6 }},
+  }});
+
+  const layers = [
+    {{ y: 150, h: 28, fill: '#c9d3d9', name: 'STEEL 25 mm' }},
+    {{ y: 122, h: 16, fill: '#8a949b', name: 'SCALE 6 mm' }},
+    {{ y: 96, h: 26, fill: '#5d6a73', name: 'LINING 40 mm' }},
+  ];
+  const LEAD = Math.hypot(80, 36);
+
+  return (
+    <AbsoluteFill style={{{{ opacity, justifyContent: 'center', alignItems: 'center' }}}}>
+      <svg width="62%" viewBox="0 0 420 250">
+        <g transform={{`translate(210 125) scale(${{push}}) translate(-210 -125)`}}>
+          {{[0.25, 0.5, 0.75].map((k) => (
+            <line key={{k}} x1={{60}} y1={{190 - 110 * k}} x2={{330}} y2={{190 - 110 * k}}
+                  stroke="#8a949b" strokeWidth={{1}} opacity={{grid}} />
+          ))}}
+          <line x1={{60}} y1={{190}} x2={{330}} y2={{190}} stroke="#e9f2f6" strokeWidth={{2}}
+                transform={{`translate(60 0) scale(${{base}} 1) translate(-60 0)`}} />
+          {{layers.map((row, i) => {{
+            const g = interpolate(frame,
+              [span * (0.16 + i * 0.05), span * (0.34 + i * 0.05)], [0, 1], EO);
+            const pop = interpolate(frame,
+              [span * (0.16 + i * 0.05), span * (0.34 + i * 0.05)], [0.88, 1], EO);
+            return (
+              <g key={{row.name}} opacity={{g}}
+                 transform={{`translate(60 ${{row.y}}) scale(${{pop}}) translate(-60 ${{-row.y}})`}}>
+                <rect x={{60}} y={{row.y}} width={{170 * g}} height={{row.h}} fill={{row.fill}}
+                      stroke="#e9f2f6" strokeWidth={{0.6}} />
+                <text x={{236}} y={{row.y + row.h * 0.7}} fill="#e9f2f6" fontSize={{9}}>{{row.name}}</text>
+              </g>
+            );
+          }})}}
+          <path d="M 250 96 L 330 60" stroke="#e0b44c" strokeWidth={{1.6}} fill="none"
+                strokeDasharray={{LEAD}} strokeDashoffset={{LEAD * (1 - lead)}} />
+          <text x={{330}} y={{54}} fill="#e0b44c" fontSize={{13}} textAnchor="end">
+            {{Math.round(heat)}} °C
+          </text>
+          <g transform={{`translate(150 150) scale(${{crack}}) translate(-150 -150)`}} opacity={{crack}}>
+            <path d="M 150 150 l 8 -14 l -5 -3 l 10 -16" stroke="#d0523f"
+                  strokeWidth={{2.2}} fill="none" />
+          </g>
+        </g>
+      </svg>
+      {{p.title ? (
+        <div style={{{{ marginTop: 26, transform: `translateY(${{rise}}px)`,
+                      fontFamily: "'Segoe UI', Arial, sans-serif",
+                      fontSize: 34, color: '#e9f2f6' }}}}>{{p.title}}</div>
+      ) : null}}
+    </AbsoluteFill>
+  );
+}};
+
+IT MUST LOOK LIKE A TECHNICAL ILLUSTRATION, NOT LIKE SHAPES. A ring of grey circles on white is not a diagram — it is a placeholder, and it teaches the viewer nothing. Every scene must carry ALL FOUR of these, or it is worthless:
+  (a) DARK GROUND. Background near #0d1117..#16202b, never white. The drawing reads as an instrument panel, not a slide.
+  (b) A NAMED PART. At least one label in the frame with a thin leader line running from the word to the exact spot it names. The word must be a real term from the narration, not 'part 1'.
+  (c) A MEASURE. Where a size, depth, count or load matters, draw a dimension line with arrowheads at both ends and the figure written on it — like '10 m' or '118'. Numbers in the narration are the whole reason the scene exists; show them as geometry, not as a caption.
+  (d) ONE ACCENT COLOUR on the thing that fails, breaks, moves or matters — warm red #e0523c or amber #f0a92b against the cold greys. Exactly one accent, so the eye knows where to go.
+Draw the object in SECTION or CUTAWAY whenever the narration is about what is inside: a hollow pile is only interesting once the viewer sees the wall thickness against the void.
+
+LENGTH. Aim for about 120 lines and never exceed 200. A longer file gets cut off by the model's own output limit and then does not compile at all: the file ends mid-tag or mid-string and the whole scene is thrown away. Measured on this project: 522 of 650 rejected scenes failed exactly this way. A dense 120-line drawing that compiles beats a rich 300-line one that never arrives. Draw fewer elements, not sloppier ones.
+
+MOTION CONTRACT — measured on 10 real documentary / motion-graphics films
+on 2026-09-02. These are not style preferences; each one is the difference
+between a drawn film shot and a slide.
+
+12. NOTHING ARRIVES AT THE SAME TIME AS ITS SIBLING. Whenever you .map()
+    over an array, the delay MUST depend on the index. Measured stagger
+    between siblings in real work: 80 ms (VOX bar chart), 100 ms (title
+    lines), 120 ms (bar graph), 200-450 ms (callout parts). Write it as
+    `[span * (0.10 + i * 0.05), span * (0.28 + i * 0.05)]`. All bars
+    growing together is the single most named mistake in the breakdowns
+    and reads as a static poster.
+    Write every interpolate() call out IN FULL. Do NOT wrap them in a
+    helper like `const at = (d, len) => interpolate(...)` — an automatic
+    check counts the literal occurrences of `interpolate(` and `spring(` in
+    your file and rejects it below three together, so a helper gets your
+    scene thrown away for being motionless no matter how much actually
+    moves. Sharing the options
+    object is fine: `const EO = {{ easing: Easing.bezier(0.16, 1, 0.3, 1),
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }} as const;`
+
+13. LINES ARE DRAWN, NOT FADED IN. Every leader line, arrow, axis, outline
+    and contour must animate `strokeDashoffset` from its own length down
+    to 0 over 0.5-0.8 s. Compute the length (Math.hypot for a straight
+    segment) and set `strokeDasharray={{L}} strokeDashoffset={{L * (1 - t)}}`.
+    Animating a line's opacity instead is explicitly called out as the
+    thing that destroys the effect.
+
+14. ASSEMBLE A CALLOUT IN THIS ORDER, NEVER ALL AT ONCE: the anchor marker
+    first (a small ring or dot ON the thing being named, scale 0 -> 1 with
+    a slight overshoot to 1.10), then the leader line drawing outward
+    starting 250 ms later, then the label plate expanding scaleX 0 -> 1
+    from the end nearest the line at 700 ms, then the text itself at
+    850 ms. Total 1.25 s. This exact sequence is the standard.
+
+15. EASE-OUT, NEVER LINEAR. Arrivals use Easing.bezier(0.16, 1, 0.3, 1) or
+    Easing.out(Easing.cubic): a hard velocity peak in the first 15 % of the
+    interval, then a long settle. Linear interpolation on an entrance is
+    named as a failure in five of the ten films. Only a constant travelling
+    motion (a dot running along a path, a row sliding past) may be linear.
+
+16. THE WHOLE DRAWING MUST DRIFT. Wrap the entire SVG content in ONE <g>
+    and scale it 1.00 -> 1.04 across the full duration, about the centre
+    of the viewBox:
+      <g transform={{`translate(cx cy) scale(${{push}}) translate(-cx -cy)`}}>
+    Measured in the reference films: 1.5-2 % per second, never more than
+    8 % across one shot. A frozen picture measures exactly 0.00 frame
+    difference; not one shot in either owner reference does that.
+
+17. EVERYTHING SETTLES EARLY. All interpolate() output ranges must finish
+    by span * 0.6 at the latest, so the scene stands assembled and calm for
+    its last 40 %. Real graphics hold still for 10-40 s after a 1-2 s
+    build. An animation still running at the last frame collides with the
+    player's own 0.45 s fade-out and smears.
+
+18. ENTER WITH TWO PROPERTIES, NEVER OPACITY ALONE. Pair opacity with
+    either scale (start at 0.88, not 0) or an 8-20 px offset in y. A pure
+    opacity fade is what a slideshow does.
+
+19. THE ACCENT ELEMENT ARRIVES LAST. The one thing carrying the accent
+    colour — the crack, the failing member, the overload arrow — must be
+    the final element to appear, after the structure it sits on is already
+    drawn. It is also the only element allowed an overshoot.
+
+20. FOUNDATION FIRST. Draw the ground line, base rail or axis before
+    anything stands on it: the baseline expands scaleX 0 -> 1 over 0.5 s,
+    and only then do the bars/layers/columns grow from it.
+
+21. PUT A GRID OR RULE BEHIND THE DATA. Three to ten hairlines at 1 px,
+    at 25/50/75 % of the plot height, drawn in the palette grey at 0.35-0.40
+    opacity, fading in over 0.3 s separately from the data. Bars floating
+    on emptiness with no reference lines is named as a failure.
+
+22. TEXT SITS ON A PLATE, NEVER ON A SHADOW. No textShadow, no stroke on
+    text anywhere. If a caption overlaps the drawing, put an opaque plate
+    behind it: 112 % of the text width and 145 % of its cap height, corner
+    radius small (4-8 px) or exactly half the height for a pill. Dark text
+    on a light plate, or light text on a plate at least 60 % opaque.
+
+23. SIZE TYPE BY ITS JOB, measured as cap height against frame height:
+    axis ticks and part labels 1.4-2.5 %, the scene caption 2.8-3.8 %, and
+    a full-frame statement 6-10 %. Track wide (+0.06em) only on the large
+    sparse text and tight (-0.02em) on dense numerals — never the same
+    tracking on both.
+
+24. A NUMBER MUST COUNT UP, not appear. Any figure named in the narration
+    is derived from the same interpolate() that drives its geometry, and
+    printed with Math.round(). The digits and the bar height are then
+    literally the same variable, and the viewer sees the quantity change.
+
+25. TEXTURE CARRIES MEANING, NOT DECORATION. Use one colour and vary the
+    stroke instead of adding a second colour: dashed strokeDasharray="6 4"
+    for the uncertain / diffuse / before state, solid for the focused /
+    measured / after state, in the same hue. Reserve a second hue for a
+    true value ramp (cold grey -> amber -> red = safe -> limit -> failure).
+
+26. IF THE SUBJECT IS A SOLID, DRAW IT IN ISOMETRIC, not as a flat
+    rectangle: X = (x - y) * 0.866, Y = (x + y) * 0.5 - z. Keep every
+    receding edge on the 30 deg / 150 deg grid — a mismatched angle is the
+    first thing that reads as wrong.
+
+27. SOMETHING MUST LAND, NOT ONLY ARRIVE. Use spring() from remotion for
+    the one element that settles into place — the anchor ring of a callout,
+    the accent marker, a plate snapping open. Add `spring` to the import
+    line when you use it:
+      const pop = spring({{ frame: frame - Math.round(span * 0.5), fps,
+        config: {{ damping: 11, stiffness: 190, mass: 0.6 }} }});
+    That config reaches about 1.06 and settles in ~0.35 s: one overshoot, no
+    wobble. Measured across the 691 scenes already written for this project:
+    spring() appears 0 times and an overshoot 2 times. That absence is
+    exactly what makes them read as one template. spring() counts towards
+    the three-movement minimum, so it may stand in for one interpolate().
+
+28. ONE OVERSHOOT PER FRAME, AND ONLY ON THE ACCENT. Overshoot is +5..+7 %,
+    never past 1.10, ONE oscillation, decaying in 0.15-0.20 s. Everything
+    else lands flat on Easing.bezier(0.16, 1, 0.3, 1). And in a STRICT
+    TECHNICAL SCHEMATIC — a section, a load diagram, a dimensioned drawing —
+    there is NO overshoot anywhere: measured 0 % overshoot and 0
+    oscillations in every vector-geometry reference. A springy load arrow
+    reads as a toy, not as engineering.
+
+29. TIME THE BUILD BY THE MEASURED FIGURES. A line grows to full length in
+    0.15-0.20 s. A schema opens SEGMENT BY SEGMENT at 0.25-0.35 s per
+    segment, 0.8-1.0 s for the whole structure. A pop-in of a marker is
+    0.40 s. So a three-part structure is assembled between span * 0.10 and
+    span * 0.35 — not in one step, and not stretched over the whole shot.
+
+30. LET ONE THING TRAVEL. A leak, a route, a load path, a signal, a scan:
+    put a small dot or a short dash ON the path and move it along at
+    CONSTANT speed for the whole shot — this is the one place where linear
+    is correct (see 15). Derive its position from the same numbers the path
+    is drawn from: `const x = x1 + (x2 - x1) * t;`. One travelling element
+    does more for "this is a film, not a slide" than any number of fades.
+    A radial pulse is the same idea for a point source: rings from scale
+    0.2 to 3.2 with opacity 0.9 -> 0 over 0.8-1.0 s, a new ring every
+    0.25-0.35 s, 3-4 alive at once.
+
+31. VARY THE PROPERTY, NOT ONLY THE TIMING. At least THREE DIFFERENT KINDS
+    of change must be visible in the scene: length (strokeDashoffset), size
+    (scale), position (translate), quantity (a number counting up),
+    rotation, or a colour ramp. Measured on the 691 scenes already written
+    here: 100 % animate opacity, 92 % move something, but only 15 % draw a
+    line, 12 % scale anything, 5 % stagger by index, and 24 % animate
+    NOTHING AT ALL except opacity. A scene where everything merely fades in
+    is rejected automatically: "движение только прозрачностью".
+
+Reply with ONLY the TypeScript code. No markdown fences, no commentary.
+"""
+
+
+# Кусок ПРИНЯТОЙ сцены remotion/src/scenes/neutral_axis_stresses.tsx
+# (5182 символа, шесть interpolate, прошла все ступени приёмки). Не выдуман:
+# переспросу нужен образец ровно того размера и плотности, которую приёмка
+# пропускает, а не ещё одно описание словами. Замер 29.08: у двадцати взятых
+# наугад принятых сцен медиана 5168 символов и медиана 3 interpolate, минимум
+# 1674 и 3 — отвергнутые заготовки были 830-860 символов и НОЛЬ interpolate.
+MOTION_EXAMPLE = """import React from 'react';
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import type { SceneProps } from '../types';
+
+export const NeutralAxisStressesScene: React.FC<SceneProps> = (p) => {
+  const opacity = p.enter * p.exit;
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const span = Math.max(1, Math.round((p.dur || 5) * fps));
+
+  const growth = interpolate(frame, [0, span * 0.3], [0, 1], {
+    easing: Easing.out(Easing.quad),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+
+  const stress = interpolate(frame, [span * 0.2, span * 0.7], [0, 1], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+
+  const labels = interpolate(frame, [span * 0.5, span * 0.9], [0, 1], {
+    easing: Easing.out(Easing.quad),
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+
+  return (
+    <AbsoluteFill style={{ opacity, justifyContent: 'center', alignItems: 'center' }}>
+      ... every drawn element then USES growth / stress / labels:
+      height={150 * growth}, fill-opacity={stress}, opacity={labels} ...
+    </AbsoluteFill>
+  );
+};"""
+
+
+# Отказ -> что дописать ИМЕНЕМ. Общий список «возможных причин» модель
+# примерить к себе не может: замер 29.08 — load_distribution_cross_section и
+# material_strength_comparison отдали одну и ту же заготовку все три попытки
+# подряд. Здесь на каждую претензию приёмки заготовлено предметное указание,
+# и оно уходит в промпт вместо угадывания.
+STUB_FIX = [
+    ("interpolate вызван",
+     "You did not call interpolate() a single time, so the scene is a still "
+     "image. A scene MUST MOVE: declare at least THREE separate interpolate() "
+     "values over different frame ranges (e.g. [0, span*0.3], "
+     "[span*0.2, span*0.7], [span*0.5, span*0.9]) and USE every one of them "
+     "inside the SVG — as a width/height/x, as an opacity, as a "
+     "strokeDashoffset. A value you compute but never place in an attribute "
+     "changes nothing on screen and also breaks --noUnusedLocals."),
+    ("p.enter/p.exit",
+     "You never used p.enter and p.exit. Write `const opacity = p.enter * "
+     "p.exit;` and put that opacity on the root <AbsoluteFill>. Without both "
+     "names the scene pops in and out at the cut instead of fading."),
+    ("не читает кадр",
+     "You never called useCurrentFrame(). Nothing in the file depends on time, "
+     "so every frame of the render is identical. Read `const frame = "
+     "useCurrentFrame();` and drive the interpolate() calls with it."),
+    ("слишком короткий файл",
+     "What you sent is a placeholder, not a scene: a rectangle with a caption "
+     "over it. Accepted scenes in this project run 1700-9400 characters "
+     "(median about 5200) because they actually DRAW the subject — layers with "
+     "their boundaries, an axis with numbers, both bars of the comparison, "
+     "arrows with labels, 8-20 elements, usually built with .map() over a "
+     "small data array. Draw the thing itself; the caption is not the "
+     "drawing."),
+    ("движение только прозрачностью",
+     "Everything in your scene appears by fading in. Nothing is drawn, "
+     "nothing moves, nothing lands. Add all three of these: (a) draw every "
+     "line and arrow with strokeDasharray/strokeDashoffset instead of "
+     "fading it in; (b) wrap the whole SVG content in ONE <g> and scale it "
+     "1.00 -> 1.04 across the duration; (c) let the accent element land "
+     "with spring() so it overshoots once and settles. A fade is not "
+     "motion — it is a slide change."),
+    ("непрозрачная заливка",
+     "Your root element paints the whole frame with a solid colour, which "
+     "hides the shared Backdrop that Scene.tsx puts underneath. The root "
+     "<AbsoluteFill> must stay transparent — carry only opacity and layout on "
+     "it, and paint colour on the drawn shapes."),
+]
+
+
+def _stub_fixes(why: list | None) -> list[str]:
+    """Предметные указания по конкретным претензиям приёмки."""
+    текст = " | ".join(str(w) for w in (why or []))
+    return [fix for mark, fix in STUB_FIX if mark in текст]
+
+
+def retry_prompt(rejected: str, why: list | None) -> str:
+    """Хвост промпта для ПОВТОРНОЙ попытки.
+
+    Главная беда прошлой версии была не в словах, а в порядке: снизу промпта
+    лежала отвергнутая заготовка на 850 символов, а над ней стояло «keep
+    everything else». Для заготовки «everything else» — это и есть весь брак,
+    и модель прилежно возвращала её обратно. Поэтому:
+      * когда отказ заготовочный (нет движения, нет фейда, файл-обрубок),
+        прошлый ответ В ПРОМПТ НЕ КЛАДЁТСЯ вовсе — сохранять там нечего;
+      * что дописать, названо по имени, а не списком «возможных причин»;
+      * образец правильного куска стоит ПОСЛЕДНИМ, у самой генерации.
+    """
+    if not why:
+        return ""
+    fixes = _stub_fixes(why)
+    заготовка = any(m in " | ".join(str(w) for w in (why or []))
+                    for m in ("interpolate вызван", "слишком короткий файл",
+                              "не читает кадр"))
+    out = ["\n\nYOUR PREVIOUS ATTEMPT WAS REJECTED by an automatic check. "
+           "These are the exact complaints:\n"
+           + "\n".join(f"  - {w}" for w in (why or []))]
+    if fixes:
+        out.append("\n\nWhat that means and what to write instead:\n"
+                   + "\n".join(f"  - {f}" for f in fixes))
+    if заготовка:
+        # Ни строки прошлого ответа: он сам себя воспроизводит.
+        out.append(
+            "\n\nDo NOT resend the previous file with small edits — it was a "
+            "stub and there is nothing in it worth keeping. Write the scene "
+            "again from scratch, at full density.\n\nThis is a REAL scene from "
+            "this project that passed every check. Match its shape and its "
+            "size:\n\n" + MOTION_EXAMPLE)
+    else:
+        out.append(
+            "\n\nCommon causes, in case they apply:\n"
+            "  - a variable you computed but never used (TypeScript is run "
+            "with --noUnusedLocals: DELETE it or actually use it)\n"
+            "  - everything you drew is the same colour as the background, "
+            "or positioned outside the frame, so the render is a flat fill\n"
+            "  - the animation finishes in the first frames, so the picture "
+            "at 25% and at 80% of the duration is identical\n"
+            "  - the picture is one shape filled with a single flat colour "
+            "with a caption over it. The caption is not the drawing. Draw "
+            "the gradient stops, the layers and their boundaries, the "
+            "second bar of the comparison, the axis with its numbers — "
+            "a rendered frame is shown to a vision model and it is asked "
+            "whether the promised thing is actually visible\n"
+            "\nPREVIOUS ATTEMPT:\n" + rejected[:3000]
+            + "\n\nFix exactly those problems and keep the rest of the "
+              "drawing.")
+    return "".join(out)
+
+
+# Вопрос зрению про ОТРИСОВАННЫЙ кадр. Списан с PICK_PROMPT в core.py —
+# тот же порядок «сначала опиши, что видишь, потом суди»: там замерено, что
+# без описания модель охотно подтверждает всё подряд (из 40 планов ни разу
+# не сказала «не подходит», хотя 19 были мимо). Здесь та же ловушка сильнее:
+# в кадре крупными буквами написано ровно то, что мы спрашиваем, и модель
+# читает подпись вместо картинки. Поэтому подпись объявлена НЕ ДОКАЗАТЕЛЬСТВОМ
+# прямым текстом, а описание требуется раньше вердикта.
+VISION_PROMPT = """This is one rendered frame of an animated SCHEMATIC
+diagram from a documentary. It is supposed to depict:
+
+  CAPTION SHOWN ON SCREEN: "__TITLE__"
+  WHAT IT MUST DEPICT: __SUBJECT__
+
+A schematic is not a photograph and not an illustration. Plain rectangles,
+flat colours, thin lines, printed numbers and a lot of empty space are the
+CORRECT style here. NEVER fail a picture for being abstract, for lacking
+texture, realism, detail, shading, materials or surroundings, or for not
+looking like the real object. Style is never a reason to fail.
+
+Judge one thing only: does the DRAWING carry the information it promises,
+or is the information only in the words printed on it? The caption is a
+claim, not evidence — a plain box labelled "cross-section" is still a plain
+box.
+
+It PASSES when the drawing itself carries the substance. For example:
+  - two quantities drawn to the same scale with their numbers, so you can
+    SEE which is bigger — that is a comparison, even as two plain bars
+  - a shape divided into distinct parts, layers or zones with boundaries
+  - a colour ramp, or a row of steps/bands running across something
+  - a plotted line or curve against an axis with ticks and numbers
+  - arrows showing a direction, a flow, a force or a sequence of stages
+  - a marked path with a start, something it passes through, and an end
+  - dimension lines, callouts or leader lines that name the parts
+
+It FAILS when the drawing carries nothing and the caption does all the work:
+  - a gradient promised, but the area is ONE flat colour
+  - a cross-section promised, but the shape is undivided: no layers, no
+    boundary, no parts, nothing inside
+  - a comparison promised, but only ONE quantity is drawn
+  - a graph promised, but no plotted curve, or no axis at all
+  - a process or sequence promised, but no stages and no arrows
+  - forces promised, but no arrows on the object they act upon
+  - a single shape with a caption, and nothing else
+
+Do not fail a picture because the animation looks unfinished at the edges —
+this is one frame out of many.
+
+Work in this order and do not skip a step:
+1. "shows" — say in a few words what is LITERALLY drawn: the shapes, lines,
+   bars, layers, arrows and numbers you can see. Do not repeat the caption
+   back and do not describe what it is supposed to mean.
+2. "depicts" — true if what you just described already carries the KEY FACT
+   of WHAT IT MUST DEPICT. Ask yourself: with the caption covered, could a
+   viewer read that fact off this picture? Judge substance, not polish.
+3. "why" — one short sentence; when false, name what is MISSING FROM THE
+   DRAWING (never "it looks too simple" or "it is not realistic").
+
+Reply with ONLY a JSON object, no markdown:
+{"shows": "<what is literally drawn>", "depicts": true|false,
+ "why": "<one sentence>"}"""
+
+
+def _complain(what: str, why: str = "", hint: str = "",
+              level: str = "заметно") -> None:
+    """Сказать в сводку прогона, что с нарисованными сценами вышло хуже.
+
+    Журнал (log) здесь есть не везде и виден только в момент прогона, а
+    сводка деградаций печатается последними строками и отвечает на вопрос
+    «чего в ролике не хватает». Сцена — это целый план на экране, поэтому её
+    подмена обычным кадром или непроверенная схема в кадре зрителю видны.
+    """
+    try:
+        import quality
+        quality.degraded("Сцены", what, why=why, hint=hint, level=level)
+    except Exception:
+        pass
+
+
+def _read_json_map(path: Path) -> tuple[dict, str]:
+    """Разбор JSON-словаря на диске: (данные, причина отказа).
+
+    Отдельная функция на два файла (scenes.json и scenes_audit.json), потому
+    что беда у них одна и та же и очень дорогая. Раньше и «файла ещё нет», и
+    «файл испорчен» давали пустой словарь, а оба файла в конце работы
+    ПЕРЕЗАПИСЫВАЮТСЯ ЦЕЛИКОМ. То есть один битый байт:
+      * в scenes_audit.json — стирал все вердикты зрения, и сцены, про
+        которые модель уже сказала «нарисовано не то», молча возвращались в
+        ролики (библиотека общая, такая сцена кочует из ролика в ролик);
+      * в scenes.json — стирал замыслы («что сцена обязана изобразить»).
+        Замысел больше нигде не хранится, в .tsx его нет, и без него
+        досмотр судит сцену по одному только имени.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}, ""                  # ещё не заводили — норма
+    except OSError as e:
+        return {}, f"{path.name} не читается: {e}"
+    try:
+        data = json.loads(raw)
+    except ValueError as e:
+        return {}, f"{path.name} испорчен (не разбирается как JSON): {e}"
+    if not isinstance(data, dict):
+        return {}, (f"{path.name} испорчен: ожидался объект, "
+                    f"а лежит {type(data).__name__}")
+    return data, ""
+
+
+def _strip_fences(s: str) -> str:
+    s = s.strip()
+    s = re.sub(r"^```[a-zA-Z]*\s*", "", s)
+    s = re.sub(r"\s*```$", "", s)
+    return s.strip()
+
+
+def _component_name(kind: str) -> str:
+    parts = [w for w in re.split(r"[^A-Za-z0-9]+", kind) if w]
+    return "".join(w.capitalize() for w in parts) + "Scene"
+
+
+# ---------- приёмка ----------
+
+def _is_opaque(value: str) -> bool:
+    """Закрасит ли этот цвет то, что лежит под ним.
+
+    Прозрачные записи пропускаем: сквозь rgba(...,0.2) или '#07090c40'
+    подложку видно, и такой слой — это тонировка, а не заливка кадра.
+    Всё, что не удалось разобрать (градиент, url(), имя цвета), считаем
+    непрозрачным: ошибиться в сторону отказа дешевле, чем выпустить
+    в ролик сцену на плоской заливке.
+    """
+    v = value.strip().strip("'\"` ")
+    if not v or v in ("transparent", "none", "inherit", "initial", "unset"):
+        return False
+    m = re.match(r"rgba?\(([^)]*)\)$", v)
+    if m:
+        parts = [x.strip() for x in m.group(1).split(",")]
+        if len(parts) == 4:
+            try:
+                return float(parts[3]) > 0.9
+            except ValueError:
+                return True
+        return True
+    m = re.match(r"#([0-9a-fA-F]+)$", v)
+    if m:
+        h = m.group(1)
+        if len(h) == 8:                       # #rrggbbaa
+            return int(h[6:], 16) >= 230
+        if len(h) == 4:                       # #rgba
+            return int(h[3] * 2, 16) >= 230
+        return True                           # #rgb / #rrggbb — альфы нет
+    return True
+
+
+def _balanced(src: str, start: int, open_ch: str, close_ch: str) -> str:
+    """Кусок текста от start до парной закрывающей скобки включительно."""
+    depth = 0
+    for i in range(start, len(src)):
+        if src[i] == open_ch:
+            depth += 1
+        elif src[i] == close_ch:
+            depth -= 1
+            if depth == 0:
+                return src[start:i + 1]
+    return src[start:]
+
+
+def _bg_values(text: str) -> list[str]:
+    """Значения background/backgroundColor из куска кода.
+
+    Разбирать вручную приходится из-за запятых внутри самих значений:
+    rgba(0,0,0,0.4) и градиенты режутся простым split пополам, и тогда
+    'rgba(208' не разберётся как цвет и уедет в «непрозрачный».
+    """
+    out = []
+    for m in re.finditer(r"background(?:Color)?\s*:\s*", text):
+        depth, val, i = 0, [], m.end()
+        while i < len(text):
+            c = text[i]
+            if c in "([":
+                depth += 1
+            elif c in ")]":
+                depth -= 1
+            elif depth == 0 and c in ",;}\n":
+                break
+            val.append(c)
+            i += 1
+        v = "".join(val).strip()
+        if v:
+            out.append(v)
+    return out
+
+
+def _balanced_tag(src: str, start: int) -> str:
+    """Открывающий JSX-тег целиком: до '>' вне фигурных скобок."""
+    depth = 0
+    for i in range(start, len(src)):
+        c = src[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        elif c == ">" and depth == 0:
+            return src[start:i + 1]
+    return src[start:start + 400]
+
+
+def _fullframe_backgrounds(src: str) -> list[str]:
+    """Все фоны, залитые НА ВЕСЬ КАДР.
+
+    Полный кадр — это корневой элемент сцены и любой <AbsoluteFill>:
+    последний по определению растянут inset:0, поэтому непрозрачный фон
+    на нём закрывает подложку целиком. Заливки на обычных <div> не
+    смотрим вовсе — панель или плашка внутри сцены имеет право быть
+    непрозрачной, это часть рисунка, а не фон плана.
+    """
+    tags = []
+    for m in re.finditer(r"<AbsoluteFill\b", src):
+        tags.append(_balanced_tag(src, m.start()))
+    m = re.search(r"return\s*\(?\s*(<[A-Za-z])", src)
+    if m:
+        tags.append(_balanced_tag(src, m.start(1)))
+
+    out = []
+    for tag in tags:
+        out += _bg_values(tag)
+        # style={containerStyle} — фон спрятан в переменной
+        for var in re.findall(r"style=\{([A-Za-z_$][\w$]*)\}", tag):
+            vm = re.search(r"\bconst\s+" + re.escape(var) + r"\b[^=]*=\s*\{", src)
+            if vm:
+                obj = _balanced(src, vm.end() - 1, "{", "}")
+                out += _bg_values(obj)
+    return out
+
+
+# ---------- Ступень 0: ответ вообще доехал целиком? ----------
+# Замер живого прогона 29.08.2026: из шести сцен одного ролика три отвергнуты,
+# и у двух причина была одна и та же — ОБРЫВ ТЕКСТА, а не ошибка модели:
+#   material_volume_anomaly     — TS17008 (JSX element has no closing tag)
+#   hydrostatic_pressure_vectors — TS17008, потом дважды TS1005 ('}' expected)
+# Вторая потеряна навсегда: три попытки, каждая по минуте с лишним, и момент
+# остался обычным кадром. Компилятор в обоих случаях описывает СЛЕДСТВИЕ
+# («не закрыт тег»), и подсказка следующей попытке уходила чинить тег, хотя
+# чинить надо длину. Отличить обрыв от кривого кода можно ДО тайпчека и
+# бесплатно: у оборванного файла не сходятся скобки и текст кончается на
+# середине строки.
+CUT_MARK = "ответ модели оборван"
+
+
+def _closes_on_line(src: str, i: int) -> bool:
+    """Закрывается ли кавычка src[i] до конца этой же строки файла."""
+    q, j, n = src[i], i + 1, len(src)
+    while j < n and src[j] != "\n":
+        if src[j] == "\\":
+            j += 2
+            continue
+        if src[j] == q:
+            return True
+        j += 1
+    return False
+
+
+def _scan_code(src: str) -> tuple[str, list[str], str]:
+    """Разобрать TSX на «код» и «не код».
+
+    Возвращает (текст с забитыми пробелами строками и комментариями,
+    стек незакрытых скобок, состояние на конце файла). Строки и комментарии
+    забиваем, потому что скобка внутри '{' или /* { */ ничего не открывает,
+    а считать её означало бы ложные срабатывания на целых файлах."""
+    out, stack = [], []
+    i, n, state = 0, len(src), "code"
+    while i < n:
+        c, nxt = src[i], (src[i + 1] if i + 1 < n else "")
+        if state == "code":
+            if c == "/" and nxt == "/":
+                state, i = "line", i + 2
+                out.append("  ")
+                continue
+            if c == "/" and nxt == "*":
+                state, i = "block", i + 2
+                out.append("  ")
+                continue
+            if c in "'\"":
+                # Кавычка — начало строки ТОЛЬКО если она закрывается в этой
+                # же строке файла: многострочных строк в JS нет. Иначе это
+                # апостроф в тексте JSX — «(σ' → 0)», «don't». Первая версия
+                # глотала до конца строки и теряла ')' — два целых файла из
+                # 567 объявлялись оборванными на ровном месте.
+                if _closes_on_line(src, i):
+                    state, i = c, i + 1
+                    out.append(" ")
+                    continue
+                out.append(c)
+                i += 1
+                continue
+            if c == "`":
+                state, i = "tpl", i + 1
+                stack.append("`")
+                out.append(" ")
+                continue
+            if c in "([{":
+                stack.append(c)
+            elif c in ")]}":
+                пара = {")": "(", "]": "[", "}": "{"}[c]
+                if stack and stack[-1] == пара:
+                    stack.pop()
+                elif c == "}" and stack and stack[-1] == "${":
+                    stack.pop()
+                    state = "tpl"       # закрылась подстановка внутри шаблона
+                    out.append(" ")     # в «чистом» тексте её скобок нет вовсе
+                    i += 1
+                    continue
+                else:
+                    stack.append("!" + c)   # лишняя закрывающая
+            out.append(c)
+            i += 1
+            continue
+        if state == "line":
+            if c == "\n":
+                state = "code"
+            out.append(c if c == "\n" else " ")
+            i += 1
+            continue
+        if state == "block":
+            if c == "*" and nxt == "/":
+                state, i = "code", i + 2
+                out.append("  ")
+                continue
+            out.append(c if c == "\n" else " ")
+            i += 1
+            continue
+        if state == "tpl":
+            if c == "\\":
+                out.append("  ")
+                i += 2
+                continue
+            if c == "$" and nxt == "{":
+                state, i = "code", i + 2
+                stack.append("${")
+                out.append("  ")
+                continue
+            if c == "`":
+                state = "code"
+                if stack and stack[-1] == "`":
+                    stack.pop()
+            out.append(c if c == "\n" else " ")
+            i += 1
+            continue
+        # обычная строка в кавычках
+        if c == "\\":
+            out.append("  ")
+            i += 2
+            continue
+        if c == state or c == "\n":
+            state = "code"          # перевод строки в кавычках — уже не строка
+        out.append(c if c == "\n" else " ")
+        i += 1
+    return "".join(out), stack, state
+
+
+def _jsx_unclosed(cleaned: str) -> list[str]:
+    """Незакрытые JSX-теги. cleaned — вывод _scan_code (без строк и комментов).
+
+    Дженерики React.FC<SceneProps> и сравнения отсеиваем по символу ПЕРЕД
+    '<': у настоящего тега там не может стоять буква, цифра или ')'."""
+    стек, i, n = [], 0, len(cleaned)
+    while True:
+        i = cleaned.find("<", i)
+        if i < 0:
+            break
+        m = re.match(r"</?([A-Za-z][\w.]*)", cleaned[i:])
+        if not m:
+            i += 1
+            continue
+        закрывающий = cleaned[i + 1] == "/"
+        до = cleaned[i - 1] if i else " "
+        # Отсев только для ОТКРЫВАЮЩИХ: React.FC<SceneProps> и frame<end.
+        # У закрывающего '</' двусмысленности нет, а перед ним почти всегда
+        # стоит буква — текст подписи (…Erdbelastung</text>). Первая версия
+        # проверки глушила по этому правилу и закрывающие тоже: 344 целых
+        # файла из 567 объявлялись оборванными.
+        if not закрывающий and (до.isalnum() or до in "_$"):
+            i += 1
+            continue
+        j, глубина = i + m.end(), 0
+        while j < n:
+            ch = cleaned[j]
+            if ch == "{":
+                глубина += 1
+            elif ch == "}":
+                глубина -= 1
+            elif ch == ">" and глубина <= 0 and cleaned[j - 1] != "=":
+                break
+            elif ch == "<" and глубина <= 0:
+                j = n           # тег не закрылся своим '>' — это уже не тег
+                break
+            j += 1
+        if j >= n:
+            стек.append(m.group(1))     # '>' так и не встретился — обрыв
+            break
+        сам = cleaned[:j].rstrip().endswith("/")
+        if закрывающий:
+            # снимаем до одноимённого: перекос вложенности — не наше дело,
+            # его назовёт компилятор, а нам важно только «чего не хватает».
+            if m.group(1) in стек:
+                while стек.pop() != m.group(1):
+                    pass
+        elif not сам:
+            стек.append(m.group(1))
+        i = j + 1
+    return стек
+
+
+def truncated(src) -> str:
+    """Оборван ли ответ. '' — цел; иначе причина одной строкой.
+
+    Зовётся ДО тайпчека: обрыв и ошибка в коде лечатся по-разному, а
+    компилятор их не различает."""
+    провайдер = getattr(src, "why", "")      # core.CutText: сказал сам API
+    if провайдер:
+        return f"{CUT_MARK}: {провайдер}"
+    text = str(src)
+    if not text.strip():
+        return f"{CUT_MARK}: пустой ответ"
+    # Ответ БЕЗ объявления компонента — это не файл сцены: либо модель
+    # написала объяснение вместо кода, либо обрыв случился раньше, чем она
+    # дошла до export. Скобочную проверку ниже такой текст проходит целым
+    # (проза скобок не открывает) и ложится на диск, а tsc и бандл Remotion
+    # после этого валятся на ВСЕХ сценах разом, а не только на этой.
+    if "export const" not in text and "export default" not in text:
+        return (f"{CUT_MARK}: в ответе нет объявления компонента "
+                f"«export const ...» — пришёл не файл сцены, а "
+                f"«{text.strip()[:60]}»")
+    cleaned, stack, state = _scan_code(text)
+    if state == "block":
+        return f"{CUT_MARK}: файл кончается внутри комментария /* ... */"
+    if state == "tpl":
+        return f"{CUT_MARK}: файл кончается внутри шаблонной строки `...`"
+    открытые = [s for s in stack if not s.startswith("!")]
+    if открытые:
+        сколько = {}
+        for s in открытые:
+            сколько[s] = сколько.get(s, 0) + 1
+        чего = ", ".join(f"{k} x{v}" for k, v in сколько.items())
+        return (f"{CUT_MARK}: не закрыто скобок — {чего}; "
+                f"файл обрывается на «{text.rstrip()[-60:]}»")
+    теги = _jsx_unclosed(cleaned)
+    if теги:
+        return (f"{CUT_MARK}: не закрыт тег <{теги[-1]}>; "
+                f"файл обрывается на «{text.rstrip()[-60:]}»")
+    хвост = text.rstrip()
+    if хвост[-1] not in ";})>":
+        return (f"{CUT_MARK}: текст кончается на середине строки — "
+                f"«{хвост[-60:]}»")
+    return ""
+
+
+def check_static(src: str) -> list[str]:
+    """Ступень 2: то, что видно в коде без запуска."""
+    bad = []
+    # Заливка кадра — тот самый брак, из-за которого сцены посреди
+    # документального ролика читались как провал в чёрное. Подложку кладёт
+    # Scene.tsx под каждую сцену; непрозрачный корень её просто закрывает,
+    # и вся защита пропадает молча — рендер при этом проходит.
+    opaque = [v.strip() for v in _fullframe_backgrounds(src) if _is_opaque(v)]
+    if opaque:
+        bad.append(
+            f"непрозрачная заливка на весь кадр ({opaque[0]}) — она закроет "
+            "общую подложку Backdrop, и сцена станет плоским тёмным пятном; "
+            "фон кадра кладёт Scene.tsx, корень сцены должен быть прозрачным")
+    if re.search(r"\bBackdrop\b", src):
+        bad.append("сцена сама подключает Backdrop — его уже подставляет "
+                   "Scene.tsx, второй экземпляр удвоит виньетку и пылинки")
+    if "p.enter" not in src or "p.exit" not in src:
+        bad.append("не использует p.enter/p.exit — сцена моргнёт на склейке")
+    if re.search(r"placeholder|TODO|FIXME", src, re.I):
+        bad.append("следы недоделки (placeholder/TODO)")
+    движение = src.count("interpolate(") + src.count("spring(")
+    if движение < 3:
+        bad.append(f"движения почти нет: interpolate/spring вызваны "
+                   f"{движение} раз(а), нужно 3+")
+    # СЛОВАРЬ ДВИЖЕНИЯ. Замер 02.09 по 691 принятой сцене: opacity есть у
+    # 100 %, translate у 92.9 %, rotate 30.2 %, strokeDashoffset 14.8 %,
+    # scale 11.9 %, spring 0.0 %, перелёт 0.3 %, ступенька по индексу 5.5 %.
+    # И у 168 сцен (24.3 %) КРОМЕ прозрачности нет вообще ничего. Пункты
+    # контракта 13/16/18 требуют второго свойства с 02.09, но проверки на
+    # него не было — а требование, которое никто не проверяет, модель
+    # выполняет в четверти случаев. Это и есть «проявись, приедь, стой».
+    if not re.search(r"strokeDashoffset|scale\(|scaleX|scaleY|translate\(|"
+                     r"rotate\(|\bspring\(", src):
+        bad.append("движение только прозрачностью: нет ни отрисовки линии "
+                   "(strokeDashoffset), ни сдвига/масштаба (transform), ни "
+                   "пружины (spring) — сцена проявляется и стоит, как слайд")
+    if "useCurrentFrame()" not in src:
+        bad.append("не читает кадр — картинка статична")
+    if re.search(r"Math\.random|new Date|Date\.now", src):
+        bad.append("недетерминированный код (random/Date)")
+    if re.search(r"<Img|fetch\(|staticFile\(", src):
+        bad.append("тянет внешние файлы — в рендере их не будет")
+    if len(src) < 900:
+        bad.append(f"слишком короткий файл ({len(src)} символов) — это заготовка")
+    return bad
+
+
+def _still(kind: str, title: str, dur: float, at: float, dest: Path) -> str:
+    """Отрисовать ОДИН кадр сцены в dest. Возвращает текст ошибки или ''.
+
+    Вынесено из check_render, потому что кадр нужен теперь двум ступеням —
+    пиксельной и зрительной, — и они обязаны смотреть на ОДНО И ТО ЖЕ:
+    вторая копия вызова разъехалась бы по props (bare, items, lat/lon), и
+    зрение судило бы не ту картинку, что прошла пиксели.
+
+    bare=1 — БЕЗ общей подложки. Иначе проверка стала бы бессмысленной:
+    живой фон сам даёт и десятки цветов, и движение между кадрами, и
+    заглушка, не нарисовавшая ровно ничего, прошла бы её на чужой картинке.
+    """
+    props = {"kind": kind, "title": title, "dur": dur, "exit": 1, "enter": 1,
+             "bare": True,
+             "items": ["Опора A", "Опора B", "! Опора C"],
+             "lat": 55, "lon": 37}
+    fr = max(0, min(int(dur * 30) - 1, int(dur * 30 * at)))
+    # БЕЗ shell=True и по ПОЛНОМУ ПУТИ. shell=True стоял здесь только ради
+    # того, чтобы Windows нашла «npx» в PATH — а платой за это было окно
+    # cmd.exe поверх всего на каждый вызов. Их здесь по три на каждую
+    # схему, и владелец видел их десятками за ролик; CREATE_NO_WINDOW при
+    # запуске через оболочку не спасает, потому что окно открывает уже
+    # сам cmd, а не наш процесс.
+    #
+    # overlays._npx() возвращает полный путь к npx.cmd, и CreateProcess
+    # запускает батник напрямую — оболочка не нужна.
+    import overlays as _ov
+    npx = _ov._npx()
+    if not npx:
+        return "Node.js/npx не найден — рисовать сцены нечем"
+    r = subprocess.run(
+        [npx, "remotion", "still", "Scene", str(dest), "--frame", str(fr),
+         "--image-format", "png", "--props", json.dumps(props, ensure_ascii=False)],
+        cwd=REMOTION, capture_output=True, text=True, encoding="utf-8",
+        errors="replace", timeout=600, creationflags=CREATE_NO_WINDOW)
+    if r.returncode != 0 or not dest.exists():
+        # НАЧАЛО ошибки, а не хвост. Раньше стояло [-200:], и у трассировки
+        # Node в журнал попадали последние строки — пути внутри самого
+        # Remotion. 31.08 два кадра упали, и всё, что осталось для разбора,
+        # это огрызок «till (still.js:112:5)»: сама причина отрезана, а
+        # диагностировать по хвосту нечего. Node пишет причину ПЕРВОЙ строкой.
+        поток = (r.stderr or "").strip() or (r.stdout or "").strip()
+        важное = [l for l in поток.splitlines()
+                  if l.strip() and not l.lstrip().startswith("at ")]
+        текст = " | ".join(важное[:4])[:400] or поток[:400]
+        return f"рендер упал (код {r.returncode}): {текст}"
+    return ""
+
+
+def _for_vision(png: Path) -> bytes:
+    """Кадр сцены -> картинка, которую есть смысл показывать модели.
+
+    Две обязательные поправки, без них проверка врёт:
+      1) при bare=1 фон кадра ПРОЗРАЧНЫЙ, и PNG раскладывается на белом.
+         Палитра сцен светлая (#e9f2f6) — на белом от схемы остаются
+         невидимые линии, и зрение честно отвечает «пустой кадр» про
+         нормальную сцену. Подкладываем тёмное, как настоящий Backdrop.
+      2) 1920x1080 модели не нужны и стоят токенов: ужимаем до 1024.
+    """
+    from PIL import Image
+    im = Image.open(png).convert("RGBA")
+    flat = Image.alpha_composite(
+        Image.new("RGBA", im.size, (11, 13, 16, 255)), im).convert("RGB")
+    flat.thumbnail((1024, 1024))
+    import io
+    buf = io.BytesIO()
+    # PNG, а не JPEG: vision_chat в core.py отдаёт байты дальше с mime
+    # image/png и своего параметра под другой формат не имеет
+    flat.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+def check_render(kind: str, title: str, dur: float, log=print) -> list[str]:
+    """Ступень 3: настоящий рендер и разбор пикселей.
+
+    Отвечает на вопрос «сцена вообще что-то нарисовала и это шевелится».
+    На вопрос «нарисовано ли то, что заявлено» отвечает check_vision.
+    """
+    from PIL import Image
+    import tempfile
+    import shutil
+    bad = []
+    # Кадры ложатся во временную папку, и убрать её обязана эта же функция.
+    # Раньше уборки не было вовсе, а выходов отсюда четыре (в том числе
+    # ранний возврат по ошибке рендера) — каждая проверка сцены оставляла во
+    # временной папке системы два кадра 1920x1080, и проверок этих сотни за
+    # прогон. Замер 2026-08-12: во временной папке 6.86 ГБ.
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        shots = []
+        for at in (0.25, 0.8):
+            dest = tmp / f"f{at}.png"
+            err = _still(kind, title, dur, at, dest)
+            if err:
+                return [err]
+            shots.append(dest)
+
+        stats = []
+        for s in shots:
+            im = Image.open(s).convert("RGB")
+            px = list(im.getdata())
+            colors = len(set(px))
+            # самый частый цвет: если он занимает почти всё — это заливка
+            top = max(px.count(c) for c in set(px[::5000])) if px else 0
+            stats.append((colors, top / len(px)))
+        if max(c for c, _ in stats) < 12:
+            bad.append(f"почти одноцветный кадр "
+                       f"({max(c for c, _ in stats)} цветов)")
+        if min(t for _, t in stats) > 0.985:
+            bad.append("кадр залит одним цветом — это заглушка, а не сцена")
+        a = list(Image.open(shots[0]).convert("RGB").getdata())[::997]
+        b = list(Image.open(shots[1]).convert("RGB").getdata())[::997]
+        if a == b:
+            bad.append("между началом и концом ничего не изменилось — "
+                       "нет анимации")
+        return bad
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# Что вернула ступень зрения. Три исхода, а не два, — и это главное решение
+# в этом файле, см. комментарий в check_vision.
+VISION_OK = "ok"            # на кадре видно заявленное
+VISION_BAD = "bad"          # кадр не про то, что обещано именем сцены
+VISION_BLIND = "unverified"  # посмотреть не удалось (квота, сеть, отказ)
+
+
+def check_vision(kind: str, title: str, subject: str, dur: float = 6.0,
+                 api_key: str = "", log=print,
+                 png: Path | None = None) -> tuple[str, str]:
+    """Ступень 4: посмотреть на ОТРИСОВАННЫЙ кадр и спросить, то ли на нём.
+
+    Зачем отдельная ступень. Все предыдущие отвечают на вопрос «код
+    рабочий?»: компилируется, корень прозрачный, цветов больше одного,
+    между кадрами есть движение. Сцена thermal_gradient_map прошла их все и
+    оказалась РОВНЫМ РОЗОВЫМ ПРЯМОУГОЛЬНИКОМ в рамке под заголовком «steam
+    jacket cross-section»: ни градиента, ни разреза. Пиксельная проверка
+    такое не поймает никогда — прямоугольник, меняющий цвет со временем,
+    честно даёт и цвета, и движение. Отличить схему от подписанной заливки
+    может только тот, кто СМОТРИТ на картинку.
+
+    Приём взят с _vision_pick в core.py (выбор стокового кадра зрением):
+    тот же vision_chat с перебором ключей и моделей, тот же порядок вопросов
+    «опиши -> оцени -> ответь», тот же max_tokens=1500 (у моделей с
+    «размышлениями» меньший бюджет возвращает пустой ответ).
+
+    ЧТО ДЕЛАЕМ, КОГДА ЗРЕНИЕ НЕДОСТУПНО. Суточная квота Gemini считается на
+    пару «проект + модель» и выбирается регулярно — то есть отказ здесь не
+    исключение, а обычный вечер. Обе крайности плохи:
+      - считать невидимое браком значит останавливать конвейер ровно тогда,
+        когда он работает: сцены перестанут писаться, и каждый нарисованный
+        момент выродится в обычный кадр — та самая деградация «по лимиту»,
+        которой мы избегаем везде;
+      - считать невидимое годным молча значит вернуть ровно ту дыру, ради
+        которой всё это писалось, только теперь с видимостью проверки.
+    Поэтому третий исход: ПРИНИМАЕМ, но помечаем сцену как непроверенную —
+    в журнал предупреждением, в scenes.json полем vision и в scenes_audit.json
+    отдельной записью. Непроверенная сцена работает, но её видно в списке, и
+    `--audit` на живой квоте досматривает её позже. Брак так задерживается
+    максимум до следующего аудита, а ночь не встаёт.
+    """
+    import core
+    import tempfile
+    subject = (subject or "").strip()
+    if not subject:
+        # Не с чем сравнивать: без замысла («что должно быть нарисовано»)
+        # вопрос модели вырождается в «красиво ли», а это не проверка.
+        return VISION_BLIND, "нечего проверять: у сцены нет описания замысла"
+
+    # Свой кадр — своя уборка. Когда png передали снаружи, файл чужой и
+    # трогать его нельзя; когда сняли здесь — временная папка обязана уйти при
+    # ЛЮБОМ из шести выходов ниже, включая отказ зрения по квоте (а он тут
+    # обычное дело, см. док-строку).
+    tmp = None
+    if png is None:
+        tmp = Path(tempfile.mkdtemp())
+        png = tmp / f"{kind}.png"
+        err = _still(kind, title, dur, VISION_AT, png)
+        if err:
+            _drop_tmp(tmp)
+            return VISION_BLIND, err
+    try:
+        return _check_vision(kind, title, dur, subject, png, api_key)
+    finally:
+        _drop_tmp(tmp)
+
+
+def _drop_tmp(tmp) -> None:
+    """Убрать временную папку, если она наша."""
+    if not tmp:
+        return
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _check_vision(kind: str, title: str, dur: float, subject: str,
+                  png, api_key: str) -> tuple[str, str]:
+    """Разговор со зрением по готовому кадру. Уборку делает check_vision."""
+    import core
+    prompt = (VISION_PROMPT
+              .replace("__TITLE__", str(title or "(нет подписи)")[:120])
+              .replace("__SUBJECT__", subject[:400].replace("\n", " ")))
+    try:
+        out = core.vision_chat(
+            prompt, _for_vision(png), api_key,
+            system="You are a documentary fact-checker looking at a diagram.",
+            max_tokens=1500)
+    except Exception as e:
+        return VISION_BLIND, core._redact(e) if hasattr(core, "_redact") else str(e)
+
+    m = re.search(r"\{.*\}", out, re.S)
+    if not m:
+        return VISION_BLIND, f"ответ зрения не разобрался: {out[:160]}"
+    try:
+        ans = json.loads(m.group(0))
+    except ValueError:
+        return VISION_BLIND, f"ответ зрения не JSON: {out[:160]}"
+
+    shows = str(ans.get("shows", "")).strip()
+    why = str(ans.get("why", "")).strip()
+    if ans.get("depicts") is True:
+        return VISION_OK, shows
+    # Ровно как в _vision_pick: вердикт весомее номера/описания. Отсутствие
+    # "depicts": true считаем отказом, а не сбоем — модель ответила, просто
+    # не подтвердила.
+    return VISION_BAD, (f"на кадре видно «{shows}»; не хватает: {why}"
+                        if shows else why or "модель не подтвердила замысел")
+
+
+def register(kind: str, component: str) -> None:
+    """Дописать сцену в диспетчер Scene.tsx.
+
+    Правка идёт по двум якорям в чужом файле, и если якорь однажды
+    переименуют, str.replace просто ничего не сделает — БЕЗ ЕДИНОГО СЛОВА.
+    Последствие не в том, что сцена не появится: kind, которого нет в
+    switch, попадает в ветку default, а она возвращает null. То есть рендер
+    отдаст ПУСТОЙ кадр, приёмка забракует его как «залит одним цветом», и
+    три попытки подряд модель будет переписывать совершенно нормальный код,
+    а в журнале будет стоять неверная причина. Поэтому проверяем результат.
+    """
+    src = REGISTRY.read_text(encoding="utf-8")
+    imp = f"import {{ {component} }} from './scenes/{kind}';"
+    if imp not in src:
+        src = src.replace("export type { SceneProps };",
+                          f"{imp}\nexport type {{ SceneProps }};")
+    case = f"    case '{kind}':\n      return <{component} {{...props}} />;"
+    if f"case '{kind}':" not in src:
+        src = src.replace("    default:", f"{case}\n    default:")
+    if imp not in src or f"case '{kind}':" not in src:
+        raise RuntimeError(
+            f"{REGISTRY.name} не принял сцену «{kind}»: не нашлось места для "
+            "вставки (якоря «export type { SceneProps };» и «    default:»). "
+            "Без записи в диспетчер сцена рисовала бы пустой кадр, а приёмка "
+            "винила бы в этом код сцены")
+    REGISTRY.write_text(src, encoding="utf-8")
+
+
+def unregister(kind: str, component: str) -> None:
+    src = REGISTRY.read_text(encoding="utf-8")
+    src = src.replace(f"import {{ {component} }} from './scenes/{kind}';\n", "")
+    src = src.replace(f"    case '{kind}':\n      return <{component} {{...props}} />;\n", "")
+    REGISTRY.write_text(src, encoding="utf-8")
+
+
+def typecheck() -> tuple[bool, str]:
+    # Локальный компилятор из node_modules, а НЕ «npx tsc». Здесь, в
+    # основном чекауте, npx находит правильный tsc (проверено: код 0), но
+    # это везение: в отдельном рабочем каталоге npx ставит посторонний
+    # пакет tsc@2.0.4, тот отвечает «This is not the tsc command you are
+    # looking for» — и приёмка схем читает это как ОШИБКИ ТИПОВ, браку́я
+    # исправные сцены. Локальный путь такого не допускает.
+    #
+    # shell=True убран заодно: он открывал окно cmd.exe на каждый вызов.
+    tsc = REMOTION / "node_modules" / ".bin" / (
+        "tsc.cmd" if os.name == "nt" else "tsc")
+    if not tsc.exists():
+        import overlays as _ov
+        npx = _ov._npx()
+        if not npx:
+            return False, "нет ни локального tsc, ни npx"
+        cmd = [npx, "tsc", "--noEmit"]
+    else:
+        cmd = [str(tsc), "--noEmit"]
+    r = subprocess.run(cmd, cwd=REMOTION,
+                       capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=600,
+                       creationflags=CREATE_NO_WINDOW)
+    return r.returncode == 0, (r.stdout or r.stderr)[-900:]
+
+
+# ---------- Журнал вердиктов зрения по библиотеке сцен ----------
+
+def audit_load(log=None) -> dict:
+    """Накопленные вердикты зрения. Пусто — досмотра ещё не было (норма)."""
+    data, err = _read_json_map(AUDIT)
+    if err:
+        # Молчать нельзя: без вердиктов quarantined() пуст, и сцена, про
+        # которую зрение уже сказало «на кадре не то», снова уходит в ролик.
+        _complain("вердикты зрения по сценам потеряны — забракованные схемы "
+                  "снова считаются годными",
+                  why=err,
+                  hint=f"почини {AUDIT.name} или удали его и прогони "
+                       "gen_scenes.py --audit заново",
+                  level="критично")
+        if log:
+            log(f"[Сцены] ВНИМАНИЕ: {err}", "warn")
+    return data
+
+
+def audit_mark(kind: str, verdict: str, why: str = "", subject: str = "",
+               title: str = "") -> None:
+    """Записать вердикт по сцене. ТОЛЬКО в данные.
+
+    Помечаем, а не удаляем и не переписываем .tsx: файлы сцен лежат в
+    remotion/src, Remotion собирает весь проект целиком, и правка ради
+    пометки может обрушить сборку идущего в этот момент рендера. К тому же
+    удалённая сцена унесла бы с собой и замысел, по которому её надо
+    переписать.
+    """
+    from datetime import datetime
+    data, err = _read_json_map(AUDIT)
+    if err:
+        # НЕ ПИШЕМ поверх нечитаемого файла: запись сохранила бы один свежий
+        # вердикт вместо всех накопленных, то есть потеря была бы
+        # окончательной. Один несохранённый вердикт — потеря обратимая:
+        # сцену досмотрят следующим --audit. Прогон при этом не роняем, иначе
+        # битый файл вердиктов лишал бы ролик всех нарисованных сцен разом.
+        _complain(f"вердикт зрения по сцене «{kind}» не сохранён",
+                  why=err,
+                  hint=f"почини {AUDIT.name} — пока он битый, досмотр "
+                       "библиотеки не копится",
+                  level="критично")
+        return
+    rec = data.get(kind) or {}
+    rec.update({"verdict": verdict, "why": why[:400],
+                "checked": datetime.now().strftime("%Y-%m-%d %H:%M")})
+    if subject:
+        rec["subject"] = subject[:300]
+    if title:
+        rec["title"] = title[:120]
+    data[kind] = rec
+    AUDIT.write_text(json.dumps(data, ensure_ascii=False, indent=2),
+                     encoding="utf-8")
+
+
+def quarantined() -> dict:
+    """Сцены, про которые зрение сказало «нарисовано не то» — {kind: причина}.
+
+    Их нельзя переиспользовать: библиотека сцен общая, и одна такая сцена
+    кочует из ролика в ролик, пока её не перепишут.
+    """
+    return {k: v.get("why", "") for k, v in audit_load().items()
+            if v.get("verdict") == VISION_BAD and k not in BUILTIN_SCENES}
+
+
+def repair_fade(code: str, component: str) -> tuple[str, bool]:
+    """Дописать забытое домножение на p.enter * p.exit.
+
+    Правило про фейд в промпте расписано подробнее всех остальных, с готовой
+    строкой для копирования, — и всё равно оно самое нарушаемое: замер прогона
+    2026-08-14 дал 11 отказов из 22 именно по нему, то есть половину. Прогон
+    отдал 2 сцены из 8 вместо ожидаемых шести.
+
+    Это НЕ брак сцены: рисунок, движение и композиция могут быть отличными,
+    а забыта одна строчка. Выбрасывать такую работу и жечь три вызова модели
+    ради механической мелочи — расточительство. Чиним сами.
+
+    Способ намеренно тупой и потому надёжный: тело модели переименовываем и
+    оборачиваем в AbsoluteFill с нужной прозрачностью. Не правим её JSX
+    изнутри — там можно сломать что угодно, а обёртка снаружи безопасна.
+    """
+    if "p.enter" in code and "p.exit" in code:
+        return code, False
+    marker = f"export const {component}: React.FC<SceneProps> = "
+    if marker not in code:
+        return code, False           # непривычная форма — пусть решает гейт
+    body = f"{component}Body"
+    out = code.replace(marker, f"const {body}: React.FC<SceneProps> = ", 1)
+    # AbsoluteFill может быть не импортирован, если сцена рисует один <svg>
+    # Импорт AbsoluteFill мог отсутствовать: сцена могла рисовать
+    # только <svg>, а обёртке он нужен.
+    if not re.search(r"import \{[^}]*AbsoluteFill", out):
+        out = re.sub(r"(import \{)([^}]*)(\} from 'remotion';)",
+                     lambda m: m.group(1) + m.group(2).rstrip() +
+                     (", AbsoluteFill" if "AbsoluteFill" not in m.group(2)
+                      else "") + " " + m.group(3),
+                     out, count=1)
+    out += f"""
+
+// Обёртка дописана автоматически: модель забыла домножить прозрачность на
+// p.enter * p.exit, и без этого сцена моргнула бы на склейке с соседними
+// планами. Сам рисунок не тронут.
+export const {component}: React.FC<SceneProps> = (p) => (
+  <AbsoluteFill style={{{{ opacity: p.enter * p.exit }}}}>
+    <{body} {{...p}} />
+  </AbsoluteFill>
+);
+"""
+    return out, True
+
+
+# «Объявлено, но не используется» — это НЕ ошибка типов, это строгость
+# tsconfig (noUnusedLocals). Сцена с лишней переменной рисуется ровно так же.
+_МУСОРНЫЕ_КОДЫ = ("TS6133", "TS6192", "TS6196", "TS6198", "TS6205")
+_МУСОР = re.compile(
+    r"\((\d+),\d+\):\s*error\s+(TS6\d{3}):\s*'([^']+)'"
+    r"|\((\d+),\d+\):\s*error\s+(TS6198):\s*All destructured")
+
+
+def unused_names(out: str, kind: str) -> list[tuple[int, str]]:
+    """(строка, имя) для жалоб «объявлено, но не читается» ПО ЭТОЙ сцене."""
+    имена = []
+    for line in (out or "").splitlines():
+        if f"{kind}.tsx(" not in line or "error TS6" not in line:
+            continue
+        m = re.search(r"\((\d+),\d+\):\s*error\s+(TS6\d{3}):\s*'([^']+)'",
+                      line)
+        if m and m.group(2) in _МУСОРНЫЕ_КОДЫ:
+            имена.append((int(m.group(1)), m.group(3)))
+    return имена
+
+
+QUARANTINE = BASE / "_битые_схемы"
+
+
+def _ошибки_по_файлам(out: str) -> dict:
+    """Жалобы типизации, разложенные по ФАЙЛАМ: имя файла -> строки жалоб."""
+    по_файлам: dict = {}
+    for line in (out or "").splitlines():
+        m = re.match(r"\s*(\S+?\.tsx?)\(\d+,\d+\):\s*error\s+TS", line)
+        if m:
+            имя = m.group(1).replace("\\", "/").rsplit("/", 1)[-1]
+            по_файлам.setdefault(имя, []).append(line.strip())
+    return по_файлам
+
+
+def heal_foreign(out: str, kind: str, log=print) -> tuple[bool, str]:
+    """Ошибки типизации в ЧУЖИХ файлах сцен — вылечить или увести в карантин.
+
+    Зачем это здесь. Приёмка одной сцены запускает tsc на ВСЁМ проекте
+    Remotion, а вывод компилятора уходит в bad[] целиком, без разбора, чей
+    это файл. Значит одна старая сцена с лишней переменной отвергает подряд
+    ВСЕ новые, и код в них при этом безупречен: модель три раза переписывает
+    исправную сцену по чужой ошибке, а потом сцена теряется навсегда.
+
+    Замер 02.09.2026: в src/scenes лежал kraft_umleitung.tsx с TS6133
+    ('pathDownLen' is declared but its value is never read) — tsc возвращал
+    ошибку на КАЖДОЙ проверке, то есть ни одна новая сцена не могла быть
+    принята вообще. По журналу app.log за всю историю «не проходит
+    типизацию проекта» — 646 отказов из 1486 (43.5 %) и 152 из 339
+    окончательно потерянных сцен (44.8 %): это самая частая причина потери.
+
+    Мусорную мелочь чиним на месте той же repair_unused. Настоящую поломку
+    (обрыв, незакрытый тег) чинить нечем — уводим файл в карантин: снимаем
+    из диспетчера Scene.tsx и переносим в _битые_схемы. Не удаляем: сцена
+    ещё может понадобиться, и удалять чужую работу нельзя. Карантин лежит
+    ВНЕ remotion/, иначе tsc продолжил бы его компилировать.
+
+    Возвращает (трогали ли что-нибудь, отчёт одной строкой).
+    """
+    свой = f"{kind}.tsx"
+    сделано: list[str] = []
+    for имя, жалобы in _ошибки_по_файлам(out).items():
+        if имя == свой:
+            continue
+        if имя == REGISTRY.name:
+            # ВИСЯЧАЯ ЗАПИСЬ В ДИСПЕТЧЕРЕ. Предыдущая сцена не прошла
+            # приёмку, её .tsx удалён, а import и case в Scene.tsx остались —
+            # и tsc падает на КАЖДОЙ следующей сцене с чужим именем в тексте.
+            # Замер 01.09: airflow_diagram отвергнута ровно так
+            # («Cannot find module './scenes/load_redirection_diagram'»),
+            # причём сама она была ни при чём. Снимаем запись, файла которой
+            # нет: это восстановление реестра, а не удаление работы.
+            снял = []
+            for m in re.finditer(
+                    r"Cannot find module '\./scenes/([A-Za-z0-9_]+)'",
+                    "\n".join(жалобы)):
+                мёртвый = m.group(1)
+                if (SCENES_DIR / f"{мёртвый}.tsx").exists():
+                    continue
+                try:
+                    unregister(мёртвый, _component_name(мёртвый))
+                    снял.append(мёртвый)
+                except Exception:
+                    pass
+            if снял:
+                сделано.append(f"{имя}: снял висячие записи — "
+                               + ", ".join(снял))
+                log(f"[Сцены] в {имя} остались ссылки на удалённые сцены "
+                    f"({', '.join(снял)}) — снял, они роняли приёмку всех "
+                    "остальных", "warn")
+            else:
+                сделано.append(f"{имя}: ошибка не про висячие записи")
+            continue
+        путь = SCENES_DIR / имя
+        if not путь.exists():
+            # Ошибка не в сцене (Root.tsx, вариант оверлея) — трогать чужие
+            # подсистемы отсюда нельзя, только назвать.
+            сделано.append(f"{имя}: не сцена, чинить не берусь")
+            continue
+        чужой = путь.stem
+        if чужой in BUILTIN_SCENES:
+            сделано.append(f"{имя}: ручная сцена, не трогаю")
+            continue
+        try:
+            код = путь.read_text(encoding="utf-8")
+        except OSError as e:
+            сделано.append(f"{имя}: не прочитан ({e})")
+            continue
+        лечёный, менял = repair_unused(код, out, чужой)
+        if менял:
+            путь.write_text(лечёный, encoding="utf-8")
+            сделано.append(f"{имя}: убрал лишние объявления")
+            log(f"[Сцены] чужая сцена {имя} мешала приёмке — "
+                "убрал в ней неиспользуемые объявления", "warn")
+            continue
+        # Починить нечем — в карантин, иначе она будет валить каждую
+        # следующую сцену до конца ночи.
+        try:
+            QUARANTINE.mkdir(parents=True, exist_ok=True)
+            unregister(чужой, _component_name(чужой))
+            shutil.move(str(путь), str(QUARANTINE / имя))
+            сделано.append(f"{имя}: уведён в карантин ({жалобы[0][-90:]})")
+            log(f"[Сцены] чужая сцена {имя} не компилируется и роняла "
+                f"приёмку всех остальных — увёл в {QUARANTINE.name}", "warn")
+            _complain("сломанная схема убрана из проекта",
+                      why=f"«{чужой}»: {жалобы[0][-140:]}",
+                      hint=f"файл лежит в {QUARANTINE.name}; сцена будет "
+                           "написана заново при следующем ролике",
+                      level="заметно")
+        except Exception as e:
+            сделано.append(f"{имя}: карантин не удался ({e})")
+    return bool(сделано), "; ".join(сделано[:4])
+
+
+def only_unused(out: str, kind: str) -> bool:
+    """Все ли жалобы типизации — про неиспользуемые объявления.
+
+    Если среди них есть хоть одна настоящая (незакрытый тег, оборванная
+    строка, несуществующее свойство Easing) — чинить нечего, сцену отвергаем
+    как и раньше. Замер по журналу: настоящих ошибок втрое больше мусорных
+    (TS17008 178, TS1005 124 против TS6133 48), так что ворота нужны."""
+    ошибки = [l for l in (out or "").splitlines() if ": error TS" in l]
+    if not ошибки:
+        return False
+    for l in ошибки:
+        m = re.search(r"error (TS\d+):", l)
+        if not m or m.group(1) not in _МУСОРНЫЕ_КОДЫ:
+            return False
+    return True
+
+
+def repair_suggested(code: str, out: str, kind: str) -> tuple[str, bool]:
+    """Опечатки в именах, где КОМПИЛЯТОР САМ НАЗВАЛ правильное.
+
+    TypeScript на TS2551/TS2552 пишет прямо: «Property 'sine' does not exist
+    on type 'typeof Easing'. Did you mean 'sin'?» То есть верный ответ уже
+    лежит в тексте ошибки, а сцена из-за него уходила на переделку — целая
+    попытка модели, а это минуты.
+
+    Замер прогона 24.08.2026: этап «Сцены» стоил 48 минут на пять сцен (9.7
+    мин каждая), годной вышла одна из пяти. Из двенадцати отказов шесть — по
+    типизации, и Easing.sine среди них. Жечь пять минут на опечатку, ответ
+    на которую компилятор уже написал, — чистая потеря.
+
+    Чиним ТОЛЬКО когда подсказка есть и оба имени — простые идентификаторы,
+    и подставляем по границам слова В ТОЙ САМОЙ СТРОКЕ, где ругался
+    компилятор. По всему файлу нельзя: совпадающее имя в другом месте может
+    быть законным, и «починка» сломала бы рабочий кусок.
+    """
+    строки = code.splitlines()
+    менял = False
+    for l in (out or "").splitlines():
+        if f"{kind}.tsx(" not in l:
+            continue
+        m = re.search(r"\((\d+),\d+\):\s*error\s+TS255[12]:.*?"
+                      r"'([A-Za-z_$][\w$]*)'.*?Did you mean '([A-Za-z_$][\w$]*)'",
+                      l)
+        if not m:
+            continue
+        n, было, надо = int(m.group(1)) - 1, m.group(2), m.group(3)
+        if not (0 <= n < len(строки)):
+            continue
+        новая = re.sub(rf"\b{re.escape(было)}\b", надо, строки[n])
+        if новая != строки[n]:
+            строки[n] = новая
+            менял = True
+    if not менял:
+        return code, False
+    хвост = "\n" if code.endswith("\n") else ""
+    return "\n".join(строки) + хвост, True
+
+
+def repair_unused(code: str, out: str, kind: str) -> tuple[str, bool]:
+    """Убрать объявления, на которые ругается noUnusedLocals.
+
+    Та же мысль, что и в repair_fade: механическую мелочь чиним, а не жжём на
+    ней три вызова модели. Замер прогона 2026-08-14_2: из 14 отказов 9 —
+    типизация, и по журналу за всю историю 48 из них про неиспользуемые
+    объявления. При этом сцена с лишней переменной рисуется ровно так же:
+    volumen_vergleich и geographische_ausbreitung отвергались ТРИЖДЫ каждая,
+    то есть модель по такой подсказке не исправляется.
+
+    Правится три формы, все однострочные и потому безопасные: строка импорта,
+    простое `const X = ...;` и одно имя внутри деструктуризации. Всё
+    остальное оставляем как есть — вызывающий всё равно перепроверяет
+    типизацию и отвергает сцену, если починка не помогла."""
+    имена = unused_names(out, kind)
+    if not имена:
+        return code, False
+    строки = code.splitlines()
+    менял = False
+    # с конца, чтобы удаление строки не сдвигало номера остальных
+    for n, имя in sorted(имена, reverse=True):
+        if not 1 <= n <= len(строки):
+            continue
+        s = строки[n - 1]
+        нов = None
+        if re.match(r"\s*import\b", s):
+            # один спецификатор из фигурных скобок; опустела — вон всю строку
+            без = re.sub(rf"\b{re.escape(имя)}\b\s*,?\s*", "", s, count=1)
+            без = re.sub(r",\s*\}", " }", без)
+            нов = "" if re.search(r"\{\s*\}", без) else без
+        elif re.match(rf"\s*(?:const|let|var)\s+{re.escape(имя)}\s*=", s):
+            нов = ""
+        elif re.search(r"\{[^{}]*\}", s) and re.search(
+                rf"\b{re.escape(имя)}\b", s):
+            # ТОЛЬКО простое имя в скобках: {fps, width}. Переименование
+            # {a: b} и значение по умолчанию {a = 1} не трогаем совсем.
+            # Замер на собственной правке: «const {a: b, c} = o;» при
+            # неиспользуемом b превращалось в «const {a: c} = o;» — код
+            # компилируется, перепроверка типизации его пропускает, а c
+            # начинает читать o.a вместо o.c. Молча неверный результат хуже
+            # отказа: пусть лучше сцену отвергнут, как отвергали раньше.
+            # «const {a = 1, c}» давало «const {= 1, c}» — синтаксис.
+            имя_э = re.escape(имя)
+            if re.search(rf":\s*{имя_э}\b|\b{имя_э}\s*[:=]", s):
+                continue
+            без = re.sub(rf"\b{имя_э}\b\s*,?\s*", "", s, count=1)
+            без = re.sub(r",\s*\}", " }", без)
+            нов = "" if re.search(r"\{\s*\}\s*=", без) else без
+        if нов is None:
+            continue
+        менял = True
+        if нов.strip():
+            строки[n - 1] = нов
+        else:
+            строки.pop(n - 1)
+    return ("\n".join(строки) + "\n") if менял else code, менял
+
+
+def accept(kind: str, code: str, title: str, dur: float, log=print,
+           subject: str = "", api_key: str = "",
+           report: dict | None = None) -> list[str]:
+    """Прогнать сцену через все ступени. Пустой список = принята.
+
+    subject — что сцена ОБЯЗАНА изобразить (brief замысла). Без него ступень
+    зрения пропускается: сравнивать картинку не с чем.
+    report — сюда кладётся исход зрения (ok/bad/unverified) для вызывающего;
+    новый необязательный аргумент, чтобы не менять сигнатуру для старых
+    вызовов (селф-тест зовёт accept без него).
+    """
+    component = _component_name(kind)
+    беды_подписи: list[str] = []
+    # ПОДПИСЬ НЕ ДОЛЖНА БЫТЬ ИМЕНЕМ ПЕРЕМЕННОЙ. Замер 02.09: в кадре сцены
+    # стояло «pfahl_wand_hohl» — title подставлялся из имени файла, и зритель
+    # читал латиницу с подчёркиванием. Приёмка это пропускала.
+    _t = (title or "").strip()
+    if _t and ("_" in _t or _t.lower() == kind.lower()):
+        беды_подписи.append(
+            "подпись в кадре — техническое имя «%s», а не текст" % _t[:40])
+    # ЧИСЛО ИЗ ЗАДАНИЯ ОБЯЗАНО БЫТЬ В КОДЕ. Сцена заказана ради него: если
+    # в brief стоит «8 cm bemasst», а восьмёрки в файле нет, промер не
+    # нарисован. Тоже проходило приёмку без замечаний.
+    import re as _re2
+    _числа = _re2.findall(r"(\d{2,4}(?:[.,]\d+)?)", subject or "")
+    _нет = [n for n in dict.fromkeys(_числа) if n not in code]
+    if _нет:
+        беды_подписи.append("числа из задания не нарисованы: "
+                            + ", ".join(_нет[:4]))
+    # СТУПЕНЬ 0, до всего остального: ответ вообще доехал целиком?
+    # Обрыв нельзя пускать дальше по двум причинам. Первая: компилятор
+    # назовёт его «незакрытый тег»/«нет скобки», и следующая попытка уйдёт
+    # чинить синтаксис вместо того, чтобы уложиться короче. Вторая: файл
+    # обрубка НЕ ПИШЕТСЯ на диск и не регистрируется в Scene.tsx — незачем
+    # тратить полминуты на tsc и рендер того, что заведомо не соберётся.
+    оборван = truncated(code)
+    if оборван:
+        log(f"[Сцены] {kind}: {оборван[:220]}", "warn")
+        return [оборван]
+    # Механическую мелочь чиним, а не отвергаем. Забытое домножение на
+    # p.enter/p.exit — половина всех отказов (замер 2026-08-14: 11 из 22), и
+    # при этом сам рисунок сцены к нему отношения не имеет. Отказ здесь стоил
+    # трёх вызовов модели и потерянной сцены на ровном месте.
+    code, fixed = repair_fade(code, component)
+    if fixed:
+        log(f"[Сцены] {kind}: дописал фейд (p.enter/p.exit) — модель забыла")
+    path = SCENES_DIR / f"{kind}.tsx"
+    SCENES_DIR.mkdir(parents=True, exist_ok=True)
+    # ПОВТОРНАЯ ПРОВЕРКА ХВОСТА — ПРЯМО У ЗАПИСИ. Ступень 0 выше смотрела на
+    # ответ модели, а на диск ложится уже ДРУГОЙ текст: между ними стоит
+    # repair_fade(), которая переписывает код. Битый .tsx в src/scenes роняет
+    # и tsc, и бандл Remotion ЦЕЛИКОМ — то есть уносит не свою сцену, а все
+    # остальные тоже, и следующие сцены ночи отвергаются с чужой причиной.
+    # Проверка стоит копейки и обязана быть у самой записи, а не только на
+    # входе в приёмку.
+    хвост = code.rstrip()
+    if not хвост.endswith((";", "}")) or "export const" not in code:
+        чего = ("" if "export const" in code
+                else " и в нём нет «export const»")
+        log(f"[Сцены] {kind}: код не дописан — на диск НЕ пишу", "warn")
+        return [f"{CUT_MARK}: файл не дописан, кончается на "
+                f"«{хвост[-60:]}»{чего}"]
+    path.write_text(code, encoding="utf-8")
+    register(kind, component)
+
+    bad = check_static(code)
+    if not bad:
+        ok, out = typecheck()
+        # Мусорную строгость чиним сами и перепроверяем. Если починка не
+        # помогла — возвращаем исходный файл и жалуемся ИСХОДНЫМ текстом:
+        # он и уйдёт в подсказку следующей попытке.
+        # Опечатку, на которую компилятор сам дал ответ, чиним ДО всего
+        # прочего: она приходит вперемешку с настоящими ошибками, и ворота
+        # only_unused её не пропустили бы.
+        if not ok:
+            лечёный, менял = repair_suggested(code, out, kind)
+            if менял:
+                path.write_text(лечёный, encoding="utf-8")
+                ok2, out2 = typecheck()
+                if ok2:
+                    code, ok = лечёный, True
+                    log(f"[Сцены] {kind}: поправил опечатку в имени — "
+                        "компилятор сам подсказал верное")
+                else:
+                    # Опечатка была не единственной бедой. Оставляем
+                    # исправленный файл и жалуемся уже НОВЫМ текстом: иначе
+                    # следующая попытка получит подсказку про ошибку,
+                    # которой в файле больше нет.
+                    code, out = лечёный, out2
+                    path.write_text(code, encoding="utf-8")
+        if not ok and only_unused(out, kind):
+            лечёный, менял = repair_unused(code, out, kind)
+            if менял:
+                path.write_text(лечёный, encoding="utf-8")
+                ok2, out2 = typecheck()
+                if ok2:
+                    code, ok = лечёный, True
+                    log(f"[Сцены] {kind}: убрал неиспользуемые объявления — "
+                        "модель оставила лишнее, рисунку это не мешает")
+                else:
+                    path.write_text(code, encoding="utf-8")
+        if not ok:
+            # Ошибки могут быть НЕ В ЭТОЙ сцене: tsc проверяет весь проект
+            # разом. Чужую беду лечим или уводим в карантин и перепроверяем.
+            трогали, отчёт = heal_foreign(out, kind, log)
+            if трогали:
+                ok, out = typecheck()
+                log(f"[Сцены] {kind}: чужие файлы мешали приёмке — {отчёт}")
+        if not ok:
+            мои = [l for l in out.splitlines()
+                   if f"{kind}.tsx(" in l and ": error TS" in l]
+            if мои:
+                bad.append("не проходит типизацию проекта: "
+                           + " ".join(x.strip() for x in мои)[:300])
+            else:
+                # Ни одной жалобы на НАШ файл. Винить сцену не за что:
+                # раньше именно здесь исправный код уходил на третий круг
+                # переписывания по чужой ошибке и терялся.
+                log(f"[Сцены] {kind}: tsc ругается, но не на эту сцену — "
+                    f"принимаю; чужое: {out.strip()[:160]}", "warn")
+    if not bad:
+        bad = check_render(kind, title, dur, log)
+    if not bad and subject:
+        verdict, why = check_vision(kind, title, subject, dur, api_key, log)
+        if report is not None:
+            report["vision"], report["vision_why"] = verdict, why
+        if verdict == VISION_BAD:
+            # Формулируем ПРЕТЕНЗИЮ СЛОВАМИ МОДЕЛИ: этот текст уходит в
+            # следующую попытку (write_scene подставляет why в промпт), и
+            # «модель видит у тебя один плоский прямоугольник» правит код
+            # куда лучше, чем «сцена не принята».
+            bad.append(f"на отрисованном кадре не видно заявленного "
+                       f"({subject[:120]}): {why}")
+        elif verdict == VISION_BLIND:
+            log(f"[Сцены] {kind}: зрение недоступно ({why[:120]}) — принимаю "
+                "НЕПРОВЕРЕННОЙ, пометил в scenes_audit.json", "warn")
+            audit_mark(kind, VISION_BLIND, why, subject, title)
+            # В ролик уходит схема, на которую никто не смотрел. Именно так и
+            # доехал до готового ролика розовый прямоугольник под подписью
+            # «steam jacket cross-section»: ступени 1-3 говорят лишь «код
+            # рабочий». Пропуск ступени — это пропуск ШАГА ПРИЁМКИ, и он
+            # обязан быть в итоге прогона, а не только строкой в журнале.
+            _complain("в ролике есть нарисованная схема, которую зрение не "
+                      "проверило",
+                      why=f"«{kind}»: {why[:140]}",
+                      hint="досмотри позже: python gen_scenes.py --audit "
+                           "--limit 5 — забракованные сцены будут переписаны "
+                           "при следующем ролике",
+                      level="заметно")
+        else:
+            audit_mark(kind, VISION_OK, why, subject, title)
+
+    if bad:
+        unregister(kind, component)
+        path.unlink(missing_ok=True)
+    return bad + беды_подписи
+
+
+# ---------- Рендер сцены в клип раскадровки ----------
+
+def _no_scene(kind: str, why: str) -> None:
+    """Сцена не доехала до кадра — план заменён обычной съёмкой."""
+    _complain("нарисованная схема заменена обычным кадром",
+              why=f"«{kind}» не отрисовалась: {why}",
+              hint="это самый заметный вид потери: вместо схемы в кадре "
+                   "стоковое видео не по теме — проверь, что Remotion "
+                   "собирается (npx remotion render в папке remotion)",
+              level="критично")
+
+
+def render_scene(kind: str, dest: Path, seconds: float, *, title: str = "",
+                 items: list | None = None, lat=None, lon=None,
+                 width: int = 1920, height: int = 1080, fps: int = 30,
+                 log=print, look: str = "", accent: str = "") -> Path:
+    """Отрисовать сцену в mp4 РОВНО нужной длительности и РОВНО в кадре ролика.
+
+    Клип встаёт в раскадровку как обычный beat_NNN.mp4 — рендеру ролика
+    знать про сцены не нужно, для него это просто ещё один файл.
+
+    width/height/fps едут в props и оттуда — в calculateMetadata композиции
+    Scene (remotion/src/Root.tsx). Флагов --width/--height у `remotion render`
+    нет, а --scale не то: сцены верстаются от useVideoConfig(), им нужен
+    другой видеоконфиг, а не растянутый на выходе кадр.
+
+    Раньше эти три параметра принимались и НЕ использовались ни разу, и сцена
+    всегда выходила 1920x1080. На вертикальном канале (1080x1920) render.py
+    приводит такой клип фильтром scale=increase + центральный crop: 1920x1080
+    растягивается до 3413x1920 и режется до 1080 — в кадре остаётся 31.6%
+    ширины сцены, подписи и шкалы за краем. Молча: рендер возвращает успех.
+    """
+    import overlays as ov
+    props = {"kind": kind, "dur": round(float(seconds), 3),
+             "exit": 1, "enter": 1,
+             "width": int(width), "height": int(height), "fps": int(fps)}
+    if title:
+        props["title"] = title
+    if items:
+        props["items"] = list(items)
+    if lat is not None and lon is not None:
+        props["lat"], props["lon"] = float(lat), float(lon)
+    # Почерк и акцент канала: по ним подложка сцены выбирает свой тон дна
+    # (Backdrop.BASES). Пустые не шлём — у Backdrop свои умолчания.
+    if look:
+        props["look"] = look
+    if accent:
+        props["accent"] = accent
+
+    npx = ov._npx()
+    if not npx:
+        _no_scene(kind, "Node.js/npx не найден — рисовать сцены нечем")
+        raise RuntimeError("нет npx — Node.js не установлен")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [npx, "remotion", "render", "Scene", str(dest),
+           "--props", json.dumps(props, ensure_ascii=False),
+           "--codec", "h264", "--log", "error"]
+    r = subprocess.run(cmd, cwd=REMOTION, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=900,
+                       env=ov._node_env(), creationflags=CREATE_NO_WINDOW)
+    if r.returncode != 0 or not dest.exists():
+        # Жалуемся ЗДЕСЬ, хотя ошибку ловит вызывающий (core: «сцена не
+        # отрисовалась — беру обычный кадр»). Там она превращается в строку
+        # журнала, и подмена уезжает в ролик молча: вместо схемы «нагрузка
+        # перешла на три опоры» зритель видит стоковую стройку. Место
+        # подмены знает только этот файл, поэтому и говорит он.
+        _no_scene(kind, (r.stderr or "")[-200:])
+        raise RuntimeError(f"сцена {kind} не отрисовалась: {r.stderr[-300:]}")
+    log(f"[Сцена] {kind} -> {dest.name} ({seconds:.1f} c)")
+    return dest
+
+
+def available_scenes() -> list[str]:
+    """Какие сцены сейчас есть в диспетчере Scene.tsx.
+
+    Пустой список раньше означал сразу две противоположные вещи: «сцен ещё
+    не писали» и «диспетчер не прочитался». Во втором случае grow() считает
+    НОВОЙ каждую сцену и переписывает существующие поверх, а audit() бодро
+    сообщает «сцен в диспетчере: 0; годных 0» — то есть библиотека выглядит
+    проверенной, ни разу её не открыв.
+    """
+    try:
+        src = REGISTRY.read_text(encoding="utf-8")
+    except OSError as e:
+        raise RuntimeError(
+            f"не читается диспетчер сцен {REGISTRY}: {e}. Пока он недоступен, "
+            "нельзя ни понять, какие сцены уже есть, ни добавить новую") from e
+    return re.findall(r"case '([a-z0-9_]+)':", src)
+
+
+# ---------- Оркестровка: от сценария до принятых сцен ----------
+
+def propose(script_text: str, channel: dict, count: int = 8,
+            api_key: str = "", log=print) -> list[dict]:
+    """Спросить у модели, ГДЕ в сценарии нужна нарисованная сцена.
+
+    Возвращает список замыслов, а не готовый код: сначала решаем «что и
+    зачем», потом отдельным запросом «как это нарисовать». Слитый в один
+    запрос, он даёт код под выдуманный повод — проверено на оверлеях.
+    """
+    import core
+    look = SCENE_LOOK.get((channel.get("palette") or "").strip().lower(), "")
+    prompt = PROPOSE_PROMPT.format(
+        channel=channel.get("name") or channel.get("id", ""),
+        tone=channel.get("tone", "документальный"),
+        lang=channel.get("lang", "английский"),
+        look=("\n\nHOUSE STYLE OF THIS CHANNEL — follow it exactly:\n"
+              + look) if look else "",
+        count=count,
+        script=script_text[:14000])
+    out = core.llm_chat([{"role": "user", "content": prompt}],
+                        api_key, 0.7, 6000)
+    try:
+        ideas = json.loads(_strip_fences(out))
+    except ValueError:
+        log("[Сцены] Модель ответила не JSON — сцен в этом ролике не будет",
+            "warn")
+        # Молчаливый возврат [] означал бы «в сценарии не нашлось моментов под
+        # схему» — а это совсем другое дело. Здесь моменты, возможно, есть, но
+        # ни один не будет нарисован, и весь ролик пойдёт одной съёмкой.
+        _complain("нарисованных схем в ролике не будет совсем",
+                  why=f"модель ответила не JSON: {str(out)[:120]}",
+                  hint="обычно лечится повтором; если повторяется — кончилась "
+                       "квота модели, попробуй позже",
+                  level="заметно")
+        return []
+    if not isinstance(ideas, list):
+        _complain("нарисованных схем в ролике не будет совсем",
+                  why=f"модель вернула {type(ideas).__name__} вместо списка "
+                      "замыслов",
+                  hint="обычно лечится повтором",
+                  level="заметно")
+        return []
+    good = []
+    for it in ideas:
+        if not isinstance(it, dict):
+            continue
+        kind = re.sub(r"[^a-z0-9_]+", "_", str(it.get("kind", "")).lower()).strip("_")
+        if not kind or not it.get("quote"):
+            continue
+        it["kind"] = kind
+        good.append(it)
+    log(f"[Сцены] Модель нашла мест под сцены: {len(good)}")
+    return good[:count]
+
+
+def write_scene(idea: dict, api_key: str = "", log=print,
+                rejected: str = "", why: list | None = None) -> str:
+    """Попросить модель написать КОД одной сцены.
+
+    rejected/why — прошлая отвергнутая попытка и причины отказа. БЕЗ НИХ
+    повтор был буквально тем же запросом: тот же промпт — тот же ответ.
+    Замер ночи 2026-08-04: из шести сцен три отвергнуты, и у каждой все
+    три попытки провалились по одной и той же причине (неиспользуемая
+    переменная, залитый кадр) — модель не знала, что именно не так.
+    Ровно та же ошибка уже ловилась на главах сценария.
+    """
+    import core
+    kind = idea["kind"]
+    prompt = CODE_PROMPT.format(
+        quote=idea.get("quote", ""), brief=idea.get("brief", ""),
+        title=idea.get("title", ""), component=_component_name(kind))
+    # ОБРЫВ лечится не так, как ошибка в коде. Разбор прошлой попытки здесь
+    # был бы вреден вдвойне: он не про то (чинить нечего, код не дописан) и
+    # он вкладывает в промпт 3000 символов прошлого ответа, подталкивая
+    # модель писать ЕЩЁ длиннее — то есть обрываться снова. Замер 29.08:
+    # hydrostatic_pressure_vectors так и потеряли, три попытки подряд.
+    if any(CUT_MARK in str(w) for w in (why or [])):
+        return _strip_fences(core.llm_chat(
+            [{"role": "user", "content": prompt + (
+                "\n\nYOUR PREVIOUS ANSWER WAS CUT OFF mid-file — it hit the "
+                "output length limit, so the code was never finished. There "
+                "was nothing wrong with it, it was simply too long.\n"
+                "Write the SAME scene again, but SHORTER: aim for about 120 "
+                "lines and never exceed 200. Keep the drawing dense but "
+                "compact — fewer decorative elements, shorter labels, reuse "
+                "one .map() instead of repeating similar JSX blocks, no long "
+                "comments. Finish the file: the last line must be the closing "
+                "`};` of the component.")}],
+            api_key, 0.3, CODE_TOKENS_RETRY))
+    if why:
+        # Заготовочный отказ переспрашивается БЕЗ прошлого ответа, поэтому
+        # rejected здесь больше не обязателен: ветка нужна и тогда, когда
+        # возвращать нечего.
+        prompt += retry_prompt(rejected, why)
+    # Температура для КОДА низкая. 0.85 хороша для замыслов, но на коде
+    # даёт синтаксический мусор: замер 2026-08-04 — 26 отказов из 54 были
+    # не «скучно нарисовано», а «'}' expected» и «No overload matches».
+    # Разнообразие сцен обеспечивает propose(), а не дрожь в генераторе кода.
+    сырое = core.llm_chat([{"role": "user", "content": prompt}], api_key, 0.3,
+                          CODE_TOKENS)
+    код = _strip_fences(сырое)
+    # Провайдер сам сказал, что упёрся в потолок, — несём эту пометку дальше,
+    # в accept(). Она надёжнее любого разбора скобок: там догадка, здесь факт.
+    почему = core.was_cut(сырое)
+    if почему:
+        log(f"[Сцены] {kind}: {почему}", "warn")
+        return core.mark_cut(код, почему)
+    return код
+
+
+def grow(script_text: str, channel: dict, count: int = 6, dur: float = 6.0,
+         api_key: str = "", log=print) -> list[dict]:
+    """Полный цикл: замыслы -> код -> приёмка -> библиотека канала.
+
+    Возвращает список ПРИНЯТЫХ сцен: [{kind, title, quote, items}].
+    Отвергнутые не возвращаются вовсе — в ролик попадает только то, что
+    прошло все ступени.
+    """
+    ideas = propose(script_text, channel, count, api_key, log)
+    if not ideas:
+        return []
+    lib, lib_err = _read_json_map(LIBRARY)
+    if lib_err:
+        # Читать не вышло — значит и ПИСАТЬ нельзя (см. конец функции):
+        # запись положила бы в scenes.json только сцены этого ролика, стерев
+        # замыслы всех остальных. Замысел живёт только здесь, и без него
+        # досмотр сцены вырождается в «судим по имени файла».
+        _complain("библиотека замыслов сцен не прочитана — новые сцены в неё "
+                  "не запишутся",
+                  why=lib_err,
+                  hint=f"почини {LIBRARY.name}; пока он битый, досмотр "
+                       "старых сцен идёт по одному их названию",
+                  level="критично")
+        log(f"[Сцены] ВНИМАНИЕ: {lib_err} — библиотеку не переписываю, "
+            "чтобы не потерять замыслы остальных сцен", "warn")
+
+    accepted: list[dict] = []
+    have = set(available_scenes())
+    # Сцены, которые аудит уже признал не изображающими своё название.
+    # Библиотека ОБЩАЯ и переиспользуемая, поэтому один розовый прямоугольник
+    # без такой проверки кочует из ролика в ролик неограниченно долго.
+    quar = quarantined()
+    seen_verdicts = audit_load()
+
+    # ПЕРВЫЙ ПРОХОД, последовательный и мгновенный: развести замыслы на два
+    # ведра — «уже есть в библиотеке» (модель не нужна вовсе) и «надо писать».
+    # Раньше это решалось внутри общего цикла, но в параллели проверка
+    # `kind in have` перестала бы работать: have пополнялся по ходу дела, и
+    # два потока с одинаковым kind писали бы ОДИН файл сцены.
+    готовые: set[int] = set()          # номера замыслов, взятых из библиотеки
+    задания: list[tuple[int, dict, str]] = []   # (номер, замысел, старый код)
+    занятые: set[str] = set()          # kind'ы, уже отданные в работу
+    for номер, idea in enumerate(ideas):
+        kind = idea["kind"]
+        redo = ""
+        if kind in have:
+            redo = quar.get(kind, "")
+            if not redo:
+                # Такая сцена уже есть — не переписываем, просто используем.
+                # Так библиотека канала копится между роликами, а не
+                # переделывается заново каждую ночь.
+                готовые.add(номер)
+                was = (seen_verdicts.get(kind) or {}).get("verdict")
+                log(f"[Сцены] {kind}: уже в библиотеке — беру готовую"
+                    + ("" if was == VISION_OK else " (зрением НЕ проверена)"))
+                if was != VISION_OK:
+                    # Готовая сцена берётся В КАДР как есть, и никакая ступень
+                    # приёмки её больше не смотрит: приёмка работает только
+                    # над свежим кодом. Одной строкой со счётчиком — сколько
+                    # схем в этом ролике никто не видел глазами.
+                    _complain("готовые схемы взяты из библиотеки без досмотра "
+                              "зрением",
+                              why="вердикта в scenes_audit.json по ним нет — "
+                                  "проверялось только то, что код рабочий",
+                              hint="python gen_scenes.py --audit --limit 5 "
+                                   "(квота зрения мала, поэтому понемногу)",
+                              level="мелочь")
+                continue
+            log(f"[Сцены] {kind}: помечена на перегенерацию ({redo[:120]}) — "
+                "пишу заново вместо того, чтобы брать готовую", "warn")
+        if kind in занятые:
+            # Один и тот же kind в списке замыслов дважды. В параллели это
+            # были бы два потока, пишущие один и тот же файл сцены и один и
+            # тот же Scene.tsx. Пишем один раз, а второй замысел получит тот
+            # же исход при сборке итога ниже — они про одну сцену.
+            continue
+        занятые.add(kind)
+        # Старый код сцены на случай, если переписать не выйдет. accept()
+        # при отказе СТИРАЕТ файл и вычищает его из Scene.tsx — для новой
+        # сцены это правильно, а для существующей означало бы, что неудачная
+        # ночь молча уносит сцену, на которую ссылаются другие ролики.
+        # Лучше вернуть прежнюю (пусть и плохую) версию: она хотя бы
+        # собирается, а пометка на перегенерацию остаётся висеть.
+        old_code = ""
+        if redo:
+            try:
+                old_code = (SCENES_DIR / f"{kind}.tsx").read_text(encoding="utf-8")
+            except OSError:
+                pass
+        задания.append((номер, idea, old_code))
+
+    def _написать(job: tuple[int, dict, str]) -> tuple[int, str | None]:
+        """Одна сцена целиком: попытки написать код + приёмка.
+
+        Возвращает (номер замысла, вердикт зрения) при успехе и
+        (номер, None) при провале. Тело — ровно прежний цикл попыток; вся
+        разница в том, что accept() зовётся под _ACCEPT_LOCK, потому что
+        только он трогает общие на весь проект файлы (Scene.tsx,
+        scenes_audit.json) и запускает tsc на всём Remotion.
+        """
+        номер, idea, old_code = job
+        kind = idea["kind"]
+        # Что сцена ОБЯЗАНА изобразить — это и есть вопрос к зрению.
+        subject = (idea.get("brief") or idea.get("quote") or "").strip()
+        prev_code, prev_why = "", []
+        for attempt in range(1, ATTEMPTS + 1):
+            try:
+                code = write_scene(idea, api_key, log,
+                                   rejected=prev_code, why=prev_why)
+            except Exception as e:
+                log(f"[Сцены] {kind}: модель не ответила ({e})", "warn")
+                break
+            report: dict = {}
+            try:
+                with _ACCEPT_LOCK:
+                    bad = accept(kind, code, idea.get("title", ""), dur, log,
+                                 subject=subject, api_key=api_key,
+                                 report=report)
+            except Exception as e:
+                # В одиночном проходе исключение приёмки уносило весь grow().
+                # В параллельном оно унесло бы вдобавок работу соседних
+                # потоков, уже оплаченную вызовами модели, — гасим на своей
+                # сцене, остальные доедут.
+                log(f"[Сцены] {kind}: приёмка сорвалась ({e})", "warn")
+                break
+            prev_code, prev_why = code, bad
+            if not bad:
+                seen = report.get("vision", VISION_BLIND)
+                log(f"[Сцены] {kind}: ПРИНЯТА (попытка {attempt})"
+                    + ("" if seen == VISION_OK else
+                       " — но кадр зрением НЕ ПРОВЕРЕН, помечена в "
+                       "scenes_audit.json"))
+                return номер, seen
+            log(f"[Сцены] {kind}: отклонена (попытка {attempt}/{ATTEMPTS}) — "
+                + "; ".join(bad)[:200], "warn")
+        log(f"[Сцены] {kind}: не прошла приёмку — этот момент останется "
+            "обычным кадром", "warn")
+        # Восстанавливаем ИМЕННО ЗДЕСЬ, а не в ветке «кончились попытки»:
+        # цикл выходит ещё и по break, когда модель не ответила, и тогда
+        # файл уже мог быть стёрт предыдущей попыткой. Под тем же замком:
+        # это запись в Scene.tsx, такая же общая, как и в accept().
+        if old_code:
+            # try здесь ровно по той же причине, что и вокруг accept():
+            # register() умеет бросать («якорь не найден»), а исключение,
+            # выпущенное из потока, вылетает при чтении ex.map и уносит
+            # ВЕСЬ параллельный проход — вместе с уже оплаченными ответами
+            # модели по соседним сценам. Своя сцена и так уже провалена.
+            try:
+                with _ACCEPT_LOCK:
+                    (SCENES_DIR / f"{kind}.tsx").write_text(old_code,
+                                                            encoding="utf-8")
+                    register(kind, _component_name(kind))
+                log(f"[Сцены] {kind}: вернул прежнюю версию файла — она "
+                    "остаётся помеченной на перегенерацию, но сборка "
+                    "Remotion не разваливается", "warn")
+            except Exception as e:
+                log(f"[Сцены] {kind}: прежнюю версию вернуть не вышло "
+                    f"({e}) — этой сцены в диспетчере не будет", "warn")
+        return номер, None
+
+    # ВТОРОЙ ПРОХОД — параллельный, тем же приёмом, что и раскадровка кадров
+    # в core._prefetch_ai_beats: ThreadPoolExecutor + ex.map, порядок исхода
+    # совпадает с порядком заданий. Ждать ответа модели по очереди было
+    # самой дорогой ошибкой прогона: 61 минута на шесть сцен.
+    исходы: dict[int, str] = {}
+    if задания:
+        каналов = _каналов_в_работе()
+        потолок = max(1, SCENE_WORKERS // каналов)
+        потоков = max(1, min(потолок, len(задания)))
+        log(f"[Сцены] Параллельная генерация: {len(задания)} сцен, "
+            f"до {потоков} одновременно (приёмка — по одной)...")
+        with ThreadPoolExecutor(max_workers=потоков) as ex:
+            for сделано, (номер, seen) in enumerate(
+                    ex.map(_написать, задания), 1):
+                if seen is not None:
+                    исходы[номер] = seen
+                log(f"[Очередь сцен] Готово {сделано}/{len(задания)}; "
+                    f"принято {len(исходы)}, в работе до {потоков}"
+                    + (f" (каналов разом {каналов}, потолок урезан "
+                       f"с {SCENE_WORKERS})" if каналов > 1 else ""))
+
+    # ИТОГ в исходном порядке замыслов: параллель не должна менять порядок
+    # сцен в ролике. Дубли по kind (см. «занятые») получают исход своего
+    # близнеца — файл сцены у них общий.
+    удались = ({ideas[n]["kind"] for n in готовые}
+               | {ideas[n]["kind"] for n in исходы})
+    for номер, idea in enumerate(ideas):
+        kind = idea["kind"]
+        if номер in исходы:
+            lib[f"{channel.get('id','')}/{kind}"] = {
+                "kind": kind, "channel": channel.get("id", ""),
+                "title": idea.get("title", ""),
+                "quote": idea.get("quote", "")[:200],
+                "brief": idea.get("brief", "")[:300],
+                # Видел ли кто-нибудь эту сцену глазами. Поле нужно
+                # именно в библиотеке: по нему `--audit --unverified`
+                # потом досматривает то, что прошло на выбранной квоте.
+                "vision": исходы[номер],
+            }
+        elif kind not in удались:
+            continue
+        accepted.append(idea)
+        have.add(kind)
+
+    if not lib_err:
+        LIBRARY.write_text(json.dumps(lib, ensure_ascii=False, indent=2),
+                           encoding="utf-8")
+    log(f"[Сцены] Принято {len(accepted)} из {len(ideas)}")
+    if len(accepted) < len(ideas):
+        # Каждая непринятая сцена — это план, который зритель увидит обычной
+        # съёмкой вместо схемы: «нагрузка перешла на три опоры» под стоковым
+        # кадром стройки. Раньше про это говорила строка в середине журнала,
+        # а итог прогона был таким же, как у ролика со всеми сценами.
+        _complain(f"нарисованных схем в ролике меньше задуманного: "
+                  f"{len(accepted)} из {len(ideas)}",
+                  why="остальные не прошли приёмку — причины по каждой выше "
+                      "в журнале, строки «[Сцены] … отклонена»",
+                  hint="эти моменты остались обычными кадрами; чаще всего "
+                       "помогает перезапуск — модель пишет сцену заново",
+                  level="заметно")
+    return accepted
+
+
+# ---------- Досмотр УЖЕ НАПИСАННОЙ библиотеки ----------
+
+def library_subjects() -> dict:
+    """kind -> {title, subject} по scenes.json.
+
+    Замысел («что сцена обязана изобразить») хранится только там: в самом
+    .tsx его нет, а без него зрению не с чем сравнивать картинку. Ключ в
+    библиотеке — «канал/kind», а файл сцены общий на все каналы, поэтому
+    сводим к kind; если один kind заводили два канала, берём первый
+    попавшийся замысел — они по определению про одно и то же.
+    """
+    out = {}
+    lib, err = _read_json_map(LIBRARY)
+    if err:
+        # Замыслов нет — досмотр будет судить сцены по названию (_claim_of).
+        # Это заметно слабее, и говорим об этом прямо, иначе аудит выглядел бы
+        # полноценным.
+        print(f"[Аудит] ВНИМАНИЕ: {err} — сцены будут проверяться по одному "
+              "лишь названию, без замысла")
+        return out
+    for rec in lib.values():
+        if not isinstance(rec, dict):
+            continue
+        kind = rec.get("kind")
+        if not kind or kind in out:
+            continue
+        out[kind] = {"title": rec.get("title", ""),
+                     "subject": (rec.get("brief") or rec.get("quote") or "")}
+    return out
+
+
+def _claim_of(kind: str, subjects: dict) -> tuple[str, str]:
+    """Что сцена ОБЕЩАЕТ показать: (подпись, замысел).
+
+    Замысел берём из scenes.json, но у части сцен его нет — их завели до
+    того, как библиотека стала записывать brief. Для них судим ПО ИМЕНИ:
+    имя сцены и есть заявка на содержание, и вопрос «видно ли на картинке
+    thermal gradient cross section» — ровно тот, ради которого всё это
+    писалось. Иначе шесть самых старых сцен остались бы непроверяемыми
+    навсегда.
+    """
+    rec = subjects.get(kind) or {}
+    subject = (rec.get("subject") or "").strip()
+    if not subject:
+        subject = (f'the diagram is named "{kind.replace("_", " ")}" — the '
+                   "drawing must show exactly that")
+    return rec.get("title", ""), subject
+
+
+def _is_quota(why: str) -> bool:
+    """Упёрлись ли в квоту модели — по тем же признакам, что и весь проект.
+
+    Проверка была `"429" in why`, и этого мало: у Gemini суточная квота
+    приходит и словами (RESOURCE_EXHAUSTED, «quota exceeded»), а до сюда
+    текст доезжает уже склеенным из двух провайдеров. Не опознав квоту,
+    досмотр не останавливался, а продолжал рендерить кадр за кадром и
+    складывать «не удалось посмотреть» — по виду работа, по сути перевод
+    времени. Одно место истины — core._is_rate_limit.
+    """
+    try:
+        import core
+        return core._is_rate_limit(str(why))
+    except Exception:
+        w = str(why).lower()
+        return ("429" in w or "quota" in w or "rate limit" in w
+                or "resource_exhausted" in w)
+
+
+def audit(only: list | None = None, limit: int = 0, recheck: bool = False,
+          dur: float = 6.0, api_key: str = "", log=print) -> dict:
+    """Прогнать УЖЕ ЛЕЖАЩИЕ в библиотеке сцены через ступень зрения.
+
+    Зачем отдельной командой, а не при каждом ролике. Сцены
+    переиспользуются («уже в библиотеке — беру готовую»), поэтому брак,
+    написанный один раз, кочует из ролика в ролик. Но досматривать все
+    шесть десятков на каждом прогоне нельзя: это шесть десятков рендеров и
+    шесть десятков запросов к зрению, а суточная квота — двадцать на пару
+    «проект + модель». Поэтому досмотр — ручная команда с --limit, а ролик
+    просто читает готовые вердикты из scenes_audit.json.
+
+    Ничего не удаляет и не переписывает: только пишет вердикты в данные.
+    Отвергнутые сцены попадут на перегенерацию в следующий раз, когда
+    очередной ролик их закажет (см. quarantined() в grow).
+    """
+    subjects = library_subjects()
+    known = audit_load(log)
+    kinds = [k for k in available_scenes() if k not in BUILTIN_SCENES]
+    skipped = len(available_scenes()) - len(kinds)
+    if only:
+        kinds = [k for k in kinds if k in set(only)]
+
+    todo = []
+    for k in kinds:
+        was = (known.get(k) or {}).get("verdict")
+        if was in (VISION_OK, VISION_BAD) and not recheck:
+            continue
+        todo.append(k)
+    if limit:
+        todo = todo[:limit]
+
+    log(f"[Аудит] Сцен в диспетчере: {len(kinds)}; написаны руками "
+        f"(не трогаю): {skipped}; к досмотру сейчас: {len(todo)}")
+    stat = {VISION_OK: 0, VISION_BAD: 0, VISION_BLIND: 0}
+    for i, k in enumerate(todo, 1):
+        title, subject = _claim_of(k, subjects)
+        verdict, why = check_vision(k, title, subject, dur, api_key, log)
+        audit_mark(k, verdict, why, subject, title)
+        stat[verdict] = stat.get(verdict, 0) + 1
+        mark = {VISION_OK: "годится", VISION_BAD: "НА ПЕРЕГЕНЕРАЦИЮ",
+                VISION_BLIND: "не удалось посмотреть"}[verdict]
+        log(f"[Аудит] {i}/{len(todo)} {k}: {mark} — {why[:200]}")
+        if verdict == VISION_BLIND and _is_quota(why):
+            # Квота выбрана: остальные пойдут тем же путём, а каждый из них
+            # стоит ещё и рендера кадра. Останавливаемся и говорим об этом
+            # вслух, чтобы досмотр продолжили завтра, а не считали, что
+            # библиотека проверена.
+            log("[Аудит] Зрение упёрлось в суточную квоту — останавливаю "
+                "досмотр. Непроверенные сцены остались непроверенными, "
+                "запустите --audit ещё раз позже", "warn")
+            break
+    log(f"[Аудит] Годных {stat[VISION_OK]}, на перегенерацию "
+        f"{stat[VISION_BAD]}, непроверенных {stat[VISION_BLIND]}. "
+        f"Вердикты в {AUDIT.name}")
+    return stat
+
+
+# ---------- Негативный тест приёмки ----------
+
+STUB = """import React from 'react';
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import type { SceneProps } from '../types';
+
+export const SelftestStubScene: React.FC<SceneProps> = (p) => {
+  return (
+    <AbsoluteFill style={{ backgroundColor: '#07090c' }}>
+      {/* Placeholder */}
+    </AbsoluteFill>
+  );
+};
+"""
+
+BLANK = """import React from 'react';
+import { AbsoluteFill, interpolate, useCurrentFrame, Easing } from 'remotion';
+import type { SceneProps } from '../types';
+
+export const SelftestBlankScene: React.FC<SceneProps> = (p) => {
+  const frame = useCurrentFrame();
+  const a = interpolate(frame, [0, 30], [0, 1]);
+  const b = interpolate(frame, [0, 30], [0, 1]);
+  const c = interpolate(frame, [0, 30], [0, 1]);
+  const o = p.enter * p.exit * a * b * c;
+  return <AbsoluteFill style={{ opacity: o }} />;
+};
+"""
+
+# Формально безупречная сцена, которая закрашивает кадр. Именно этот брак
+# доехал до готового ролика: код компилируется, движение есть, кадр не пустой —
+# и всё равно зритель видит семь секунд ровной темноты вместо подложки.
+OPAQUE = """import React from 'react';
+import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import type { SceneProps } from '../types';
+
+export const SelftestOpaqueScene: React.FC<SceneProps> = (p) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const span = Math.max(1, Math.round((p.dur || 6) * fps));
+  const draw = interpolate(frame, [0, span * 0.5], [0, 1], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const rise = interpolate(frame, [0, span], [24, 0], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const pulse = interpolate(frame, [0, span * 0.5, span], [0.6, 1, 0.6], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const opacity = p.enter * p.exit;
+  return (
+    <AbsoluteFill style={{ background: '#07090c', opacity,
+                           justifyContent: 'center', alignItems: 'center' }}>
+      <svg width="52%" viewBox="0 0 400 320">
+        <line x1={40} y1={160 + rise} x2={40 + 320 * draw} y2={160 + rise}
+              stroke="#e9f2f6" strokeWidth={3} opacity={pulse} />
+      </svg>
+      {p.title ? <div style={{ color: '#e9f2f6' }}>{p.title}</div> : null}
+    </AbsoluteFill>
+  );
+};
+"""
+
+# Та же сцена, но с прозрачным корнем — её приёмка обязана пропустить,
+# иначе новая проверка просто запретила бы писать сцены.
+GOOD = OPAQUE.replace("background: '#07090c', opacity,", "opacity,") \
+             .replace("SelftestOpaqueScene", "SelftestGoodScene")
+
+
+def selftest(log=print) -> int:
+    """Скормить приёмке заведомый брак и убедиться, что она его ловит.
+
+    Зелёному прогону без этого верить нельзя: прошлый раз ИИ-генерация
+    оверлеев «работала» ровно до того дня, когда выяснилось, что она
+    пропускает заглушки.
+    """
+    fails = []
+
+    bad = check_static(STUB)
+    log(f"заглушка с Placeholder -> {len(bad)} претензий:")
+    for b in bad:
+        log(f"    {b}")
+    if not bad:
+        fails.append("заглушка прошла статическую проверку")
+
+    bad_op = check_static(OPAQUE)
+    log(f"\nсцена с непрозрачным корнем -> {len(bad_op)} претензий:")
+    for b in bad_op:
+        log(f"    {b}")
+    if not any("непрозрачн" in b for b in bad_op):
+        fails.append("заливка кадра прошла статическую проверку — "
+                     "подложку Backdrop снова закроют")
+
+    # Обратная сторона: проверка не должна отвергать нормальную сцену,
+    # иначе гейт «работает», просто ничего не пропуская.
+    bad_ok = check_static(GOOD)
+    log(f"\nта же сцена с прозрачным корнем -> {len(bad_ok)} претензий:")
+    for b in bad_ok:
+        log(f"    {b}")
+    if bad_ok:
+        fails.append("правильная сцена отвергнута: " + "; ".join(bad_ok))
+
+    bad2 = check_static(BLANK)
+    log(f"\nпустой кадр (три пустых interpolate) -> {len(bad2)} претензий:")
+    for b in bad2:
+        log(f"    {b}")
+    # этот проходит статику намеренно — его должен поймать рендер
+    log("\nпроверяю рендером (кадр без содержимого)...")
+    try:
+        r = accept("selftest_blank", BLANK, "", 4.0, log)
+        log(f"рендерная проверка -> {len(r)} претензий:")
+        for b in r:
+            log(f"    {b}")
+        if not r:
+            fails.append("ПУСТОЙ КАДР ПРИНЯТ — гейт дырявый")
+    except Exception as e:
+        log(f"проверка не отработала: {e}")
+        fails.append(str(e))
+
+    # Ступень зрения проверяем ОТДЕЛЬНОЙ командой (--audit --only ...), а не
+    # здесь: она стоит запроса к модели, а суточная квота Gemini мала —
+    # селф-тест должен оставаться бесплатным и запускаемым сколько угодно.
+    log("\n" + "=" * 58)
+    if fails:
+        log("ПРОВАЛ: " + "; ".join(fails))
+        return 1
+    log("гейт ловит и заглушку, и пустой кадр")
+    return 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--selftest", action="store_true",
+                    help="негативный тест приёмки, без обращений к модели")
+    ap.add_argument("--audit", action="store_true",
+                    help="досмотреть зрением уже написанные сцены")
+    ap.add_argument("--only", default="",
+                    help="только эти сцены, через запятую")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="сколько сцен досмотреть за раз (квота зрения мала)")
+    ap.add_argument("--recheck", action="store_true",
+                    help="пересмотреть и те, по которым вердикт уже есть")
+    ap.add_argument("--list", action="store_true",
+                    help="показать накопленные вердикты")
+    a = ap.parse_args(argv)
+
+    # Ключи лежат в .env, а читает его app.py — отдельная команда
+    # запускается без приложения, и без этой строки зрение молча ушло бы в
+    # «недоступно» на пустом ключе, пометив всю библиотеку непроверенной.
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(BASE / ".env")
+    except Exception as e:
+        # Раньше здесь стояло молчаливое pass — ровно та дыра, от которой
+        # соседний комментарий и предостерегает: без ключей зрение отвечает
+        # «недоступно» на КАЖДУЮ сцену, и досмотр честно проставляет всей
+        # библиотеке «непроверено», выглядя при этом отработавшим.
+        print(f"[Аудит] ВНИМАНИЕ: .env не прочитан ({type(e).__name__}: {e}) — "
+              "если ключей нет и в окружении, зрение будет недоступно, и все "
+              "сцены получат вердикт «не удалось посмотреть»")
+
+    if a.selftest:
+        return selftest()
+    if a.list:
+        data, err = _read_json_map(AUDIT)
+        if err:
+            # «Пусто» и «испорчено» отвечают на разные вопросы: в первом
+            # случае досмотра не было, во втором — он был, а его результат
+            # больше не читается, и сцены с вердиктом «на перегенерацию»
+            # прямо сейчас снова считаются годными.
+            print(f"вердикты не читаются: {err}")
+            return 2
+        if not data:
+            print(f"{AUDIT.name}: пока пусто — запустите --audit")
+            return 0
+        for k, v in sorted(data.items(),
+                           key=lambda kv: kv[1].get("verdict", "")):
+            print(f"{v.get('verdict','?'):11} {k:38} {v.get('why','')[:90]}")
+        bad = [k for k, v in data.items() if v.get("verdict") == VISION_BAD]
+        print(f"\nна перегенерацию помечено: {len(bad)} из {len(data)}")
+        return 0
+    if a.audit:
+        only = [s.strip() for s in a.only.split(",") if s.strip()]
+        stat = audit(only=only or None, limit=a.limit, recheck=a.recheck)
+        return 0 if stat.get(VISION_BAD, 0) == 0 else 2
+    ap.print_help()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -67,11 +67,29 @@ export const RemotionRoot: React.FC = () => {
       width={1920}
       height={1080}
       defaultProps={{kind: 'globe', title: '', dur: 5,
-                     exit: 1, enter: 1} as SceneProps}
+                     exit: 1, enter: 1, fps: 30,
+                     width: 1920, height: 1080} as SceneProps}
+      // РАЗМЕР КАДРА ЗАДАЁТСЯ ЗДЕСЬ, А НЕ ФЛАГАМИ КОМАНДНОЙ СТРОКИ.
+      // Причина простая и проверяемая: у `npx remotion render` в 4.0.496
+      // флагов --width/--height нет вовсе (в @remotion/cli/dist их не
+      // найти), а есть только --scale, который растягивает готовый кадр и
+      // не меняет useVideoConfig(). Сцены же (567 файлов в src/scenes/)
+      // все до одной верстаются от useVideoConfig().width/height — им
+      // нужен ИМЕННО другой видеоконфиг, а не масштаб на выходе.
+      // calculateMetadata умеет вернуть width/height/fps, и ровно так же
+      // здесь устроен Overlay выше — одно правило на обе композиции.
+      //
+      // fps тоже читается из props, а не прибит числом 30: длительность
+      // раньше считалась `p.dur * 30` при любом fps композиции, и на
+      // канале с другой частотой сцена вышла бы не той длины.
       calculateMetadata={({props}) => {
         const p = props as SceneProps;
+        const fps = p.fps ?? 30;
         return {
-          durationInFrames: Math.max(2, Math.round((p.dur ?? 5) * 30)),
+          durationInFrames: Math.max(2, Math.round((p.dur ?? 5) * fps)),
+          fps,
+          width: p.width ?? 1920,
+          height: p.height ?? 1080,
           props,
         };
       }}

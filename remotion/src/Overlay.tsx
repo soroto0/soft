@@ -15,14 +15,14 @@ export type { OverlayProps };
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#4a8b8c',
-  accentLight: '#7fb5b6',
-  accentRgb: '74,139,140',
-  bannerFrom: '#c8d8d6',
-  bannerTo: '#a8beb8',
-  bannerText: '#1e3533',
-  kickerFrom: '#1a2e30',
-  kickerTo: '#253d3e',
+  accent: '#4a7c8a',
+  accentLight: '#7fb5b0',
+  accentRgb: '74,124,138',
+  bannerFrom: '#dcd8cc',
+  bannerTo: '#c9c4b6',
+  bannerText: '#1e272a',
+  kickerFrom: '#233a40',
+  kickerTo: '#15262a',
 };
 
 const useExit = (dur: number) => {
@@ -757,14 +757,14 @@ const Collage = ({ items, exit, enter }: { items: { label: string; img: string }
 // расстановщик оверлеев и накопленные варианты, и терять их незачем.
 const POSTER_PALETTES: Record<string, { ink: string; paper: string; accent: string }> = {
   // почерк каналов (channels.json/palette)
-  harsh:         { ink: '#0a0b0d', paper: '#efeae3', accent: '#4a8b8c' },
-  warm:          { ink: '#241a10', paper: '#f4e7cd', accent: '#4a8b8c' },
-  contemplative: { ink: '#f0f2f4', paper: '#141a22', accent: '#4a8b8c' },
+  harsh:         { ink: '#0a0b0d', paper: '#efeae3', accent: '#4a7c8a' },
+  warm:          { ink: '#241a10', paper: '#f4e7cd', accent: '#4a7c8a' },
+  contemplative: { ink: '#f0f2f4', paper: '#141a22', accent: '#4a7c8a' },
   // прежние имена карточки
-  alarm:     { ink: '#0a0b0d', paper: '#efeae3', accent: '#4a8b8c' },
-  blueprint: { ink: '#0d1b2a', paper: '#e8eef3', accent: '#4a8b8c' },
-  hazard:    { ink: '#141414', paper: '#f2e9d8', accent: '#4a8b8c' },
-  night:     { ink: '#f0f2f4', paper: '#111417', accent: '#4a8b8c' },
+  alarm:     { ink: '#0a0b0d', paper: '#efeae3', accent: '#4a7c8a' },
+  blueprint: { ink: '#0d1b2a', paper: '#e8eef3', accent: '#4a7c8a' },
+  hazard:    { ink: '#141414', paper: '#f2e9d8', accent: '#4a7c8a' },
+  night:     { ink: '#f0f2f4', paper: '#111417', accent: '#4a7c8a' },
 };
 
 const Poster = ({

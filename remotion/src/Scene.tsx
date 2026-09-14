@@ -2,6 +2,7 @@ import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { SceneProps } from './types';
 import { GlobeScene } from './scenes/globe';
+import { MOTION_SCENES } from './scenes/_motion';
 import { LayersScene } from './scenes/layers';
 import { ForcesScene } from './scenes/forces';
 import { ChartScene } from './scenes/chart';
@@ -396,6 +397,329 @@ import { GroutCurtainLayoutScene } from './scenes/grout_curtain_layout';
 import { GroutCurtainGapProfileScene } from './scenes/grout_curtain_gap_profile';
 import { PorePressureLagSectionScene } from './scenes/pore_pressure_lag_section';
 import { PiezometerBlindSpotScene } from './scenes/piezometer_blind_spot';
+import { ProgressiveCollapseMechanicsScene } from './scenes/progressive_collapse_mechanics';
+import { NeutralAxisStressesScene } from './scenes/neutral_axis_stresses';
+import { PrecastElementAssemblyScene } from './scenes/precast_element_assembly';
+import { InterfaceJointDetailScene } from './scenes/interface_joint_detail';
+import { ReducedContactAreaScene } from './scenes/reduced_contact_area';
+import { MonolithicVsLayeredScene } from './scenes/monolithic_vs_layered';
+import { RequiredSurfaceRoughnessScene } from './scenes/required_surface_roughness';
+import { ActualSurfaceConditionScene } from './scenes/actual_surface_condition';
+import { IndependentLayerStaticsScene } from './scenes/independent_layer_statics';
+import { HorizontalForceCorbelScene } from './scenes/horizontal_force_corbel';
+import { RebarAnchorageErrorScene } from './scenes/rebar_anchorage_error';
+import { CapacityReductionChartScene } from './scenes/capacity_reduction_chart';
+import { FinalDelaminationScene } from './scenes/final_delamination';
+import { TopDownProjectionScene } from './scenes/top_down_projection';
+import { CrossSectionCutScene } from './scenes/cross_section_cut';
+import { StructuralDiagramScene } from './scenes/structural_diagram';
+import { VibrationWaveDiagramScene } from './scenes/vibration_wave_diagram';
+import { ResonanceChartScene } from './scenes/resonance_chart';
+import { AsymmetricLoadMapScene } from './scenes/asymmetric_load_map';
+import { DeformationSchematicScene } from './scenes/deformation_schematic';
+import { TorsionDiagramScene } from './scenes/torsion_diagram';
+import { StressAnalysisSectionScene } from './scenes/stress_analysis_section';
+import { LoadCapacityGraphScene } from './scenes/load_capacity_graph';
+import { ForceFlowAnimationScene } from './scenes/force_flow_animation';
+import { LoadRedistributionScene } from './scenes/load_redistribution';
+import { StressComparisonChartScene } from './scenes/stress_comparison_chart';
+import { AtomicLatticeDiagramScene } from './scenes/atomic_lattice_diagram';
+import { CoatingSectionScene } from './scenes/coating_section';
+import { PressureBuildupDiagramScene } from './scenes/pressure_buildup_diagram';
+import { TimeProcessGraphScene } from './scenes/time_process_graph';
+import { GrainBoundaryDiagramScene } from './scenes/grain_boundary_diagram';
+import { RoofStrataSectionScene } from './scenes/roof_strata_section';
+import { LoadConcentrationElevationScene } from './scenes/load_concentration_elevation';
+import { StressDistributionMapScene } from './scenes/stress_distribution_map';
+import { CollapseZonePlanScene } from './scenes/collapse_zone_plan';
+import { JointFractureDetailScene } from './scenes/joint_fracture_detail';
+import { VibrationPropagationDiagramScene } from './scenes/vibration_propagation_diagram';
+import { TrussModificationDiagramScene } from './scenes/truss_modification_diagram';
+import { ForceVectorAnalysisScene } from './scenes/force_vector_analysis';
+import { DensityComparisonVisualScene } from './scenes/density_comparison_visual';
+import { TensionRedistributionModelScene } from './scenes/tension_redistribution_model';
+import { DeformationTriggerSchematicScene } from './scenes/deformation_trigger_schematic';
+import { PlasticDeformationSequenceScene } from './scenes/plastic_deformation_sequence';
+import { SafetyMarginChartScene } from './scenes/safety_margin_chart';
+import { CapacityDeficitComparisonScene } from './scenes/capacity_deficit_comparison';
+import { BearingFailureProcessScene } from './scenes/bearing_failure_process';
+import { HoleOvalizationDetailScene } from './scenes/hole_ovalization_detail';
+import { LeverageIncreaseDiagramScene } from './scenes/leverage_increase_diagram';
+import { EccentricLoadPathScene } from './scenes/eccentric_load_path';
+import { BoltBendingStressScene } from './scenes/bolt_bending_stress';
+import { AsymmetricLoadRedistributionScene } from './scenes/asymmetric_load_redistribution';
+import { LoadPathShiftScene } from './scenes/load_path_shift';
+import { StructuralInstabilityDiagramScene } from './scenes/structural_instability_diagram';
+import { StructuralPerimeterFailureScene } from './scenes/structural_perimeter_failure';
+import { MaterialCompositionRatioScene } from './scenes/material_composition_ratio';
+import { MassLossEvaporationScene } from './scenes/mass_loss_evaporation';
+import { ThermalCoagulationWindowScene } from './scenes/thermal_coagulation_window';
+import { VaporExpansionFailureScene } from './scenes/vapor_expansion_failure';
+import { StructuralSeepageFailureScene } from './scenes/structural_seepage_failure';
+import { MaterialDensityProjectionScene } from './scenes/material_density_projection';
+import { CellularEvaporationProcessScene } from './scenes/cellular_evaporation_process';
+import { LipidCapillarityInfiltrationScene } from './scenes/lipid_capillarity_infiltration';
+import { ThermalShockGradientScene } from './scenes/thermal_shock_gradient';
+import { ThermalInertiaRatioScene } from './scenes/thermal_inertia_ratio';
+import { IngredientMoistureAnalysisScene } from './scenes/ingredient_moisture_analysis';
+import { ProteinBondInterferenceScene } from './scenes/protein_bond_interference';
+import { ChemicalBondSabotageScene } from './scenes/chemical_bond_sabotage';
+import { PostCookMigrationFailureScene } from './scenes/post_cook_migration_failure';
+import { ProteinContractionSyneresisScene } from './scenes/protein_contraction_syneresis';
+import { CookwareThermalAccumulationScene } from './scenes/cookware_thermal_accumulation';
+import { HeatConductionVelocityScene } from './scenes/heat_conduction_velocity';
+import { LipidSuspensionCollapseScene } from './scenes/lipid_suspension_collapse';
+import { RoofCrossSectionScene } from './scenes/roof_cross_section';
+import { ComponentModificationScene } from './scenes/component_modification';
+import { RoofLayersScene } from './scenes/roof_layers';
+import { LoadDistributionPlanScene } from './scenes/load_distribution_plan';
+import { VibrationTransferScene } from './scenes/vibration_transfer';
+import { ForceVectorComparisonScene } from './scenes/force_vector_comparison';
+import { MomentDiagramScene } from './scenes/moment_diagram';
+import { SensorDeformationScene } from './scenes/sensor_deformation';
+import { PlasticDeformationTimelineScene } from './scenes/plastic_deformation_timeline';
+import { BearingFailureDetailScene } from './scenes/bearing_failure_detail';
+import { CalculationErrorScene } from './scenes/calculation_error';
+import { EccentricLoadingScene } from './scenes/eccentric_loading';
+import { SiteMapIsometricScene } from './scenes/site_map_isometric';
+import { PointLoadDiagramScene } from './scenes/point_load_diagram';
+import { JointStressAnalysisScene } from './scenes/joint_stress_analysis';
+import { CollapseFootprintScene } from './scenes/collapse_footprint';
+import { VibrationPropagationScene } from './scenes/vibration_propagation';
+import { LogisticsTrussCutScene } from './scenes/logistics_truss_cut';
+import { SaturationWeightIncreaseScene } from './scenes/saturation_weight_increase';
+import { StructuralDeficitOverlayScene } from './scenes/structural_deficit_overlay';
+import { CalculationErrorScaleScene } from './scenes/calculation_error_scale';
+import { SensorDiscrepancyGraphScene } from './scenes/sensor_discrepancy_graph';
+import { GeographicalSitePlanScene } from './scenes/geographical_site_plan';
+import { StructuralBucklingDiagramScene } from './scenes/structural_buckling_diagram';
+import { MaterialSpecComparisonScene } from './scenes/material_spec_comparison';
+import { ShearStudDensityScene } from './scenes/shear_stud_density';
+import { WeldPenetrationCutScene } from './scenes/weld_penetration_cut';
+import { ProgressiveDeformationSequenceScene } from './scenes/progressive_deformation_sequence';
+import { SeismicShearStressScene } from './scenes/seismic_shear_stress';
+import { DeflectionMeasurementScene } from './scenes/deflection_measurement';
+import { AxleLoadComparisonScene } from './scenes/axle_load_comparison';
+import { WeldArtifactSectionScene } from './scenes/weld_artifact_section';
+import { ShearForceConcentrationScene } from './scenes/shear_force_concentration';
+import { DeadLoadIncreaseScene } from './scenes/dead_load_increase';
+import { DisplacementVectorScene } from './scenes/displacement_vector';
+import { GridComparisonSectionScene } from './scenes/grid_comparison_section';
+import { StructuralSectionCutScene } from './scenes/structural_section_cut';
+import { PunchingShearDiagramScene } from './scenes/punching_shear_diagram';
+import { ReinforcementComparisonScene } from './scenes/reinforcement_comparison';
+import { LoadDistributionGraphScene } from './scenes/load_distribution_graph';
+import { LoadConcentrationDiagramScene } from './scenes/load_concentration_diagram';
+import { HollowBoxGirderSectionScene } from './scenes/hollow_box_girder_section';
+import { BoltPenetrationCutScene } from './scenes/bolt_penetration_cut';
+import { FillLayerDiagramScene } from './scenes/fill_layer_diagram';
+import { HydrolysisZoomScene } from './scenes/hydrolysis_zoom';
+import { EffectiveHeightGraphScene } from './scenes/effective_height_graph';
+import { DeflectionCurveScene } from './scenes/deflection_curve';
+import { CorrosionGraphScene } from './scenes/corrosion_graph';
+import { ShearConeFormationScene } from './scenes/shear_cone_formation';
+import { NodeGeometryScene } from './scenes/node_geometry';
+import { InterfaceDetailScene } from './scenes/interface_detail';
+import { StructuralDisplacementScene } from './scenes/structural_displacement';
+import { GridEvolutionScene } from './scenes/grid_evolution';
+import { CeilingComparisonScene } from './scenes/ceiling_comparison';
+import { PunchingShearMechanismScene } from './scenes/punching_shear_mechanism';
+import { RebarSpecScene } from './scenes/rebar_spec';
+import { LoadCalculationErrorScene } from './scenes/load_calculation_error';
+import { GirderSectionScene } from './scenes/girder_section';
+import { PenetrationDetailScene } from './scenes/penetration_detail';
+import { RoofAccumulationScene } from './scenes/roof_accumulation';
+import { ChemicalDegradationScene } from './scenes/chemical_degradation';
+import { DelaminationScene } from './scenes/delamination';
+import { InternalFloodingScene } from './scenes/internal_flooding';
+import { AsymmetricLoadScene } from './scenes/asymmetric_load';
+import { CorrosionProcessScene } from './scenes/corrosion_process';
+import { LeverageCalculationScene } from './scenes/leverage_calculation';
+import { StabilitatsGrenzeScene } from './scenes/stabilitats_grenze';
+import { FlutungsPunktScene } from './scenes/flutungs_punkt';
+import { StabilityCurveGraphScene } from './scenes/stability_curve_graph';
+import { FreeSurfaceEffectSectionScene } from './scenes/free_surface_effect_section';
+import { RetractableKeelProjectionScene } from './scenes/retractable_keel_projection';
+import { KeelExtensionComparisonScene } from './scenes/keel_extension_comparison';
+import { AsFoundKeelPositionScene } from './scenes/as_found_keel_position';
+import { HybridStructureSectionScene } from './scenes/hybrid_structure_section';
+import { PostTensioningSystemScene } from './scenes/post_tensioning_system';
+import { TransitionPieceDetailScene } from './scenes/transition_piece_detail';
+import { ContactSurfaceFailureScene } from './scenes/contact_surface_failure';
+import { LoadPathRedistributionScene } from './scenes/load_path_redistribution';
+import { LoadDistributionMapScene } from './scenes/load_distribution_map';
+import { SoilMechanicsAnimationScene } from './scenes/soil_mechanics_animation';
+import { InternalPressureAnalysisScene } from './scenes/internal_pressure_analysis';
+import { PoreWaterPressureBuildupScene } from './scenes/pore_water_pressure_buildup';
+import { JanssenEffectDiagramScene } from './scenes/janssen_effect_diagram';
+import { ConceptMapOverlapScene } from './scenes/concept_map_overlap';
+import { GeographicalRouteScene } from './scenes/geographical_route';
+import { FuerzasConceptualesScene } from './scenes/fuerzas_conceptuales';
+import { MecanismoLegalScene } from './scenes/mecanismo_legal';
+import { StaticLoadDistributionScene } from './scenes/static_load_distribution';
+import { SubsurfaceSpatialRelationshipScene } from './scenes/subsurface_spatial_relationship';
+import { MaterialVolumeAnomalyScene } from './scenes/material_volume_anomaly';
+import { StructuralCrossSectionScene } from './scenes/structural_cross_section';
+import { HydraulicErosionSequenceScene } from './scenes/hydraulic_erosion_sequence';
+import { AuflagerGeometrieVersagenScene } from './scenes/auflager_geometrie_versagen';
+import { GeometrieVergleichKonsoleScene } from './scenes/geometrie_vergleich_konsole';
+import { KraftvektorenSpaltzugScene } from './scenes/kraftvektoren_spaltzug';
+import { QuerschnittBewehrungKiesnestScene } from './scenes/querschnitt_bewehrung_kiesnest';
+import { MaterialStrengthComparisonScene } from './scenes/material_strength_comparison';
+import { AsymmetricLoadingForcesScene } from './scenes/asymmetric_loading_forces';
+import { FoundationSettlementKnicklaengeScene } from './scenes/foundation_settlement_knicklaenge';
+import { LateralTorsionalBucklingGeometryScene } from './scenes/lateral_torsional_buckling_geometry';
+import { TorsionskraftGelenkScene } from './scenes/torsionskraft_gelenk';
+import { FundamentbolzenAusrissScene } from './scenes/fundamentbolzen_ausriss';
+import { LastumkehrDrehbolzenScene } from './scenes/lastumkehr_drehbolzen';
+import { UltraschallSchattenzoneScene } from './scenes/ultraschall_schattenzone';
+import { ExplodedViewScene } from './scenes/exploded_view';
+import { AssemblySequenceScene } from './scenes/assembly_sequence';
+import { ForceDistributionScene } from './scenes/force_distribution';
+import { ScaleComparisonScene } from './scenes/scale_comparison';
+import { LoadStressDiagramScene } from './scenes/load_stress_diagram';
+import { DynamicLoadingScene } from './scenes/dynamic_loading';
+import { StressLimitComparisonScene } from './scenes/stress_limit_comparison';
+import { OrthogonalSectionScene } from './scenes/orthogonal_section';
+import { MeshAnalysisScene } from './scenes/mesh_analysis';
+import { CircuitFlowDiagramScene } from './scenes/circuit_flow_diagram';
+import { LoadDistributionShiftScene } from './scenes/load_distribution_shift';
+import { AxialEccentricityDetailScene } from './scenes/axial_eccentricity_detail';
+import { EulerBucklingPhysicsScene } from './scenes/euler_buckling_physics';
+import { StaticSystemComparisonScene } from './scenes/static_system_comparison';
+import { ProgressiveFailureSequenceScene } from './scenes/progressive_failure_sequence';
+import { CrossSectionWeldFailureScene } from './scenes/cross_section_weld_failure';
+import { LiquidDropModelScene } from './scenes/liquid_drop_model';
+import { EnergyScaleComparisonScene } from './scenes/energy_scale_comparison';
+import { NeutronFluxDiscrepancyScene } from './scenes/neutron_flux_discrepancy';
+import { MassEnergyEquivalenceDiagramScene } from './scenes/mass_energy_equivalence_diagram';
+import { RadonSogEffektScene } from './scenes/radon_sog_effekt';
+import { TaupunktKondensationScene } from './scenes/taupunkt_kondensation';
+import { BodensetzungGefaellebruchScene } from './scenes/bodensetzung_gefaellebruch';
+import { WaermeaustauschPrinzipScene } from './scenes/waermeaustausch_prinzip';
+import { TemperaturTiefenprofilScene } from './scenes/temperatur_tiefenprofil';
+import { GeologicalTransitionScene } from './scenes/geological_transition';
+import { DelaminationMechanismScene } from './scenes/delamination_mechanism';
+import { CrossSectionDepthScene } from './scenes/cross_section_depth';
+import { TunnelGeometryPlanScene } from './scenes/tunnel_geometry_plan';
+import { RockBoltDeficiencyScene } from './scenes/rock_bolt_deficiency';
+import { QuerschnittDammaufbauScene } from './scenes/querschnitt_dammaufbau';
+import { InjektionsschleierDefektScene } from './scenes/injektionsschleier_defekt';
+import { PorenwasserdruckVektorenScene } from './scenes/porenwasserdruck_vektoren';
+import { SpannungskonzentrationSporngrabenScene } from './scenes/spannungskonzentration_sporngraben';
+import { StatikversagenBlock14Scene } from './scenes/statikversagen_block_14';
+import { PipingMechanismusScene } from './scenes/piping_mechanismus';
+import { LastverteilungVektorenScene } from './scenes/lastverteilung_vektoren';
+import { KollapsSequenzScene } from './scenes/kollaps_sequenz';
+import { GeographicSiteLayoutScene } from './scenes/geographic_site_layout';
+import { QuerschnittBetonplatteScene } from './scenes/querschnitt_betonplatte';
+import { DynamicLoadTorsionScene } from './scenes/dynamic_load_torsion';
+import { CrackProgressionScaleScene } from './scenes/crack_progression_scale';
+import { DeflectionAnalysisScene } from './scenes/deflection_analysis';
+import { LoadDistributionDiagramScene } from './scenes/load_distribution_diagram';
+import { SensorDataTimelineScene } from './scenes/sensor_data_timeline';
+import { JointStressDiagramScene } from './scenes/joint_stress_diagram';
+import { ForceComparisonBarScene } from './scenes/force_comparison_bar';
+import { IntersectionGraphScene } from './scenes/intersection_graph';
+import { MuscleLeverageCurveScene } from './scenes/muscle_leverage_curve';
+import { DataDivergenceFlowScene } from './scenes/data_divergence_flow';
+import { JawRotationAngleScene } from './scenes/jaw_rotation_angle';
+import { ExponentialGrowthModelScene } from './scenes/exponential_growth_model';
+import { ReboundEffectCycleScene } from './scenes/rebound_effect_cycle';
+import { CrossSectionStressScene } from './scenes/cross_section_stress';
+import { EntropyFunnelScene } from './scenes/entropy_funnel';
+import { NeckForceVectorScene } from './scenes/neck_force_vector';
+import { BiomechanicalPivotShiftScene } from './scenes/biomechanical_pivot_shift';
+import { BallastSystemFlowScene } from './scenes/ballast_system_flow';
+import { CrossSectionTiltScene } from './scenes/cross_section_tilt';
+import { StabilityDiagramScene } from './scenes/stability_diagram';
+import { WiringFaultLogicScene } from './scenes/wiring_fault_logic';
+import { BiomechanicalProcessScene } from './scenes/biomechanical_process';
+import { BarChartComparisonScene } from './scenes/bar_chart_comparison';
+import { CentralizedFlowchartScene } from './scenes/centralized_flowchart';
+import { NetworkDiagramScene } from './scenes/network_diagram';
+import { CostComparisonScaleScene } from './scenes/cost_comparison_scale';
+import { FlowchartMonopolyScene } from './scenes/flowchart_monopoly';
+import { EfficiencyVolumeComparisonScene } from './scenes/efficiency_volume_comparison';
+import { MechanicalDiagramScene } from './scenes/mechanical_diagram';
+import { GraphOverlayScene } from './scenes/graph_overlay';
+import { ThermalLayerDiagramScene } from './scenes/thermal_layer_diagram';
+import { DataComparisonChartScene } from './scenes/data_comparison_chart';
+import { TimeLineOverlapScene } from './scenes/time_line_overlap';
+import { FinancialBreakdownGraphScene } from './scenes/financial_breakdown_graph';
+import { QuantityComparisonScene } from './scenes/quantity_comparison';
+import { CrossSectionAnalysisScene } from './scenes/cross_section_analysis';
+import { VenturiEffectPressureScene } from './scenes/venturi_effect_pressure';
+import { DocumentCrossSectionScene } from './scenes/document_cross_section';
+import { ForceFieldDiagramScene } from './scenes/force_field_diagram';
+import { ChimneyEffectHeatScene } from './scenes/chimney_effect_heat';
+import { FanMountingGuideScene } from './scenes/fan_mounting_guide';
+import { AnatomicalCrossSectionScene } from './scenes/anatomical_cross_section';
+import { TacticalPincerMovementScene } from './scenes/tactical_pincer_movement';
+import { PincerManeuverDiagramScene } from './scenes/pincer_maneuver_diagram';
+import { LoadRedirectionDiagramScene } from './scenes/load_redirection_diagram';
+import { MechanismCrossSectionScene } from './scenes/mechanism_cross_section';
+import { PressureBuildUpScene } from './scenes/pressure_build_up';
+import { LoadComparisonChartScene } from './scenes/load_comparison_chart';
+import { LevitationPhysicsScene } from './scenes/levitation_physics';
+import { TemporalReflectionScene } from './scenes/temporal_reflection';
+import { GasConcentrationScene } from './scenes/gas_concentration';
+import { LastpfadBewehrungQuerschnittScene } from './scenes/lastpfad_bewehrung_querschnitt';
+import { CrossSectionMechanismScene } from './scenes/cross_section_mechanism';
+import { VergleichDruckfestigkeitScene } from './scenes/vergleich_druckfestigkeit';
+import { LastumleitungHorizontalScene } from './scenes/lastumleitung_horizontal';
+import { CausalityCollapseScene } from './scenes/causality_collapse';
+import { StructuralAngleFlowScene } from './scenes/structural_angle_flow';
+import { MagneticForcesDiagramScene } from './scenes/magnetic_forces_diagram';
+import { PunktlastUeberlagerungScene } from './scenes/punktlast_ueberlagerung';
+import { ChemicalReactionOverTimeScene } from './scenes/chemical_reaction_over_time';
+import { HistoricalCurvatureScene } from './scenes/historical_curvature';
+import { FeedbackLoopDiagramScene } from './scenes/feedback_loop_diagram';
+import { GasConcentrationScaleScene } from './scenes/gas_concentration_scale';
+import { KnotenpunktVersagenScene } from './scenes/knotenpunkt_versagen';
+import { VolumeScaleComparisonScene } from './scenes/volume_scale_comparison';
+import { TacticalMapViewScene } from './scenes/tactical_map_view';
+import { TopDownManeuverScene } from './scenes/top_down_maneuver';
+import { GeographicEscapeRouteScene } from './scenes/geographic_escape_route';
+import { AsymmetricSiteLayoutScene } from './scenes/asymmetric_site_layout';
+import { FoundationShearCrossSectionScene } from './scenes/foundation_shear_cross_section';
+import { PileBendingFailureScene } from './scenes/pile_bending_failure';
+import { HorizontalSoilPressureScene } from './scenes/horizontal_soil_pressure';
+import { QuerschnittFundamentversagenScene } from './scenes/querschnitt_fundamentversagen';
+import { PfahlBruchLastScene } from './scenes/pfahl_bruch_last';
+import { CalloutLiveScene } from './scenes/callout_live';
+import { ErdaushubKippmomentScene } from './scenes/erdaushub_kippmoment';
+import { ZeitachseVersagenScene } from './scenes/zeitachse_versagen';
+import { KraftUmleitungScene } from './scenes/kraft_umleitung';
+import { HausGanzBasisBruchScene } from './scenes/haus_ganz_basis_bruch';
+import { Erdhaufen10000TonnenScene } from './scenes/erdhaufen_10000_tonnen';
+import { ProbePfahlHohlraumScene } from './scenes/probe_pfahl_hohlraum';
+import { ProbeLastUmverteilungScene } from './scenes/probe_last_umverteilung';
+import { ProbeSchweissnahtRissScene } from './scenes/probe_schweissnaht_riss';
+import { ProbeWasserWegScene } from './scenes/probe_wasser_weg';
+import { ProbeTemperaturAbfallScene } from './scenes/probe_temperatur_abfall';
+import { WallThicknessComparisonScene } from './scenes/wall_thickness_comparison';
+import { AtomicImpurityGridScene } from './scenes/atomic_impurity_grid';
+import { InspectionBlindSpotScene } from './scenes/inspection_blind_spot';
+import { BallisticTrajectoryScene } from './scenes/ballistic_trajectory';
+import { SafetyCircuitFailureScene } from './scenes/safety_circuit_failure';
+import { SelectiveCorrosionProfileScene } from './scenes/selective_corrosion_profile';
+import { SeveredControlPathwayScene } from './scenes/severed_control_pathway';
+import { MetallurgicalImpurityGridScene } from './scenes/metallurgical_impurity_grid';
+import { BallisticTrajectoryFragmentScene } from './scenes/ballistic_trajectory_fragment';
+import { ToxicPlumeVectorScene } from './scenes/toxic_plume_vector';
+import { ErosionProfileElbowScene } from './scenes/erosion_profile_elbow';
+import { BallisticTrajectoryMapScene } from './scenes/ballistic_trajectory_map';
+import { MicroSectionComparisonScene } from './scenes/micro_section_comparison';
+import { MetallurgicalMatrixGridScene } from './scenes/metallurgical_matrix_grid';
+import { DifferentialErosionBarScene } from './scenes/differential_erosion_bar';
+import { SafetyCircuitInterruptionScene } from './scenes/safety_circuit_interruption';
+import { InspectionBlindSpotSchematicScene } from './scenes/inspection_blind_spot_schematic';
+import { InvisibleTopographyScene } from './scenes/invisible_topography';
+import { LethalityTracksScene } from './scenes/lethality_tracks';
+import { AnatomicalOverlapScene } from './scenes/anatomical_overlap';
+import { RadialInfluenceScene } from './scenes/radial_influence';
+import { VolumeVsSurfaceScene } from './scenes/volume_vs_surface';
 export type { SceneProps };
 
 // Точка входа для СЦЕН — планов, которые целиком нарисованы, а не сняты.
@@ -434,6 +758,12 @@ const useFade = (dur: number) => {
 // case-ветки автоматом, и чем меньше вокруг них кода, тем безопаснее правка.
 // null означает «сцены с таким именем нет» — обрабатывает вызывающий.
 const pickScene = (props: SceneProps): React.ReactElement | null => {
+  // Моушн-семья идёт ПЕРЕД switch: её виды снимаются с датасета шоурилов и
+  // добавляются пачками, поэтому им нужен реестр, а не по case-ветке на
+  // каждый. Схемы ниже остаются как были.
+  const Motion = MOTION_SCENES[props.kind];
+  if (Motion) return <Motion {...props} />;
+
   switch (props.kind) {
     case 'globe':
       return <GlobeScene {...props} />;
@@ -1221,6 +1551,652 @@ const pickScene = (props: SceneProps): React.ReactElement | null => {
       return <PorePressureLagSectionScene {...props} />;
     case 'piezometer_blind_spot':
       return <PiezometerBlindSpotScene {...props} />;
+    case 'progressive_collapse_mechanics':
+      return <ProgressiveCollapseMechanicsScene {...props} />;
+    case 'neutral_axis_stresses':
+      return <NeutralAxisStressesScene {...props} />;
+    case 'precast_element_assembly':
+      return <PrecastElementAssemblyScene {...props} />;
+    case 'interface_joint_detail':
+      return <InterfaceJointDetailScene {...props} />;
+    case 'reduced_contact_area':
+      return <ReducedContactAreaScene {...props} />;
+    case 'monolithic_vs_layered':
+      return <MonolithicVsLayeredScene {...props} />;
+    case 'required_surface_roughness':
+      return <RequiredSurfaceRoughnessScene {...props} />;
+    case 'actual_surface_condition':
+      return <ActualSurfaceConditionScene {...props} />;
+    case 'independent_layer_statics':
+      return <IndependentLayerStaticsScene {...props} />;
+    case 'horizontal_force_corbel':
+      return <HorizontalForceCorbelScene {...props} />;
+    case 'rebar_anchorage_error':
+      return <RebarAnchorageErrorScene {...props} />;
+    case 'capacity_reduction_chart':
+      return <CapacityReductionChartScene {...props} />;
+    case 'final_delamination':
+      return <FinalDelaminationScene {...props} />;
+    case 'top_down_projection':
+      return <TopDownProjectionScene {...props} />;
+    case 'cross_section_cut':
+      return <CrossSectionCutScene {...props} />;
+    case 'structural_diagram':
+      return <StructuralDiagramScene {...props} />;
+    case 'vibration_wave_diagram':
+      return <VibrationWaveDiagramScene {...props} />;
+    case 'resonance_chart':
+      return <ResonanceChartScene {...props} />;
+    case 'asymmetric_load_map':
+      return <AsymmetricLoadMapScene {...props} />;
+    case 'deformation_schematic':
+      return <DeformationSchematicScene {...props} />;
+    case 'torsion_diagram':
+      return <TorsionDiagramScene {...props} />;
+    case 'stress_analysis_section':
+      return <StressAnalysisSectionScene {...props} />;
+    case 'load_capacity_graph':
+      return <LoadCapacityGraphScene {...props} />;
+    case 'force_flow_animation':
+      return <ForceFlowAnimationScene {...props} />;
+    case 'load_redistribution':
+      return <LoadRedistributionScene {...props} />;
+    case 'stress_comparison_chart':
+      return <StressComparisonChartScene {...props} />;
+    case 'atomic_lattice_diagram':
+      return <AtomicLatticeDiagramScene {...props} />;
+    case 'coating_section':
+      return <CoatingSectionScene {...props} />;
+    case 'pressure_buildup_diagram':
+      return <PressureBuildupDiagramScene {...props} />;
+    case 'time_process_graph':
+      return <TimeProcessGraphScene {...props} />;
+    case 'grain_boundary_diagram':
+      return <GrainBoundaryDiagramScene {...props} />;
+    case 'roof_strata_section':
+      return <RoofStrataSectionScene {...props} />;
+    case 'load_concentration_elevation':
+      return <LoadConcentrationElevationScene {...props} />;
+    case 'stress_distribution_map':
+      return <StressDistributionMapScene {...props} />;
+    case 'collapse_zone_plan':
+      return <CollapseZonePlanScene {...props} />;
+    case 'joint_fracture_detail':
+      return <JointFractureDetailScene {...props} />;
+    case 'vibration_propagation_diagram':
+      return <VibrationPropagationDiagramScene {...props} />;
+    case 'truss_modification_diagram':
+      return <TrussModificationDiagramScene {...props} />;
+    case 'force_vector_analysis':
+      return <ForceVectorAnalysisScene {...props} />;
+    case 'density_comparison_visual':
+      return <DensityComparisonVisualScene {...props} />;
+    case 'tension_redistribution_model':
+      return <TensionRedistributionModelScene {...props} />;
+    case 'deformation_trigger_schematic':
+      return <DeformationTriggerSchematicScene {...props} />;
+    case 'plastic_deformation_sequence':
+      return <PlasticDeformationSequenceScene {...props} />;
+    case 'safety_margin_chart':
+      return <SafetyMarginChartScene {...props} />;
+    case 'capacity_deficit_comparison':
+      return <CapacityDeficitComparisonScene {...props} />;
+    case 'bearing_failure_process':
+      return <BearingFailureProcessScene {...props} />;
+    case 'hole_ovalization_detail':
+      return <HoleOvalizationDetailScene {...props} />;
+    case 'leverage_increase_diagram':
+      return <LeverageIncreaseDiagramScene {...props} />;
+    case 'eccentric_load_path':
+      return <EccentricLoadPathScene {...props} />;
+    case 'bolt_bending_stress':
+      return <BoltBendingStressScene {...props} />;
+    case 'asymmetric_load_redistribution':
+      return <AsymmetricLoadRedistributionScene {...props} />;
+    case 'load_path_shift':
+      return <LoadPathShiftScene {...props} />;
+    case 'structural_instability_diagram':
+      return <StructuralInstabilityDiagramScene {...props} />;
+    case 'structural_perimeter_failure':
+      return <StructuralPerimeterFailureScene {...props} />;
+    case 'material_composition_ratio':
+      return <MaterialCompositionRatioScene {...props} />;
+    case 'mass_loss_evaporation':
+      return <MassLossEvaporationScene {...props} />;
+    case 'thermal_coagulation_window':
+      return <ThermalCoagulationWindowScene {...props} />;
+    case 'vapor_expansion_failure':
+      return <VaporExpansionFailureScene {...props} />;
+    case 'structural_seepage_failure':
+      return <StructuralSeepageFailureScene {...props} />;
+    case 'material_density_projection':
+      return <MaterialDensityProjectionScene {...props} />;
+    case 'cellular_evaporation_process':
+      return <CellularEvaporationProcessScene {...props} />;
+    case 'lipid_capillarity_infiltration':
+      return <LipidCapillarityInfiltrationScene {...props} />;
+    case 'thermal_shock_gradient':
+      return <ThermalShockGradientScene {...props} />;
+    case 'thermal_inertia_ratio':
+      return <ThermalInertiaRatioScene {...props} />;
+    case 'ingredient_moisture_analysis':
+      return <IngredientMoistureAnalysisScene {...props} />;
+    case 'protein_bond_interference':
+      return <ProteinBondInterferenceScene {...props} />;
+    case 'chemical_bond_sabotage':
+      return <ChemicalBondSabotageScene {...props} />;
+    case 'post_cook_migration_failure':
+      return <PostCookMigrationFailureScene {...props} />;
+    case 'protein_contraction_syneresis':
+      return <ProteinContractionSyneresisScene {...props} />;
+    case 'cookware_thermal_accumulation':
+      return <CookwareThermalAccumulationScene {...props} />;
+    case 'heat_conduction_velocity':
+      return <HeatConductionVelocityScene {...props} />;
+    case 'lipid_suspension_collapse':
+      return <LipidSuspensionCollapseScene {...props} />;
+    case 'roof_cross_section':
+      return <RoofCrossSectionScene {...props} />;
+    case 'component_modification':
+      return <ComponentModificationScene {...props} />;
+    case 'roof_layers':
+      return <RoofLayersScene {...props} />;
+    case 'load_distribution_plan':
+      return <LoadDistributionPlanScene {...props} />;
+    case 'vibration_transfer':
+      return <VibrationTransferScene {...props} />;
+    case 'force_vector_comparison':
+      return <ForceVectorComparisonScene {...props} />;
+    case 'moment_diagram':
+      return <MomentDiagramScene {...props} />;
+    case 'sensor_deformation':
+      return <SensorDeformationScene {...props} />;
+    case 'plastic_deformation_timeline':
+      return <PlasticDeformationTimelineScene {...props} />;
+    case 'bearing_failure_detail':
+      return <BearingFailureDetailScene {...props} />;
+    case 'calculation_error':
+      return <CalculationErrorScene {...props} />;
+    case 'eccentric_loading':
+      return <EccentricLoadingScene {...props} />;
+    case 'site_map_isometric':
+      return <SiteMapIsometricScene {...props} />;
+    case 'point_load_diagram':
+      return <PointLoadDiagramScene {...props} />;
+    case 'joint_stress_analysis':
+      return <JointStressAnalysisScene {...props} />;
+    case 'collapse_footprint':
+      return <CollapseFootprintScene {...props} />;
+    case 'vibration_propagation':
+      return <VibrationPropagationScene {...props} />;
+    case 'logistics_truss_cut':
+      return <LogisticsTrussCutScene {...props} />;
+    case 'saturation_weight_increase':
+      return <SaturationWeightIncreaseScene {...props} />;
+    case 'structural_deficit_overlay':
+      return <StructuralDeficitOverlayScene {...props} />;
+    case 'calculation_error_scale':
+      return <CalculationErrorScaleScene {...props} />;
+    case 'sensor_discrepancy_graph':
+      return <SensorDiscrepancyGraphScene {...props} />;
+    case 'geographical_site_plan':
+      return <GeographicalSitePlanScene {...props} />;
+    case 'structural_buckling_diagram':
+      return <StructuralBucklingDiagramScene {...props} />;
+    case 'material_spec_comparison':
+      return <MaterialSpecComparisonScene {...props} />;
+    case 'shear_stud_density':
+      return <ShearStudDensityScene {...props} />;
+    case 'weld_penetration_cut':
+      return <WeldPenetrationCutScene {...props} />;
+    case 'progressive_deformation_sequence':
+      return <ProgressiveDeformationSequenceScene {...props} />;
+    case 'seismic_shear_stress':
+      return <SeismicShearStressScene {...props} />;
+    case 'deflection_measurement':
+      return <DeflectionMeasurementScene {...props} />;
+    case 'axle_load_comparison':
+      return <AxleLoadComparisonScene {...props} />;
+    case 'weld_artifact_section':
+      return <WeldArtifactSectionScene {...props} />;
+    case 'shear_force_concentration':
+      return <ShearForceConcentrationScene {...props} />;
+    case 'dead_load_increase':
+      return <DeadLoadIncreaseScene {...props} />;
+    case 'displacement_vector':
+      return <DisplacementVectorScene {...props} />;
+    case 'grid_comparison_section':
+      return <GridComparisonSectionScene {...props} />;
+    case 'structural_section_cut':
+      return <StructuralSectionCutScene {...props} />;
+    case 'punching_shear_diagram':
+      return <PunchingShearDiagramScene {...props} />;
+    case 'reinforcement_comparison':
+      return <ReinforcementComparisonScene {...props} />;
+    case 'load_distribution_graph':
+      return <LoadDistributionGraphScene {...props} />;
+    case 'load_concentration_diagram':
+      return <LoadConcentrationDiagramScene {...props} />;
+    case 'hollow_box_girder_section':
+      return <HollowBoxGirderSectionScene {...props} />;
+    case 'bolt_penetration_cut':
+      return <BoltPenetrationCutScene {...props} />;
+    case 'fill_layer_diagram':
+      return <FillLayerDiagramScene {...props} />;
+    case 'hydrolysis_zoom':
+      return <HydrolysisZoomScene {...props} />;
+    case 'effective_height_graph':
+      return <EffectiveHeightGraphScene {...props} />;
+    case 'deflection_curve':
+      return <DeflectionCurveScene {...props} />;
+    case 'corrosion_graph':
+      return <CorrosionGraphScene {...props} />;
+    case 'shear_cone_formation':
+      return <ShearConeFormationScene {...props} />;
+    case 'node_geometry':
+      return <NodeGeometryScene {...props} />;
+    case 'interface_detail':
+      return <InterfaceDetailScene {...props} />;
+    case 'structural_displacement':
+      return <StructuralDisplacementScene {...props} />;
+    case 'grid_evolution':
+      return <GridEvolutionScene {...props} />;
+    case 'ceiling_comparison':
+      return <CeilingComparisonScene {...props} />;
+    case 'punching_shear_mechanism':
+      return <PunchingShearMechanismScene {...props} />;
+    case 'rebar_spec':
+      return <RebarSpecScene {...props} />;
+    case 'load_calculation_error':
+      return <LoadCalculationErrorScene {...props} />;
+    case 'girder_section':
+      return <GirderSectionScene {...props} />;
+    case 'penetration_detail':
+      return <PenetrationDetailScene {...props} />;
+    case 'roof_accumulation':
+      return <RoofAccumulationScene {...props} />;
+    case 'chemical_degradation':
+      return <ChemicalDegradationScene {...props} />;
+    case 'delamination':
+      return <DelaminationScene {...props} />;
+    case 'internal_flooding':
+      return <InternalFloodingScene {...props} />;
+    case 'asymmetric_load':
+      return <AsymmetricLoadScene {...props} />;
+    case 'corrosion_process':
+      return <CorrosionProcessScene {...props} />;
+    case 'leverage_calculation':
+      return <LeverageCalculationScene {...props} />;
+    case 'stabilitats_grenze':
+      return <StabilitatsGrenzeScene {...props} />;
+    case 'flutungs_punkt':
+      return <FlutungsPunktScene {...props} />;
+    case 'stability_curve_graph':
+      return <StabilityCurveGraphScene {...props} />;
+    case 'free_surface_effect_section':
+      return <FreeSurfaceEffectSectionScene {...props} />;
+    case 'retractable_keel_projection':
+      return <RetractableKeelProjectionScene {...props} />;
+    case 'keel_extension_comparison':
+      return <KeelExtensionComparisonScene {...props} />;
+    case 'as_found_keel_position':
+      return <AsFoundKeelPositionScene {...props} />;
+    case 'hybrid_structure_section':
+      return <HybridStructureSectionScene {...props} />;
+    case 'post_tensioning_system':
+      return <PostTensioningSystemScene {...props} />;
+    case 'transition_piece_detail':
+      return <TransitionPieceDetailScene {...props} />;
+    case 'contact_surface_failure':
+      return <ContactSurfaceFailureScene {...props} />;
+    case 'load_path_redistribution':
+      return <LoadPathRedistributionScene {...props} />;
+    case 'load_distribution_map':
+      return <LoadDistributionMapScene {...props} />;
+    case 'soil_mechanics_animation':
+      return <SoilMechanicsAnimationScene {...props} />;
+    case 'internal_pressure_analysis':
+      return <InternalPressureAnalysisScene {...props} />;
+    case 'pore_water_pressure_buildup':
+      return <PoreWaterPressureBuildupScene {...props} />;
+    case 'janssen_effect_diagram':
+      return <JanssenEffectDiagramScene {...props} />;
+    case 'concept_map_overlap':
+      return <ConceptMapOverlapScene {...props} />;
+    case 'geographical_route':
+      return <GeographicalRouteScene {...props} />;
+    case 'fuerzas_conceptuales':
+      return <FuerzasConceptualesScene {...props} />;
+    case 'mecanismo_legal':
+      return <MecanismoLegalScene {...props} />;
+    case 'static_load_distribution':
+      return <StaticLoadDistributionScene {...props} />;
+    case 'subsurface_spatial_relationship':
+      return <SubsurfaceSpatialRelationshipScene {...props} />;
+    case 'material_volume_anomaly':
+      return <MaterialVolumeAnomalyScene {...props} />;
+    case 'structural_cross_section':
+      return <StructuralCrossSectionScene {...props} />;
+    case 'hydraulic_erosion_sequence':
+      return <HydraulicErosionSequenceScene {...props} />;
+    case 'auflager_geometrie_versagen':
+      return <AuflagerGeometrieVersagenScene {...props} />;
+    case 'geometrie_vergleich_konsole':
+      return <GeometrieVergleichKonsoleScene {...props} />;
+    case 'kraftvektoren_spaltzug':
+      return <KraftvektorenSpaltzugScene {...props} />;
+    case 'querschnitt_bewehrung_kiesnest':
+      return <QuerschnittBewehrungKiesnestScene {...props} />;
+    case 'material_strength_comparison':
+      return <MaterialStrengthComparisonScene {...props} />;
+    case 'asymmetric_loading_forces':
+      return <AsymmetricLoadingForcesScene {...props} />;
+    case 'foundation_settlement_knicklaenge':
+      return <FoundationSettlementKnicklaengeScene {...props} />;
+    case 'lateral_torsional_buckling_geometry':
+      return <LateralTorsionalBucklingGeometryScene {...props} />;
+    case 'torsionskraft_gelenk':
+      return <TorsionskraftGelenkScene {...props} />;
+    case 'fundamentbolzen_ausriss':
+      return <FundamentbolzenAusrissScene {...props} />;
+    case 'lastumkehr_drehbolzen':
+      return <LastumkehrDrehbolzenScene {...props} />;
+    case 'ultraschall_schattenzone':
+      return <UltraschallSchattenzoneScene {...props} />;
+    case 'exploded_view':
+      return <ExplodedViewScene {...props} />;
+    case 'assembly_sequence':
+      return <AssemblySequenceScene {...props} />;
+    case 'force_distribution':
+      return <ForceDistributionScene {...props} />;
+    case 'scale_comparison':
+      return <ScaleComparisonScene {...props} />;
+    case 'load_stress_diagram':
+      return <LoadStressDiagramScene {...props} />;
+    case 'dynamic_loading':
+      return <DynamicLoadingScene {...props} />;
+    case 'stress_limit_comparison':
+      return <StressLimitComparisonScene {...props} />;
+    case 'orthogonal_section':
+      return <OrthogonalSectionScene {...props} />;
+    case 'mesh_analysis':
+      return <MeshAnalysisScene {...props} />;
+    case 'circuit_flow_diagram':
+      return <CircuitFlowDiagramScene {...props} />;
+    case 'load_distribution_shift':
+      return <LoadDistributionShiftScene {...props} />;
+    case 'axial_eccentricity_detail':
+      return <AxialEccentricityDetailScene {...props} />;
+    case 'euler_buckling_physics':
+      return <EulerBucklingPhysicsScene {...props} />;
+    case 'static_system_comparison':
+      return <StaticSystemComparisonScene {...props} />;
+    case 'progressive_failure_sequence':
+      return <ProgressiveFailureSequenceScene {...props} />;
+    case 'cross_section_weld_failure':
+      return <CrossSectionWeldFailureScene {...props} />;
+    case 'liquid_drop_model':
+      return <LiquidDropModelScene {...props} />;
+    case 'energy_scale_comparison':
+      return <EnergyScaleComparisonScene {...props} />;
+    case 'neutron_flux_discrepancy':
+      return <NeutronFluxDiscrepancyScene {...props} />;
+    case 'mass_energy_equivalence_diagram':
+      return <MassEnergyEquivalenceDiagramScene {...props} />;
+    case 'radon_sog_effekt':
+      return <RadonSogEffektScene {...props} />;
+    case 'taupunkt_kondensation':
+      return <TaupunktKondensationScene {...props} />;
+    case 'bodensetzung_gefaellebruch':
+      return <BodensetzungGefaellebruchScene {...props} />;
+    case 'waermeaustausch_prinzip':
+      return <WaermeaustauschPrinzipScene {...props} />;
+    case 'temperatur_tiefenprofil':
+      return <TemperaturTiefenprofilScene {...props} />;
+    case 'geological_transition':
+      return <GeologicalTransitionScene {...props} />;
+    case 'delamination_mechanism':
+      return <DelaminationMechanismScene {...props} />;
+    case 'cross_section_depth':
+      return <CrossSectionDepthScene {...props} />;
+    case 'tunnel_geometry_plan':
+      return <TunnelGeometryPlanScene {...props} />;
+    case 'rock_bolt_deficiency':
+      return <RockBoltDeficiencyScene {...props} />;
+    case 'querschnitt_dammaufbau':
+      return <QuerschnittDammaufbauScene {...props} />;
+    case 'injektionsschleier_defekt':
+      return <InjektionsschleierDefektScene {...props} />;
+    case 'porenwasserdruck_vektoren':
+      return <PorenwasserdruckVektorenScene {...props} />;
+    case 'spannungskonzentration_sporngraben':
+      return <SpannungskonzentrationSporngrabenScene {...props} />;
+    case 'statikversagen_block_14':
+      return <StatikversagenBlock14Scene {...props} />;
+    case 'piping_mechanismus':
+      return <PipingMechanismusScene {...props} />;
+    case 'lastverteilung_vektoren':
+      return <LastverteilungVektorenScene {...props} />;
+    case 'kollaps_sequenz':
+      return <KollapsSequenzScene {...props} />;
+    case 'geographic_site_layout':
+      return <GeographicSiteLayoutScene {...props} />;
+    case 'querschnitt_betonplatte':
+      return <QuerschnittBetonplatteScene {...props} />;
+    case 'dynamic_load_torsion':
+      return <DynamicLoadTorsionScene {...props} />;
+    case 'crack_progression_scale':
+      return <CrackProgressionScaleScene {...props} />;
+    case 'deflection_analysis':
+      return <DeflectionAnalysisScene {...props} />;
+    case 'load_distribution_diagram':
+      return <LoadDistributionDiagramScene {...props} />;
+    case 'sensor_data_timeline':
+      return <SensorDataTimelineScene {...props} />;
+    case 'joint_stress_diagram':
+      return <JointStressDiagramScene {...props} />;
+    case 'force_comparison_bar':
+      return <ForceComparisonBarScene {...props} />;
+    case 'intersection_graph':
+      return <IntersectionGraphScene {...props} />;
+    case 'muscle_leverage_curve':
+      return <MuscleLeverageCurveScene {...props} />;
+    case 'data_divergence_flow':
+      return <DataDivergenceFlowScene {...props} />;
+    case 'jaw_rotation_angle':
+      return <JawRotationAngleScene {...props} />;
+    case 'exponential_growth_model':
+      return <ExponentialGrowthModelScene {...props} />;
+    case 'rebound_effect_cycle':
+      return <ReboundEffectCycleScene {...props} />;
+    case 'cross_section_stress':
+      return <CrossSectionStressScene {...props} />;
+    case 'entropy_funnel':
+      return <EntropyFunnelScene {...props} />;
+    case 'neck_force_vector':
+      return <NeckForceVectorScene {...props} />;
+    case 'biomechanical_pivot_shift':
+      return <BiomechanicalPivotShiftScene {...props} />;
+    case 'ballast_system_flow':
+      return <BallastSystemFlowScene {...props} />;
+    case 'cross_section_tilt':
+      return <CrossSectionTiltScene {...props} />;
+    case 'stability_diagram':
+      return <StabilityDiagramScene {...props} />;
+    case 'wiring_fault_logic':
+      return <WiringFaultLogicScene {...props} />;
+    case 'biomechanical_process':
+      return <BiomechanicalProcessScene {...props} />;
+    case 'bar_chart_comparison':
+      return <BarChartComparisonScene {...props} />;
+    case 'centralized_flowchart':
+      return <CentralizedFlowchartScene {...props} />;
+    case 'network_diagram':
+      return <NetworkDiagramScene {...props} />;
+    case 'cost_comparison_scale':
+      return <CostComparisonScaleScene {...props} />;
+    case 'flowchart_monopoly':
+      return <FlowchartMonopolyScene {...props} />;
+    case 'efficiency_volume_comparison':
+      return <EfficiencyVolumeComparisonScene {...props} />;
+    case 'mechanical_diagram':
+      return <MechanicalDiagramScene {...props} />;
+    case 'graph_overlay':
+      return <GraphOverlayScene {...props} />;
+    case 'thermal_layer_diagram':
+      return <ThermalLayerDiagramScene {...props} />;
+    case 'data_comparison_chart':
+      return <DataComparisonChartScene {...props} />;
+    case 'time_line_overlap':
+      return <TimeLineOverlapScene {...props} />;
+    case 'financial_breakdown_graph':
+      return <FinancialBreakdownGraphScene {...props} />;
+    case 'quantity_comparison':
+      return <QuantityComparisonScene {...props} />;
+    case 'cross_section_analysis':
+      return <CrossSectionAnalysisScene {...props} />;
+    case 'venturi_effect_pressure':
+      return <VenturiEffectPressureScene {...props} />;
+    case 'document_cross_section':
+      return <DocumentCrossSectionScene {...props} />;
+    case 'force_field_diagram':
+      return <ForceFieldDiagramScene {...props} />;
+    case 'chimney_effect_heat':
+      return <ChimneyEffectHeatScene {...props} />;
+    case 'fan_mounting_guide':
+      return <FanMountingGuideScene {...props} />;
+    case 'anatomical_cross_section':
+      return <AnatomicalCrossSectionScene {...props} />;
+    case 'tactical_pincer_movement':
+      return <TacticalPincerMovementScene {...props} />;
+    case 'pincer_maneuver_diagram':
+      return <PincerManeuverDiagramScene {...props} />;
+    case 'load_redirection_diagram':
+      return <LoadRedirectionDiagramScene {...props} />;
+    case 'mechanism_cross_section':
+      return <MechanismCrossSectionScene {...props} />;
+    case 'pressure_build_up':
+      return <PressureBuildUpScene {...props} />;
+    case 'load_comparison_chart':
+      return <LoadComparisonChartScene {...props} />;
+    case 'levitation_physics':
+      return <LevitationPhysicsScene {...props} />;
+    case 'temporal_reflection':
+      return <TemporalReflectionScene {...props} />;
+    case 'gas_concentration':
+      return <GasConcentrationScene {...props} />;
+    case 'lastpfad_bewehrung_querschnitt':
+      return <LastpfadBewehrungQuerschnittScene {...props} />;
+    case 'cross_section_mechanism':
+      return <CrossSectionMechanismScene {...props} />;
+    case 'vergleich_druckfestigkeit':
+      return <VergleichDruckfestigkeitScene {...props} />;
+    case 'lastumleitung_horizontal':
+      return <LastumleitungHorizontalScene {...props} />;
+    case 'causality_collapse':
+      return <CausalityCollapseScene {...props} />;
+    case 'structural_angle_flow':
+      return <StructuralAngleFlowScene {...props} />;
+    case 'magnetic_forces_diagram':
+      return <MagneticForcesDiagramScene {...props} />;
+    case 'punktlast_ueberlagerung':
+      return <PunktlastUeberlagerungScene {...props} />;
+    case 'chemical_reaction_over_time':
+      return <ChemicalReactionOverTimeScene {...props} />;
+    case 'historical_curvature':
+      return <HistoricalCurvatureScene {...props} />;
+    case 'feedback_loop_diagram':
+      return <FeedbackLoopDiagramScene {...props} />;
+    case 'gas_concentration_scale':
+      return <GasConcentrationScaleScene {...props} />;
+    case 'knotenpunkt_versagen':
+      return <KnotenpunktVersagenScene {...props} />;
+    case 'volume_scale_comparison':
+      return <VolumeScaleComparisonScene {...props} />;
+    case 'tactical_map_view':
+      return <TacticalMapViewScene {...props} />;
+    case 'top_down_maneuver':
+      return <TopDownManeuverScene {...props} />;
+    case 'geographic_escape_route':
+      return <GeographicEscapeRouteScene {...props} />;
+    case 'asymmetric_site_layout':
+      return <AsymmetricSiteLayoutScene {...props} />;
+    case 'foundation_shear_cross_section':
+      return <FoundationShearCrossSectionScene {...props} />;
+    case 'pile_bending_failure':
+      return <PileBendingFailureScene {...props} />;
+    case 'horizontal_soil_pressure':
+      return <HorizontalSoilPressureScene {...props} />;
+    case 'querschnitt_fundamentversagen':
+      return <QuerschnittFundamentversagenScene {...props} />;
+    case 'pfahl_bruch_last':
+      return <PfahlBruchLastScene {...props} />;
+    case 'callout_live':
+      return <CalloutLiveScene {...props} />;
+    case 'erdaushub_kippmoment':
+      return <ErdaushubKippmomentScene {...props} />;
+    case 'zeitachse_versagen':
+      return <ZeitachseVersagenScene {...props} />;
+    case 'kraft_umleitung':
+      return <KraftUmleitungScene {...props} />;
+    case 'haus_ganz_basis_bruch':
+      return <HausGanzBasisBruchScene {...props} />;
+    case 'erdhaufen_10000_tonnen':
+      return <Erdhaufen10000TonnenScene {...props} />;
+    case 'probe_pfahl_hohlraum':
+      return <ProbePfahlHohlraumScene {...props} />;
+    case 'probe_last_umverteilung':
+      return <ProbeLastUmverteilungScene {...props} />;
+    case 'probe_schweissnaht_riss':
+      return <ProbeSchweissnahtRissScene {...props} />;
+    case 'probe_wasser_weg':
+      return <ProbeWasserWegScene {...props} />;
+    case 'probe_temperatur_abfall':
+      return <ProbeTemperaturAbfallScene {...props} />;
+    case 'wall_thickness_comparison':
+      return <WallThicknessComparisonScene {...props} />;
+    case 'atomic_impurity_grid':
+      return <AtomicImpurityGridScene {...props} />;
+    case 'inspection_blind_spot':
+      return <InspectionBlindSpotScene {...props} />;
+    case 'ballistic_trajectory':
+      return <BallisticTrajectoryScene {...props} />;
+    case 'safety_circuit_failure':
+      return <SafetyCircuitFailureScene {...props} />;
+    case 'selective_corrosion_profile':
+      return <SelectiveCorrosionProfileScene {...props} />;
+    case 'severed_control_pathway':
+      return <SeveredControlPathwayScene {...props} />;
+    case 'metallurgical_impurity_grid':
+      return <MetallurgicalImpurityGridScene {...props} />;
+    case 'ballistic_trajectory_fragment':
+      return <BallisticTrajectoryFragmentScene {...props} />;
+    case 'toxic_plume_vector':
+      return <ToxicPlumeVectorScene {...props} />;
+    case 'erosion_profile_elbow':
+      return <ErosionProfileElbowScene {...props} />;
+    case 'ballistic_trajectory_map':
+      return <BallisticTrajectoryMapScene {...props} />;
+    case 'micro_section_comparison':
+      return <MicroSectionComparisonScene {...props} />;
+    case 'metallurgical_matrix_grid':
+      return <MetallurgicalMatrixGridScene {...props} />;
+    case 'differential_erosion_bar':
+      return <DifferentialErosionBarScene {...props} />;
+    case 'safety_circuit_interruption':
+      return <SafetyCircuitInterruptionScene {...props} />;
+    case 'inspection_blind_spot_schematic':
+      return <InspectionBlindSpotSchematicScene {...props} />;
+    case 'invisible_topography':
+      return <InvisibleTopographyScene {...props} />;
+    case 'lethality_tracks':
+      return <LethalityTracksScene {...props} />;
+    case 'anatomical_overlap':
+      return <AnatomicalOverlapScene {...props} />;
+    case 'radial_influence':
+      return <RadialInfluenceScene {...props} />;
+    case 'volume_vs_surface':
+      return <VolumeVsSurfaceScene {...props} />;
     default:
       return null;
   }

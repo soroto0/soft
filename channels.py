@@ -593,3 +593,55 @@ def apply_to_params(channel: dict, p: dict) -> dict:
                        _num(channel["minutes"], DEFAULTS["minutes"], "minutes"))
     out["channel_locked"] = locked
     return out
+
+
+def remove(channel_id: str) -> list[dict]:
+    """Убрать профиль канала из channels.json.
+
+    ПАПКУ КАНАЛА НЕ ТРОГАЕТ. Там лежат сценарии, озвучка, купленные и
+    сгенерированные кадры — всё, что стоило времени и денег; восстановить
+    это неоткуда, а профиль в channels.json заводится заново за минуту.
+    Поэтому удаление здесь означает «убрать из софта», а не «стереть с
+    диска»: папку человек уберёт сам, если захочет, и увидит, что удаляет.
+
+    Отказывается писать на нечитаемом файле по той же причине, что и
+    upsert: в chans тогда пусто, и сохранение стёрло бы остальные каналы.
+    """
+    cid = str(channel_id or "").strip()
+    if not cid:
+        raise ValueError("не сказано, какой канал убирать")
+    with _FILE_LOCK:
+        chans, broken = _read()
+        if broken:
+            raise RuntimeError(
+                f"Профиль не удалён: {broken}. Записать сейчас — значит "
+                f"затереть остальные каналы; почини {CHANNELS_FILE.name} "
+                "и повтори")
+        left = [c for c in chans if c.get("id") != cid]
+        if len(left) == len(chans):
+            raise ValueError(f"профиля «{cid}» нет")
+        save(left)
+    return left
+
+
+def set_active(channel_id: str, on: bool) -> list[dict]:
+    """Включить или выключить канал в ночном автопилоте.
+
+    Это ровно тот флаг, по которому night_plan и автопилот отбирают каналы
+    (см. active()). Отдельная функция, а не upsert из формы: включать и
+    выключать канал в ночи хочется одним нажатием из списка, не открывая
+    редактор профиля целиком.
+    """
+    cid = str(channel_id or "").strip()
+    with _FILE_LOCK:
+        chans, broken = _read()
+        if broken:
+            raise RuntimeError(f"Флаг не изменён: {broken}")
+        for ch in chans:
+            if ch.get("id") == cid:
+                ch["active"] = bool(on)
+                break
+        else:
+            raise ValueError(f"профиля «{cid}» нет")
+        save(chans)
+    return chans

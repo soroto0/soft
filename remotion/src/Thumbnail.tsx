@@ -86,7 +86,14 @@ type Look = {
   rough: boolean;        // рваные края плашек (трафаретная краска)
   scrim: number;
   hi: string;            // цвет самого крупного слова / подсветки
-  alarm: string;         // плашка третьей ступени
+  alarm: string;         // цвет плашки под строкой
+  // НА КАКОЙ строке плашка. Было жёстко i === 2, то есть только на
+  // третьей: у harsh заголовки в две строки, и цветного пятна не
+  // выходило никогда — все шесть готовых обложек einsturzpunkt
+  // белым по серому. 'last' ставит плашку на последнюю строку, но
+  // только когда строк больше одной: одинокая строка целиком на
+  // плашке читается как кнопка, а не как заголовок.
+  plate: 'none' | 'last' | 'third';
 };
 
 const LOOKS: Record<string, Look> = {
@@ -134,6 +141,7 @@ const LOOKS: Record<string, Look> = {
     // Берём акцент канала из channels.json (#e2622a), а не произвольный
     // красный: обложка и плашки в ролике должны быть одного канала.
     alarm: '#e2622a',
+    plate: 'last',
   },
   warm: {
     font: 'Impact, "Haettenschweiler", "Arial Narrow", "Arial Black", sans-serif',
@@ -155,6 +163,42 @@ const LOOKS: Record<string, Look> = {
     scrim: 0.8,
     hi: '#f2b134',
     alarm: '#b03a2e',
+    plate: 'third',
+  },
+  // ЖИВОЕ (tiefenzeit). Замер восьми обложек @Extremwelt 30.08.2026.
+  // Устройство, повторяющееся во всех восьми:
+  //   - две строки, верхняя МЕЛЬЧЕ нижней («GRÖSSER ALS» / «LÖWEN»,
+  //     «DIE GIGANTEN» / «DER TIEFSEE», «WIR LAGEN» / «FALSCH»);
+  //   - крупная нижняя строка КРАСНАЯ, верхняя белая — цветного всегда
+  //     меньше, чем белого. Это ровно механика loud + hi, поэтому loud: 1;
+  //   - текст в пустой половине кадра, существо в другой: схемы bl/tl/band
+  //     дают блок шириной 660 из 1280, то есть ровно половину;
+  //   - широкий тяжёлый гротеск, не узкий: Arial Black, а не Oswald;
+  //   - ни плашек, ни лент, ни стрелок, ни рамок — alarm пуст, badges,
+  //     ribbon, inset, arrow, rough все false;
+  //   - затемнение слабое (0.32): фон и так почти чёрный, и сильный scrim
+  //     съедал бы контровой свет, ради которого кадр и снят.
+  wildlife: {
+    font: '"Arial Black", "Segoe UI Black", Impact, sans-serif',
+    upper: true,
+    weight: 900,
+    tracking: '0.005em',
+    smallCaps: false,
+    advance: 0.58,
+    maxSize: 150,
+    schemes: ['bl', 'tl', 'band'],
+    loud: 1,
+    archive: false,
+    glow: false,
+    badges: false,
+    ribbon: false,
+    inset: false,
+    arrow: false,
+    rough: false,
+    scrim: 0.32,
+    hi: '#e01b1b',
+    alarm: '',
+    plate: 'none',
   },
   contemplative: {
     font: 'Impact, "Haettenschweiler", "Arial Narrow", "Arial Black", sans-serif',
@@ -176,6 +220,7 @@ const LOOKS: Record<string, Look> = {
     scrim: 0.5,
     hi: '#f2c832',
     alarm: '',
+    plate: 'none',
   },
 };
 
@@ -200,6 +245,7 @@ const LOOK_DEFAULT: Look = {
   scrim: 0.85,
   hi: '#ffffff',
   alarm: '',
+  plate: 'none',
 };
 
 // Кегль под КОНКРЕТНУЮ строку и КОНКРЕТНУЮ ширину колонки. Переносы на
@@ -514,7 +560,13 @@ export const Thumbnail: React.FC<ThumbnailProps> = (p) => {
           // обложку: подгонка кегля для него не работала вовсе.
           const mul = look.loud < 0 ? 1 : big ? 1 : 0.66;
           const size = fit(line, colW, look, look.maxSize * mul);
-          const onPlate = !!look.alarm && i === 2;
+          const plateIdx =
+            look.plate === 'last'
+              ? (lines.length > 1 ? lines.length - 1 : -1)
+              : look.plate === 'third'
+              ? 2
+              : -1;
+          const onPlate = !!look.alarm && i === plateIdx;
           return (
             <div key={i} style={{ position: 'relative', padding: onPlate ? '4px 16px 9px' : 0 }}>
               {onPlate ? (
