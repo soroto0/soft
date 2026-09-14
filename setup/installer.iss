@@ -35,7 +35,13 @@
 #define AppName      "Контент-фабрика"
 #define AppVersion   "3.0"
 #define AppPublisher "Контент-фабрика"
-#define AppExe       "Запустить.bat"
+; Ярлык ведёт на .exe, а не на .bat. Причина не косметическая: ярлык на
+; .bat открывал чёрное окно консоли при КАЖДОМ запуске, даже когда ставить
+; уже нечего, — человек видел мигающий терминал и решал, что сломалось.
+; Плюс запуск .bat с ярлыка блокируют некоторые антивирусы и корпоративные
+; политики. Сам .bat остаётся в поставке: он нужен тем, кто хочет передать
+; мастеру флаги из командной строки.
+#define AppExe       "КонтентФабрика.exe"
 
 ; ИЗДАНИЕ. Единственное отличие демо от полной — файл demo.json рядом с
 ; программой: demo.включён() проверяет именно его наличие, отдельного «ключа
@@ -111,7 +117,16 @@ Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 ; затирала бы счётчик собранных роликов нулём, то есть выдавала бы ещё три
 ; ролика за одно нажатие «Установить». Ниже он ставится отдельной строкой с
 ; onlyifdoesntexist — счётчик переживает переустановку.
-Source: "..\dist\kontent-fabrika\*"; DestDir: "{app}"; Excludes: "demo.json"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\dist\kontent-fabrika\*"; DestDir: "{app}"; Excludes: "demo.json,{#AppExe}"; Flags: recursesubdirs createallsubdirs ignoreversion
+
+; Пусковой файл — отдельной строкой и БЕЗ skipifsourcedoesntexist. Это второй
+; замок к тому, что уже проверяет dist_pack.ps1. Смысл в том, что маска выше
+; (звёздочка) молчит, если файла нет: установщик собирается, ставится и делает
+; на рабочем столе ярлык на {app}\КонтентФабрика.exe, которого не существует.
+; Отдельная строка превращает это в ошибку компиляции Inno — раздача, в которой
+; не работает единственная кнопка запуска, просто не соберётся.
+; Файл вынут из маски через Excludes, чтобы не копировался дважды.
+Source: "..\dist\kontent-fabrika\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 #ifdef Demo
 Source: "..\dist\kontent-fabrika\demo.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
 #endif

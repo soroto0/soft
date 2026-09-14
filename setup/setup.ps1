@@ -61,6 +61,27 @@ function Have ($name) {
     return ($null -ne $c)
 }
 
+# Выполнить внешний .exe, чья stderr перенаправляется (в $null или в
+# конвейер) и должна разбираться самим кодом ошибки, а не PowerShell.
+#
+# ПОЧЕМУ ЭТО НУЖНО. При глобальном $ErrorActionPreference = 'Stop' (см.
+# верх файла) ЛЮБАЯ перенаправлённая строка stderr от native-команды —
+# даже от команды, которая просто вернула ожидаемый ненулевой код, —
+# PowerShell 5.1 превращает в завершающее исключение NativeCommandError
+# раньше, чем управление дойдёт до `return ($LASTEXITCODE -eq 0)`.
+# Поймано запуском: `& $VenvPy -m pip --version *> $null` на venv без pip
+# (питон создаёт такой на некоторых сборках) не возвращал $false, а
+# ронял весь setup.ps1 необработанной ошибкой — ровно в том сценарии,
+# ради которого Test-VenvPip и написана. Тот же перенос `2>&1 | ...`
+# держит и на шаге pip install: одна строка-предупреждение в stderr
+# обрывала бы получасовую установку зависимостей вместо того, чтобы
+# просто попасть в setup-install.log.
+function Invoke-Quiet ([ScriptBlock]$Cmd) {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Cmd } finally { $ErrorActionPreference = $prevEap }
+}
+
 Say ''
 Say '+---------------------------------------------+'
 Say '|            КОНТЕНТ-ФАБРИКА                  |'
@@ -106,6 +127,33 @@ if (-not $PyLauncher) {
     Say '    либо скачай с https://www.python.org/downloads/'
     Say ''
     Say '  ВАЖНО: при установке отметь галочку "Add python.exe to PATH".'
+    Say ''
+    # Предложение поставить прямо сейчас — такое же, как для FFmpeg ниже.
+    # Без него человек, купивший программу, упирается в инструкцию и должен
+    # сам идти на сайт, выбирать версию и не забыть галочку про PATH. Это
+    # самый частый способ потерять покупателя на первом же экране: у
+    # владельца YouTube-канала никакого Python отродясь не стояло.
+    if (-not $NonInteractive) {
+        $a = Read-Host 'Поставить Python прямо сейчас через winget? (да/нет)'
+        if ($a -eq 'да') {
+            if (Have 'winget') {
+                winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements
+                # winget о неудаче (пакет не найден, нет сети, отказ в UAC)
+                # сообщает только кодом возврата — сам процесс не бросает
+                # исключение и ничего не пишет туда, откуда это было бы видно
+                # само по себе. Без проверки человек читал бы «Готово» и после
+                # провалившейся установки, перезапускал бы setup.ps1 и упирался
+                # в тот же вопрос без объяснения, что в прошлый раз не вышло.
+                if ($LASTEXITCODE -eq 0) {
+                    Warn 'Готово. Закрой это окно и запусти снова — PATH обновляется только в новых окнах.'
+                } else {
+                    Warn "winget вернул ошибку (код $LASTEXITCODE) — похоже, установка не прошла. Поставь вручную по ссылке выше."
+                }
+            } else {
+                Warn 'winget недоступен, поставь вручную по ссылке выше.'
+            }
+        }
+    }
     Fail 'Без Python дальше нельзя.'
 }
 
@@ -136,7 +184,14 @@ if (Have 'ffmpeg') {
         if ($a -eq 'да') {
             if (Have 'winget') {
                 winget install --id Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements
-                Warn 'После установки закрой это окно и запусти заново — PATH обновляется только в новых окнах.'
+                # Тот же случай, что и с Python выше: неудачу winget сообщает
+                # только кодом возврата, и без проверки «После установки…»
+                # печаталось бы и тогда, когда установки не случилось.
+                if ($LASTEXITCODE -eq 0) {
+                    Warn 'После установки закрой это окно и запусти заново — PATH обновляется только в новых окнах.'
+                } else {
+                    Warn "winget вернул ошибку (код $LASTEXITCODE) — похоже, установка не прошла. Поставь вручную по ссылке выше."
+                }
             } else {
                 Warn 'winget недоступен, поставь вручную по ссылке выше.'
             }
@@ -178,14 +233,54 @@ if (Have 'node') {
 # ---------------------------------------------------------------------
 Step 'Готовлю окружение Python (.venv)'
 
+$VenvDir = Join-Path $Root '.venv'
+
+function New-Venv {
+    if ($PyLauncher -eq 'py') { & py -3 -m venv $VenvDir }
+    else                      { & python -m venv $VenvDir }
+}
+
+# Работает ли pip в окружении.
+#
+# ПОЧЕМУ ЭТОГО НЕ ХВАТАЛО РАНЬШЕ. Проверялось только наличие python.exe — а
+# окружение, у которого не отработал ensurepip, выглядит совершенно готовым:
+# папка есть, python.exe на месте. Падает оно на первой же команде pip
+# («No module named pip»), и падает при КАЖДОМ следующем запуске, потому что
+# ветка «создаю .venv» больше не срабатывает — папка-то есть. Человек
+# оказывается в тупике, из которого нет выхода без ручного удаления папки.
+# Поймано на первом запуске раздаваемой копии: Python 3.12 создал venv без
+# pip. Так бывает на минимальных сборках и на версии из Microsoft Store.
+function Test-VenvPip {
+    if (-not (Test-Path $VenvPy)) { return $false }
+    Invoke-Quiet { & $VenvPy -m pip --version *> $null }
+    return ($LASTEXITCODE -eq 0)
+}
+
 if (-not (Test-Path $VenvPy)) {
     Say '  Создаю .venv (это разово, около минуты)...'
-    if ($PyLauncher -eq 'py') { & py -3 -m venv (Join-Path $Root '.venv') }
-    else                      { & python -m venv (Join-Path $Root '.venv') }
+    New-Venv
     if (-not (Test-Path $VenvPy)) { Fail 'Не удалось создать .venv.' }
     Ok 'Окружение создано'
 } else {
     Ok 'Окружение уже есть'
+}
+
+if (-not (Test-VenvPip)) {
+    Warn 'В окружении нет pip — чиню.'
+    Invoke-Quiet { & $VenvPy -m ensurepip --upgrade --default-pip *> $null }
+    if (-not (Test-VenvPip)) {
+        Warn 'Не помогло — пересоздаю окружение с нуля.'
+        Remove-Item $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
+        New-Venv
+    }
+    if (-not (Test-VenvPip)) {
+        Fail ('В окружении не работает pip, и починить его не удалось. Обычно ' +
+              'это значит, что установленный Python собран без модуля ensurepip ' +
+              '— так бывает у версии из Microsoft Store. Поставь Python с ' +
+              'python.org, при установке отметь "Add python.exe to PATH", ' +
+              'и запусти снова.')
+    }
+    Ok 'pip в окружении починен'
 }
 
 # Маркер: какой requirements.txt уже установлен. Пересобираем только если
@@ -199,14 +294,59 @@ if (Test-Path $StampFile) {
 }
 
 if ($needInstall) {
-    Say '  Ставлю зависимости. Первый раз это долго: 5-15 минут,'
-    Say '  качается около 2 ГБ (распознавание речи тянет torch).'
+    # Раньше сюда лился сырой вывод pip: сотни строк «Collecting…»,
+    # «Downloading… 2.1/2.5 GB», и человек пятнадцать минут смотрел на
+    # поток, в котором не видно ни одного понятного шага. Первое, что он
+    # видит после покупки, не должно выглядеть как консоль сборки.
+    #
+    # Поэтому вывод pip уходит в журнал, а на экран идёт полоса с именем
+    # текущего пакета. Журнал остаётся на диске — если что-то упало,
+    # разбираться всё равно нужно по нему.
+    $pipLog = Join-Path $Root 'setup-install.log'
+    $total  = @(Get-Content $ReqFile | Where-Object {
+        $_.Trim() -and -not $_.Trim().StartsWith('#') }).Count
+
+    Say '  Ставлю зависимости: около 2 ГБ, 5-15 минут.'
+    Say '  Качается один раз — при следующих запусках окно не появится.'
     Say ''
-    & $VenvPy -m pip install --upgrade pip --quiet --disable-pip-version-check
-    & $VenvPy -m pip install -r $ReqFile --disable-pip-version-check
-    if ($LASTEXITCODE -ne 0) { Fail 'pip install не прошёл. Смотри ошибку выше.' }
+
+    Invoke-Quiet {
+        & $VenvPy -m pip install --upgrade pip --quiet --disable-pip-version-check 2>&1 |
+            Out-File -FilePath $pipLog -Encoding utf8
+    }
+
+    $done = 0
+    $current = ''
+    Invoke-Quiet {
+        & $VenvPy -m pip install -r $ReqFile --disable-pip-version-check 2>&1 | ForEach-Object {
+            $line = $_.ToString()
+            Add-Content -Path $pipLog -Value $line -Encoding utf8
+
+            # «Collecting torch» / «Installing collected packages: a, b, c» —
+            # единственные строки pip, по которым видно движение.
+            if ($line -match '^\s*Collecting\s+([A-Za-z0-9._-]+)') {
+                $current = $Matches[1]
+                $done = [Math]::Min($done + 1, $total)
+            } elseif ($line -match '^\s*Installing collected packages') {
+                $current = 'записываю на диск'
+                $done = $total
+            } else {
+                return
+            }
+
+            $pct = if ($total) { [int](100 * $done / $total) } else { 0 }
+            Write-Progress -Activity 'Готовлю окружение' `
+                           -Status "$current  ($done из $total)" -PercentComplete $pct
+        }
+    }
+    $rc = $LASTEXITCODE
+    Write-Progress -Activity 'Готовлю окружение' -Completed
+
+    if ($rc -ne 0) {
+        Fail "Не удалось поставить зависимости.`n  Подробности: $pipLog"
+    }
     Set-Content -Path $StampFile -Value $reqHash -Encoding ascii
-    Ok 'Зависимости установлены'
+    Ok "Зависимости установлены (журнал: $pipLog)"
 } else {
     Ok 'Зависимости уже на месте'
 }
@@ -254,6 +394,10 @@ $EnvTpl  = Join-Path $Root '.env.example'
 #   must     — без него ролик не сделать;
 #   good     — сильно расширяет возможности;
 #   optional — можно прожить без него.
+# Уровни здесь обязаны совпадать с реестром core.KEY_SPECS: это тот же
+# список для человека, только на другом языке. Разойдясь однажды, они уже
+# соврали покупателю — платный VeoNonStop был подписан как нужный, а
+# бесплатный Gemini как запасной. Меняешь тут — меняй и там.
 $KeyCatalog = @(
     @{ Name='GEMINI_API_KEY';   Level='must';
        Title='Google Gemini — тексты: сценарий, разбивка на сцены, SEO';
@@ -270,17 +414,17 @@ $KeyCatalog = @(
        Where='https://pixabay.com/api/docs/  (бесплатно)';
        Without='Работает и без него, но материал однообразнее.' },
 
-    @{ Name='VEO_API_KEY';      Level='good';
+    @{ Name='VEO_API_KEY';      Level='optional';
        Title='VeoNonStop — ИИ-видео (Veo) и ИИ-картинки';
        Where='https://veononstop.org  (платно, по подписке)';
        Without='Без него ИИ-видео не будет: только сток и оживление фото Ken Burns.' },
 
-    @{ Name='AGNES_API_KEY';    Level='good';
+    @{ Name='AGNES_API_KEY';    Level='optional';
        Title='Agnes AI — ИИ-картинки, запасной провайдер для текстов';
        Where='https://apihub.agnes-ai.com  (платно)';
        Without='Картинки type: gen уйдут на Gemini; запасного канала для текстов не будет.' },
 
-    @{ Name='YOUTUBE_API_KEY';  Level='good';
+    @{ Name='YOUTUBE_API_KEY';  Level='optional';
        Title='YouTube Data API — разбор ниши перед роликом (что уже заходит)';
        Where='https://console.cloud.google.com/apis/credentials -> API key (бесплатно)';
        Without='Темы придётся придумывать вручную, без опоры на свежие данные.' },
@@ -343,40 +487,26 @@ if (-not (Test-Path $EnvFile)) {
     $firstTime = $false
 }
 
-$askKeys = $Reconfigure -or $firstTime
-if ($NonInteractive) { $askKeys = $false }
-
-if ($askKeys) {
-    Say ''
-    Say '  Сейчас пройдёмся по ключам. Пустой ответ = пропустить.'
-    Say '  Любой можно вписать потом: файл .env в папке проекта.'
-    Say ''
-    Say '  Минимум, чтобы собрать первый ролик: Gemini + Pexels.'
-    Say ''
-
-    foreach ($k in $KeyCatalog) {
-        $cur = Get-EnvValue $EnvFile $k.Name
-        switch ($k.Level) {
-            'must'     { $tag = '[ОБЯЗАТЕЛЬНЫЙ]'; $col = 'Red' }
-            'good'     { $tag = '[желательный]';  $col = 'Yellow' }
-            default    { $tag = '[по желанию]';   $col = 'Gray' }
-        }
-        Say ''
-        Write-Host "  $tag $($k.Name)" -ForegroundColor $col
-        Say "     $($k.Title)"
-        Say "     где взять: $($k.Where)"
-        Say "     без него:  $($k.Without)"
-        if ($cur -ne '') {
-            $masked = $cur.Substring(0, [Math]::Min(4, $cur.Length)) + '...'
-            Say "     сейчас задан: $masked  (Enter — оставить как есть)"
-        }
-        $ans = Read-Host '     значение'
-        if ($ans.Trim() -ne '') {
-            Set-EnvValue $EnvFile $k.Name $ans.Trim()
-            Ok "$($k.Name) записан"
-        }
-    }
-}
+# КЛЮЧИ ЗДЕСЬ БОЛЬШЕ НЕ СПРАШИВАЮТСЯ.
+#
+# Раньше установщик проводил человека по всем семи ключам подряд через
+# Read-Host. Два повода это убрать.
+#
+#   По делу: опрос требовал и платные ключи наравне с бесплатными, а
+#   первый ролик собирается на двух бесплатных. Человек, впервые открывший
+#   программу, читал этот список как «сначала заведи семь учёток».
+#   Теперь ключи спрашивает мастер «С чего начать» внутри самой программы:
+#   там их два, оба помечены как бесплатные, и каждый проверяется на месте
+#   кнопкой, а не «запишем и посмотрим, что будет».
+#
+#   По технике: Read-Host в окне без ввода (запуск из другого процесса,
+#   свёрнутое окно, автоматизация) не ждёт человека, а возвращает мусор —
+#   и он молча уезжал в .env. Поймано замером: после такого прогона в
+#   файле стояло GEMINI_API_KEY=2 и VEO_API_KEY=0. Дальше программа
+#   считала ключи заданными, мастер не открывался, а генерация падала на
+#   отказе сервиса — то есть худший из возможных исходов.
+#
+# Файл .env создаётся из шаблона выше, и этого достаточно.
 
 # Итоговая сводка по ключам — показывается всегда.
 Say ''
@@ -398,9 +528,10 @@ foreach ($k in $KeyCatalog) {
 
 if ($missingMust.Count -gt 0) {
     Say ''
-    Warn "Не заданы обязательные ключи: $($missingMust -join ', ')"
-    Warn 'Приложение откроется, но генерация будет падать с понятной ошибкой.'
-    Warn 'Впиши ключи в .env или запусти: Запустить.bat -Reconfigure'
+    Say "  Обязательные ключи ещё не вписаны: $($missingMust -join ', ')"
+
+    Warn 'Это нормально: программа спросит их сама при первом открытии'
+    Warn 'в окне «С чего начать» — там их всего два и оба бесплатные.'
 }
 
 # ---------------------------------------------------------------------

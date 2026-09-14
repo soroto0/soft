@@ -1,0 +1,60 @@
+{
+  "query": "старый маяк в шторм",
+  "mood": "epic",
+  "shots": [
+    {
+      "title": "Маяк под ударами волн",
+      "search": "stormy lighthouse waves",
+      "prompt": "Cinematic wide shot of a weathered stone lighthouse enduring massive crashing waves during a violent ocean storm, dark moody atmosphere."
+    },
+    {
+      "title": "Свет фонаря сквозь бурю",
+      "search": "lighthouse beam rain",
+      "prompt": "Close-up of a rotating lighthouse fresnel lens shining a bright beam through heavy rain and thick mist at night, dramatic lighting."
+    }
+  ],
+  "files": [
+    {
+      "path": "01_stock_video\\01_stormy-lighthouse-waves_pexels.mp4",
+      "kind": "видео",
+      "title": "Маяк под ударами волн",
+      "source": "Pexels",
+      "url": "https://www.pexels.com/video/sunlight-over-lughthouse-near-porto-10825879/",
+      "n": 1
+    },
+    {
+      "path": "02_stock_photo\\01_stormy-lighthouse-waves_pexels.jpg",
+      "kind": "фото",
+      "title": "Маяк под ударами волн",
+      "source": "Pexels",
+      "url": "https://www.pexels.com/photo/wave-crushing-on-breakwater-with-lighthouse-behind-at-sunset-14776969/",
+      "n": 1
+    },
+    {
+      "path": "01_stock_video\\02_lighthouse-beam-rain_pexels.mp4",
+      "kind": "видео",
+      "title": "Свет фонаря сквозь бурю",
+      "source": "Pexels",
+      "url": "https://www.pexels.com/video/close-up-shot-of-a-flashing-light-from-the-lighthouse-6256795/",
+      "n": 2
+    },
+    {
+      "path": "02_stock_photo\\02_lighthouse-beam-rain_pexels.jpg",
+      "kind": "фото",
+      "title": "Свет фонаря сквозь бурю",
+      "source": "Pexels",
+      "url": "https://www.pexels.com/photo/illuminated-lighthouse-under-night-sky-32846085/",
+      "n": 2
+    },
+    {
+      "path": "05_music\\Megis - Epic Heavenly Voices 1.mp3",
+      "kind": "музыка",
+      "title": "подложка «epic»",
+      "source": "Internet Archive",
+      "url": "",
+      "n": 0
+    }
+  ],
+  "seconds": 40.8,
+  "dir": "C:\\Users\\ali\\Desktop\\2\\Наборы\\2026-08-24_1520_shot"
+}

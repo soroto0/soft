@@ -1,0 +1,23 @@
+НАБОР МАТЕРИАЛА: старый маяк в шторм
+Собран: 24.08.2026 15:21
+Настроение музыки: epic
+Файлов: 5
+
+Лицензии: Pexels и Pixabay разрешают коммерческое использование без указания автора, но указать не мешает.
+Wikimedia и Openverse — по ссылке рядом с файлом, там бывает обязательная атрибуция.
+
+05_music\Megis - Epic Heavenly Voices 1.mp3
+    план -: подложка «epic»
+    музыка, источник: Internet Archive
+01_stock_video\01_stormy-lighthouse-waves_pexels.mp4
+    план 1: Маяк под ударами волн
+    видео, источник: Pexels  https://www.pexels.com/video/sunlight-over-lughthouse-near-porto-10825879/
+02_stock_photo\01_stormy-lighthouse-waves_pexels.jpg
+    план 1: Маяк под ударами волн
+    фото, источник: Pexels  https://www.pexels.com/photo/wave-crushing-on-breakwater-with-lighthouse-behind-at-sunset-14776969/
+01_stock_video\02_lighthouse-beam-rain_pexels.mp4
+    план 2: Свет фонаря сквозь бурю
+    видео, источник: Pexels  https://www.pexels.com/video/close-up-shot-of-a-flashing-light-from-the-lighthouse-6256795/
+02_stock_photo\02_lighthouse-beam-rain_pexels.jpg
+    план 2: Свет фонаря сквозь бурю
+    фото, источник: Pexels  https://www.pexels.com/photo/illuminated-lighthouse-under-night-sky-32846085/

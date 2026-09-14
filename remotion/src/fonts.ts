@@ -107,7 +107,14 @@ const loadAll = () => {
   }
   loaded = true;
   for (const f of FACES) {
-    const handle = delayRender(`Шрифт ${f.file}`);
+    // Потолок по умолчанию 28 с. Шрифты локальные, но при пакетном
+    // рендере (60 сцен подряд) машина занята, и загрузка в него не
+    // укладывается: две сцены из 60 упали именно так. Даём запас -
+    // на картинку это не влияет, сорванную загрузку по-прежнему
+    // подхватывает catch.
+    const handle = delayRender(`Шрифт ${f.file}`, {
+      timeoutInMilliseconds: 120000,
+    });
     const face = new FontFace(
       f.family,
       `url(${staticFile(`fonts/${f.file}`)}) format('woff2')`,

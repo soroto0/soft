@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { parseAmount, formatAmount } from '../payload';
 import { DISPLAY } from '../fonts';
 
 // Counter, вариант «шкала». Число здесь не главное и не по центру: оно едет
@@ -15,7 +16,10 @@ export const CounterAiD3F6: React.FC<VariantProps> = (p) => {
   const m = /([^\d]*)([\d][\d,.\s]*)(.*)/.exec(p.content || '');
   const prefix = m ? m[1] : '';
   const suffix = m ? m[3] : '';
-  const target = m ? parseFloat(m[2].replace(/[,\s]/g, '')) : 0;
+  // Разряды разбирает parseAmount: снятие одной запятой оставляло немецкую
+  // точку внутри числа, и «30.000» приходило сюда как «30».
+  const { value: target, decimals: _dec, group: _grp } =
+    parseAmount(m ? m[2] : '0');
 
   const run = Math.max(12, Math.round(fps * 0.9));
   const k = interpolate(frame, [0, run], [0, 1], {
@@ -27,8 +31,9 @@ export const CounterAiD3F6: React.FC<VariantProps> = (p) => {
   // иначе она читается как заполненная полностью, а не как значение.
   const pos = 6 + k * 82;
 
-  const fmt = (v: number) =>
-    Math.abs(v % 1) > 0.001 ? v.toFixed(1) : String(Math.round(v));
+  // Разряды и знаки после запятой берём из того, как число написали в
+  // плашке (см. parseAmount): «30.000» это тридцать тысяч, а не 30.0.
+  const fmt = (v: number) => formatAmount(v, _dec, _grp);
 
   const ACCENT = '#e0b44c';
   const opacity = p.enter * p.exit;

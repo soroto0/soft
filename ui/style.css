@@ -1,22 +1,87 @@
-/* Контент-фабрика — светлая тема в духе macOS.
-   Дизайн-система: один акцент, белые карточки на голубоватом фоне,
-   системный шрифт, мягкие тени вместо рамок. Акцент меняется одной
-   переменной --accent (её же переопределяет цвет активного канала). */
+/* Контент-фабрика — тёмная студийная тема.
+   Дизайн-система: один акцент (тёплое золото), панели чуть светлее фона,
+   тонкие рамки вместо теней — на тёмном тень не читается, а рамка держит
+   форму. Акцент меняется одной переменной --accent (её же переопределяет
+   цвет активного канала).
+
+   Откат к прежней светлой теме: `git checkout -- ui/style.css`. */
 
 :root {
-  --accent: #0071e3;
-  --accent-hover: #0077ed;
-  --accent-soft: rgba(0, 113, 227, 0.1);
-  --ink: #1d1d1f;
-  --ink-2: rgba(60, 60, 67, 0.6);
-  --ink-3: rgba(60, 60, 67, 0.4);
-  --card: #ffffff;
-  --app-bg: #eef3fb;
-  --line: rgba(0, 0, 0, 0.07);
-  --danger: #ff3b30;
-  --ok: #34c759;
-  --radius: 14px;
+  /* Тёмная тема должна быть объявлена движку, а не только нарисована:
+     без color-scheme WebView2 отдаёт светлые системные части — выпадающий
+     список <select>, диалоги confirm/prompt из app.js, каретку и полосы
+     прокрутки там, где до ::-webkit-scrollbar дело не доходит. */
+  color-scheme: dark;
+  accent-color: var(--accent);
+
+  --accent: #d8b25c;
+  --accent-hover: #e8c46f;
+  --accent-soft: rgba(216, 178, 92, 0.12);
+  --accent-ink: #14140f;        /* текст на золотой заливке, 9.2:1 к #d8b25c */
+  --ink: #ececef;
+  /* Прозрачность второго и третьего уровня подобрана по контрасту к самому
+     светлому фону (--card-2), а не на глаз. Прежние .62/.38 давали у
+     --ink-3 всего 3.2:1 — подписи под иконками, «12/13 этапов» и вся
+     строка состояния проваливались в фон. .72/.52 дают 7.9:1 и 4.8:1,
+     и при этом три уровня текста остаются различимы между собой. */
+  --ink-2: rgba(236, 236, 239, 0.72);
+  --ink-3: rgba(236, 236, 239, 0.52);
+  --card: #17181c;
+  --card-2: #1d1f24;            /* поля ввода, вложенные блоки */
+  --app-bg: #0e0f12;
+  --nav-bg: #131418;
+  --console-bg: #0b0c0e;        /* журнал и строка состояния — «под» фоном */
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.14);
+  --line-3: rgba(255, 255, 255, 0.26);   /* только наведение: ползунок, рамка */
+  /* Плёнки поверх панели. На тёмном подсветка идёт белым с малой альфой:
+     чёрные подложки светлой темы здесь просто делали дыру. */
+  --tint-1: rgba(255, 255, 255, 0.05);
+  --tint-2: rgba(255, 255, 255, 0.09);
+  /* Красный и янтарный считались от белой подложки: #e5544b давал на своей
+     плашке 4.4:1, а #9a5b00 — 2.8:1, то есть предупреждение было почти
+     неразличимо. Подняты до 5.2:1 и 7.5:1. */
+  --danger: #ea6a62;
+  --danger-soft: rgba(234, 106, 98, 0.10);
+  --warn: #f0a93c;
+  --warn-soft: rgba(240, 169, 60, 0.10);
+  --ok: #4fb477;
+  --ok-soft: rgba(79, 180, 119, 0.10);
+
+  /* Кегль: семь ступеней вместо прежних четырнадцати с «половинками»
+     (11.5, 12.5, 13.5…). Полупиксель на 100% масштабе Windows округляется
+     в разные стороны у разных гарнитур, поэтому одинаковые по смыслу
+     подписи в соседних блоках выходили разной высоты. */
+  --fs-xs: 11px;                /* служебные метки, чипы, строка состояния */
+  --fs-sm: 12px;                /* подписи, подсказки */
+  --fs-md: 13px;                /* основной текст интерфейса */
+  --fs-lg: 14px;                /* заголовки строк, названия проектов */
+  --fs-xl: 16px;
+  --fs-2xl: 20px;
+  --fs-3xl: 22px;               /* заголовок этапа */
+
+  /* Отступы кратны 4: у поля, кнопки и строки списка появляется общий шаг,
+     поэтому вертикали в соседних карточках совпадают сами собой. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* Межстрочный задаётся точечно, а не на body: высота кнопок, чипов и
+     строки состояния считается от line-height, и одно глобальное значение
+     разъехало бы всю компоновку. */
+  --lh-tight: 1.3;              /* однострочное: заголовки, подписи */
+  --lh: 1.55;                   /* обычный текст в несколько строк */
+  --lh-loose: 1.75;             /* проза: сценарий, субтитры */
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -26,14 +91,28 @@ html, body { height: 100%; }
 body {
   background: var(--app-bg);
   font-family: var(--font);
+  font-size: var(--fs-md);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
+/* Полоса прокрутки. Дорожка прозрачная, ползунок — та же белая плёнка, что
+   у рамок: он не должен спорить с содержимым, но должен быть виден, когда
+   за него берутся мышью. Прежний rgba(0,0,0,.15) считался от белого фона и
+   на тёмном исчезал совсем — прокрутка выглядела сломанной.
+   background-color, а не background: шорткат сбрасывает background-clip,
+   которым ползунок поджат внутрь дорожки. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background-color: var(--line-2);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--line-3); }
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner { background: transparent; }
 
 @keyframes cfFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes cfSpin { to { transform: rotate(360deg); } }
@@ -50,13 +129,13 @@ body {
 
 .chrome {
   flex: none;
-  height: 52px;
+  height: 40px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 18px;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-4);
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--nav-bg);
   position: relative;
   z-index: 50;
 }
@@ -70,24 +149,30 @@ body {
 /* Островок статуса — он же кнопка журнала */
 .island {
   margin: 0 auto;
-  min-width: 280px;
+  min-width: 260px;
   max-width: 44vw;
   height: 30px;
-  padding: 0 14px;
-  border-radius: 15px;
-  background: #1d1d1f;
-  color: #fff;
+  padding: 0 var(--sp-3);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink-2);
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--sp-2);
   cursor: pointer;
   border: none;
   font-family: inherit;
-  transition: transform .18s ease, background .18s ease;
+  transition: transform .18s ease, background .18s ease, border-color .18s ease;
   overflow: hidden;
 }
 .island:hover { transform: scale(1.02); }
-.island.busy { background: #0a2540; }
+/* Занятость подсвечиваем акцентом, а не прежним синим #0a2540: единственный
+   акцент в теме — золото, и любой второй цвет читается как «ошибка». */
+.island.busy {
+  background: var(--accent-soft);
+  border-color: rgba(216, 178, 92, .40);
+  color: var(--ink);
+}
 .island .dot {
   width: 7px; height: 7px; border-radius: 50%;
   background: var(--ok); flex: none;
@@ -95,85 +180,90 @@ body {
 .island.busy .dot { display: none; }
 .island .spin {
   width: 12px; height: 12px; flex: none; display: none;
-  border: 2px solid rgba(255, 255, 255, .25);
-  border-top-color: #fff;
+  border: 2px solid rgba(216, 178, 92, .25);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: cfSpin .8s linear infinite;
 }
 .island.busy .spin { display: block; }
 .island .txt {
-  font-size: 12.5px; font-weight: 500;
+  font-size: var(--fs-sm); font-weight: 500; line-height: var(--lh-tight);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .island .pct {
-  font-size: 11.5px; font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, .6); flex: none; display: none;
+  font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+  color: var(--accent); flex: none; display: none;
 }
 .island.busy .pct { display: block; }
 
-.chrome-right { display: flex; align-items: center; gap: 8px; flex: none; }
+.chrome-right { display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 
 .avatar {
   width: 30px; height: 30px; border-radius: 50%;
   display: grid; place-items: center;
-  font-size: 12.5px; font-weight: 600; color: #fff;
+  font-size: var(--fs-sm); font-weight: 600; color: var(--accent-ink);
   background: var(--accent);
   cursor: pointer; border: none; font-family: inherit;
   transition: transform .15s ease;
 }
 .avatar:hover { transform: scale(1.06); }
+.avatar:active { transform: scale(.98); }
 
 .iconbtn {
-  width: 30px; height: 30px; border-radius: 8px;
+  width: 30px; height: 30px; border-radius: var(--radius-sm);
   border: none; background: transparent; cursor: pointer;
   display: grid; place-items: center;
-  color: var(--ink-2); font-size: 15px;
-  transition: background .15s ease;
+  color: var(--ink-2); font-size: var(--fs-lg);
+  transition: background .15s ease, color .15s ease;
 }
-.iconbtn:hover { background: rgba(0, 0, 0, .06); color: var(--ink); }
+.iconbtn:hover { background: var(--tint-1); color: var(--ink); }
+.iconbtn:active { background: var(--tint-2); }
 
 /* Всплывающее меню каналов */
 .pop {
-  position: absolute; top: 46px; right: 14px; z-index: 60;
-  min-width: 250px; padding: 6px;
-  background: rgba(255, 255, 255, .94);
+  position: absolute; top: 46px; right: var(--sp-3); z-index: 60;
+  min-width: 250px; padding: var(--sp-1);
+  background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, .16);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .55);
   animation: cfPop .16s ease;
   display: none;
 }
 .pop.open { display: block; }
 .pop-title {
-  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  font-size: var(--fs-xs); font-weight: 700; letter-spacing: .04em;
   color: var(--ink-3); text-transform: uppercase;
-  padding: 6px 10px 8px;
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
 }
 .pop-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 7px 10px; border-radius: 8px; cursor: pointer;
-  font-size: 13.5px;
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); cursor: pointer;
+  font-size: var(--fs-md); line-height: var(--lh-tight);
 }
 .pop-row:hover { background: var(--accent-soft); }
-.pop-row.active { background: var(--accent); color: #fff; }
+/* Белый по золоту давал 2.0:1 — надпись на выбранном канале была почти
+   не видна. На заливке акцентом всегда тёмная краска --accent-ink (9.2:1). */
+.pop-row.active { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .pop-row .ava {
   width: 22px; height: 22px; border-radius: 50%;
   display: grid; place-items: center; flex: none;
-  font-size: 10.5px; font-weight: 600; color: #fff;
+  font-size: var(--fs-xs); font-weight: 600; color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
 }
-.pop-sep { height: 1px; background: var(--line); margin: 6px 4px; }
+.pop-sep { height: 1px; background: var(--line); margin: var(--sp-1); }
 .pop-act {
-  padding: 7px 10px; border-radius: 8px; cursor: pointer;
-  font-size: 13px; color: var(--ink);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); cursor: pointer;
+  font-size: var(--fs-md); line-height: var(--lh-tight); color: var(--ink);
 }
-.pop-act:hover { background: rgba(0, 0, 0, .05); }
+.pop-act:hover { background: var(--tint-1); }
 
 /* ---------- Лента этапов ---------- */
 
 .timeline {
   flex: none; position: relative;
-  padding: 20px 26px 16px;
-  background: rgba(255, 255, 255, .5);
+  padding: var(--sp-5) var(--sp-6) var(--sp-4);
+  background: var(--nav-bg);
   border-bottom: 1px solid var(--line);
 }
 .timeline .line {
@@ -192,19 +282,20 @@ body {
 .tl-node .circle {
   width: 34px; height: 34px; border-radius: 50%;
   display: grid; place-items: center;
-  background: #fff; color: var(--ink-3);
+  background: var(--card-2); color: var(--ink-3);
   border: 2px solid var(--line);
-  transition: all .18s ease;
-  font-size: 14px;
+  transition: background .18s ease, border-color .18s ease, color .18s ease;
+  font-size: var(--fs-lg);
 }
 .tl-node:hover .circle { border-color: var(--accent); color: var(--accent); }
-.tl-node.done .circle { background: var(--ok); border-color: var(--ok); color: #fff; }
+.tl-node.done .circle { background: var(--ok); border-color: var(--ok); color: #0d1a13; }
 .tl-node.active .circle {
-  background: var(--accent); border-color: var(--accent); color: #fff;
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
   box-shadow: 0 0 0 5px var(--accent-soft);
 }
 .tl-node .lbl {
-  font-size: 11.5px; font-weight: 500; color: var(--ink-2);
+  font-size: var(--fs-sm); font-weight: 500; color: var(--ink-2);
+  line-height: var(--lh-tight);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
 }
 .tl-node.active .lbl { color: var(--accent); font-weight: 600; }
@@ -214,144 +305,178 @@ body {
 .content-row { flex: 1; display: flex; min-height: 0; }
 
 .scroll {
-  flex: 1; overflow-y: auto; padding: 26px 28px 44px;
+  flex: 1; overflow-y: auto; padding: var(--sp-6) var(--sp-6) var(--sp-8);
   min-width: 0;
 }
 .stage { display: none; }
 .stage.active {
-  display: flex; flex-direction: column; gap: 16px;
+  display: flex; flex-direction: column; gap: var(--sp-3);
   animation: cfFade .28s ease;
 }
 
-.stage-head { margin-bottom: 2px; }
+.stage-head { margin-bottom: var(--sp-1); }
 .stage-head h1 {
-  font-size: 26px; font-weight: 700; letter-spacing: -.015em; color: var(--ink);
+  font-size: var(--fs-3xl); font-weight: 700; letter-spacing: -.015em;
+  line-height: var(--lh-tight); color: var(--ink);
 }
-.stage-head p { font-size: 13.5px; color: var(--ink-2); margin-top: 2px; }
+.stage-head p {
+  font-size: var(--fs-md); line-height: var(--lh);
+  color: var(--ink-2); margin-top: var(--sp-1);
+}
 
 .card {
   background: var(--card);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 18px 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .06), 0 8px 24px rgba(0, 0, 0, .04);
+  padding: var(--sp-4);
+  box-shadow: none;              /* на тёмном тень не читается — форму держит рамка */
 }
 .card-head {
-  font-size: 13px; font-weight: 600; color: var(--ink);
-  margin-bottom: 12px; display: flex; align-items: center; gap: 10px;
+  font-size: var(--fs-md); font-weight: 600; color: var(--ink);
+  margin-bottom: var(--sp-3); display: flex; align-items: center; gap: var(--sp-3);
 }
-.sep { height: 1px; background: var(--line); margin: 14px -20px; }
+/* Разделитель выходит в поля карточки, поэтому отрицательный отступ обязан
+   совпадать с её горизонтальным паддингом — считаем от той же переменной. */
+.sep { height: 1px; background: var(--line); margin: var(--sp-3) calc(-1 * var(--sp-4)); }
 
 .field {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: var(--sp-3);
   flex-wrap: wrap; min-height: 30px;
 }
-.field + .field { margin-top: 12px; }
+.field + .field { margin-top: var(--sp-3); }
 .field > label:not(.switch) {
-  font-size: 13px; color: var(--ink-2);
+  font-size: var(--fs-md); color: var(--ink-2);
   flex: none; min-width: 104px;
 }
 .grow { flex: 1; min-width: 130px; }
 .spacer { flex: 1; }
-.right { display: flex; justify-content: flex-end; gap: 10px; }
+.right { display: flex; justify-content: flex-end; gap: var(--sp-2); }
 
 input[type="text"], textarea, select {
-  font-family: inherit; font-size: 13.5px; color: var(--ink);
-  background: #f5f5f7; border: 1px solid transparent;
-  border-radius: 9px; padding: 8px 11px;
-  transition: border-color .15s ease, background .15s ease;
+  font-family: inherit; font-size: var(--fs-md); color: var(--ink);
+  background: var(--card-2); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3);
+  transition: border-color .15s ease, box-shadow .15s ease;
   outline: none;
 }
+/* Поле в фокусе меняет рамку и получает мягкое кольцо. Прежний белый фон
+   на тёмной теме превращал активное поле в световое пятно. */
 input[type="text"]:focus, textarea:focus, select:focus {
-  background: #fff; border-color: var(--accent);
+  background: var(--card-2); border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 input[type="text"]::placeholder, textarea::placeholder { color: var(--ink-3); }
 select { cursor: pointer; }
 textarea {
-  width: 100%; resize: vertical; line-height: 1.6;
-  font-size: 13.5px; min-height: 90px;
+  width: 100%; resize: vertical; line-height: var(--lh);
+  font-size: var(--fs-md); min-height: 90px;
 }
-textarea.prose { line-height: 1.75; min-height: 280px; }
+textarea.prose { line-height: var(--lh-loose); min-height: 280px; }
 
 /* Кнопки */
 .btn {
-  font-family: inherit; font-size: 13px; font-weight: 500;
-  padding: 8px 15px; border-radius: 9px; border: none;
-  background: rgba(0, 0, 0, .05); color: var(--ink);
-  cursor: pointer; transition: all .15s ease;
+  font-family: inherit; font-size: var(--fs-md); font-weight: 500;
+  line-height: var(--lh-tight);
+  padding: var(--sp-2) var(--sp-4); border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--card-2); color: var(--ink);
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
   white-space: nowrap;
 }
-.btn:hover { background: rgba(0, 0, 0, .09); }
+.btn:hover { background: #24262c; border-color: var(--line-2); }
 .btn:active { transform: scale(.98); }
 .btn:disabled { opacity: .45; cursor: default; transform: none; }
-.btn.primary { background: var(--accent); color: #fff; }
-.btn.primary:hover { background: var(--accent-hover); }
-.btn.danger { background: rgba(255, 59, 48, .1); color: var(--danger); }
-.btn.danger:hover { background: rgba(255, 59, 48, .18); }
-.btn.ghost { background: transparent; color: var(--ink-2); }
-.btn.ghost:hover { background: rgba(0, 0, 0, .05); color: var(--ink); }
-.btn.big { font-size: 15px; padding: 12px 26px; border-radius: 11px; font-weight: 600; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.danger { background: var(--danger-soft); border-color: rgba(234, 106, 98, .35); color: var(--danger); }
+.btn.danger:hover { background: rgba(234, 106, 98, .18); border-color: rgba(234, 106, 98, .55); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--ink-2); }
+.btn.ghost:hover { background: var(--tint-1); border-color: var(--line); color: var(--ink); }
+.btn.big {
+  font-size: var(--fs-xl); padding: var(--sp-3) var(--sp-6);
+  border-radius: var(--radius); font-weight: 600;
+}
 
 /* Чипсы */
-.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .chip {
-  font-size: 12.5px; padding: 6px 13px; border-radius: 8px;
-  background: #f5f5f7; color: var(--ink-2);
-  cursor: pointer; transition: all .15s ease; user-select: none;
-  border: none; font-family: inherit;
+  font-size: var(--fs-sm); line-height: var(--lh-tight);
+  padding: var(--sp-1) var(--sp-3); border-radius: var(--radius-sm);
+  background: var(--card-2); color: var(--ink-2);
+  cursor: pointer; transition: background .15s ease, color .15s ease; user-select: none;
+  border: 1px solid var(--line); font-family: inherit;
 }
-.chip:hover { background: rgba(0, 0, 0, .08); }
-.chip.on { background: var(--accent); color: #fff; font-weight: 500; }
+.chip:hover { background: var(--tint-1); color: var(--ink); }
+.chip.on {
+  background: var(--accent); border-color: var(--accent);
+  color: var(--accent-ink); font-weight: 600;   /* белый по золоту давал 2.0:1 */
+}
 
 /* Тумблеры */
 .switch {
-  display: inline-flex; align-items: center; gap: 8px;
-  font-size: 12.5px; color: var(--ink); cursor: pointer;
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--fs-sm); color: var(--ink); cursor: pointer;
   user-select: none; min-width: 0 !important;
+  position: relative;           /* якорь для спрятанного чекбокса ниже */
 }
-.switch input { display: none; }
+/* Настоящий чекбокс спрятан визуально, но не убран из потока: display:none
+   выбрасывал его из последовательности Tab, и до автопрокрутки в журнале с
+   клавиатуры было не добраться. */
+.switch input {
+  position: absolute; width: 1px; height: 1px;
+  opacity: 0; margin: 0; pointer-events: none;
+}
 .switch .tr {
-  width: 38px; height: 22px; border-radius: 11px;
+  width: 38px; height: 22px; border-radius: 999px;
   background: rgba(120, 120, 128, .28);
-  position: relative; flex: none; transition: background .2s ease;
+  position: relative; flex: none; transition: background .2s ease, box-shadow .15s ease;
 }
 .switch .tr::after {
   content: ""; position: absolute; top: 2px; left: 2px;
   width: 18px; height: 18px; border-radius: 50%;
-  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .45);
   transition: transform .2s ease;
 }
 .switch input:checked + .tr { background: var(--ok); }
 .switch input:checked + .tr::after { transform: translateX(16px); }
+/* Фокус показываем на дорожке — сам input невидим, кольцу не на чем висеть. */
+.switch input:focus-visible + .tr {
+  box-shadow: 0 0 0 2px var(--app-bg), 0 0 0 4px var(--accent);
+}
 
-.switches { display: flex; flex-wrap: wrap; gap: 12px 22px; }
+.switches { display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-5); }
 
-.hint { font-size: 12px; line-height: 1.55; color: var(--ink-2); }
+.hint { font-size: var(--fs-sm); line-height: var(--lh); color: var(--ink-2); }
+/* Прежний #9a5b00 считался от белой подложки: на тёмной плашке он давал
+   2.8:1 и предупреждение читалось хуже обычного текста. */
 .warn {
-  font-size: 12px; line-height: 1.5; color: #9a5b00;
-  background: rgba(255, 149, 0, .1); border-radius: 9px; padding: 9px 12px;
+  font-size: var(--fs-sm); line-height: var(--lh); color: var(--warn);
+  background: var(--warn-soft); border: 1px solid rgba(240, 169, 60, .22);
+  border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3);
 }
 .sect {
-  font-size: 12px; font-weight: 700; letter-spacing: .04em;
-  color: var(--ink-3); text-transform: uppercase; margin: 4px 0;
+  font-size: var(--fs-sm); font-weight: 700; letter-spacing: .04em;
+  color: var(--ink-3); text-transform: uppercase; margin: var(--sp-1) 0;
 }
 
 /* Моноширинные блоки: субтитры, SEO */
 .mono {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px; line-height: 1.65;
-  background: #f5f5f7; border-radius: 10px; padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: var(--fs-sm); line-height: var(--lh-loose);
+  background: var(--card-2); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: var(--sp-3);
   max-height: 340px; overflow: auto; white-space: pre-wrap;
   color: var(--ink);
 }
 
 /* Список проектов */
 .proj {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 12px; border-radius: 10px; cursor: pointer;
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); cursor: pointer;
   transition: background .15s ease;
 }
-.proj:hover { background: rgba(0, 0, 0, .04); }
+.proj:hover { background: var(--tint-1); }
 .proj.current { background: var(--accent-soft); }
 /* Имя проекта = имя папки, длина любая и без пробелов (тема ролика целиком).
    Контейнер сжимаем (min-width:0), поэтому такая строка вылезала за карточку
@@ -359,64 +484,74 @@ textarea.prose { line-height: 1.75; min-height: 280px; }
 .proj .nm, .proj .meta {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.proj .nm { font-size: 13.5px; font-weight: 500; }
-.proj .meta { font-size: 11.5px; color: var(--ink-2); }
+.proj .nm { font-size: var(--fs-lg); font-weight: 500; line-height: var(--lh-tight); }
+.proj .meta { font-size: var(--fs-xs); color: var(--ink-2); line-height: var(--lh-tight); }
 .proj .bar {
-  flex: none; width: 54px; height: 4px; border-radius: 2px;
-  background: rgba(0, 0, 0, .08); overflow: hidden;
+  flex: none; width: 54px; height: 4px; border-radius: 999px;
+  background: var(--tint-2); overflow: hidden;   /* чёрная дорожка на тёмном — дыра */
 }
 .proj .bar i { display: block; height: 100%; background: var(--ok); }
 
 /* ---------- Правая панель ---------- */
 
+/* Панель осталась единственным крупным следом светлой темы: полупрозрачный
+   белый поверх --app-bg давал светло-серый прямоугольник во всю высоту окна
+   справа. Ставим тот же фон, что у левого меню, — оболочка окна должна
+   читаться как одна рамка вокруг содержимого. */
 .side {
-  flex: none; width: 218px;
+  flex: none; width: 200px;
   border-left: 1px solid var(--line);
-  background: rgba(255, 255, 255, .5);
-  padding: 22px 18px; overflow-y: auto;
+  background: var(--nav-bg);
+  padding: var(--sp-4) var(--sp-3); overflow-y: auto;
+  transition: width .22s ease, padding .22s ease, opacity .16s ease;
 }
 .ring {
-  width: 108px; height: 108px; margin: 0 auto 4px;
+  width: 108px; height: 108px; margin: 0 auto var(--sp-1);
   border-radius: 50%; display: grid; place-items: center;
-  background: conic-gradient(var(--accent) calc(var(--pct, 0) * 1%), rgba(0, 0, 0, .07) 0);
+  background: conic-gradient(var(--accent) calc(var(--pct, 0) * 1%), var(--tint-2) 0);
   transition: background .4s ease;
 }
+/* Ядро кольца вырезает фон ТОЙ панели, на которой лежит, иначе по краю
+   идёт лишний тёмный ободок. */
 .ring .inner {
   width: 84px; height: 84px; border-radius: 50%;
-  background: var(--app-bg); display: grid; place-items: center;
+  background: var(--nav-bg); display: grid; place-items: center;
   align-content: center; text-align: center;
 }
-.ring .num { font-size: 20px; font-weight: 700; color: var(--ink); }
-.ring .cap { font-size: 10.5px; color: var(--ink-2); }
+.ring .num { font-size: var(--fs-2xl); font-weight: 700; color: var(--ink); line-height: var(--lh-tight); }
+.ring .cap { font-size: var(--fs-xs); color: var(--ink-2); line-height: var(--lh-tight); }
 
 .mini-row {
-  display: flex; align-items: center; gap: 9px;
-  padding: 6px 8px; border-radius: 8px; cursor: pointer;
-  font-size: 12.5px; color: var(--ink-2);
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-sm); cursor: pointer;
+  font-size: var(--fs-sm); line-height: var(--lh-tight); color: var(--ink-2);
   background: none; border: none; width: 100%; font-family: inherit;
   text-align: left;
 }
-.mini-row:hover { background: rgba(0, 0, 0, .05); }
+.mini-row:hover { background: var(--tint-1); color: var(--ink); }
 .mini-row.active { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
 .mini-row .d {
   width: 7px; height: 7px; border-radius: 50%; flex: none;
-  background: rgba(0, 0, 0, .18);
+  background: var(--ink-3);
 }
 .mini-row.done .d { background: var(--ok); }
 .side-lbl {
-  font-size: 12px; font-weight: 700; letter-spacing: .04em;
-  color: var(--ink-3); text-transform: uppercase; margin: 18px 0 8px;
+  font-size: var(--fs-sm); font-weight: 700; letter-spacing: .04em;
+  color: var(--ink-3); text-transform: uppercase; margin: var(--sp-4) 0 var(--sp-2);
 }
-.side-val { font-size: 13.5px; font-weight: 600; color: var(--ink); }
-.side-sub { font-size: 11.5px; color: var(--ink-2); margin-top: 3px; word-break: break-all; }
+.side-val { font-size: var(--fs-lg); font-weight: 600; color: var(--ink); }
+.side-sub {
+  font-size: var(--fs-xs); line-height: var(--lh); color: var(--ink-2);
+  margin-top: var(--sp-1); word-break: break-all;
+}
 
 /* ---------- Журнал ---------- */
 
 .logdrawer {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 70;
-  height: 44vh; padding: 12px 16px 14px;
-  background: rgba(28, 28, 30, .97);
-  border-top: 1px solid rgba(255, 255, 255, .1);
+  height: 44vh; padding: var(--sp-3) var(--sp-4);
+  background: rgba(11, 12, 14, .97);   /* тот же «подвал», что у строки состояния */
+  border-top: 1px solid var(--line-2);
   display: none; flex-direction: column;
 }
 .logdrawer.open { display: flex; animation: cfFade .2s ease; }
@@ -427,27 +562,36 @@ textarea.prose { line-height: 1.75; min-height: 280px; }
 body.log-open .scroll { padding-bottom: calc(44vh + 24px); }
 body.log-open .side { padding-bottom: calc(44vh + 24px); }
 .log-head {
-  display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
-  color: rgba(255, 255, 255, .85); font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2);
+  color: var(--ink); font-size: var(--fs-sm); font-weight: 600;
 }
-.log-head .switch { color: rgba(255, 255, 255, .7); font-size: 12px; }
+.log-head .switch { color: var(--ink-2); font-size: var(--fs-sm); }
 .log-head .btn {
-  background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .9);
-  padding: 5px 12px; font-size: 12px;
+  background: var(--tint-2); border-color: var(--line-2); color: var(--ink);
+  padding: var(--sp-1) var(--sp-3); font-size: var(--fs-sm);
 }
-.log-head .btn:hover { background: rgba(255, 255, 255, .2); }
+.log-head .btn:hover { background: rgba(255, 255, 255, .18); }
 .log-body {
   flex: 1; overflow-y: auto;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px; line-height: 1.7;
-  color: rgba(255, 255, 255, .8);
+  font-family: var(--mono);
+  font-size: var(--fs-sm); line-height: var(--lh-loose);
+  color: rgba(236, 236, 239, .84);
 }
-.log-body .t { color: rgba(255, 255, 255, .38); }
+.log-body .t { color: var(--ink-3); }
+/* Отметки уровня в журнале ярче общих токенов: строки идут сплошным
+   потоком мелким моноширинным, различать их надо с одного взгляда.
+   Фон здесь почти чёрный, поэтому запас по контрасту большой. */
 .log-body .err { color: #ff8a80; }
 .log-body .ok { color: #6ee7a0; }
 .log-body .warn { color: #ffd479; }
-.log-body .dim { color: rgba(255, 255, 255, .45); }
-.logdrawer ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .2); }
+.log-body .dim { color: var(--ink-3); }
+/* .warn — ещё и класс плашки-предупреждения в карточках. В журнале это
+   просто span внутри строки, и её паддинг с заливкой рвали ленту: гасим. */
+.log-body .warn, .log-body .ok, .log-body .err {
+  background: none; border: none; padding: 0; border-radius: 0;
+  font-size: inherit; line-height: inherit;
+}
+.logdrawer ::-webkit-scrollbar-thumb { background-color: rgba(255, 255, 255, .22); }
 
 /* ---------- Экран выбора канала ---------- */
 
@@ -458,53 +602,735 @@ body.log-open .side { padding-bottom: calc(44vh + 24px); }
 }
 .gate.open { display: flex; }
 .gate-box {
-  display: flex; flex-direction: column; align-items: center; gap: 26px;
-  max-width: 640px; padding: 30px; animation: cfFade .35s ease;
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-6);
+  max-width: 640px; padding: var(--sp-8); animation: cfFade .35s ease;
 }
+/* Плитка с эмодзи была белым квадратом посреди тёмного экрана — на неё
+   уходил весь взгляд вместо списка каналов. */
 .gate-glyph {
-  width: 62px; height: 62px; border-radius: 16px;
-  background: #fff; display: grid; place-items: center;
-  box-shadow: 0 8px 26px rgba(0, 0, 0, .1);
-  font-size: 26px;
+  width: 62px; height: 62px; border-radius: var(--radius-lg);
+  background: var(--card-2); border: 1px solid var(--line);
+  display: grid; place-items: center;
+  box-shadow: none;
+  font-size: var(--fs-3xl);
 }
-.gate h2 { font-size: 24px; font-weight: 600; letter-spacing: -.01em; text-align: center; }
-.gate .sub { font-size: 14px; color: var(--ink-2); margin-top: 6px; text-align: center; }
-.gate-grid { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+.gate h2 { font-size: var(--fs-2xl); font-weight: 600; letter-spacing: -.01em; text-align: center; }
+.gate .sub { font-size: var(--fs-lg); line-height: var(--lh); color: var(--ink-2); margin-top: var(--sp-2); text-align: center; }
+.gate-grid { display: flex; gap: var(--sp-4); flex-wrap: wrap; justify-content: center; }
 .gate-tile {
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  cursor: pointer; padding: 6px; border-radius: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-2);
+  cursor: pointer; padding: var(--sp-2); border-radius: var(--radius);
   background: none; border: none; font-family: inherit;
-  transition: transform .15s ease;
+  transition: transform .15s ease, background .15s ease;
 }
-.gate-tile:hover { transform: translateY(-3px); }
+.gate-tile:hover { transform: translateY(-3px); background: var(--tint-1); }
+.gate-tile:active { transform: none; }
+/* Заливку плитки задаёт app.js цветом канала (в том числе жёлтым и зелёным),
+   поэтому белую букву поверх страхуем тенью: подобрать краску под цвет,
+   которого нет в CSS, отсюда нельзя. */
 .gate-tile .face {
   width: 66px; height: 66px; border-radius: 18px;
   display: grid; place-items: center;
-  font-size: 24px; font-weight: 600; color: #fff;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, .14);
+  font-size: var(--fs-3xl); font-weight: 700; color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .55);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
 }
 .gate-tile .nm {
-  font-size: 12.5px; font-weight: 500; color: var(--ink);
+  font-size: var(--fs-sm); font-weight: 500; color: var(--ink);
+  line-height: var(--lh-tight);
   max-width: 104px; text-align: center;
 }
 
 /* ---------- Модальные окна ---------- */
 
+/* Затемнение .28 рассчитано на светлую страницу под ним. На тёмной оно почти
+   не отделяет окно от фона — модалка выглядела приклеенной к содержимому. */
 .modal-bg {
   position: fixed; inset: 0; z-index: 100;
-  background: rgba(0, 0, 0, .28);
+  background: rgba(0, 0, 0, .62);
   display: none; align-items: center; justify-content: center;
 }
 .modal-bg.open { display: flex; }
 .modal {
   width: 640px; max-width: 92vw; max-height: 88vh; overflow-y: auto;
-  background: var(--card); border-radius: 18px; padding: 24px 26px;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, .3);
+  background: var(--card); border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg); padding: var(--sp-6);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
   animation: cfPop .2s ease;
 }
-.modal h2 { font-size: 19px; font-weight: 600; margin-bottom: 16px; }
+.modal h2 {
+  font-size: var(--fs-2xl); font-weight: 600;
+  line-height: var(--lh-tight); margin-bottom: var(--sp-4);
+}
 .modal .field > label:not(.switch) { min-width: 172px; }
 .modal textarea { min-height: 62px; }
 .modal-foot {
-  display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px;
+  display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4);
 }
+/* Разделитель в модалке живёт не в карточке — его отрицательные поля надо
+   считать от паддинга модалки, иначе линия торчит наружу. */
+.modal .sep { margin: var(--sp-4) calc(-1 * var(--sp-6)); }
+
+/* =====================================================================
+   ТЁМНАЯ СТУДИЙНАЯ ТЕМА — надстройка над правилами выше.
+
+   Лежит в конце файла намеренно: при равной специфичности выигрывает
+   последнее правило, поэтому здесь не нужны !important и не приходится
+   править двадцать мест в теле файла. Разметку не меняем — все id,
+   классы и обработчики остаются прежними, чтобы app.js продолжал
+   работать без единой правки.
+   ===================================================================== */
+
+/* Полоса прокрутки перекрашена в самом начале файла, у остальных базовых
+   правил: шорткат background здесь сбрасывал background-clip и ползунок
+   растекался на всю ширину дорожки. */
+
+/* ---------- Оболочка: этапы уезжают в левое меню ----------
+   Раньше этапы шли горизонтальной лентой над содержимым. На восьми
+   этапах подписи в ней сжимались до нечитаемых. Сетка разводит их в
+   колонку слева, где каждому хватает строки. */
+
+.app {
+  display: grid;
+  grid-template-areas: "chrome chrome" "nav content";
+  /* Ширина меню и высота шапки заданы ЗДЕСЬ, а не в .chrome/.timeline:
+     это строки и колонки грида, и правка высоты в самом .chrome оставляет
+     под ним пустую полосу в разницу — поймано замером после сжатия шапки
+     с 52 до 40. Меняешь одно — меняй и второе. */
+  grid-template-columns: 208px 1fr;
+  grid-template-rows: 40px 1fr;
+}
+.chrome      { grid-area: chrome; background: var(--nav-bg); border-bottom: 1px solid var(--line); }
+.timeline    { grid-area: nav; }
+.content-row { grid-area: content; }
+
+.timeline {
+  padding: var(--sp-4) var(--sp-2);
+  background: var(--nav-bg);
+  border-bottom: none;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+.timeline .line { display: none; }          /* соединительная черта нужна была ленте */
+
+.tl-row { flex-direction: column; gap: 2px; justify-content: flex-start; }
+
+.tl-row::before {
+  content: "Этапы";
+  font-size: var(--fs-xs); letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-3); padding: 0 var(--sp-3) var(--sp-2);
+}
+
+.tl-node {
+  flex-direction: row; align-items: center; gap: var(--sp-3);
+  width: 100%; flex: none; padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm); text-align: left;
+  border-left: 2px solid transparent;
+  transition: background .15s ease, border-color .15s ease;
+}
+.tl-node:hover { background: var(--tint-1); }
+.tl-node:active { background: var(--tint-2); }
+.tl-node .circle {
+  width: 26px; height: 26px; border-radius: 7px; flex: none;
+  background: var(--card-2); border: 1px solid var(--line);
+  color: var(--ink-3); font-size: var(--fs-md);
+}
+.tl-node .lbl {
+  font-size: var(--fs-md); color: var(--ink-2); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.tl-node.done .circle { background: rgba(79, 180, 119, .14); border-color: rgba(79, 180, 119, .4); color: var(--ok); }
+.tl-node.done .lbl    { color: var(--ink-2); }
+.tl-node.active {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+.tl-node.active .circle { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tl-node.active .lbl    { color: var(--ink); font-weight: 600; }
+
+/* ---------- Верхняя панель ---------- */
+
+.island {
+  background: var(--card); border: 1px solid var(--line);
+  color: var(--ink-2); border-radius: 999px;
+}
+.island:hover { border-color: var(--line-2); }
+.island .pct { color: var(--accent); font-variant-numeric: tabular-nums; }
+.iconbtn { color: var(--ink-2); }
+.iconbtn:hover { background: var(--tint-1); color: var(--ink); }
+.avatar { background: var(--accent); color: var(--accent-ink); }
+/* .hint — не декорация: этим классом набраны объяснения в настройках, целые
+   абзацы про библиотеку музыки и ключи. Третий уровень краски (4.8:1) для
+   такого объёма мелкого текста слишком тускл, оставляем второй (7.9:1). */
+.hint, .sub { color: var(--ink-2); }
+
+/* ---------- Карточки и поля ---------- */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+.card-head { color: var(--ink); }
+
+input, select, textarea {
+  background: var(--card-2) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--ink) !important;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent) !important; outline: none; }
+input::placeholder, textarea::placeholder { color: var(--ink-3); }
+select option { background: var(--card-2); color: var(--ink); }
+label { color: var(--ink-2); }
+
+/* ---------- Кнопки ----------
+   Базовые правила выше уже описаны токенами, здесь остаётся только то, чего
+   в них нет: псевдокласс .accent и вес шрифта. 650 и 750 — веса переменного
+   начертания, Segoe UI их всё равно округляет, а промежуточный вес мешает
+   отличить главную кнопку от обычной. */
+
+.btn.accent {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+}
+.btn.primary, .btn.accent { font-weight: 600; }
+.btn.accent:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+/* ---------- Журнал: читается как консоль ----------
+   Селекторы .drawer/.log-line/#logBox остались от прежней разметки журнала.
+   Держим их в тон теме, чтобы возврат к той разметке не вылез белым. */
+
+.drawer, .drawer-body { background: var(--console-bg); }
+.drawer { border-top: 1px solid var(--line); }
+.log, .log-line, #logBox { font-family: var(--mono); font-size: var(--fs-sm); }
+.log-line.warn { color: var(--warn); }
+.log-line.err  { color: var(--danger); }
+.log-line.ok   { color: var(--ok); }
+
+/* ---------- Экран выбора канала ---------- */
+
+.gate { background: rgba(14, 15, 18, .92); }
+.gate-box {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.gate-glyph { filter: saturate(.85); }
+
+/* ---------- Всплывающее меню каналов ---------- */
+
+.pop { background: var(--card); border: 1px solid var(--line); box-shadow: 0 18px 48px rgba(0, 0, 0, .55); }
+.pop-title { color: var(--ink-3); }
+.pop-act:hover, .pop-row:hover { background: var(--tint-1); }
+/* Наведение на уже выбранный канал не должно смывать золотую заливку —
+   белая плёнка идёт последней и без этого правила перебивала .active. */
+.pop-row.active:hover { background: var(--accent-hover); color: var(--accent-ink); }
+.pop-sep { background: var(--line); }
+
+/* ---------- Мелочи ---------- */
+
+.mini-row.active { background: var(--accent-soft); color: var(--ink); }
+.mini-row .d { background: var(--ink-3); }
+.mini-row.done .d { background: var(--ok); }
+hr, .sep { border-color: var(--line); background: var(--line); }
+code, pre, .mono { font-family: var(--mono); color: var(--ink-2); }
+
+/* =====================================================================
+   ДАШБОРД, ПРОЕКТЫ, НИЖНЯЯ ПАНЕЛЬ, СТРОКА СОСТОЯНИЯ
+   ===================================================================== */
+
+/* Окно теперь четырёхэтажное: шапка, содержимое, панель действий, статус.
+   Меню тянется на два средних этажа, чтобы кнопка генерации и статус шли
+   через всю ширину — как в референсе. */
+.app {
+  grid-template-areas:
+    "chrome chrome"
+    "nav    content"
+    "bar    bar"
+    "status status";
+  /* Высота шапки живёт в ДВУХ местах: здесь и в первом .app выше.
+     Это правило идёт позже и побеждает — правя одно, правь и второе,
+     иначе под шапкой остаётся пустая полоса в разницу высот. */
+  grid-template-rows: 40px 1fr auto 28px;
+}
+.actionbar { grid-area: bar; }
+.statusbar { grid-area: status; }
+
+/* ---------- Разделы бокового меню ---------- */
+
+.tl-row::before { content: none; }        /* заголовки теперь настоящие, из JS */
+
+.nav-group {
+  font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--ink-3); padding: 14px 12px 6px;
+}
+.nav-group:first-child { padding-top: 0; }
+
+.timeline { display: flex; flex-direction: column; }
+.tl-row { flex: 1; }
+
+/* Карточка канала в подвале меню */
+.navfoot {
+  margin-top: auto; padding-top: 12px;
+  border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.navuser {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border-radius: 9px;
+  background: var(--card); border: 1px solid var(--line);
+  cursor: pointer; font-family: inherit; text-align: left;
+  margin-bottom: 6px;
+}
+.navuser:hover { border-color: var(--line-2); }
+.navuser-ava {
+  width: 28px; height: 28px; border-radius: 8px; flex: none;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; color: #fff;
+  background: rgba(255, 255, 255, .12);
+}
+.navuser-txt { display: flex; flex-direction: column; min-width: 0; }
+.navuser-name {
+  font-size: 12.5px; font-weight: 600; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.navuser-sub {
+  font-size: 10.5px; color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.navlink {
+  background: none; border: none; cursor: pointer; font-family: inherit;
+  text-align: left; padding: 6px 10px; border-radius: 7px;
+  font-size: 12px; color: var(--ink-3);
+}
+.navlink:hover { background: rgba(255, 255, 255, .05); color: var(--ink-2); }
+
+/* ---------- Быстрые инструменты ---------- */
+
+.qt-row {
+  display: grid; gap: 10px; margin-top: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.qt {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 20px 12px; border-radius: 10px;
+  background: var(--card-2); border: 1px solid var(--line);
+  cursor: pointer; font-family: inherit;
+  transition: border-color .15s ease, background .15s ease;
+}
+.qt:hover { border-color: var(--accent); background: rgba(216, 178, 92, .06); }
+.qt-ico {
+  width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center;
+  background: rgba(255, 255, 255, .05); font-size: 19px; margin-bottom: 2px;
+}
+.qt-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.qt-sub { font-size: 11px; color: var(--ink-3); text-align: center; }
+
+/* ---------- Список проектов ---------- */
+
+.prows { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+
+.prow {
+  display: grid; align-items: center; gap: 14px;
+  grid-template-columns: 34px 1fr auto auto;
+  padding: 14px 16px; border-radius: 10px;
+  background: var(--card-2); border: 1px solid var(--line);
+  transition: border-color .15s ease;
+}
+.prow:hover { border-color: var(--line-2); }
+.prow.current { border-color: var(--accent); background: rgba(216, 178, 92, .06); }
+.prow.slim { grid-template-columns: 1fr auto; cursor: pointer; padding: 12px 14px; }
+
+.pnum {
+  width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center;
+  background: rgba(255, 255, 255, .05); border: 1px solid var(--line);
+  font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink-2);
+}
+.prow.current .pnum { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+
+.pbody { min-width: 0; }
+.ptitle {
+  font-size: 14px; font-weight: 600; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ptitle i { color: var(--ink-3); font-weight: 400; }
+.pchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.chip {
+  font-size: 11px; padding: 3px 9px; border-radius: 999px;
+  background: rgba(255, 255, 255, .05); border: 1px solid var(--line);
+  color: var(--ink-2); white-space: nowrap;
+}
+.chip.ok { color: var(--ok); border-color: rgba(79, 180, 119, .3); background: rgba(79, 180, 119, .08); }
+
+.pprog {
+  font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pacts { display: flex; gap: 2px; }
+.iconbtn.danger:hover { background: rgba(229, 84, 75, .14); color: var(--danger); }
+
+.count {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px; margin-left: 6px;
+  background: rgba(255, 255, 255, .07); color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.empty { padding: 26px 4px; color: var(--ink-3); font-size: 13px; }
+
+/* ---------- Нижняя панель ---------- */
+
+.actionbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px;
+  background: var(--nav-bg);
+  border-top: 1px solid var(--line);
+}
+.actionbar .spacer { flex: 1; }
+
+.btn.generate {
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  border: none; color: var(--accent-ink);
+  font-weight: 750; font-size: 13.5px; letter-spacing: .04em;
+  padding: 12px 28px; border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(216, 178, 92, .22);
+  cursor: pointer; font-family: inherit;
+}
+.btn.generate:hover { filter: brightness(1.06); }
+.btn.generate:active { transform: translateY(1px); }
+
+/* ---------- Строка состояния ---------- */
+
+.statusbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 14px; height: 30px;
+  background: #0b0c0e; border-top: 1px solid var(--line);
+  font-size: 11.5px; color: var(--ink-3);
+  font-family: var(--mono);
+}
+.statusbar .spacer { flex: 1; }
+.sb-sep { width: 1px; height: 12px; background: var(--line); }
+.sb-console {
+  display: flex; align-items: center; gap: 7px;
+  background: none; border: none; cursor: pointer;
+  font-family: inherit; font-size: 11.5px; color: var(--ink-2);
+  padding: 4px 6px; border-radius: 6px;
+}
+.sb-console:hover { background: rgba(255, 255, 255, .05); color: var(--ink); }
+.sb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.sb-ver { color: var(--ink-3); }
+
+/* =====================================================================
+   ДОВОДКА: контраст, состояния, узкое окно
+   ===================================================================== */
+
+/* Второстепенный текст не дотягивал до нормы читаемости. Посчитано на
+   фоне карточки #17181c: при прозрачности .38 выходило 3.3:1 — ниже
+   порога 4.5:1 для обычного кегля, и подписи под чипами буквально
+   проваливались в фон. При .52 получается 4.8:1. */
+:root {
+  --ink-3: rgba(236, 236, 239, 0.52);
+}
+
+/* ---------- Фокус с клавиатуры ---------- */
+
+/* Обводка одна на всё окно: своя у каждого элемента — это разнобой, а
+   без неё приложением нельзя пользоваться с клавиатуры вообще.
+   :focus-visible, а не :focus — иначе кольцо вспыхивает на каждый клик
+   мышью и выглядит поломкой. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.tl-node:focus-visible { outline-offset: -2px; }
+
+/* ---------- Отключённые элементы ---------- */
+
+button:disabled, .btn:disabled, input:disabled, select:disabled, textarea:disabled {
+  opacity: .42;
+  cursor: not-allowed;
+  filter: grayscale(.35);
+}
+.btn.generate:disabled { box-shadow: none; }
+
+/* ---------- Мелочи, которые видно только вместе ---------- */
+
+::selection { background: rgba(216, 178, 92, .28); color: var(--ink); }
+
+.card { transition: border-color .15s ease; }
+.card:hover { border-color: rgba(255, 255, 255, .11); }
+
+/* Заголовок карточки — строка, а не абзац: в него встают счётчик и
+   кнопки справа, поэтому ему нужен flex и разделитель снизу. */
+.card-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 650; letter-spacing: -.01em;
+}
+.card-head .spacer { flex: 1; }
+
+.hint { font-size: 12px; line-height: 1.5; }
+
+/* ---------- Узкое окно ----------
+   Минимум окна — 1080×700 (webapp.py: min_size). На этой ширине меню в
+   232px съедает пятую часть экрана, а крупная кнопка генерации вместе с
+   двумя ghost-кнопками перестаёт помещаться в строку. */
+
+@media (max-width: 1200px) {
+  .app { grid-template-columns: 178px 1fr; }
+  .timeline { padding: 14px 9px; }
+  .tl-node { padding: 8px 10px; gap: 10px; }
+  .tl-node .lbl { font-size: 12.5px; }
+  .scroll { padding: 20px 20px 36px; }
+  .actionbar { padding: 10px 14px; gap: 8px; }
+  .btn.generate { padding: 11px 18px; font-size: 12.5px; }
+  .qt-row { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
+  .qt { padding: 15px 10px; }
+  .qt-ico { width: 36px; height: 36px; font-size: 17px; }
+}
+
+/* Низкое окно: подрезаем вертикальные отступы, иначе на 700px по высоте
+   до нижней панели приходится прокручивать. */
+@media (max-height: 760px) {
+  .stage-head h1 { font-size: 22px; }
+  .card { padding: 14px 16px; }
+  .prow { padding: 11px 14px; }
+  .actionbar { padding: 9px 16px; }
+  .qt { padding: 14px 10px; }
+}
+
+/* ---------- Уважение к настройке «меньше движения» ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* Кнопки прямо в строке канала: выключить из ночи и убрать из софта.
+   Раньше строка умела только одно — выбрать канал; убрать канал было
+   нельзя вообще, а выключить из ночи — только правкой channels.json. */
+.pop-row { position: relative; }
+.pop-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; }
+.pop-mini {
+  flex: 0 0 auto; width: 24px; height: 24px; line-height: 1;
+  border: 0; border-radius: 6px; background: transparent;
+  color: inherit; opacity: .45; cursor: pointer; font-size: 13px;
+}
+.pop-row:hover .pop-mini { opacity: .8; }
+.pop-mini:hover { background: var(--tint-1); opacity: 1; }
+.pop-mini.danger:hover { background: #e5484d; color: #fff; }
+
+/* Галерея ИИ-видео: всё, что отдал генератор, одним экраном. Раньше
+   результаты расползались по папкам проектов и найти вчерашний клип
+   было нечем. */
+.ai-grid {
+  display: grid; gap: 12px; margin-top: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+.ai-cell {
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  background: var(--tint-1); display: flex; flex-direction: column;
+}
+.ai-cell video, .ai-cell img {
+  width: 100%; aspect-ratio: 9 / 16; object-fit: cover;
+  background: #000; display: block;
+}
+.ai-meta {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 6px 8px 2px; font-size: 12px;
+}
+.ai-name {
+  flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-weight: 600;
+}
+.ai-prompt {
+  padding: 0 8px 8px; font-size: 11px; opacity: .6;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ═══════════════ МАСТЕР ПЕРВОГО ЗАПУСКА ═══════════════
+   Окно, которое видит покупатель в первую минуту. Всё здесь подчинено одной
+   задаче — чтобы человек понял, что нужно всего два бесплатных ключа, и не
+   решил, будто требуется платная подписка. Отсюда крупная цена-метка рядом с
+   названием и строка «Без него:» под каждым полем. */
+
+.modal.setup { max-width: 680px; }
+
+.setup-lead {
+  color: var(--ink-2);
+  font-size: var(--fs-md);
+  line-height: var(--lh);
+  margin: 0 0 var(--sp-5);
+}
+
+.krow {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: var(--sp-4);
+  background: var(--card-2);
+}
+.krow + .krow { margin-top: var(--sp-3); }
+
+.khead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-lg);
+}
+.khead b { color: var(--ink); }
+
+.kwhen {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: var(--fs-xs);
+  text-align: right;
+}
+
+.kgives {
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh);
+  margin: var(--sp-2) 0 var(--sp-3);
+}
+
+.kwithout {
+  color: var(--ink-3);
+  font-size: var(--fs-xs);
+  line-height: var(--lh);
+  margin-top: var(--sp-2);
+}
+
+/* Цена-метка. Самый важный элемент окна: именно она снимает у покупателя
+   мысль «здесь всё платное». */
+.tag {
+  font-size: var(--fs-xs);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  letter-spacing: 0.02em;
+}
+.tag.free { color: var(--ok); background: var(--ok-soft); border-color: var(--ok); }
+.tag.paid { color: var(--warn); background: var(--warn-soft); border-color: var(--warn); }
+
+/* Лампочка состояния ключа. */
+.kdot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--line-3);
+  flex: none;
+}
+.kdot.ok      { background: var(--ok); }
+.kdot.filled  { background: var(--accent); }
+.kdot.wait    { background: var(--ink-3); }
+.kdot.limit   { background: var(--warn); }
+.kdot.dead    { background: var(--danger); }
+
+.kstate {
+  display: block;
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh);
+  word-break: break-word;
+}
+.kstate.ok    { color: var(--ok); }
+.kstate.limit { color: var(--warn); }
+.kstate.dead  { color: var(--danger); }
+.kstate.wait  { color: var(--ink-3); }
+
+.setup-more {
+  width: 100%;
+  justify-content: center;
+}
+.kdot.unknown  { background: var(--warn); }
+.kstate.unknown { color: var(--warn); }
+
+/* Ингредиенты и сцены — слой поверх генератора, снятый с Google Flow:
+   набор опорных картинок держит одного героя, сцена набирает длину
+   цепочкой клипов (длину клипа API не принимает — замер 20.08: заказал
+   4 c, вернулось 8.0 c). */
+.ing-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.ing-cell { position: relative; width: 84px; }
+.ing-cell img {
+  width: 84px; height: 112px; object-fit: cover;
+  border-radius: 8px; border: 1px solid var(--line); display: block;
+}
+.ing-tag {
+  position: absolute; left: 4px; bottom: 4px; font-size: 10px;
+  padding: 1px 5px; border-radius: 4px;
+  background: rgba(0,0,0,.65); color: #fff;
+}
+.ing-x {
+  position: absolute; top: 3px; right: 3px; width: 18px; height: 18px;
+  border: 0; border-radius: 50%; cursor: pointer; font-size: 10px;
+  background: rgba(0,0,0,.6); color: #fff; line-height: 1;
+}
+.ai-acts { display: flex; gap: 6px; padding: 0 8px 6px; }
+.ai-acts button {
+  flex: 1 1 auto; font-size: 11px; padding: 3px 6px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: transparent; color: inherit;
+}
+.ai-acts button:hover { background: var(--tint-1); }
+.scene-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+.scene-row:last-child { border-bottom: 0; }
+.scene-name { font-weight: 600; }
+
+
+/* ═══════════════ ПЛОТНАЯ КОМПОНОВКА ═══════════════ */
+
+/* Правая панель уезжает по кнопке в шапке. Схлопываем ШИРИНОЙ, а не
+   display:none: иначе панель не уезжала бы, а мигала. */
+body.side-hidden .side {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  opacity: 0;
+  overflow: hidden;
+  border-left-color: transparent;
+}
+/* Кнопка подсвечена, пока панель спрятана: иначе не видно, что она где-то
+   есть, и человек решит, что панель пропала насовсем. */
+body.side-hidden #sideToggle { color: var(--accent); }
+
+/* Цифры табличными — см. шапку файла правки. */
+.side-val, .statusbar, .dash-num, .kwhen, .chip {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Современнее — это прежде всего предсказуемый отклик на наведение, а не
+   новые цвета. Один тайминг на все интерактивные элементы. */
+.btn, .card, .tl-node, .krow {
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+
+/* Заголовок этапа стал меньше — подтягиваем и подзаголовок, иначе разница
+   между ними теряется и блок читается одной серой массой. */
+.stage-head p { font-size: var(--fs-sm); }
+
+/* Галочка выбора кадра: ролик собирается только из отмеченных. */
+.ai-pick-box {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px 0; font-size: 11px; opacity: .8; cursor: pointer;
+}
+.ai-pick-box input { cursor: pointer; }
+
+
+/* ---------- Вкладка «Экспорт»: материал по пунктам ---------- */
+/* Строка-пункт: слева галочка готовности, в середине название и подсказка,
+   справа — что именно лежит на диске (размер и число файлов). Ровно эти три
+   вещи и нужны монтажёру: есть ли, что это, сколько весит. */
+.exp-row{display:flex; align-items:flex-start; gap:12px; padding:10px 12px;
+         border-radius:10px; cursor:pointer; border:1px solid transparent}
+.exp-row:hover{background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.12)}
+.exp-row.miss{opacity:.5; cursor:default}
+.exp-row.miss:hover{background:none; border-color:transparent}
+.exp-mark{flex:0 0 20px; font-size:15px; line-height:1.5; text-align:center}
+.exp-mid{flex:1 1 auto; min-width:0}
+.exp-title{font-weight:600}
+.exp-hint{font-size:12px; opacity:.65; margin-top:2px}
+.exp-info{flex:0 0 auto; font-size:12px; opacity:.8; white-space:nowrap;
+          padding-top:2px; font-variant-numeric:tabular-nums}

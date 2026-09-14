@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import type { VariantProps } from '../types';
+import { parseAmount, formatAmount } from '../payload';
 import { DISPLAY } from '../fonts';
 
 // Counter, вариант «механический счётчик». Встроенный Counter наезжает
@@ -16,8 +17,13 @@ export const CounterAi4C8B: React.FC<VariantProps> = (p) => {
   const m = /([^\d]*)([\d][\d,.\s]*)(.*)/.exec(p.content || '');
   const prefix = m ? m[1] : '';
   const suffix = m ? m[3] : '';
-  const target = m ? parseFloat(m[2].replace(/[,\s]/g, '')) : 0;
-  const digits = String(Math.round(target)).split('');
+  // Разряды разбирает parseAmount: снятие одной запятой оставляло немецкую
+  // точку внутри числа, и «30.000» приходило в барабан как «30».
+  const { value: target, decimals: dec, group: grp } =
+    parseAmount(m ? m[2] : '0');
+  // Разделитель разрядов идёт отдельной НЕПОДВИЖНОЙ ячейкой: барабан
+  // крутит цифры, а точка между тысячами не вращается.
+  const digits = formatAmount(target, dec, grp).split('');
 
   // Барабан крутится дольше, чем кажется нужным. При fps*0.75 он замирал за
   // 0.8 c, а оверлей живёт 4 c — то есть четыре пятых своей жизни счётчик
@@ -47,6 +53,14 @@ export const CounterAi4C8B: React.FC<VariantProps> = (p) => {
         ) : null}
 
         {digits.map((d, i) => {
+          if (!/\d/.test(d)) {
+            return (
+              <span key={i} style={{
+                fontFamily: DISPLAY, fontSize: 64, color: ACCENT,
+                lineHeight: `${H}px`,
+              }}>{d}</span>
+            );
+          }
           // Старшие разряды замирают раньше: барабан останавливается слева
           // направо, как у настоящего счётчика.
           const stopAt = spin * (0.45 + 0.55 * (i + 1) / digits.length);

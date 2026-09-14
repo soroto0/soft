@@ -70,8 +70,11 @@ DEFAULTS = {
     # Цена — время и лимиты Veo, поэтому величина на канал, а не общая.
     "ai_ratio": 0.85,
     # Субтитры — тоже часть почерка канала, а не общая настройка:
-    #   sub_style — bold_box | pill | karaoke | yellow_pop | cyan_pop |
-    #               red_alert | thin_clean | top
+    #   sub_style — bold_box | pill | karaoke | word_pop | yellow_pop |
+    #               cyan_pop | red_alert | thin_clean | top
+    #               word_pop — по одному слову во весь кадр, для вертикали:
+    #               в кадре 1080 фраза набирается в три строки мелким кеглем
+    #               и в ленте не читается
     #   sub_size  — мелкие | средние | крупные | огромные
     #   sub_width — символов в строке (узкая строка читается быстрее, но
     #               чаще перескакивает; 42 — обычный компромисс)
@@ -513,6 +516,13 @@ def apply_to_params(channel: dict, p: dict) -> dict:
     for key in ("lang", "tone", "visual_style", "sub_style", "sub_size",
                 "sub_font", "intensity", "look", "min_gap", "sfx",
                 "script_shape",
+                # resolution — свойство КАНАЛА, а не прогона. Канал Shorts
+                # обязан отдавать 1080x1920 всегда, а не когда кто-то
+                # вспомнит переключить формат в окне. Отсюда же берётся
+                # соотношение сторон заказываемых кадров: горизонтальный
+                # кадр обрезать до вертикали нельзя, Veo ставит предмет в
+                # середину широкого кадра.
+                "resolution",
                 # palette — САМОЕ важное для непохожести каналов, и её тут не
                 # было. По ней разведены склейки и движение кадра
                 # (render.PALETTES), воздух кадра (core.ATMOSPHERE) и звук
@@ -583,3 +593,55 @@ def apply_to_params(channel: dict, p: dict) -> dict:
                        _num(channel["minutes"], DEFAULTS["minutes"], "minutes"))
     out["channel_locked"] = locked
     return out
+
+
+def remove(channel_id: str) -> list[dict]:
+    """Убрать профиль канала из channels.json.
+
+    ПАПКУ КАНАЛА НЕ ТРОГАЕТ. Там лежат сценарии, озвучка, купленные и
+    сгенерированные кадры — всё, что стоило времени и денег; восстановить
+    это неоткуда, а профиль в channels.json заводится заново за минуту.
+    Поэтому удаление здесь означает «убрать из софта», а не «стереть с
+    диска»: папку человек уберёт сам, если захочет, и увидит, что удаляет.
+
+    Отказывается писать на нечитаемом файле по той же причине, что и
+    upsert: в chans тогда пусто, и сохранение стёрло бы остальные каналы.
+    """
+    cid = str(channel_id or "").strip()
+    if not cid:
+        raise ValueError("не сказано, какой канал убирать")
+    with _FILE_LOCK:
+        chans, broken = _read()
+        if broken:
+            raise RuntimeError(
+                f"Профиль не удалён: {broken}. Записать сейчас — значит "
+                f"затереть остальные каналы; почини {CHANNELS_FILE.name} "
+                "и повтори")
+        left = [c for c in chans if c.get("id") != cid]
+        if len(left) == len(chans):
+            raise ValueError(f"профиля «{cid}» нет")
+        save(left)
+    return left
+
+
+def set_active(channel_id: str, on: bool) -> list[dict]:
+    """Включить или выключить канал в ночном автопилоте.
+
+    Это ровно тот флаг, по которому night_plan и автопилот отбирают каналы
+    (см. active()). Отдельная функция, а не upsert из формы: включать и
+    выключать канал в ночи хочется одним нажатием из списка, не открывая
+    редактор профиля целиком.
+    """
+    cid = str(channel_id or "").strip()
+    with _FILE_LOCK:
+        chans, broken = _read()
+        if broken:
+            raise RuntimeError(f"Флаг не изменён: {broken}")
+        for ch in chans:
+            if ch.get("id") == cid:
+                ch["active"] = bool(on)
+                break
+        else:
+            raise ValueError(f"профиля «{cid}» нет")
+        save(chans)
+    return chans

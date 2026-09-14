@@ -444,8 +444,45 @@ def _rule_webview(cfg: dict) -> list[dict]:
     return out
 
 
+def _rule_buildcache(cfg: dict) -> list[dict]:
+    """Кеш сборки webpack внутри remotion/node_modules.
+
+    САМОЕ ТЯЖЁЛОЕ НА ДИСКЕ, и уборка проходила мимо. Замер 2026-08-22: вся
+    папка проекта 14.47 ГБ, из них remotion 8.71 ГБ, а внутри него
+    node_modules/.cache/webpack — 7.99 ГБ в 196 файлах. Это 55% всего диска
+    против 0.3% у журнала, который правила уже ловят.
+
+    Кеш восстанавливается сам: webpack соберёт его заново при следующем
+    рендере. Цена удаления — одна медленная первая сборка, и только она.
+
+    Свежий не трогаем: если рендер идёт прямо сейчас, кеш ему нужен.
+    """
+    out = []
+    root = BASE / "remotion" / "node_modules" / ".cache"
+    if not root.is_dir():
+        return out
+    for p in sorted(root.iterdir()):
+        try:
+            if not p.is_dir():
+                continue
+        except OSError:
+            continue
+        age = _age_days(p)
+        size = dir_size(p)
+        if age < 1.0:
+            out.append({"rule": "buildcache", "path": p, "size": size,
+                        "channel": "(сборка Remotion)",
+                        "skip": "моложе суток — рендер может идти сейчас"})
+            continue
+        out.append({"rule": "buildcache", "path": p, "size": size,
+                    "channel": "(сборка Remotion)",
+                    "why": f"кеш сборки, {age:.0f} д; webpack соберёт заново"})
+    return out
+
+
 RULES = {
     "tmp": (_rule_tmp, "мусор оборванных сборок (render_tmp)"),
+    "buildcache": (_rule_buildcache, "кеш сборки Remotion (восстановим)"),
     "scraps": (_rule_scraps, "черновики шагов (фоны обложек, вырезки)"),
     "storyboard": (_rule_storyboard, "кадры давно собранных роликов"),
     "off": (_rule_off, "тяжёлое у выключенных каналов"),
@@ -457,7 +494,7 @@ RULES = {
 SAFE = ("tmp", "scraps")
 # Что показывается, но не делается: за это решает человек — здесь либо
 # деньги (оплаченные кадры Veo), либо чужие программы (%TEMP%).
-ASK = ("storyboard", "off", "webview")
+ASK = ("storyboard", "off", "webview", "buildcache")
 
 
 # ---------- сбор и уборка ----------

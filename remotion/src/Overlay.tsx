@@ -1,8 +1,8 @@
 import React from 'react';
-import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import { AbsoluteFill, Img, interpolate, spring, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import { DISPLAY, TEXT, SERIF } from './fonts';
 import { VARIANTS, DECOR } from './variants/_registry';
-import { anyAlnum, headOf, numPairs, textPairs, redactLines } from './payload';
+import { anyAlnum, headOf, numPairs, textPairs, redactLines, parseAmount, formatAmount } from './payload';
 import type { OverlayProps } from './types';
 
 // тип переехал в types.ts (варианты не могут тянуть его отсюда — вышел бы
@@ -15,14 +15,14 @@ export type { OverlayProps };
 // компонентов ломалась/игнорировалась). accentRgb — то же, что accent, но
 // как "r,g,b" для использования внутри rgba(...).
 const THEME = {
-  accent: '#3a7ca5',
-  accentLight: '#6db3cf',
-  accentRgb: '58,124,165',
-  bannerFrom: '#c4d8e8',
-  bannerTo: '#a8c4d8',
-  bannerText: '#0d1f2e',
-  kickerFrom: '#14212d',
-  kickerTo: '#1e3344',
+  accent: '#4a7c8a',
+  accentLight: '#7fb5b0',
+  accentRgb: '74,124,138',
+  bannerFrom: '#dcd8cc',
+  bannerTo: '#c9c4b6',
+  bannerText: '#1e272a',
+  kickerFrom: '#233a40',
+  kickerTo: '#15262a',
 };
 
 const useExit = (dur: number) => {
@@ -75,11 +75,6 @@ const inkOn = (bg: string): [number, number, number] => {
   // светимости кандидатов: почти чёрный (8,26,30) и чистый белый
   const dark = 0.2126 * 0.00304 + 0.7152 * 0.00961 + 0.0722 * 0.01096;
   return _contrast(b, dark) >= _contrast(b, 1) ? [8, 26, 30] : [255, 255, 255];
-};
-
-const formatCounter = (value: number) => {
-  if (value < 1000) return Math.floor(value).toString();
-  return value.toLocaleString('en-US');
 };
 
 const LowerThird = ({ content, exit, enter }: { content: string; exit: number; enter: number }) => {
@@ -189,8 +184,11 @@ const Counter = ({ content, exit, enter }: { content: string; exit: number; ente
   // слипшееся «1,200acres». Хвостовой пробел возвращаем единице измерения;
   // там, где его не было («270°F»), ничего не меняется.
   const suffix = match ? (match[2].match(/\s+$/)?.[0] ?? '') + match[3] : '';
-  const rawNumStr = match ? match[2].replace(/[,\s]/g, '') : '0';
-  const targetNum = parseFloat(rawNumStr) || 0;
+  // Разряды разбирает parseAmount: replace(/[,\s]/g) снимал только запятую,
+  // и немецкое «30.000» приходило в parseFloat точкой — тридцать вместо
+  // тридцати тысяч. Замер и правила — в payload.ts.
+  const { value: targetNum, decimals: numDec, group: numGroup } =
+    parseAmount(match ? match[2] : '0');
 
   const currentVal = interpolate(frame, [0, 60], [0, targetNum], {
     easing: Easing.out(Easing.cubic),
@@ -215,7 +213,7 @@ const Counter = ({ content, exit, enter }: { content: string; exit: number; ente
           color: '#ffffff',
           textShadow: `0 0 40px rgba(${THEME.accentRgb},0.3)`
         }}>
-          {prefix}{formatCounter(currentVal)}{suffix}
+          {prefix}{formatAmount(currentVal, numDec, numGroup)}{suffix}
         </div>
         <div style={{
           width: '100px',
@@ -257,8 +255,11 @@ const CounterTag = ({ content, exit, enter }: { content: string; exit: number; e
   // слипшееся «1,200acres». Хвостовой пробел возвращаем единице измерения;
   // там, где его не было («270°F»), ничего не меняется.
   const suffix = match ? (match[2].match(/\s+$/)?.[0] ?? '') + match[3] : '';
-  const rawNumStr = match ? match[2].replace(/[,\s]/g, '') : '0';
-  const targetNum = parseFloat(rawNumStr) || 0;
+  // Разряды разбирает parseAmount: replace(/[,\s]/g) снимал только запятую,
+  // и немецкое «30.000» приходило в parseFloat точкой — тридцать вместо
+  // тридцати тысяч. Замер и правила — в payload.ts.
+  const { value: targetNum, decimals: numDec, group: numGroup } =
+    parseAmount(match ? match[2] : '0');
   const currentVal = interpolate(frame, [0, 40], [0, targetNum], {
     easing: Easing.out(Easing.cubic),
     extrapolateLeft: 'clamp',
@@ -295,7 +296,7 @@ const CounterTag = ({ content, exit, enter }: { content: string; exit: number; e
           color: '#1a1410',
           whiteSpace: 'nowrap'
         }}>
-          {prefix}{formatCounter(currentVal)}{suffix}
+          {prefix}{formatAmount(currentVal, numDec, numGroup)}{suffix}
         </div>
       </div>
     </AbsoluteFill>
@@ -724,6 +725,106 @@ const Collage = ({ items, exit, enter }: { items: { label: string; img: string }
             </div>
           );
         })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// ---------- ПЛАКАТНАЯ КАРТОЧКА ----------
+//
+// Зачем заведён этот тип. Замер готового ролика 17.08: в первые 30 секунд
+// СТОИТ 10 планов по 2.5-4.2 с, а приёмка видит две склейки — и она права.
+// Десять планов подряд показывают бурую воду, землю и камни, то есть зритель
+// смотрит на один непрерывный серый кадр, сколько его ни режь. Там же:
+// предмет ролика назван в 0 кадрах из 104.
+//
+// Плакатная карточка — единственная врезка, которая в таком потоке ГАРАНТИРОВАННО
+// читается как смена картинки: сплошная заливка, огромный шрифт, жёсткий цвет.
+// Приёмы взяты с образца владельца (кинетическая типографика): шрифт, обрезанный
+// краем кадра, толстая смещённая тень-выдавливание, акцентная полоса.
+//
+// Палитры — свои для канала, а не зелёный образца: копировать чужой цвет
+// значит копировать чужое лицо.
+// ПАЛИТРЫ ПЛАКАТНОЙ КАРТОЧКИ. Ключи первой половины — почерк КАНАЛА, то самое
+// поле channels.json/"palette", по которому render.PALETTES выбирает склейки, а
+// core — обложку и звук. Раньше здесь лежали только выдуманные имена (alarm,
+// blueprint, hazard, night), а props.palette приходит из профиля канала и
+// принимает значения harsh / warm / contemplative — пересечения не было НИ
+// ОДНОГО, и любая карточка любого канала падала в запасной alarm. То есть поле
+// работало вхолостую, даже когда его начали передавать.
+//
+// Вторая половина — прежние имена. Оставлены синонимами: на них может ссылаться
+// расстановщик оверлеев и накопленные варианты, и терять их незачем.
+const POSTER_PALETTES: Record<string, { ink: string; paper: string; accent: string }> = {
+  // почерк каналов (channels.json/palette)
+  harsh:         { ink: '#0a0b0d', paper: '#efeae3', accent: '#4a7c8a' },
+  warm:          { ink: '#241a10', paper: '#f4e7cd', accent: '#4a7c8a' },
+  contemplative: { ink: '#f0f2f4', paper: '#141a22', accent: '#4a7c8a' },
+  // прежние имена карточки
+  alarm:     { ink: '#0a0b0d', paper: '#efeae3', accent: '#4a7c8a' },
+  blueprint: { ink: '#0d1b2a', paper: '#e8eef3', accent: '#4a7c8a' },
+  hazard:    { ink: '#141414', paper: '#f2e9d8', accent: '#4a7c8a' },
+  night:     { ink: '#f0f2f4', paper: '#111417', accent: '#4a7c8a' },
+};
+
+const Poster = ({
+  content, exit, enter, palette,
+}: { content: string; exit: number; enter: number; palette?: string }) => {
+  const frame = useCurrentFrame();
+  const { width, fps } = useVideoConfig();
+  // «Заголовок::подпись», как у titlecard — форма содержимого общая, чтобы
+  // расстановщик оверлеев не учил новый формат.
+  const [head, sub] = content.split('::');
+  const words = (head ?? '').trim();
+  if (!words) return <AbsoluteFill />;
+
+  // Приводим к нижнему регистру и обрезаем пробелы: почерк канала правится
+  // руками в профиле, и «Harsh » с большой буквы не должен ронять карточку в
+  // чужую палитру молча.
+  const pal = POSTER_PALETTES[(palette ?? '').trim().toLowerCase()]
+    ?? POSTER_PALETTES.alarm;
+  // Кегль по длине строки, как в TitleCard: немецкие составные слова пробелов
+  // не содержат и на фиксированном кегле уезжают за край.
+  const size = Math.max(46, Math.min(200, (width * 0.92) / Math.max(6, words.length) / 0.62));
+  const s = spring({ frame, fps, config: { damping: 12, mass: 0.7, stiffness: 150 } });
+  const bar = interpolate(frame, [0, 14], [0, 1], {
+    easing: Easing.out(Easing.cubic), extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const subOp = interpolate(frame, [18, 34], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  }) * enter * exit;
+  // тень-выдавливание: слоями, как в образце
+  const depth = Array.from({ length: 12 }, (_, i) => `${i + 1}px ${i + 1}px 0 ${pal.ink}`).join(',');
+
+  return (
+    <AbsoluteFill
+      style={{
+        background: pal.paper,
+        opacity: enter * exit,
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      <AbsoluteFill style={{ justifyContent: 'center' }}>
+        <div style={{
+          height: size * 0.78, background: pal.accent,
+          transform: `scaleX(${bar})`, transformOrigin: 'left',
+        }} />
+      </AbsoluteFill>
+      <div style={{ position: 'relative', textAlign: 'center', padding: '0 3%' }}>
+        <div style={{
+          fontFamily: DISPLAY, fontWeight: 700, fontSize: size, lineHeight: 0.92,
+          color: pal.paper, textShadow: depth, letterSpacing: -1,
+          transform: `translateY(${(1 - s) * 40}px) scale(${0.86 + s * 0.14})`,
+          whiteSpace: 'nowrap',
+        }}>{words}</div>
+        {sub ? (
+          <div style={{
+            fontFamily: TEXT, fontSize: Math.max(20, size * 0.2), color: pal.ink,
+            marginTop: size * 0.14, opacity: subOp,
+          }}>{sub.trim()}</div>
+        ) : null}
       </div>
     </AbsoluteFill>
   );
@@ -1201,6 +1302,8 @@ const OverlayCore: React.FC<OverlayProps> = (p) => {
       return <Collage items={p.items ?? []} exit={exit} enter={enter} />;
     case 'titlecard':
       return <TitleCard content={p.content} exit={exit} enter={enter} />;
+    case 'poster':
+      return <Poster content={p.content} exit={exit} enter={enter} palette={p.palette} />;
     case 'kinetic':
       return <Kinetic content={p.content} exit={exit} />;
     case 'highlight':
@@ -1291,6 +1394,40 @@ const hasPayload = (p: OverlayProps): boolean => {
   }
 };
 
+// ПОДЛОЖКА ПОД ГОЛЫМ ТЕКСТОМ.
+//
+// Замер готового ролика einsturzpunkt/2026-08-30_3: 125 оверлеев, 97 из них
+// кладут ГОЛЫЙ текст поверх видеоряда (доля плотных пикселей 0.2-1.2% против
+// 8.7% у banner, у которого плашка настоящая), и 43 таких попадают на светлый
+// кадр. Глазами подтверждено: «ERMITTLER VOR EINEM RÄTSEL» белым по светлому
+// бетону не читается.
+//
+// Цвет кадра под оверлеем мы не выбираем, но затемнить ровно ту полосу, где
+// лежат буквы, можем всегда. Флаг ставит питонова часть ПО ЗАМЕРУ кадра
+// (overlays.фон_под_оверлеем), а не «на всякий случай»: лишняя вуаль на
+// тёмном кадре только грязнит картинку.
+const Scrim: React.FC<{pos: string; enter: number; exit: number}> = ({pos, enter, exit}) => {
+  const band = (() => {
+    if (pos.startsWith('point:')) {
+      const y = Number(pos.split(':')[1]?.split(',')[1] ?? 50);
+      return {top: `${Math.max(0, y - 10)}%`, height: '20%'};
+    }
+    if (pos === 'top') return {top: '2%', height: '24%'};
+    if (pos === 'bottom') return {top: '70%', height: '26%'};
+    return {top: '34%', height: '32%'};
+  })();
+  return (
+    <AbsoluteFill style={{opacity: enter * exit}}>
+      <div style={{
+        position: 'absolute', left: 0, right: 0, top: band.top, height: band.height,
+        background:
+          'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.58) 22%, ' +
+          'rgba(0,0,0,0.58) 78%, rgba(0,0,0,0) 100%)',
+      }} />
+    </AbsoluteFill>
+  );
+};
+
 export const Overlay: React.FC<OverlayProps> = (p) => {
   // Декоративный слой ищем ОТДЕЛЬНО от заменяющих вариантов: у DECOR та же
   // ключевая схема "тип/вариант", но найденный здесь компонент не отменяет
@@ -1302,10 +1439,18 @@ export const Overlay: React.FC<OverlayProps> = (p) => {
   // перед ними, даже когда рисовать нечего.
   if (!hasPayload(p)) return <AbsoluteFill />;
   const Decor = p.variant ? DECOR[`${p.type}/${p.variant}`] : undefined;
-  if (!Decor) return <OverlayCore {...p} />;
+  if (!Decor) {
+    return p.scrim ? (
+      <AbsoluteFill>
+        <Scrim pos={p.pos} enter={enter} exit={exit} />
+        <OverlayCore {...p} />
+      </AbsoluteFill>
+    ) : <OverlayCore {...p} />;
+  }
   const core = { ...p, variant: undefined };
   return (
     <AbsoluteFill>
+      {p.scrim ? <Scrim pos={p.pos} enter={enter} exit={exit} /> : null}
       <Decor {...p} exit={exit} enter={enter} />
       <OverlayCore {...core} />
     </AbsoluteFill>

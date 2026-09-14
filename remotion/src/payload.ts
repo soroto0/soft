@@ -94,6 +94,70 @@ export const textPairs = (s: string): { year: string; label: string }[] => {
   return out;
 };
 
+/** Число из плашки счётчика — с ПРАВИЛЬНЫМ разделителем разрядов.
+ *
+ *  Замер на живом ролике einsturzpunkt/2026-08-11_2, 41-я секунда: в
+ *  overlays.txt стояло «30.000 Zuschauer», а в кадр уходило «30.0». Точка в
+ *  немецком отделяет тысячи, а код читал её как десятичную: parseFloat дал
+ *  30, и правило «если в строке есть точка — показать один знак после
+ *  запятой» дорисовало «.0». Тридцать тысяч зрителей превратились в
+ *  тридцать, и это стояло в кадре четыре секунды.
+ *
+ *  Разбор без знания языка, по самой записи:
+ *    оба знака в числе  — десятичный тот, что СТОЯЛ ПОЗЖЕ (1.234,5 и 1,234.5)
+ *    один знак дважды   — разряды (1.234.567)
+ *    один знак и ровно
+ *    три цифры до конца — разряды (30.000, 1,200)
+ *    иначе              — десятичный (1.5, 2,5)
+ *
+ *  Возвращается и САМ ЗНАК разрядов: обратно число собирается тем же, каким
+ *  его написали. Немцу «30,000» так же неверно, как «30.0».
+ */
+export const parseAmount = (
+  raw: string,
+): { value: number; decimals: number; group: string } => {
+  const s = (raw || '').replace(/\s/g, '');
+  const iDot = s.lastIndexOf('.');
+  const iCom = s.lastIndexOf(',');
+  let dec = -1;                       // позиция десятичного знака
+  if (iDot >= 0 && iCom >= 0) {
+    dec = Math.max(iDot, iCom);
+  } else if (iDot >= 0 || iCom >= 0) {
+    const i = Math.max(iDot, iCom);
+    const ch = s.charAt(i);
+    const один = s.indexOf(ch) === i;                 // знак встречен один раз
+    const хвост = s.length - i - 1;                   // цифр после него
+    dec = один && хвост !== 3 ? i : -1;
+  }
+  const цифры = (t: string) => t.replace(/[^\d]/g, '');
+  const целая = цифры(dec >= 0 ? s.slice(0, dec) : s);
+  const дробь = dec >= 0 ? цифры(s.slice(dec + 1)) : '';
+  const value = parseFloat((целая || '0') + (дробь ? '.' + дробь : '')) || 0;
+  // Чем группировать: тем знаком, которым группировал автор. Не ставил
+  // группировки — берём противоположный десятичному, а при целом числе
+  // тот, что стоял в записи.
+  const знаки = (dec >= 0 ? s.slice(0, dec) : s).match(/[.,]/g) || [];
+  const group = знаки[0]
+    || (dec >= 0 ? (s.charAt(dec) === ',' ? '.' : ',') : ',');
+  return { value, decimals: дробь.length, group };
+};
+
+/** Собрать число обратно так, как его написал автор. */
+export const formatAmount = (
+  value: number,
+  decimals: number,
+  group: string,
+): string => {
+  const целых = Math.floor(Math.abs(value));
+  const склеено = String(целых).replace(/\B(?=(\d{3})+(?!\d))/g, group || ',');
+  if (!decimals) return (value < 0 ? '-' : '') + склеено;
+  const дробь = Math.abs(value - целых)
+    .toFixed(decimals)
+    .slice(2);
+  const точка = group === '.' ? ',' : '.';
+  return (value < 0 ? '-' : '') + склеено + точка + дробь;
+};
+
 /** Строки документа для redact: пустые отбрасываются, «*» в начале — метка
  *  «эту строку замазать», а не содержимое. */
 export const redactLines = (s: string): { text: string; hidden: boolean }[] =>

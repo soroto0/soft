@@ -391,8 +391,28 @@ def _side(ya, missing: list, what: str, **kw) -> list[dict] | None:
     try:
         return _rows(ya, **kw)
     except Exception as e:
-        missing.append(f"{what}: {str(e)[:80]}")
+        missing.append(f"{what}: {_why(e)}")
         return None
+
+
+def _why(e: Exception) -> str:
+    """Причина отказа разреза — коротко, читаемо и БЕЗ ссылки.
+
+    Здесь стояло `str(e)[:80]`, и восемьдесят знаков HttpError — это ровно
+    начало URL: в history.json лежит шесть записей вида
+    «<HttpError 500 when requesting https://youtubeanalytics.googleapis.com/
+    v2/report», обрезанных перед тем местом, где Google говорит, ЧТО не так.
+    То есть причина писалась, но не сохранялась ни разу.
+
+    URL выбрасываем ещё и потому, что в него уходят параметры запроса, а
+    этот текст ложится в history.json рядом с публичным репозиторием.
+    """
+    txt = str(e)
+    status = getattr(getattr(e, "resp", None), "status", 0)
+    m = re.search(r'returned "([^"]+)"', txt)
+    reason = m.group(1) if m else re.sub(r"https?://\S+", "…", txt)
+    reason = " ".join(reason.split())
+    return (f"HTTP {status}: {reason}" if status else reason)[:160]
 
 
 def _tally(rows: list[dict] | None, key: str) -> dict | None:
@@ -601,8 +621,24 @@ def collect(channel: dict, log=print, force: bool = False) -> dict:
         if missing:
             snap["partial"] = missing
         _say(log, f"[История] {cid}: {len(vids)} роликов, "
-                  f"{facts['subs']} подписчиков, кривых {len(curves)}"
-                  + (f"; не далось: {len(missing)}" if missing else ""))
+                  f"{facts['subs']} подписчиков, кривых {len(curves)}")
+        # ЧТО ИМЕННО не собралось — словами, а не числом. Здесь стояло
+        # «не далось: 1», и по этой строке нельзя было понять ни какой
+        # разрез отвалился, ни почему: цифра выглядела как мелкая
+        # шероховатость. Замер по analytics/history.json на 2026-08-12: во
+        # всех шести неполных снимках (home-vault 09/11/12, einsturzpunkt
+        # 11/12, fisura-critica 12) не дался ОДИН И ТОТ ЖЕ разрез —
+        # subscribedStatus, «подписчики/чужие», и всегда с HTTP 500. То
+        # есть это не разовая осечка Google, как считалось, а устойчивый
+        # отказ на этих каналах — и три дня подряд он проходил цифрой «1».
+        for m in missing:
+            _say(log, f"[История] {cid}: разрез «{m}» — НЕ СОБРАН. Это не "
+                      "«ноль»: в отчёте этих цифр просто не будет.")
+        if missing:
+            _say(log, f"[История] {cid}: остальное собрано полностью — "
+                      "каталог роликов, просмотры и досмотры на месте. "
+                      "Если разрез не даётся несколько сборов подряд, это "
+                      "уже не осечка: смотри partial в analytics/history.json")
     except Exception as e:
         # Текст ошибки может тянуть за собой URL с ключом — обрезаем и
         # прячем: этот файл читают люди и он лежит рядом с репозиторием.
@@ -759,6 +795,84 @@ def retention(channel: dict, data: dict | None = None) -> dict:
         "drop_size": round(sum(c["drop_size"] for c in got) / len(got) * 100),
         "half_sec": round(sum(halves) / len(halves)) if halves else None,
     }
+
+
+def retention_records(channel_id: str, data: dict | None = None) -> list[dict]:
+    """Все замеры удержания канала, старые первыми."""
+    d = data if data is not None else load()
+    box = d.get("channels", {}).get(channel_id, {}) or {}
+    return box.get("retention") or []
+
+
+def record_retention(channel_id: str, prof: dict, source: str = "build",
+                     log=print) -> dict:
+    """Записать замер удержания, снятый ВНЕ сбора — на сборке ролика.
+
+    ЗАЧЕМ ЭТО ВООБЩЕ. webapp._retention_brief спрашивал YouTube живьём на
+    КАЖДУЮ сборку (yt_stats.drop_profile — запрос на канал плюс запрос на
+    кривую каждого ролика), печатал строку в журнал и выбрасывал числа.
+    То есть самый частый замер удержания в проекте не сохранялся нигде, а
+    вопрос «стало ли лучше после правок монтажа» отвечался по памяти. При
+    этом квота на него тратилась настоящая, каждую сборку.
+
+    ПОЧЕМУ ОТДЕЛЬНАЯ ВЕТКА, А НЕ СНИМОК. Снимок (collect) — это канал
+    целиком: подписчики, каталог роликов, разрезы трафика. Здесь их нет и
+    быть не может: drop_profile спрашивает только кривые. Положи это в
+    snapshots с ok=true — и growth() возьмёт такой снимок как «сейчас»,
+    не найдёт в нём channel.subs и отчитается о падении подписчиков до
+    нуля, а topics() увидит канал без роликов. Ветка отдельная по той же
+    причине, по какой отдельно лежит ctr: у записи другое происхождение и
+    другая полнота, и различать их обязана сама запись, а не человек по
+    памяти.
+
+    Форма записи повторяет ctr-запись (date/at/by/source) и снимок
+    (per_video — тот же словарь id -> сводка кривой, что лежит в
+    snapshots[].curves), чтобы читалось всё одинаково.
+
+    Замена только по паре «канал + дата»: две сборки за сутки дают тот же
+    замер с точностью до шума, а завтрашний — НОВАЯ точка истории.
+    """
+    if not channel_id or not prof or prof.get("drop_sec") is None:
+        raise ValueError("нечего записывать: замер пуст")
+    per = {}
+    for w in prof.get("per_video") or []:
+        vid = w.get("video")
+        if not vid:
+            continue
+        per[vid] = {
+            "drop_frac": round(float(w.get("drop_frac") or 0), 4),
+            "drop_size": round(float(w.get("drop_size") or 0), 4),
+            "drop_sec": w.get("drop_sec"),
+            "half_sec": w.get("half_sec"),
+            "views": w.get("views", 0),
+            "watched_pct": w.get("watched_pct", 0),
+            "title": (w.get("title") or "")[:120],
+        }
+    rec = {
+        "date": _today(),
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "by": "auto",
+        "source": source,
+        "videos": prof.get("videos", len(per)),
+        "drop_sec": prof.get("drop_sec"),
+        # drop_size приходит из drop_profile уже в процентах (округлён),
+        # per_video — долями. Смешивать нельзя: см. retention() выше, там
+        # доли умножаются на 100 при чтении.
+        "drop_size": prof.get("drop_size"),
+        "half_sec": prof.get("half_sec"),
+        "per_video": per,
+    }
+    data = load()
+    box = data.setdefault("channels", {}).setdefault(channel_id, {})
+    recs = box.setdefault("retention", [])
+    recs[:] = [r for r in recs if r.get("date") != rec["date"]]
+    recs.append(rec)
+    recs.sort(key=lambda r: r.get("date", ""))
+    save(data)
+    _say(log, f"[История] {channel_id}: записан замер удержания — обвал на "
+              f"{rec['drop_sec']}-й секунде, минус {rec['drop_size']}% "
+              f"по {rec['videos']} ролик(ам) за {rec['date']}")
+    return rec
 
 
 # ----------------------------------------- показы и CTR: только руками
@@ -1528,14 +1642,31 @@ def report(channel: dict, data: dict | None = None) -> str:
             L.append("   Ищут словами: " + ", ".join(
                 f"«{q}»" for q, _ in srch[:4]))
     sub = snap.get("subscribed")
-    if sub and sum(sub.values()):
+    if sub is None:
+        # Та же развилка, что и у источников трафика выше: None — «не
+        # ответили», {} — «ответили, там пусто». Раньше None и пустой
+        # словарь одинаково не проходили `if sub and ...`, и строка про
+        # подписчиков просто исчезала из отчёта — так, что заметить её
+        # отсутствие было нечем. Это и есть тот разрез, который в
+        # history.json помечен partial на трёх каналах.
+        L.append("   Из них подписчиков: разрез не дался в этот сбор — "
+                 "доля своей аудитории неизвестна (не ноль)")
+    elif sub and sum(sub.values()):
         share = sub.get("SUBSCRIBED", 0) * 100 // (sum(sub.values()) or 1)
         L.append(f"   Из них подписчиков: {share}% — "
                  + ("канал живёт на случайных заходах"
                     if share < 15 else "своя аудитория уже возвращается"))
     if snap.get("partial"):
-        L.append(f"   (в снимке не хватает {len(snap['partial'])} разрез(ов) — "
-                 "остальное собрано полностью)")
+        # Раньше здесь стояло только число. Число не говорит ни что
+        # потеряно, ни насколько это важно, — а разрезы разной цены: без
+        # источников трафика непонятно, откуда идут зрители, без
+        # подписчиков — своя ли это аудитория.
+        L.append("   Не собралось в этот сбор:")
+        for m in snap["partial"]:
+            L.append(f"     • {m}")
+        L.append("     ↑ это НЕ нули, а пропуски. Ролики, просмотры и "
+                 "досмотры собраны полностью; повторяется из сбора в сбор — "
+                 "смотри partial в analytics/history.json")
 
     # 7. Ниша: с чем сравниваемся.
     n = snap.get("niche") or {}
